@@ -9,6 +9,23 @@ Rules a tool can check live in that tool's config. This file holds only what can
 - Tests are the only written statement of required behavior; name them as behavior.
 - Delete, don't deprecate. Git remembers.
 
+## Structure
+- Split by runtime: `native/`, `platform/`, `web/`. Shared at the root: `contracts/`, `products/`.
+- Structure is extracted from working code, not built ahead of it. A directory or project
+  exists only when code needs it; no placeholders. A new layer appears in the commit that
+  extracts it, and that commit says why.
+- `docs/` indexes per-project maps. User-facing docs belong to the site.
+- Binaries and secrets never enter git.
+
+## Research
+- `research/` is outside the product: nothing outside it depends on anything inside it.
+- `kb/`: prose on how external targets work. Each page states target, last observed build,
+  and status (verified or hypothesis). Evidence points at something durable (lab project,
+  IDA address, build id), never at scratch.
+- `scratch/`: gitignored local workbench. Keeping something means promoting it.
+- `lab/`: experiments held to full code rules. Passes `:check` or gets deleted.
+  Graduates by moving into the product tree.
+
 ## Readability
 - Code should read without comments. Comments state why, invariants, or provenance, never what.
 - Code touching things we don't control (offsets, sigs, vtables, hooks, layouts, ABI)
