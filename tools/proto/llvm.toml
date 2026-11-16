@@ -1,0 +1,48 @@
+format = "2"
+
+[plugin]
+description = "LLVM/Clang toolchain (prebuilt Windows x64 release)."
+homepage_url = "https://llvm.org/"
+repository_url = "https://github.com/llvm/llvm-project"
+
+[metadata]
+name = "LLVM"
+type = "command-line"
+
+# Tags look like llvmorg-23.1.5; the anchored pattern drops -rcN, -init and
+# other non-release tags so only final releases resolve.
+[resolve]
+git_url = "https://github.com/llvm/llvm-project"
+version_pattern = "^llvmorg-(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)$"
+
+# LLVM publishes no checksum file for these assets; integrity relies on the
+# hash proto records in the lockfile.
+[install]
+download_url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-{version}/{download_name}"
+
+# .tar.xz (~860 MB) rather than the ~3x smaller .tar.zst: proto 0.64 fails to
+# unpack the .zst archive.
+[platform.windows]
+archs = ["x64"]
+download_name = "clang+llvm-{version}-{arch}-pc-windows-msvc.tar.xz"
+archive_prefix = "clang+llvm-{version}-{arch}-pc-windows-msvc"
+
+[platform.windows.arch]
+x64 = "x86_64"
+
+# clang-cl is primary: it is the compiler driver the build invokes.
+[locate.exes.clang-cl]
+exe_path = "bin/clang-cl"
+primary = true
+
+[locate.exes.lld-link]
+exe_path = "bin/lld-link"
+
+[locate.exes.clang-format]
+exe_path = "bin/clang-format"
+
+[locate.exes.clang-tidy]
+exe_path = "bin/clang-tidy"
+
+[locate.exes.clangd]
+exe_path = "bin/clangd"

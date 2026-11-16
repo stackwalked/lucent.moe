@@ -1,0 +1,13 @@
+moon = "2.6.5"
+bun = "1.4.4"
+cmake = "4.5.0"
+ninja = "1.13.2"
+uv = "0.13.8"
+llvm = "23.1.5"
+
+[plugins.tools]
+llvm = "file://./tools/proto/llvm.toml"
+
+[settings]
+auto-install = true
+unstable-lockfile = true
