@@ -76,7 +76,30 @@ Principles (decided; they break ties between later rules):
 8. Our memory and the game's are handled differently: copies out, `game_ptr`/`field`, provenance on
    every offset, never mixed in one expression.
 
-Topics still to settle: feature ledger, naming, vocabulary types, declarations, composition, functions
+Feature ledger (decided). It lands as code: a `toolchain_probe.cpp` that `static_assert`s each
+feature-test macro we rely on, and ban rules in clang-tidy/ast-grep that name the replacement.
+
+- Core: concepts/`requires`, designated init, `<=>`/defaulted `==`, `constexpr`/`consteval`/
+  `if consteval`, `constinit` globals, deducing `this`, `using enum`, structured bindings,
+  init-statements, `= delete("why")`, `_`, `static operator()`, `[[nodiscard]]`/`[[maybe_unused]]`;
+  `expected`, `optional`, `span`, `string_view`, `array`, `unique_ptr`, ranges + `ranges::to`,
+  `print`/`format`, `bit_cast`/`byteswap`/`to_underlying`, `flat_map`/`flat_set`,
+  `move_only_function`, `source_location`, `atomic`, `chrono`.
+- Narrow: pack indexing, binding packs, constexpr placement `new` (kit machinery only); `#embed` for
+  blobs (needs `-Wno-c23-extensions` on those files); `mdspan` for real grids;
+  `[[likely]]`/`[[unlikely]]` with a profile; `stacktrace` dev-only; `launder` in kit memory
+  primitives.
+- Banned → replacement: `typedef` → `using`; `NULL`/`0` → `nullptr`; `enable_if` → `requires`; CRTP →
+  deducing `this`; unscoped `enum` → `enum class`; `#define` constants → `constexpr`; C casts → named
+  casts/`bit_cast`; `reinterpret_cast` → `raw` only; `new`/`delete` → `make_unique`; `std::bind` →
+  lambdas; `std::function` → `move_only_function`/our `function_ref`; `printf`/iostreams →
+  `print`/`format`; `assert` → `LUCENT_INVARIANT`; `throw` → `raise()`.
+- Banned outright: coroutines and `std::generator`, iostreams, `shared_ptr`, `vector<bool>`,
+  `std::endl`, `goto`, `std::any`, `std::regex`, `std::async`, `std::rand`, direct `system_clock::now`,
+  `volatile`, `inline namespace`, trivial relocatability, RTTI (`dynamic_cast`, `typeid`).
+- `variant`/`visit`: decided with composition.
+
+Topics still to settle: naming, vocabulary types, declarations, composition, functions
 and control flow, generic code, concurrency and game memory, structure, preprocessor, comments,
 formatting, enforcement.
 
