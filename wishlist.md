@@ -99,7 +99,25 @@ feature-test macro we rely on, and ban rules in clang-tidy/ast-grep that name th
   `volatile`, `inline namespace`, trivial relocatability, RTTI (`dynamic_cast`, `typeid`).
 - `variant`/`visit`: decided with composition.
 
-Topics still to settle: naming, vocabulary types, declarations, composition, functions
+Naming (decided):
+
+- snake_case for everything we name; `LUCENT_` UPPER_CASE for macros only (`#pragma once`, no
+  guards); CamelCase for template parameters only. A variable is named for its role, never its
+  type's name.
+- Struct fields unmarked; private class members `m_`. No `s_`/`g_`.
+- Mutators are verbs; queries are nouns without `get_`; anything bool starts with `is_`/`has_`/
+  `can_`/`should_`, stated positively. `to_x()` copies, `as_x()` views, `from_x()` constructs. No
+  `try_`: `result<T>` says it.
+- Types are nouns, concepts adjectives, enums singular with unprefixed enumerators. Suffixes are
+  reserved: `_id`, `_handle`, `_view`, `_token`. No `_t`, no unit suffixes (units are types).
+- Abbreviations only from: `id`, `ptr`, `fn`, `ui`, `io`, `rng`, `src`/`dst`; single letters for
+  loop indices and math. Internal namespaces are `detail`.
+- Game identifiers keep the game's spelling (`C_CSPlayerPawn`, `m_iHealth`), only inside the
+  game-memory layer, which the naming check skips.
+- Enforced by clang-tidy `readability-identifier-naming` and ast-grep (`get_`, `_t`); the rest goes
+  to `native/AGENTS.md`.
+
+Topics still to settle: vocabulary types, declarations, composition, functions
 and control flow, generic code, concurrency and game memory, structure, preprocessor, comments,
 formatting, enforcement.
 
