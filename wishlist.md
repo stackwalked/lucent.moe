@@ -117,7 +117,29 @@ Naming (decided):
 - Enforced by clang-tidy `readability-identifier-naming` and ast-grep (`get_`, `_t`); the rest goes
   to `native/AGENTS.md`.
 
-Topics still to settle: vocabulary types, declarations, composition, functions
+Vocabulary types (decided):
+
+- `lucent/prelude.hpp`: `i8`–`i64`, `u8`–`u64`, `isize`/`usize`, `f32`/`f64`, `uptr`. `int`, `long`,
+  `unsigned`, `short` only in foreign signatures.
+- Counts, indices, offsets are `isize`; `usize` only where std or an ABI demands it.
+- `-Wconversion` and `-Wsign-conversion` are required. Narrowing via `narrow<T>()` (invariant on
+  loss), bits via `bit_cast`. `std::byte` is opaque memory, `u8` a number.
+- `char` is UTF-8; `string` owns, `string_view` borrows. No `char8_t`/`u8string`. `wchar_t` only at
+  Win32, converted by `to_utf8`/`to_wide`. `fixed_string<N>` for template arguments.
+- `T` value, `unique_ptr<T>` sole owner, `T&` non-null borrow, `T*` nullable borrow (never owning,
+  never game memory), `span`/`string_view` borrowed ranges. No `reference_wrapper`.
+- `optional<T>`: absence is normal. `result<T>` = `expected<T, error>`: failure with a reason. No
+  success `bool`s; `result<void>`.
+- Ids and handles are empty enum classes. Quantities with arithmetic are dedicated types (`degrees`,
+  `radians`, `tick`); time is `chrono` via the injected clock; bit flags are `flags<E>`. Kit math
+  types are plain aggregates; the game's are mirrored and converted with `from_game`/`to_game`.
+- Containers: `vector`, `array`, `flat_map`/`flat_set`; `unordered_map` with a profiling reason.
+  `map`, `set`, `list`, `forward_list`, `deque` banned. `move_only_function` owns callables,
+  `function_ref` borrows them.
+- std gaps (`inplace_vector`, `function_ref`) are written in `lucent::stdx` with std's name and API,
+  only when first needed, and replaced by a `using` once a probe shows std has them.
+
+Topics still to settle: declarations, composition, functions
 and control flow, generic code, concurrency and game memory, structure, preprocessor, comments,
 formatting, enforcement.
 
