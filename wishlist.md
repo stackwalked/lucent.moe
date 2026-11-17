@@ -62,8 +62,8 @@ Principles (decided; they break ties between later rules):
 1. Judge readability at the call site. Feature and domain code is plain; machinery lives in a few kit
    libraries.
 2. One way to write each thing. Duplicates are banned, by a tool where possible.
-3. A call shows what it does: can it fail, mutate, take ownership, touch game memory. Results are
-   `[[nodiscard]]`, moves are visible, game access takes a token, no non-const reference
+3. A call shows what it does: can it fail, mutate, take ownership, touch foreign memory. Results are
+   `[[nodiscard]]`, moves are visible, foreign access takes a token, no non-const reference
    out-parameters.
 4. Types carry the rules. A mistake that can be a compile error is one; comments never hold an
    invariant a type could.
@@ -73,8 +73,9 @@ Principles (decided; they break ties between later rules):
    only the named error macros branch, no mutable global without a named owner.
 7. Newest form when it reads better and the pinned toolchain supports it; the older idiom is then
    banned.
-8. Our memory and the game's are handled differently: copies out, `game_ptr`/`field`, provenance on
-   every offset, never mixed in one expression.
+8. Our memory and foreign memory (owned by someone else: a game, another target) are handled
+   differently: copies out, `foreign_ptr`/`field`, provenance on every offset, never mixed in one
+   expression.
 
 Feature ledger (decided). It lands as code: a `toolchain_probe.cpp` that `static_assert`s each
 feature-test macro we rely on, and ban rules in clang-tidy/ast-grep that name the replacement.
@@ -112,8 +113,8 @@ Naming (decided):
   reserved: `_id`, `_handle`, `_view`, `_token`. No `_t`, no unit suffixes (units are types).
 - Abbreviations only from: `id`, `ptr`, `fn`, `ui`, `io`, `rng`, `src`/`dst`; single letters for
   loop indices and math. Internal namespaces are `detail`.
-- Game identifiers keep the game's spelling (`C_CSPlayerPawn`, `m_iHealth`), only inside the
-  game-memory layer, which the naming check skips.
+- Foreign identifiers keep their own spelling (`C_CSPlayerPawn`, `m_iHealth`), only inside the
+  foreign-memory layer, which the naming check skips.
 - Enforced by clang-tidy `readability-identifier-naming` and ast-grep (`get_`, `_t`); the rest goes
   to `native/AGENTS.md`.
 
@@ -127,7 +128,7 @@ Vocabulary types (decided):
 - `char` is UTF-8; `string` owns, `string_view` borrows. No `char8_t`/`u8string`. `wchar_t` only at
   Win32, converted by `to_utf8`/`to_wide`. `fixed_string<N>` for template arguments.
 - `T` value, `unique_ptr<T>` sole owner, `T&` non-null borrow, `T*` nullable borrow (never owning,
-  never game memory), `span`/`string_view` borrowed ranges. No `reference_wrapper`.
+  never foreign memory, which is `foreign_ptr`), `span`/`string_view` borrowed ranges. No `reference_wrapper`.
 - `optional<T>`: absence is normal. `result<T>` = `expected<T, error>`: failure with a reason. No
   success `bool`s; `result<void>`.
 - Ids and handles are empty enum classes. Quantities with arithmetic are dedicated types (`degrees`,
@@ -140,7 +141,7 @@ Vocabulary types (decided):
   only when first needed, and replaced by a `using` once a probe shows std has them.
 
 Topics still to settle: declarations, composition, functions
-and control flow, generic code, concurrency and game memory, structure, preprocessor, comments,
+and control flow, generic code, concurrency and foreign memory, structure, preprocessor, comments,
 formatting, enforcement.
 
 ## Kit
@@ -160,8 +161,8 @@ formatting, enforcement.
   - in-flight counters per hook;
   - `hook_access` created per call.
 - Access boundary:
-  - `read_access`/`write_access` tokens, `game_ptr` and `field`;
-  - a feature touching game memory is a compile error.
+  - `read_access`/`write_access` tokens, `foreign_ptr` and `field`;
+  - a feature touching foreign memory directly is a compile error.
 - A `raw` escape hatch: explicit, findable with grep, counted in `:check`. Uses get promoted into proper APIs.
 - Error model:
   - `result<T>` for expected failures;
@@ -172,7 +173,7 @@ formatting, enforcement.
   - an SEH outer layer and a C++ inner layer;
   - the only `__try`/`catch` sites (enforced by lint);
   - `throw` only through `raise()`.
-- Features never hold kit resources while touching game memory. This closes the `/EHs` destructor gap.
+- Features never hold kit resources while touching foreign memory. This closes the `/EHs` destructor gap.
 - Feature registry:
   - `feature_id`, hashed at compile time;
   - states: unavailable, unentitled, off, on, failed;
