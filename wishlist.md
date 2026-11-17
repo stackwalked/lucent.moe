@@ -208,7 +208,21 @@ Functions and control flow (decided):
   the kit's first fallible function: one kit-wide type, cheap to copy, no heap, no strings in
   release.
 
-Topics still to settle: generic code, concurrency and foreign memory (including: every walk over
+Generic code (decided):
+
+- Templates and concepts live in kit libraries; feature and domain code declares none (lambdas
+  aside), enforced by ast-grep per path.
+- Every template parameter is constrained (floor: a std concept such as `std::movable`); no bare
+  `typename T`, no unconstrained `auto` parameters. `typename`, never `class`.
+- Placement: `C auto x` when the type is named once; `template <C T>` when named more than once; a
+  `requires` clause only for relational or non-type constraints. std concepts first; ours state
+  meaning, not member checklists.
+- `if constexpr` over tag dispatch; `requires` expressions over `void_t`; folds and `Ts...[i]` over
+  recursive variadics; concepts over `::value` traits; our value traits are `is_x` variable
+  templates. Every `static_assert` has a message stating the rule.
+- Reopen when clang ships reflection (`describe()`, enum introspection).
+
+Topics still to settle: concurrency and foreign memory (including: every walk over
 foreign structures has an explicit bound, recursive or not), structure, tests, preprocessor,
 comments, formatting, enforcement.
 
