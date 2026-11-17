@@ -17,6 +17,7 @@ tasks:
       cache: false
       runInCI: false
   check:
+    inputs: ["**/*"]
     deps: ["~:format", "~:suppressions"]
   fix:
     command: "dprint fmt"
