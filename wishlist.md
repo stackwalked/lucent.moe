@@ -244,7 +244,32 @@ Concurrency and foreign memory (decided):
 - Offsets are `field<Owner, T>`, grouped per foreign type, each with provenance or from a
   `server_value`. Layout mirrors are `static_assert`-checked and copied out whole.
 
-Topics still to settle: structure, tests, preprocessor,
+Structure (decided):
+
+- Layout: `native/cmake/` (helpers), `core/` (prelude, result/error, macros, narrow, match, flags,
+  fixed_string, stdx), `libs/<name>/` (standalone, depend on core only), `kit/` (runtime),
+  `targets/<name>/` (`foreign/`, `domains/`, `features/`, the module), `tools/<name>/` (native
+  executables). Created only when code needs them. Layering points down: core ← libs ← kit ←
+  targets, enforced by moon constraints and CMake visibility.
+- One name in four places: a project's name is its namespace (`lucent::<name>[::<sub>]`), CMake target
+  (`lucent::<name>`), moon project and commit scope. Grouping directories (`libs/`, `targets/`,
+  `tools/`) don't enter names; collisions are resolved by renaming when they happen.
+- A library is `include/lucent/<name>/` (public API) and `src/` (sources and private headers).
+  `VERIFY_INTERFACE_HEADER_SETS` compiles each public header alone. One main type or concept per
+  header, named after it; `.hpp`/`.cpp`; definitions in `.cpp` unless template, `constexpr` or
+  trivial. A plain-path alternative needs a clang VFS overlay or header maps; rejected as tooling
+  magic.
+- Includes: angle brackets with the full path for everything; quotes only for private headers in
+  the same `src/`. Order: own header, std, Windows SDK, third-party, `lucent/`, private.
+  `misc-include-cleaner`. Forward declarations only of your own library's types.
+- `lucent/prelude.hpp` is force-included by `lucent_library()` (`/FI`) and listed in
+  `misc-include-cleaner`'s `IgnoreHeaders`.
+- std names always fully qualified; no `using` declarations or namespace aliases, except literal
+  namespaces at function scope. `detail` for private namespaces.
+- File-local code in an anonymous namespace; `static` free functions banned;
+  `misc-use-internal-linkage`.
+
+Topics still to settle: tests, preprocessor,
 comments, formatting, enforcement.
 
 ## Kit
