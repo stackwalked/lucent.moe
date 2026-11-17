@@ -222,8 +222,29 @@ Generic code (decided):
   templates. Every `static_assert` has a message stating the rule.
 - Reopen when clang ships reflection (`describe()`, enum introspection).
 
-Topics still to settle: concurrency and foreign memory (including: every walk over
-foreign structures has an explicit bound, recursive or not), structure, tests, preprocessor,
+Concurrency and foreign memory (decided):
+
+- Our threads come only from kit `worker` (`std::jthread`, named, inside `contain()`, joined on
+  unload); `std::thread`/`CreateThread` banned elsewhere.
+- Thread affinity is a type: hook dispatch creates `main_thread`/`render_thread` tokens, taken by
+  functions that must run there.
+- Nothing blocks on a foreign thread. Data crosses threads only through kit `published<T>`
+  (immutable snapshots), `channel<T>` (messages to workers) and atomics; feature and domain code
+  never sees a mutex or atomic. Every atomic op names its memory order; `relaxed` needs a comment.
+- No function-local statics except `constexpr` (ast-grep): checked on 23.1.5 `/O2 /MT`, their guard
+  reads `gs:0x58[_tls_index]` against `_Init_thread_epoch` on every call. No `thread_local` outside
+  the kit, and there only once the mapper's TLS is verified on threads that predate us.
+- Only the foreign-memory layer and snapshot builders touch foreign memory, with
+  `read_access`/`write_access`; foreign calls go through `foreign_fn<Sig>` and need `write_access`.
+- Copies out, never references in: `read(access, ptr) -> result<T>`, bulk reads into our containers,
+  `read_string(access, ptr, max_length)`. Every value passes `from_foreign` (enum validity, capped
+  counts, pointers stay `foreign_ptr`) before it's ours.
+- Every walk over foreign structures is bounded (kit `walk(start, limit, next)`; over the limit is
+  `LUCENT_ENSURE`). A `foreign_ptr` never outlives its tick; snapshots hold handles and values.
+- Offsets are `field<Owner, T>`, grouped per foreign type, each with provenance or from a
+  `server_value`. Layout mirrors are `static_assert`-checked and copied out whole.
+
+Topics still to settle: structure, tests, preprocessor,
 comments, formatting, enforcement.
 
 ## Kit
