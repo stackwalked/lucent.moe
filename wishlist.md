@@ -50,6 +50,34 @@ Everything discussed so far that isn't built yet. A backlog, not a spec: entries
 - Release hygiene: `/Brepro`, `-ffile-prefix-map`, `/pdbaltpath`, `/GR-`, ThinLTO.
 - Verify that catch-by-type works under clang-cl with RTTI off.
 
+## C++ dialect
+
+Being settled one topic at a time. Decisions land as `.clang-format`, `.clang-tidy`, ast-grep rules,
+or, for what no tool can check, `native/AGENTS.md`.
+
+Principles (decided; they break ties between later rules):
+
+1. Judge readability at the call site. Feature and domain code is plain; machinery lives in a few kit
+   libraries.
+2. One way to write each thing. Duplicates are banned, by a tool where possible.
+3. A call shows what it does: can it fail, mutate, take ownership, touch game memory. Results are
+   `[[nodiscard]]`, moves are visible, game access takes a token, no non-const reference
+   out-parameters.
+4. Types carry the rules. A mistake that can be a compile error is one; comments never hold an
+   invariant a type could.
+5. Values first: aggregates, designated initializers, defaulted comparison. Identity types are
+   non-copyable and say so.
+6. Control flow is visible: no implicit conversions, `throw` only via `raise()` into `contain()`,
+   only the named error macros branch, no mutable global without a named owner.
+7. Newest form when it reads better and the pinned toolchain supports it; the older idiom is then
+   banned.
+8. Our memory and the game's are handled differently: copies out, `game_ptr`/`field`, provenance on
+   every offset, never mixed in one expression.
+
+Topics still to settle: feature ledger, naming, vocabulary types, declarations, composition, functions
+and control flow, generic code, concurrency and game memory, structure, preprocessor, comments,
+formatting, enforcement.
+
 ## Kit
 
 - Boot handshake with the mapper (`boot_info`):
