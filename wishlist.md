@@ -7,6 +7,7 @@ Everything discussed so far that isn't built yet. A backlog, not a spec: entries
 - clang-tidy runs as a build-dependent, cached `native:lint`, with the first native project.
 - C++ style: `.clang-format` and `.clang-tidy`, under discussion. clang-format then joins dprint via exec.
 - luau-lsp analysis, pinned with the first Luau code.
+- TS tooling returns with the first TS project: bun workspaces, Biome and strict `tsc` (`noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`) as inherited moon tasks. The working setup is in commit 5dbd739.
 - Complete `.protolock`: moon, bun, cmake, ninja and uv were installed before the lockfile was on, so they have no recorded hashes.
 - Architecture boundaries are enforced by moon constraints, CMake visibility and dependency-cruiser. Nothing depends on `research/`.
 - Remaining custom checks, each a standalone uv script in `tools/lint` (no CLI, no shared package), landing when they have inputs:

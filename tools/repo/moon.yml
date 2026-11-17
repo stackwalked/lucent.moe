@@ -1,0 +1,30 @@
+layer: "configuration"
+
+# Repo-wide tasks. Code is linted by its own project's inherited tasks; these cover what
+# belongs to the whole tree: docs and data formatting, and cross-language rules. The project
+# lives here rather than at the root to keep the root clear; its tasks still run over and
+# from the whole workspace. Its id doubles as the commit scope for changes outside any project.
+taskOptions:
+  runFromWorkspaceRoot: true
+
+tasks:
+  format:
+    command: "dprint check"
+    inputs: ["/**/*"]
+  suppressions:
+    command: "uv run tools/lint/suppressions.py"
+    inputs: ["/**/*"]
+  commit-msg:
+    command: "uv run tools/lint/commit_msg.py"
+    options:
+      cache: false
+      runInCI: false
+  # A deps-only task still needs inputs: moon decides "affected" from the requested
+  # target's own inputs, not its deps'.
+  check:
+    inputs: ["/**/*"]
+    deps: ["~:format", "~:suppressions"]
+  fix:
+    command: "dprint fmt"
+    options:
+      cache: false

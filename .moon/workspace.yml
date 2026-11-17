@@ -1,10 +1,6 @@
 projects:
   globs:
     - "tools/*/moon.yml"
-  # The root is a project so files outside every other project still pass the gate.
-  # Its id doubles as the commit scope for changes outside any project.
-  sources:
-    repo: "."
 
 vcs:
   client: "git"

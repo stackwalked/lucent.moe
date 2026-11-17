@@ -14,6 +14,8 @@ package = false
 [tool.ruff]
 line-length = 100
 target-version = "py314"
+# Caches stay out of the root.
+cache-dir = ".moon/cache/ruff"
 
 [tool.ruff.lint]
 select = ["ALL"]
@@ -38,6 +40,10 @@ ignore = [
 # Repo tools are standalone scripts, not packages, and run pinned binaries that proto
 # puts on PATH.
 "tools/**" = ["INP001", "S603", "S607"]
+
+[tool.pytest.ini_options]
+# Its cache only serves --lf/--ff, and would otherwise sit in the root.
+addopts = ["-p", "no:cacheprovider"]
 
 [tool.basedpyright]
 typeCheckingMode = "all"

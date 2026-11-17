@@ -16,7 +16,8 @@ SUBJECT = re.compile(r"^(?P<scope>[a-z0-9][a-z0-9-]*)(?:/[^\s:]+)?: (?P<what>\S.
 # Subjects git writes itself, during merges and history edits.
 GIT_GENERATED = ("Merge ", 'Revert "', "fixup! ", "squash! ", "amend! ")
 
-# The root project's id; it covers changes outside every other project.
+# The tools/repo project's id; it covers changes outside every other project. Kept even if
+# that project moves, since the commit format names it.
 ROOT_SCOPE = "repo"
 
 
