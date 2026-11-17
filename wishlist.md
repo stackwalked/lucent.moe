@@ -48,7 +48,9 @@ Everything discussed so far that isn't built yet. A backlog, not a spec: entries
 - Verify zydis, safetyhook, luau and tracy build under clang-cl.
 - Debug info: `/Z7` plus PDBs. Never shipped; archived per release.
 - Release hygiene: `/Brepro`, `-ffile-prefix-map`, `/pdbaltpath`, `/GR-`, ThinLTO.
-- Verify that catch-by-type works under clang-cl with RTTI off.
+- `/GR-` everywhere. Checked on 23.1.5 with a static-CRT exe: catch-by-type still works, and every
+  polymorphic class name disappears from the binary, but each thrown type keeps its `.?AU...@@`
+  name. So `raise()` throws one fault type.
 
 ## C++ dialect
 
