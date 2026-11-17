@@ -1,0 +1,19 @@
+projects:
+  globs:
+    - "tools/*/moon.yml"
+  # The root is a project so files outside every other project still pass the gate.
+  # Its id doubles as the commit scope for changes outside any project.
+  sources:
+    repo: "."
+
+vcs:
+  client: "git"
+  defaultBranch: "main"
+  provider: "github"
+  sync: true
+  hooks:
+    pre-commit:
+      - "moon run :check --affected --status staged"
+    commit-msg:
+      # Through moon, so the hook runs the pinned uv rather than whatever PATH finds first.
+      - "moon run repo:commit-msg --quiet -- $ARG1"

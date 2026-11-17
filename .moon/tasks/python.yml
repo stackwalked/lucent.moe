@@ -1,0 +1,27 @@
+inheritedBy:
+  language: "python"
+
+# Config lives in the root pyproject.toml; tools find it by walking up. Root config and pins
+# are inputs too, or a stricter rule would be hidden behind a cached pass.
+implicitInputs:
+  - "/pyproject.toml"
+  - "/uv.lock"
+
+tasks:
+  format:
+    command: "uv run --frozen ruff format --check ."
+  lint:
+    command: "uv run --frozen ruff check ."
+  typecheck:
+    command: "uv run --frozen basedpyright --project $workspaceRoot/pyproject.toml ."
+  check:
+    deps: ["~:format", "~:lint", "~:typecheck"]
+  fix:
+    command: "uv run --frozen ruff check --fix ."
+    deps: ["~:fix-format"]
+    options:
+      cache: false
+  fix-format:
+    command: "uv run --frozen ruff format ."
+    options:
+      cache: false

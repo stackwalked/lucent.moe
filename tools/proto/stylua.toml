@@ -1,0 +1,30 @@
+format = "2"
+
+[plugin]
+description = "StyLua formatter for Lua and Luau (prebuilt Windows x64 release)."
+homepage_url = "https://github.com/JohnnyMorganz/StyLua"
+repository_url = "https://github.com/JohnnyMorganz/StyLua"
+
+[metadata]
+name = "StyLua"
+type = "command-line"
+
+# Tags look like v2.6.0; anchoring drops anything that isn't a final release.
+[resolve]
+git_url = "https://github.com/JohnnyMorganz/StyLua"
+version_pattern = "^v(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)$"
+
+# StyLua publishes no checksum file; integrity relies on the hash proto records in the lockfile.
+[install]
+download_url = "https://github.com/JohnnyMorganz/StyLua/releases/download/v{version}/{download_name}"
+
+[platform.windows]
+archs = ["x64"]
+download_name = "stylua-windows-{arch}.zip"
+
+[platform.windows.arch]
+x64 = "x86_64"
+
+[locate.exes.stylua]
+exe_path = "stylua"
+primary = true

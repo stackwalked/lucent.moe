@@ -1,0 +1,30 @@
+format = "2"
+
+[plugin]
+description = "dprint formatter (prebuilt Windows x64 release)."
+homepage_url = "https://dprint.dev/"
+repository_url = "https://github.com/dprint/dprint"
+
+[metadata]
+name = "dprint"
+type = "command-line"
+
+# Tags are bare versions (0.64.3); anchoring drops anything that isn't a final release.
+[resolve]
+git_url = "https://github.com/dprint/dprint"
+version_pattern = "^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)$"
+
+[install]
+download_url = "https://github.com/dprint/dprint/releases/download/{version}/{download_name}"
+checksum_url = "https://github.com/dprint/dprint/releases/download/{version}/SHASUMS256.txt"
+
+[platform.windows]
+archs = ["x64"]
+download_name = "dprint-{arch}-pc-windows-msvc.zip"
+
+[platform.windows.arch]
+x64 = "x86_64"
+
+[locate.exes.dprint]
+exe_path = "dprint"
+primary = true

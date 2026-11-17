@@ -1,0 +1,24 @@
+layer: "configuration"
+
+# Repo-wide tasks. Code is linted by its own project's inherited tasks; these cover
+# what belongs to the whole tree: docs and data formatting, and cross-language rules.
+# A root-level project gets no default inputs beyond moon's own config: without explicit
+# inputs these tasks would cache forever and never count as affected.
+tasks:
+  format:
+    command: "dprint check"
+    inputs: ["**/*"]
+  suppressions:
+    command: "uv run tools/lint/suppressions.py"
+    inputs: ["**/*"]
+  commit-msg:
+    command: "uv run tools/lint/commit_msg.py"
+    options:
+      cache: false
+      runInCI: false
+  check:
+    deps: ["~:format", "~:suppressions"]
+  fix:
+    command: "dprint fmt"
+    options:
+      cache: false

@@ -1,0 +1,13 @@
+
+# moon
+.moon/cache
+.moon/docker
+
+# bun
+node_modules
+
+# moon regenerates these from vcs.hooks
+.moon/hooks
+
+# uv
+.venv

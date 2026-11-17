@@ -4,9 +4,13 @@ cmake = "4.5.0"
 ninja = "1.13.2"
 uv = "0.13.8"
 llvm = "23.1.5"
+dprint = "0.64.3"
+stylua = "2.6.0"
 
 [plugins.tools]
 llvm = "file://./tools/proto/llvm.toml"
+dprint = "file://./tools/proto/dprint.toml"
+stylua = "file://./tools/proto/stylua.toml"
 
 [settings]
 auto-install = true

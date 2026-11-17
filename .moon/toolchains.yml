@@ -1,0 +1,7 @@
+javascript:
+  packageManager: "bun"
+bun: {}
+# Projects write their own tsconfig.json extending tsconfig.base.json; moon generates none.
+typescript:
+  createMissingConfig: false
+  syncProjectReferences: false

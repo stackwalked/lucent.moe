@@ -1,0 +1,6 @@
+language: "python"
+layer: "tool"
+
+tasks:
+  test:
+    command: "uv run --frozen pytest -q"

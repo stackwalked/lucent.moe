@@ -1,0 +1,47 @@
+# Not a package: this pins the Python dev tools (uv.lock) and holds their config.
+# Python code anywhere in the repo is checked against these settings.
+[project]
+name = "lucent-dev"
+version = "0"
+requires-python = ">=3.14"
+
+[dependency-groups]
+dev = ["ruff==0.17.5", "basedpyright==1.40.2", "gersemi==0.29.2", "pytest==9.2.0"]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+  # The guidelines want code that reads without comments; docstrings are not required.
+  "D1",
+  # Pairs that conflict with each other: one of each is kept.
+  "D203",
+  "D213",
+  # Conflict with the formatter.
+  "COM812",
+  "ISC001",
+  # These are CLI tools: printing is their output.
+  "T201",
+  # No per-file license headers.
+  "CPY001",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# pytest's plain assert is how tests are written.
+"**/test_*.py" = ["S101"]
+# Repo tools are standalone scripts, not packages, and run pinned binaries that proto
+# puts on PATH.
+"tools/**" = ["INP001", "S603", "S607"]
+
+[tool.basedpyright]
+typeCheckingMode = "all"
+pythonVersion = "3.14"
+failOnWarnings = true
+# Standalone script directories: tests import their scripts as top-level modules.
+executionEnvironments = [{ root = "tools/lint" }]

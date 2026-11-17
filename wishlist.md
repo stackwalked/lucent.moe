@@ -3,35 +3,22 @@
 Everything discussed so far that isn't built yet. A backlog, not a spec: entries leave as they land.
 
 ## Gate and tooling
-- `moon run :check` is the single gate: format (verify), lint, typecheck, convention checks. `fix` runs formatters in write mode and lint autofixes.
-- Tests run as their own task, outside `check`. clang-tidy runs as a build-dependent, cached `native:lint`.
-- Tasks are inherited per language (`.moon/tasks/*.yml`). A root project exists so root files get checked.
-- Formatters and linters:
-  - clang-format and clang-tidy (from the LLVM pin);
-  - Biome plus `tsc` strict (`noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`);
-  - ruff and basedpyright (uv);
-  - StyLua and luau-lsp;
-  - gersemi;
-  - dprint for md/yaml/toml/json.
-- Pin the remaining tools: dprint, StyLua, gersemi.
+
+- clang-tidy runs as a build-dependent, cached `native:lint`, with the first native project.
+- C++ style: `.clang-format` and `.clang-tidy`, under discussion. clang-format then joins dprint via exec.
+- luau-lsp analysis, pinned with the first Luau code.
 - Complete `.protolock`: moon, bun, cmake, ninja and uv were installed before the lockfile was on, so they have no recorded hashes.
-- Suppressions must name the check and give a reason. A meta-lint rejects bare ones.
 - Architecture boundaries are enforced by moon constraints, CMake visibility and dependency-cruiser. Nothing depends on `research/`.
-- `tools/lint` holds the custom checks:
+- Remaining custom checks, each a standalone uv script in `tools/lint` (no CLI, no shared package), landing when they have inputs:
   - file placement;
-  - the doc-ref checker (paths and symbols named in docs must exist);
-  - suppression reasons;
-  - banned APIs per layer;
+  - the doc-ref checker (paths and symbols named in docs must exist), once `docs/` maps exist;
   - no hand-edits to generated files.
+- ast-grep for syntactic rules (banned APIs per layer, `__try`/`catch` only in `contain()`), pinned with its first rule.
 - Generated code:
   - carries a header marker;
   - is skipped by format and lint;
   - is marked `linguist-generated`;
   - has a freshness check in `:check`.
-- Git hooks via moon `vcs.hooks`:
-  - pre-commit runs fix and check on staged files;
-  - commit-msg validates `<moon-project>[/sub]: …` or `repo: …`.
-- A Claude Code PostToolUse hook formats files after agent edits.
 - `.github/workflows` stays thin and only calls moon.
 - Later:
   - a fence tool for briefs;
@@ -39,6 +26,7 @@ Everything discussed so far that isn't built yet. A backlog, not a spec: entries
   - a check for stale worktrees and branches.
 
 ## C++ toolchain
+
 - clang-cl + lld-link, LLVM 23.1.5 via `tools/proto/llvm.toml`. Done.
 - Switch the plugin to `.tar.zst` once proto can unpack it (about 3x smaller download).
 - `-std=c++2c`, headers only. A modules trial spike goes in `research/lab/` later.
@@ -59,6 +47,7 @@ Everything discussed so far that isn't built yet. A backlog, not a spec: entries
 - Verify that catch-by-type works under clang-cl with RTTI off.
 
 ## Kit
+
 - Boot handshake with the mapper (`boot_info`):
   - image and readiness (unwind tables, TLS);
   - host and build ids;
@@ -114,6 +103,7 @@ Everything discussed so far that isn't built yet. A backlog, not a spec: entries
 - Named kit worker threads, joined on unload, run inside `contain()`.
 
 ## cs2 game layer
+
 - Domains with concrete APIs. Each one states its own rule for resolving competing features.
 - `world`:
   - a plain-value snapshot with index+serial entity handles;
@@ -157,6 +147,7 @@ Everything discussed so far that isn't built yet. A backlog, not a spec: entries
 - Split the `domains` object by phase when it grows.
 
 ## Server inputs and licensing integrity
+
 - The lease and game data travel on separate channels.
 - Game data keys and types are declared in game code (`server_value<T>`).
   - The build exports a manifest, and server tooling validates bundles against it.
@@ -181,7 +172,7 @@ Everything discussed so far that isn't built yet. A backlog, not a spec: entries
   - plan encoding;
   - key derivation;
   - struct field order.
-  
+
   The server encoder and the module decoders come from the same seed, with a contract test between them.
 - Per-session watermarking: equivalent but distinct bundles.
 - Integrity as key material:
@@ -199,6 +190,7 @@ Everything discussed so far that isn't built yet. A backlog, not a spec: entries
   - server-sent feature logic, only if replaying data proves to be enough for crackers.
 
 ## Protection toolchain
+
 - The `LUCENT_VIRT` annotation now. Mark the runner, decryption, lease and integrity code as it's written.
 - Compile-time virtualizer:
   - starts as a lab project and graduates to `tools/`;
@@ -210,6 +202,7 @@ Everything discussed so far that isn't built yet. A backlog, not a spec: entries
 - The recipe runner is fully virtualized. The plan executor stays native.
 
 ## Repo and platform
+
 - `contracts/` and `products/` at the root. Codegen only once hand-mirrored types get painful.
 - `docs/` is an index of per-project README maps only.
 - Binaries out of git, keyed by build id, in a local cache. Signing keys never in the tree.
@@ -223,7 +216,7 @@ Everything discussed so far that isn't built yet. A backlog, not a spec: entries
 - A remote, then GitHub issues for deferred items.
 
 ## Open
-- Language for repo tooling: TS on bun (lean) or Python.
+
 - Release string hygiene (log stripping, hashed ids, string encryption). It shapes the logging API.
 - Isolating our allocations from the game's heap.
 - A generic "revise" round in an arbiter vs. a planner per domain.
