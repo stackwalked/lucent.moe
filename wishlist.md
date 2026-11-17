@@ -179,9 +179,38 @@ Composition (decided):
   ADL we use); `|` for ranges and `flags<E>`, `[]` for containers; never overload `&&`, `||`, `,`,
   unary `&`, `->*`. No user-defined literals of our own; std `sv` and chrono literals allowed.
 
-Topics still to settle: functions
-and control flow, generic code, concurrency and foreign memory, structure, preprocessor, comments,
-formatting, enforcement.
+Functions and control flow (decided):
+
+- Parameters: cheap inputs (trivially copyable, two words or less) by value, others `const T&`;
+  `span`/`string_view` by value; sinks by value then `std::move`; several outputs as a named struct,
+  never `pair`/`tuple` in our signatures; non-const `T&` only for non-copyable (identity) types. No
+  out or in-out value parameters, no `T&&` outside generic forwarding.
+- No `bool` parameters (ast-grep), no default arguments (`fuchsia-default-arguments-declarations`).
+  More than three parameters, or two adjacent of the same type
+  (`bugprone-easily-swappable-parameters`), means a parameter struct with designated initializers.
+- Guard clauses, no `else` after `return`, `readability-function-cognitive-complexity` at 25.
+- Recursion: `misc-no-recursion` on in code that can run on foreign threads (hooks, features,
+  domains, kit runtime). Elsewhere (our threads, compile time, tools, tests, lab) recursion is
+  allowed where natural; inside the module that needs `NOLINT(misc-no-recursion)` naming the threads
+  and the depth bound. Nested `.clang-tidy` files turn it off outside the module. Checked on 23.1.5:
+  the check flags runtime, `constexpr` and `consteval` recursion, not variadic templates.
+- `switch` over our enums has no `default` (`-Wswitch`), followed by kit `unreachable()`, which
+  fails fast.
+- Range-for; `views::enumerate` for indices; named `ranges::` algorithms over hand loops
+  (`modernize-use-ranges`, no iterator pairs, no `for_each`); view pipelines of three stages at most.
+  Unnested ternaries for value choices only; `while (true)`.
+- Lambdas: `[&]` only when the lambda doesn't outlive its statement; otherwise explicit captures,
+  `[this]` spelled out, init-captures for moves. Over about ten lines becomes a named function.
+- Errors: `LUCENT_TRY(decl, expr)` is the only propagation; handle with `if (!r)`, default with
+  `.value_or()`; `.value()` banned; `bugprone-unchecked-optional-access`. `LUCENT_ENSURE` (the world
+  surprised us → feature disabled) and `LUCENT_INVARIANT` (our bug → `__fastfail`) sit at the top as
+  preconditions, moving to `pre(...)` when clang ships contracts. `error`'s shape is decided with
+  the kit's first fallible function: one kit-wide type, cheap to copy, no heap, no strings in
+  release.
+
+Topics still to settle: generic code, concurrency and foreign memory (including: every walk over
+foreign structures has an explicit bound, recursive or not), structure, tests, preprocessor,
+comments, formatting, enforcement.
 
 ## Kit
 
