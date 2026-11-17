@@ -160,7 +160,26 @@ Declarations (decided):
 - Specifier order: attributes, `static`, `inline`, `constexpr`/`consteval`, then
   `auto name(...) const noexcept -> T`.
 
-Topics still to settle: composition, functions
+Composition (decided):
+
+- `struct` is a pure aggregate (public data, no constructors, only defaulted `==`/`<=>`), with behavior
+  in free functions beside it. `class` has an invariant: all data private, constructors establish
+  it, no plain getter/setter pairs. Identity classes are non-copyable via `= delete("why")`.
+- No `init()` methods: fallible construction is a private constructor plus a static named constructor
+  returning `result<T>`. Rule of zero everywhere except the kit's owning types. No `const` or
+  reference data members.
+- Members only for `m_` access or a core verb/query; everything else is a free function.
+- Polymorphism: concepts at compile time; `variant` + kit `match` for closed sets (`get`,
+  `holds_alternative`, bare `visit` banned); interfaces (no data, pure virtuals, virtual dtor) with
+  `final` implementations for open sets; `function_ref`/`move_only_function` for one operation;
+  deducing `this` instead of const/non-const pairs.
+- No implementation inheritance, no middle layers, no inheriting std types. Foreign layout mirrors
+  may mirror the target's inheritance.
+- Operators: defaulted comparisons; arithmetic only on quantity types, as hidden friends (the only
+  ADL we use); `|` for ranges and `flags<E>`, `[]` for containers; never overload `&&`, `||`, `,`,
+  unary `&`, `->*`. No user-defined literals of our own; std `sv` and chrono literals allowed.
+
+Topics still to settle: functions
 and control flow, generic code, concurrency and foreign memory, structure, preprocessor, comments,
 formatting, enforcement.
 
