@@ -140,7 +140,27 @@ Vocabulary types (decided):
 - std gaps (`inplace_vector`, `function_ref`) are written in `lucent::stdx` with std's name and API,
   only when first needed, and replaced by a `using` once a probe shows std has them.
 
-Topics still to settle: declarations, composition, functions
+Declarations (decided):
+
+- Every function is `auto name(params) -> type`, `-> void` included. Deduced return types only for
+  lambdas and unspellable `detail` templates.
+- Local `auto` only when the type is on the same line (casts, `narrow<T>`, `make_unique<T>`, `T{...}`)
+  or unspellable (lambdas, views, iterators).
+- West `const`. Locals `const` unless mutated (`misc-const-correctness`). No top-level `const` on
+  value parameters.
+- `T x = value;` for a value of that type; `T x{parts...}` to build one; designated initializers for
+  two or more fields; parentheses only where braces pick the wrong constructor. Nothing
+  uninitialized; one declaration per line, at first use.
+- No `[[nodiscard]]` attribute: clang-tidy `bugprone-unused-return-value` with
+  `CheckedFunctions: '^::lucent::.*'` and `AllowCastToVoid: false`; discard with
+  `std::ignore = f();`. Checked on 23.1.5: void calls, assignment operators and `std::ignore` pass.
+- `noexcept` only on moves, `swap`, and foreign entry points. `constexpr` on pure header functions,
+  `consteval` for what must be compile time, `inline constexpr` header constants, `explicit`
+  constructors and conversions, `override` without `virtual`.
+- Specifier order: attributes, `static`, `inline`, `constexpr`/`consteval`, then
+  `auto name(...) const noexcept -> T`.
+
+Topics still to settle: composition, functions
 and control flow, generic code, concurrency and foreign memory, structure, preprocessor, comments,
 formatting, enforcement.
 
