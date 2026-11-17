@@ -31,6 +31,9 @@ Everything discussed so far that isn't built yet. A backlog, not a spec: entries
 - clang-cl + lld-link, LLVM 23.1.5 via `tools/proto/llvm.toml`. Done.
 - Switch the plugin to `.tar.zst` once proto can unpack it (about 3x smaller download).
 - `-std=c++2c`, headers only. A modules trial spike goes in `research/lab/` later.
+- MSVC STL, not libc++. Language gaps (reflection, contracts, `template for`) are clang's either way, and
+  the library delta at 23.1.5 vs STL 14.51 is mixed. Revisit when clang ships P2996: `<meta>` is
+  expected to come with libc++ (unverified).
 - A pwsh dev-shell helper (vswhere → `Enter-VsDevShell`) that every native moon task runs through.
 - CMake presets + Ninja. `dev` and `release` to start; an ASan preset when fuzzing needs one.
 - CMake fails on configure when VS Build Tools are below a version floor. The STL, SDK and CRT come from the latest VS.
