@@ -16,6 +16,14 @@ tasks:
   suppressions:
     command: "uv run tools/lint/suppressions.py"
     inputs: ["/**/*", "!/**/node_modules/**/*", "!/**/node_modules/*"]
+  includes:
+    command: "uv run tools/lint/includes.py"
+    inputs:
+      - "/native/**/*"
+      - "/tools/lint/includes.py"
+      - "/uv.lock"
+      - "!/**/node_modules/**/*"
+      - "!/**/node_modules/*"
   ast-grep:
     command: "uv run --frozen ast-grep scan --config tools/lint/ast-grep/sgconfig.yml native platform"
     inputs:
@@ -47,7 +55,7 @@ tasks:
   # target's own inputs, not its deps'.
   check:
     inputs: ["/**/*", "!/**/node_modules/**/*", "!/**/node_modules/*"]
-    deps: ["~:format", "~:suppressions", "~:ast-grep", "~:ts-hygiene"]
+    deps: ["~:format", "~:suppressions", "~:includes", "~:ast-grep", "~:ts-hygiene"]
   fix:
     command: "dprint fmt --incremental=false"
     options:
