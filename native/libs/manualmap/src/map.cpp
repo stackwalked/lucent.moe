@@ -14,12 +14,14 @@
 
 #include <Windows.h>
 
+#include <lucent/core/narrow.hpp>
 #include <lucent/os/process.hpp>
 #include <lucent/os/remote_call.hpp>
 #include <lucent/os/remote_memory.hpp>
 #include <lucent/pe/image_view.hpp>
 #include <lucent/pe/imports.hpp>
 #include <lucent/pe/relocations.hpp>
+#include <lucent/pe/runtime_functions.hpp>
 #include <lucent/pe/tls.hpp>
 
 #include "image_bytes.hpp"
@@ -31,9 +33,6 @@ namespace {
 
 constexpr error malformed{.code = error_code::malformed};
 constexpr error unsupported{.code = error_code::unsupported};
-
-// IMAGE_RUNTIME_FUNCTION_ENTRY on x64: three 32-bit RVAs (begin, end, unwind info).
-constexpr u32 runtime_function_size = 12;
 
 // DllMain returned FALSE. The Windows loader reports this to its caller as this system code.
 constexpr u32 error_dll_init_failed = 1114;
@@ -50,16 +49,6 @@ auto page_access_of(const pe::section_access& access) -> os::page_access {
         return os::page_access::read;
     }
     return os::page_access::none;
-}
-
-auto build_local_image(const pe::image_view& image) -> result<std::vector<std::byte>> {
-    std::vector<std::byte> local(image.size_of_image());
-    std::ranges::copy(image.headers(), local.begin());
-    for (const pe::section& stored : image.sections()) {
-        const std::span<const std::byte> contents = LUCENT_TRY(image.contents_of(stored));
-        std::ranges::copy(contents, local.begin() + stored.virtual_address);
-    }
-    return local;
 }
 
 auto apply_relocations(const pe::image_view& image, std::span<std::byte> local, uptr new_base)
@@ -166,7 +155,7 @@ auto map(const os::process& target, std::span<const std::byte> image_file) -> re
         os::remote_region::allocate(target, image.size_of_image(), os::page_access::read_write)
     );
     const uptr base = image_region.base();
-    std::vector<std::byte> local = LUCENT_TRY(build_local_image(image));
+    std::vector<std::byte> local = LUCENT_TRY(pe::to_mapped_layout(image));
     LUCENT_TRY(apply_relocations(image, local, base));
     LUCENT_TRY(detail::bind_imports(target, image, local));
     std::optional<os::remote_region> trampolines =
@@ -178,8 +167,7 @@ auto map(const os::process& target, std::span<const std::byte> image_file) -> re
         image.find_directory(pe::directory_kind::exceptions);
     const uptr entry_absolute = image.entry_point() == 0 ? 0 : base + image.entry_point();
     const uptr exception_absolute = exceptions.has_value() ? base + exceptions->rva : 0;
-    const u32 exception_entries =
-        exceptions.has_value() ? exceptions->size / runtime_function_size : 0;
+    const u32 exception_entries = narrow<u32>(LUCENT_TRY(pe::runtime_functions_of(image)).size());
     return mapped{
         .image = std::move(image_region),
         .trampolines = std::move(trampolines),
