@@ -172,8 +172,23 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
     back to the outline. Unverified: that Windows 11's Segoe UI Emoji still has COLRv0 layers;
   - the text system lives on the render thread, takes UTF-8, and converts at the DirectWrite
     boundary.
-- Still to decide for rendering: shaders, the backend and lifetime, layout and widgets, animation
-  and theme, testing.
+- Shaders:
+  - compiled at build time by the SDK's `fxc.exe` (D3D11 needs DXBC) into generated headers of
+    `constexpr` bytecode in the build tree; debug info and no optimization in dev, `/O3` with
+    reflection and debug info stripped in release. No runtime compiler. fxc's version follows the
+    SDK the toolchain picks;
+  - every cbuffer and the quad record are defined once in a `.hlsli` shared with C++, using only
+    16-byte vector members, with `static_assert`s on sizes and offsets;
+  - programs: quad VS (instanced, from `SV_VertexID`), path VS, one main PS branching on the
+    record's kind, blur PS (separable Gaussian, bilinear-folded taps), downsample PS, composite PS
+    (mask, opacity, rim). SDF antialiasing from screen-space derivatives, erf edges and shadows,
+    premultiplied output;
+  - colour: authored sRGB; blend in gamma space on UNORM targets; on `_SRGB` targets the shader
+    linearizes and the hardware re-encodes; blur in the target's space. HDR targets (scRGB, HDR10)
+    draw in linear scRGB at a fixed paper white, built when first seen;
+  - no shader hot reload: it would bring back a runtime compiler.
+- Still to decide for rendering: the backend and lifetime, layout and widgets, animation and theme,
+  testing.
 - Lease client: verify, renew, lapse, and feed entitlements to the registry.
 - Dev channel, stats and incident sink, compiled out of release (enforced in CMake).
 - An injectable clock.
