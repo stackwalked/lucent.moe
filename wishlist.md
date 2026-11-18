@@ -179,8 +179,7 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
 ## Facts
 
 Foreign knowledge (RVAs, vtable slots, field and schema offsets, constants): declared, derived and
-delivered. Decided topic by topic. Still open: finder vocabulary (provisionally accepted, being
-tested on real data).
+delivered. Decided in full.
 
 - Declarations are C++ in the target's foreign layer, by subsystem, and ship. A `consteval`
   constructor hashes the name, which never reaches the binary; ast-grep checks it matches the
@@ -189,6 +188,33 @@ tested on real data).
   the generator; moon layering and the release presets keep it out of the module. A finder refers
   to its fact by symbol and carries the `build:`/`found:`/`breaks:` provenance.
 - The generator reuses `libs/pe` and `libs/probe`: one PE stack.
+- Finders work on decoded instructions (Zydis), never on bytes by default:
+  - anchors: export, RTTI vtable (any sub-object), string referrers, another fact, byte patterns
+    last;
+  - navigation: follow a call/jmp/RIP-relative operand, nth call, callees, callers, function
+    containing, vtable slot, `slot_of`, `slots_where(vtable, predicate)`;
+  - extraction: displacement, immediate, target, slot index; named captures for several values;
+  - instruction patterns parsed `consteval`: register wildcards, pattern variables binding a
+    register across steps, operand alternation, steps in either order, sequences that cross
+    `.pdata` chunk splits, parameters for computed immediates, the disassembler's register names;
+  - predicates and sets: `where`, `one`, intersections, consensus over many sites.
+- Every finder yields exactly one distinct value or fails (none, ambiguous). A fact may have several
+  finders: at least one resolves, all that resolve agree, otherwise it fails; a finder that fails
+  while the rest agree is a warning. Facts depending on facts are ordered; a cycle is an error.
+- Strong finders rest on semantic anchors (strings, RTTI, exports, ABI registers, data flow) or on
+  consensus over many sites. A finder matching only a function's body shape is weak and needs a
+  second, independent finder.
+- Every foreign number has a finder: a value witnessed in an instruction that uses it, or, failing
+  that, `pinned(value)`, valid only on the module build it was confirmed on. The access API takes
+  only facts, so a raw offset needs the counted `raw` escape hatch.
+- `libs/probe` indexes RIP-relative references, call targets and immediate operands per module
+  build, cached in the binaries cache.
+- Source 2 helpers live in `engines/source2/probe`, e.g. `token(name)`, the string-token hash, so
+  token constants are names, not numbers.
+- A slot's bound is the run of code pointers from its vtable up to the first non-code qword or the
+  next RTTI locator (a locator alone overshoots).
+- Finder primitives are tested against fixture DLLs we compile. The generator reports each fact's
+  value, the finders that agreed, and the change from the last published set.
 - Values never enter git. They're generated per module build into the binaries cache and published
   to the server; git holds what derives them.
 - A fact's kind says what its value means; how a finder gets it is separate. Kinds:
