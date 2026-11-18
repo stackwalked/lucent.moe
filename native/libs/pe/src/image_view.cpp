@@ -16,18 +16,17 @@
 #include "format.hpp"
 
 namespace lucent::pe {
+
+auto mapped_size_of(const section& stored) -> u32 {
+    return stored.virtual_size == 0 ? stored.raw_size : stored.virtual_size;
+}
+
 namespace {
 
 static_assert(sizeof(directory) == 8, "directory mirrors IMAGE_DATA_DIRECTORY");
 
 constexpr error unsupported{.code = error_code::unsupported};
 constexpr u32 max_string_size = 1024;
-
-// How much of a section the image holds: its virtual size, or its raw size when the linker left
-// the virtual size at zero.
-auto mapped_size_of(const section& stored) -> u32 {
-    return stored.virtual_size == 0 ? stored.raw_size : stored.virtual_size;
-}
 
 // How much of that the file actually stores; the rest is zero-filled by a loader.
 auto stored_size_of(const section& stored) -> u32 {

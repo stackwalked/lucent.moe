@@ -51,6 +51,10 @@ struct section {
     section_access access;
 };
 
+// How much address space the section takes once mapped: its virtual size, or its raw size when the
+// linker left the virtual size at zero.
+auto mapped_size_of(const section& stored) -> u32;
+
 // A PE32+ (x64) image. Everything it returns is copied out and bounds-checked: input that doesn't
 // form a valid image fails as error_code::malformed, other machines as unsupported.
 // The bytes must outlive the view.
