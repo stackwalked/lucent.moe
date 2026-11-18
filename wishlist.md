@@ -552,6 +552,231 @@ delivered. Decided in full.
   - den `bot` (→ `connectors/discord`), `geo`, `keys`.
 - GitHub issues for deferred items (origin: github.com/stackwalked/lucent.moe).
 
+## Web and platform
+
+- Ownership by root:
+  - `platform/`: PostgreSQL schema and migrations, authority and credentials, licensing and native
+    `/v1` channels, releases, fact-set storage and session bundle assembly, integrity and risk
+    scoring, cloud sync, community and support state, `connectors/discord`, and a narrow offline
+    operator entry point (`bootstrap-superadmin`, `transfer-superadmin`, `publish-release`,
+    `publish-loader`, `publish-fact-set`, `replay-removals`). Zero HTML, CSS or UI copy.
+  - `web/`: every browser HTML surface under one design system (public door, waitlist, all auth
+    and handoff flows, member area, admin area including online fact-revision toggles and override
+    kill switches). Replaces the old service's handwritten `pages.ts` and `den gen auth-tokens`.
+  - `contracts/`: cross-runtime wire and binary container schemas and golden vectors only.
+  - `products/`: checked-in product catalog (`products/<id>.toml`: `id`, `kind`, ordered release
+    `channels`, default device/slot policy), read by `platform/`, `web/` and build tooling.
+- Scope changes from old `lucent`:
+  - Invite and waitlist admission with manual licenses only; no cohorts, no billing or checkout.
+  - No repo-wide `den` CLI; no `@anthropic-ai/sdk` agent in `connectors/discord`.
+  - Fact sets stay signed by the offline release key (`Facts`); `web/` admin handles online revision
+    enable/disable and online-key overrides with passkey step-up.
+  - Reviewed `.lpkg` extension packages, `/sdk/v1` and WebSocket `Rooms` wait past the initial five
+    slices until the value-only Luau script host settles; cloud sync still carries `.luau` scripts
+    and `resources` serves admin-curated files.
+- Vertical slices (directories appear only with their slice):
+  1. authority, credentials, sessions and `web/` shell + admin people/audit;
+  2. PC enrollment, native `/v1` reservations/grants/leases and module/loader releases;
+  3. fact sets, session bundles, live revisions and integrity/risk scoring;
+  4. cloud sync, crash reports, tickets/appeals, review queue + DB-IP geo, waitlist and resources;
+  5. profiles, avatar codec, comments, shouts, inbox + SSE presence/events, guides and
+     `connectors/discord`.
+- Process and origin topology:
+  - Two public origins behind Caddy: `lucent.moe` for all browser traffic (`__Host-lucent` cookie,
+    WebAuthn RP ID, inline passkey step-up) and `api.lucent.moe` strictly for native `/v1`
+    (no cookies, no CORS, no HTML). `auth.lucent.moe` is dropped.
+  - Three isolated processes: `platform-server`, `web` and `connector-discord`.
+  - `platform-server` is the sole owner of PostgreSQL, `EpochGuard`, `LISTEN`/presence, periodic
+    jobs and signing keys (`LEASE_SIGNING_KEY`, `OVERRIDE_SIGNING_KEY`). It runs a public native
+    listener on a dedicated DB pool (no statement timeout) and an internal listener (Unix socket in
+    prod, loopback in dev) on a separate capped/timed-out browser DB pool.
+  - `web` and `connector-discord` hold zero DB credentials and zero signing keys, calling
+    `platform-server`'s internal listener with scoped per-peer capability keys.
+- Runtime, HTTP/RPC and web stack:
+  - `bun@1.4.4` across `platform-server`, `web`, `connector-discord`, tests and workspaces.
+  - `platform-server`: `hono@4.13.19` + `@hono/standard-validator@0.4.1` on `Bun.serve` (`:4001`
+    and `{ unix }`) for native `/v1/*` and the three streaming routes (uploads, downloads, SSE);
+    structured internal IPC (`web` and `connector-discord` → `platform-server`) uses a ~60-line
+    `Result`-native procedure map in `core/rpc.ts` over `POST /internal/*/rpc` with zero codegen and
+    zero exceptions. Wrapped by a streaming byte-capped body reader (`16 KiB` default → `413` before
+    buffering), prefix auth before route matching, and `503` (never `500`) fallback.
+  - Validation: `zod@4.6.7` everywhere (`z.strictObject` at external boundaries).
+  - `web/`: `@tanstack/react-start@1.169.5` + `vite@8.3.8` (Nitro `bun` preset), `react@19.3.1` +
+    `babel-plugin-react-compiler@1.0.0`, CSS Modules with cascade layers, native `<dialog>` and
+    `popover` primitives, no UI kit and no Tailwind. Confirm dialog + page twins use nested child
+    routes with route masks; markdown and syntax highlighting run in server
+    loaders/`createServerFn`.
+  - Clean browser URLs: `URLSearchParams` + `stripSearchParams` replaces TanStack Router's default
+    JSON search serializer; zero query strings on member and auth pages (`returnTo` in short-lived
+    `__Host-lucent-flow` cookie; cursors and sorts in React + `history.state`; RFC `?code=`
+    callbacks `303`-redirect immediately); admin lists take at most one human-readable `?q=` when
+    non-empty.
+- TS toolchain, workspaces and boundaries (landing with Slice 1):
+  - Repo-level pins: `bun = "1.4.4"` in `.prototools`; `@biomejs/biome@2.6.8`, `@types/bun@1.4.4`,
+    `dependency-cruiser@18.8.0` and `typescript@7.0.2` in root `devDependencies`; exact `x.y.z` or
+    `workspace:*` versions enforced everywhere (no `^`/`~`).
+  - Root holds only `package.json`, `bun.lock` and `.biome.jsonc`; `.config/` holds
+    `tsconfig.base.json` and `depcruise.mjs`; Vite caches go under `.moon/cache/vite/<project>`,
+    with no `.tsbuildinfo` files.
+  - Flat project roots: `platform/server` (moon id `server`) and `web` (moon id `web`) in Slice 1;
+    `contracts/*`, `products/*`, `platform/packages/*` and `platform/connectors/discord` (`discord`)
+    appear only with their consumers.
+  - Inherited `.moon/tasks/typescript.yml` runs `lint`, `typecheck` and `test`; `repo:boundaries`
+    runs `depcruise` across the whole TS graph.
+  - `platform/server` exposes only `"./rpc-type": { "types": "./src/internal/app.ts" }`; `depcruise`
+    enforces `type-only` imports from `web` and `connectors/*` to that entry, bans circular and
+    cross-layer imports inside `platform/server/src/` and `web/src/`, and keeps `contracts/*` and
+    `products/*` as pure leaves.
+- TS dialect — types, data and banned syntax:
+  - Plain imperative code at call sites; no Effect runtime; type-level machinery stays in `core/`
+    and `ui/` primitives.
+  - Everything is `type` + `function`: plain `readonly` object records with free functions for data,
+    and closure factories (`openX`/`createX`) for stateful handles. `class`, `#` private fields,
+    `interface`, `enum`/`const enum`, `namespace`, barrel `index.ts`, `export *` and
+    `export default` (except `*.config.*`) are banned.
+  - Parse at the edge into branded types (`zod` `.brand<Tag>()` or `Brand<T, Tag>`) for all opaque
+    IDs, digests and quantities. `EpochMs` (branded integer ms) is the universal timestamp value;
+    `Date` and Node `Buffer` are banned outside driver shims (`Uint8Array` everywhere).
+  - `null` is domain absence (`T | null`); `undefined` is only for omitted `?:` options
+    (`exactOptionalPropertyTypes`) and collection misses. Shorthand `readonly T[]`/`T[]`,
+    `ReadonlyMap`/`ReadonlySet` for dynamic keys, no `expr as T` casts outside `core/` and `db/`
+    (except `as const`), no `!`, and no `boolean` parameters in our own functions (React `.tsx`
+    props exempt).
+- TS dialect — errors, effects, async and naming:
+  - Three-tier error model: `Result<T, E>` (`ok`/`err`) for expected domain and I/O failures;
+    `trySync`/`tryAsync` in `core/contain.ts` around throwing foreign APIs (rethrows
+    `InvariantDefect`); `invariant()`/`unreachable()` for our own bugs, caught only at the top-level
+    request/job boundary (`503 SERVICE_UNAVAILABLE` + rollback + error log). `ast-grep` bans
+    `throw`, `try`/`catch` and `.catch()` outside `core/contain.ts` and `web`'s `route-control.ts`.
+  - Ambient globals banned by `ast-grep`: `Date.now()`, `new Date()`, `Temporal.Now`,
+    `Math.random()`, `process.env`/`Bun.env` (outside `config.ts`) and `console.*` (outside CLI
+    `ops.ts`). At most 3 positional parameters; 4+ take a `readonly` parameter object.
+  - Biome `noFloatingPromises` and `useAwait` as errors; every outbound `fetch` or `Bun.spawn`
+    requires an `AbortSignal` deadline; never run `Promise.all` over queries sharing one `Tx`.
+  - Naming: `camelCase` values/fields, `PascalCase` types/schemas/components, `kebab-case.ts` files
+    (`PascalCase.tsx` in `web/src/ui/`), SQL and native `/v1` JSON in `snake_case` mapped once at
+    the edge. Booleans start with `is`/`has`/`can`/`should`; pure queries drop `get`; DB reads split
+    `findX` (`X | null`) from `readX` (`Result<X, E>`); `utils.ts`/`helpers.ts`/`types.ts` banned.
+- TS static enforcement:
+  - `.config/tsconfig.base.json`: strict flags plus `erasableSyntaxOnly` and
+    `allowImportingTsExtensions`.
+  - `.biome.jsonc`: TS/JS plus `**/*.css` (`.module.css` auto-detected; JSON stays `dprint`'s);
+    enables `useImportExtensions`, `noBarrelFile`, `noReExportAll`, `noDelete`, `noExplicitAny`,
+    `noConsole` (off in `ops.ts`), `useAwait`, `noNonNullAssertion`, `useImportType`,
+    `useExportType`, `useConsistentTypeDefinitions` (`type`), `useConsistentArrayType`
+    (`shorthand`), `noEnum`, `noNamespace`, `noParameterAssign`, `noParameterProperties`,
+    `noDefaultExport` (off in `*.config.*`), and type-aware `noFloatingPromises` and
+    `useExhaustiveSwitchCases`.
+  - Six `ast-grep` rules (with tests) when Slice 1 lands: `ts-no-class`, `ts-contain-only`,
+    `ts-no-type-assertion`, `ts-no-bool-parameter`, `ts-no-get-prefix` and `ts-no-ambient-effects`.
+  - `routeTree.gen.ts` carries a generated marker, is skipped by format/lint, marked
+    `linguist-generated`, and freshness-checked in `web:check`.
+- Data layer:
+  - PostgreSQL `18.7` via `pg@8.23.1` (`@types/pg@8.23.1`), wrapped in `platform/server/src/db/`
+    with distinct branded `Db` and `Tx` handles, `sql` tagged templates (raw SQL strings banned
+    outside `migrate.ts`), Zod row decoders (`InvariantDefect` on mismatch), wire-level OID parsers
+    (`timestamptz` → `EpochMs`, `bytea` → `Uint8Array`), and a runtime `inFlight` guard against
+    concurrent queries on one `Tx`. No ORM or query builder.
+  - `withTx` captures DB `now()` as `txNow: EpochMs`, rolls back on `err(...)` and commits only on
+    `ok(...)` (or explicit `errCommit(...)` for security denials that persist failure/audit rows).
+  - Canonical lock order: `account` → `device` → `entitlement` → `product_slot` →
+    `load`/`runtime_session` → append-only `audit`/`inbox`/`receipt` (never locked); no I/O outside
+    Postgres while holding a `Tx`.
+  - Forward-only checksummed `migrations/NNNN_name.sql` under `pg_advisory_lock`; `checkSchema` at
+    boot exits `2` on mismatch. Prefixed 128-bit random IDs (`acc_...`) for entities and `bigint`
+    identity for ordered event/audit streams.
+- Auth, credentials, sessions and authority:
+  - No `better-auth`. Own the auth tables directly over `@simplewebauthn/server@14.1.0` +
+    `@simplewebauthn/browser@14.0.0`, `Bun.password` (`argon2id`, 12–128 chars + breach denylist +
+    timing-equalized dummy verify), RFC 6238 TOTP on `crypto.subtle` (`TOTP_ENCRYPTION_KEY`
+    AES-256-GCM with `kid` tag, plus `last_used_step` replay guard), and `jose@6.2.17` for client
+    P-256 DPoP proofs.
+  - One `browser_session` table (`__Host-lucent` 256-bit token stored as SHA-256) with fixed-TTL
+    `purpose`: `"member"` (12h, never slides, carries `stepUpAt`), `"setup"` (15m, username + first
+    factor only) and `"appeal"` (30m, minted only after full 2FA on a suspended account, `/appeal`
+    only). DB `txNow` enforces 5m freshness for credential changes ("never remove the last
+    credential" under `account` lock) and 30m passkey step-up in place for sensitive admin actions.
+  - Native loader sign-in uses pushed auth requests (`POST /v1/auth/requests` → clean
+    `lucent.moe/auth/device/lauth_...` URL) + loopback `127.0.0.1:<port>/callback` PKCE + DPoP →
+    30-day rotating refresh token (30s retry grace) + 5m DPoP-bound access token.
+  - Entity model and `can()` access control (hybrid config, multi-product from day one):
+    - Closed union of `Action` permissions in code (`"tickets:reply"`, `"accounts:suspend"`, ...),
+      with per-action `{ stepUp, audit }` metadata; zero `if (role === ...)` checks anywhere.
+    - Pure `can(subject, action, target?)` shared by `platform` and `web` (including integer `rank`
+      precedence `subject.maxRank > target.maxRank`); transactional `authorize(txNow, caller,
+      action, target?)` enforces `can()` + 30m passkey step-up under `FOR UPDATE`.
+    - Roles, optional plan templates and Discord sync predicates live in PostgreSQL (seeded from
+      declarative config, editable live in `web` admin with step-up + audit); bootstrap `root` sits
+      at max `rank` (transferred only via `ops transfer-superadmin`).
+    - `Device` binds to `Account` (enroll PC P-256 key once per account; default `maxDevices = 1`,
+      7d self-service replacement window); `Entitlement` covers 1..N products (`EntitlementProduct`:
+      `productId`, `features: "*" | FeatureTag[]`, `channels`), unioned at `txNow`; `ProductSlot`
+      serializes active sessions per `(accountId, productId)`.
+    - Permanent confusable-checked `username_claim`; single-use 7-day account-only invites (no
+      cohorts) with inviter strike attribution; non-admin timing-padded email reset setting
+      `reset_lock`.
+- Native contracts, lease channel and bundle pipeline:
+  - `contracts/` holds canonical little-endian versioned binary container definitions, `/v1` wire
+    Zod schemas, and committed golden `.bin`/`.json` vectors verified by both `ctest` and
+    `bun test`. Zero codegen until hand-mirroring hurts.
+  - Key split: **Ed25519** over raw canonical bytes for server and offline authorities
+    (`RELEASE_TRUSTED_KEYS`, `LEASE_SIGNING_KEY`, `OVERRIDE_SIGNING_KEY`), including a fixed-layout
+    binary Ed25519 runtime lease (dropping `lucent-lease+jwt` so the mapped module needs no JSON or
+    JWS parser); **ECDSA P-256** for client Windows TPM 2.0 / CNG installation and session keys.
+  - Separate `/v1` channels: `POST /v1/sessions/:id/lease` (15s cadence / 60s TTL, carries
+    `bundle_revision_tag` + measurement regions, never game data) and
+    `POST /v1/sessions/:id/bundles` (lazy per-feature and per-module AEAD-encrypted session bundles
+    with Merkle proofs + online overrides + per-session watermarks).
+  - No immediate `INTEGRITY_REFUSED` oracle on `/handoff` or `/lease`: mismatches feed key-material
+    derivation (`measure`/`mix`/`derive`) and append `risk_signal` rows (tagged with `release_seed`)
+    for asynchronous risk scoring, review items and delayed decoupled actions.
+  - `ops publish-release` / `publish-loader` / `publish-fact-set` verify offline signatures,
+    manifest digests, revision monotonicity and `core` coverage; `web` admin toggles enabled state,
+    manages online-signed overrides, and tracks update-day latency per `module_build_key`.
+- Connectors, jobs and untrusted boundaries:
+  - `platform/connectors/discord` (`discord`, Slice 5): outbound-only worker on
+    `@discordjs/core@2.6.0` + `@discordjs/rest@2.6.3` + `@discordjs/ws@2.0.4`, calling
+    `platform-server` strictly via `discordRpc` (zero authority writes, no emails/IPs/PC IDs). Role
+    sync is driven by declarative `connector_discord_rule` rows over one serial queue (15s audit
+    cursor feed + hourly reconcile + on-join), alongside `#status`, `#resources`, `#bugs` ↔ GitHub
+    Issues `/triage`, and invite-leak deletion.
+  - Avatar uploads run `@jsquash/jpeg@1.6.0`, `@jsquash/png@3.1.1` and `@jsquash/webp@1.5.0` in a
+    5s-bounded `env: {}` `Bun.spawn` child process with WASM linear memory rewritten to `640 MiB`
+    max, stripping metadata and storing 256px/64px WebPs by SHA-256 in Postgres; release binaries
+    and `<= 64 MiB` resources stream to `ARTIFACT_DIR`.
+  - Plain `fetch` mail adapter (`resend` | `brevo` | `log`, `10s` timeout, outside `Tx`) and offline
+    `mmdb-lib@3.0.5` DB-IP Lite reader.
+  - Unref'd periodic jobs (`1m` challenges/nonces/receipts/refusals; `10m` retention, risk scoring,
+    `.mmdb` reload, 7d idle ticket auto-close) with explicit 30d / 90d / 365d / forever retention
+    tiers; closed-field JSONL logger with fail-closed `loggablePath` allowlist, `removed` lines for
+    `ops replay-removals`, and `SIGTERM` health-first graceful drain.
+- Testing and local dev stack:
+  - `bun test` (`tests/<unit>.test.ts`), behavior-sentence names, zero coverage targets, zero
+    snapshots, `mock.module` banned by `ast-grep`. Tests cover where failure is silent, expensive or
+    subtle (`can`/`authorize` + multi-product unioning, auth/DPoP/TOTP replay, multi-connection
+    `FOR UPDATE` races and `statement_timeout`, binary containers + Merkle proofs + golden vectors,
+    migration checksums, `withMaxMemory` and `loggablePath`); clocks, RNG and external HTTP adapters
+    are injected with no network in `:test`.
+  - Real PostgreSQL `18.7.0` pinned via `proto` (`tools/proto/postgresql.toml` →
+    `theseus-rs/postgresql-binaries`, no Docker or `pglite`). Test setup runs `postgres -F` under
+    `.moon/cache/pg-test/`, migrates `lucent_template` once, and clones per-file databases via
+    `CREATE DATABASE ... TEMPLATE`.
+  - Cross-runtime contract gate: `contracts:test` (`bun test`) and native `ctest` verify the exact
+    same committed `.bin` and `.json` golden vectors.
+  - Local dev runs through `moon` (`server:seed`, `server:dev`, `web:dev`) over `.moon/cache/dev/`
+    with dev keys rejected by release builds, fixed loopback origins (`http://localhost:4710` for
+    WebAuthn, `127.0.0.1:4711`–`4712` for `platform-server`), seed rows written through real server
+    writers, and a dev-only `/dev/kit` UI workbench aliased to 404 in production builds.
+- `infra/` (created only when deployment lands, added to root `AGENTS.md` then):
+  - Holds `compose.yml` (`postgres:18.7` in its own container so backend deploys never restart
+    PostgreSQL, plus `platform-server`, `web`, `discord` and `caddy` with digest-pinned base images,
+    read-only rootfs, dropped capabilities, and `0750` socket volumes for `/var/run/postgresql` and
+    `/run/lucent`), `images/*.Containerfile` sharing one `BUN_IMAGE` digest pin, `caddy/`
+    (`Caddyfile`, `lucent.caddy` and redacted access-log audit), and `ops/` (`backup.sh`,
+    `restore.sh`, `provision.sh`, `env.example`).
+  - CI stays in `.github/workflows`, toolchains in `.prototools`/`tools/proto/`, and migrations and
+    DB operator verbs in `platform/server/`.
+
 ## Open
 
 - Release string hygiene (log stripping, hashed ids, string encryption). It shapes the logging API.
