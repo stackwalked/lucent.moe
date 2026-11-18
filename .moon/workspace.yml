@@ -3,6 +3,8 @@ projects:
     - "tools/*/moon.yml"
     - "native/moon.yml"
     - "native/*/moon.yml"
+    - "native/targets/*/moon.yml"
+    - "native/tools/*/moon.yml"
 
 # Repo-wide tasks take /**/* as input; the native build tree under .moon/cache is output, and
 # vcpkg holds locks in it while configuring.

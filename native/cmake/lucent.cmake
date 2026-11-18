@@ -21,6 +21,12 @@ add_compile_options(
     -Wno-padded
     # The dialect forbids `default` in switches over our enums so -Wswitch flags new enumerators.
     -Wno-switch-default
+    # LUCENT_TRY is a statement expression. Only expansion from a macro is allowed: a statement
+    # expression written out in code still warns.
+    -Wno-gnu-statement-expression-from-macro-expansion
+    # Asks for [[clang::lifetimebound]] on every constructor taking a pointer, including ones that
+    # take a kernel handle, which is no borrow.
+    -Wno-lifetime-safety-suggestions
     /DNOMINMAX
     /DWIN32_LEAN_AND_MEAN
 )
@@ -60,6 +66,25 @@ function(lucent_library name)
         list(APPEND arg_DEPS lucent::core)
     endif()
     target_link_libraries(${target} ${scope} ${arg_DEPS})
+endfunction()
+
+# lucent_module(<name> SOURCES <sources>... [DEPS <targets>...])
+#
+# The loadable module lucent_<name>.dll: no import library, nothing links against it.
+function(lucent_module name)
+    cmake_parse_arguments(PARSE_ARGV 1 arg "" "" "SOURCES;DEPS")
+    set(target lucent_${name})
+    add_library(${target} MODULE ${arg_SOURCES})
+    target_link_libraries(${target} PRIVATE lucent::core ${arg_DEPS})
+endfunction()
+
+# lucent_executable(<name> SOURCES <sources>... [DEPS <targets>...])
+function(lucent_executable name)
+    cmake_parse_arguments(PARSE_ARGV 1 arg "" "" "SOURCES;DEPS")
+    set(target lucent_${name})
+    add_executable(${target} ${arg_SOURCES})
+    set_target_properties(${target} PROPERTIES OUTPUT_NAME ${name})
+    target_link_libraries(${target} PRIVATE lucent::core ${arg_DEPS})
 endfunction()
 
 # lucent_test(<name> SOURCES <tests>... [DEPS <targets>...])

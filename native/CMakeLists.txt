@@ -9,3 +9,6 @@ enable_testing()
 
 add_subdirectory(core)
 add_subdirectory(testing)
+add_subdirectory(kit)
+add_subdirectory(targets/cs2)
+add_subdirectory(tools/loader-dev)

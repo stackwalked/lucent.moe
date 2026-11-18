@@ -84,15 +84,22 @@ IncludeBlocks: Regroup
 MainIncludeChar: Any
 IncludeIsMainRegex: '(_test)?$'
 IncludeCategories:
-  # Named explicitly so third-party .h headers don't land here.
-  - Regex: '^<(windows|winternl|ntstatus|psapi|tlhelp32|d3d11|dxgi|d3dcompiler|intrin)\.h>$'
+  # Windows.h in a group of its own: the other SDK headers need it first, and sorting them
+  # together would put TlHelp32.h above it.
+  - Regex: '^<Windows\.h>$'
     Priority: 2
+    CaseSensitive: true
+  # Named explicitly so third-party .h headers don't land here.
+  - Regex: '^<(winternl|ntstatus|Psapi|TlHelp32|d3d11|dxgi|d3dcompiler|intrin)\.h>$'
+    Priority: 3
+    CaseSensitive: true
   - Regex: '^<lucent/'
-    Priority: 4
+    Priority: 5
   # std: one bare word, no extension.
   - Regex: '^<[a-z_0-9]+>$'
     Priority: 1
+    CaseSensitive: true
   - Regex: '^<'
-    Priority: 3
+    Priority: 4
   - Regex: '^"'
-    Priority: 5
+    Priority: 6
