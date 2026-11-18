@@ -327,7 +327,7 @@ Landed in kit (`fact.hpp`, `fact_resolve.hpp`): the fact section, the six typed 
 accessor, resolve with every per-kind load check, and capabilities. Still to land, in order: the
 bundle (Monocypher through `libs/crypto`, via vcpkg), `libs/probe` with the generator and cs2
 finders, the first real facts end to end; then the read-only section between safe points, the
-per-release key seed, `core` capabilities refusing the start, and the requirement audit.
+per-release key seed, and `core` capabilities refusing the start.
 
 - Declarations are C++ in the target's foreign layer, by subsystem, and ship. A `consteval`
   constructor hashes the name, which never reaches the binary; ast-grep checks it matches the
@@ -383,11 +383,30 @@ per-release key seed, `core` capabilities refusing the start, and the requiremen
     to one object; `.lfact$a/$m/$z` merge into one `.lfact` section with no gaps between
     24-byte records, on a page of its own; a mapped module enumerates and writes it. Fact objects
     are `const` with only the value `mutable`, so they need no suppression per declaration.
-- Features never name facts. The foreign layer groups facts into capabilities beside them; features
-  require capabilities in `features/all.cpp`; a capability is available when all its facts passed
-  their checks. Reads inside a running feature don't re-check facts.
-- Dev builds audit requirements: slot dispatch records the facts read during a feature's slot and
-  reports any its capabilities don't cover, on first use, even when the value is valid.
+- Features never name facts. The foreign layer groups facts into capabilities beside them; a
+  capability is available when all its facts passed their checks. Reads inside a running feature
+  don't re-check facts.
+- Domains turn capabilities into what features use: views (plain values for this tick) and stage
+  tokens (what a stage may change). Each view and stage type names its `backing` capability.
+- A feature declares `needs` (required) and `wants` (optional) as types; `kit::context<F>` is built
+  from them, so using anything undeclared fails to compile. A feature is unavailable when a `needs`
+  type's capability is; a `wants` part is reached through `maybe<T>()` and degrades alone.
+- Requirements are checked at compile time, which replaces the dev-time audit: features through
+  their context; domain builders through capability-typed `read_access<capability>`, which only
+  accepts that capability's facts.
+- Features never write foreign memory. They record intents on stage tokens or propose values; each
+  domain applies them once per tick with `write_access`, under one conflict rule it states. Features
+  become views, settings and their own state in, intents out, and are tested without a game.
+- The context carries the views, stage tokens, settings snapshot, input and the domain clock's
+  tick. `draw_context` (render thread, snapshots) has no stages at all.
+- A domain may call back into a feature (movement's `on_retime` re-plans a goal over the combined
+  tick), with a fresh context, inside the same `contain()`; the registry dispatches declared
+  callbacks.
+- Features never depend on features; domains depend on domains in a fixed order per tick (world,
+  then movement, then command apply), written down where each domain is declared.
+- Sketched against old lucent's movement system: goals as features, the arbiter, lookahead and a
+  pure simulator as the movement domain, which owns the movement stage and is the command domain's
+  only writer of subtick steps.
 - Every fact reaches the module from a bundle (in dev, a local one signed with the dev key).
   Derivation happens only in the generator.
 - Facts cover game modules only. OS and driver interfaces (DXGI, D3D) are reached through their
