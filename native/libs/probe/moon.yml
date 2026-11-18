@@ -1,4 +1,5 @@
 language: "cpp"
 layer: "library"
 
-dependsOn: ["core", "pe"]
+# os is the tests' file loader only.
+dependsOn: ["core", "pe", { id: "os", scope: "development" }]

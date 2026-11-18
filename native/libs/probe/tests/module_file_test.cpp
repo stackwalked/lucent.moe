@@ -10,7 +10,7 @@
 
 #include <lucent/pe/runtime_functions.hpp>
 
-#include "own_image.hpp"
+#include "images.hpp"
 
 namespace lucent::probe {
 namespace {

@@ -125,3 +125,22 @@ function(lucent_test name)
         DISCOVERY_MODE PRE_TEST
     )
 endfunction()
+
+# lucent_fixture(<name> <fixture> SOURCES <sources>... [RTTI])
+#
+# A DLL the tests of lucent::<name> read as a foreign binary, built as the code they probe is built
+# rather than as ours: RTTI adds /GR. The tests find its file at the path LUCENT_FIXTURE_<FIXTURE>.
+function(lucent_fixture name fixture)
+    cmake_parse_arguments(PARSE_ARGV 2 arg "RTTI" "" "SOURCES")
+    set(target lucent_${name}_${fixture}_fixture)
+    add_library(${target} MODULE ${arg_SOURCES})
+    if(arg_RTTI)
+        target_compile_options(${target} PRIVATE /GR)
+    endif()
+    string(TOUPPER "${fixture}" macro_suffix)
+    add_dependencies(lucent_${name}_tests ${target})
+    target_compile_definitions(
+        lucent_${name}_tests
+        PRIVATE "LUCENT_FIXTURE_${macro_suffix}=\"$<TARGET_FILE:${target}>\""
+    )
+endfunction()

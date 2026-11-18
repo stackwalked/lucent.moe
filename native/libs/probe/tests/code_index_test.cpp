@@ -11,7 +11,7 @@
 #include <lucent/pe/runtime_functions.hpp>
 #include <lucent/probe/module_file.hpp>
 
-#include "own_image.hpp"
+#include "images.hpp"
 
 namespace lucent::probe {
 namespace {

@@ -20,6 +20,8 @@
 #include <lucent/pe/runtime_functions.hpp>
 #include <lucent/probe/module_file.hpp>
 
+#include "ranges.hpp"
+
 namespace lucent::probe {
 namespace {
 
@@ -116,21 +118,11 @@ auto references_of(const module_file& module, u32 source, const decoded& found)
     return named;
 }
 
-auto executable_ranges(const module_file& module) -> std::vector<pe::rva_range> {
-    std::vector<pe::rva_range> ranges;
-    for (const pe::section& stored : module.view().sections()) {
-        if (stored.access.is_executable) {
-            ranges.push_back({.rva = stored.virtual_address, .size = pe::mapped_size_of(stored)});
-        }
-    }
-    return ranges;
-}
-
 // Each listed function, and each gap between them, as its own range: a listed function starts a
 // fresh decode, so a misdecoded gap can't run into the code after it.
 auto code_ranges(const module_file& module) -> std::vector<pe::rva_range> {
     std::vector<pe::rva_range> ranges;
-    for (const pe::rva_range section : executable_ranges(module)) {
+    for (const pe::rva_range section : detail::code_sections(module)) {
         const u32 section_end = section.rva + section.size;
         u32 cursor = section.rva;
         for (const pe::runtime_function& function : module.functions()) {
