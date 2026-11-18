@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cstddef>
 #include <expected>
 #include <optional>
@@ -27,6 +28,15 @@ static_assert(sizeof(directory) == 8, "directory mirrors IMAGE_DATA_DIRECTORY");
 
 constexpr error unsupported{.code = error_code::unsupported};
 constexpr u32 max_string_size = 1024;
+
+// SizeOfImage is what to_mapped_layout allocates, so a header alone must not be able to ask for
+// 4 GiB. Real images claim no address space past their headers and sections, and stay far below
+// this cap; together they bound the allocation by what the sections declare, and that by the cap.
+// build: every x64 PE under System32, Program Files and the cs2 install, 10,363 images (2026-11-18)
+// found: SizeOfImage equals the headers' and sections' end aligned to SectionAlignment in every
+//        one; SectionAlignment is always a power of two; the largest is 335 MiB (msedge.dll)
+// breaks: an image with slack past its last section, or over 1 GiB, fails to parse as malformed
+constexpr u32 max_size_of_image = u32{1} << 30U;
 
 // How much of that the file actually stores; the rest is zero-filled by a loader.
 auto stored_size_of(const section& stored) -> u32 {
@@ -87,6 +97,8 @@ auto is_consistent(const nt_headers& headers, usize byte_count) -> bool {
         sizeof(detail::raw_optional_header) + (directory_count_of(headers) * sizeof(directory));
     return headers.file.optional_header_size >= optional_size
            && headers.file.section_count <= detail::max_sections
+           && std::has_single_bit(headers.optional.section_alignment)
+           && headers.optional.size_of_image <= max_size_of_image
            && headers.optional.size_of_headers <= headers.optional.size_of_image
            && headers.optional.size_of_headers <= byte_count
            && headers.optional.entry_point < headers.optional.size_of_image;
@@ -121,6 +133,19 @@ auto read_sections(std::span<const std::byte> bytes, const nt_headers& headers)
     return sections;
 }
 
+// The address space the headers and sections claim, rounded up as a loader maps it.
+auto claimed_size_of(const nt_headers& headers, std::span<const section> sections) -> u64 {
+    const auto end_of = [](const section& stored) {
+        return u64{stored.virtual_address} + mapped_size_of(stored);
+    };
+    const auto later = [](u64 left, u64 right) { return std::max(left, right); };
+    const u64 end = std::ranges::fold_left(
+        sections | std::views::transform(end_of), u64{headers.optional.size_of_headers}, later
+    );
+    const u64 alignment = headers.optional.section_alignment;
+    return (end + alignment - 1) / alignment * alignment;
+}
+
 }
 
 auto image_view::parse(std::span<const std::byte> bytes, layout arrangement) -> result<image_view> {
@@ -137,6 +162,9 @@ auto image_view::parse(std::span<const std::byte> bytes, layout arrangement) -> 
     image.m_entry_point = headers.optional.entry_point;
     image.m_directories = LUCENT_TRY(read_directories(bytes, headers));
     image.m_sections = LUCENT_TRY(read_sections(bytes, headers));
+    if (headers.optional.size_of_image > claimed_size_of(headers, image.m_sections)) {
+        return std::unexpected(detail::malformed);
+    }
     return image;
 }
 

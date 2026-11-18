@@ -96,6 +96,38 @@ TEST_CASE("a section count above the format's limit is malformed") {
     CHECK(image_view::parse(bytes, layout::file) == std::unexpected(malformed));
 }
 
+TEST_CASE("an image asking for address space its sections don't claim is malformed") {
+    std::vector<std::byte> bytes = own_file();
+    const usize nt_offset = nt_offset_of(bytes);
+    const usize optional_offset = nt_offset + 24;
+    const usize size_of_image_offset = optional_offset + 56;
+    const u32 size_of_image = read_u32(bytes, size_of_image_offset);
+    SECTION("SizeOfImage past the last section") {
+        write_u32(bytes, size_of_image_offset, size_of_image + 0x1'0000);
+    }
+    SECTION("SizeOfImage near 4 GiB from a few hundred bytes of headers") {
+        write_u32(bytes, size_of_image_offset, 0x8000'0027);
+    }
+    SECTION("a SectionAlignment that is not a power of two") {
+        write_u32(bytes, optional_offset + 32, 0x3000);
+    }
+    CHECK(image_view::parse(bytes, layout::file) == std::unexpected(malformed));
+}
+
+TEST_CASE("a section claiming more than 1 GiB is malformed even when SizeOfImage agrees") {
+    std::vector<std::byte> bytes = own_file();
+    const usize nt_offset = nt_offset_of(bytes);
+    const usize optional_offset = nt_offset + 24;
+    const usize optional_size = read_u32(bytes, nt_offset + 20) & 0xffffU;
+    const usize section_count = read_u32(bytes, nt_offset + 4) >> 16U;
+    const usize last_section = optional_offset + optional_size + ((section_count - 1) * 40);
+    const u32 virtual_address = read_u32(bytes, last_section + 12);
+    constexpr u32 past_cap = (u32{1} << 30U) + 0x1000;
+    write_u32(bytes, last_section + 8, past_cap - virtual_address);
+    write_u32(bytes, optional_offset + 56, past_cap);
+    CHECK(image_view::parse(bytes, layout::file) == std::unexpected(malformed));
+}
+
 TEST_CASE("an image cut short still parses its headers but fails on the tables it lost") {
     std::vector<std::byte> bytes = own_file();
     bytes.resize(0x1000);
