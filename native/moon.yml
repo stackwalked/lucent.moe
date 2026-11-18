@@ -24,6 +24,18 @@ tasks:
       - "/.prototools"
     options:
       cache: false
+  # The libFuzzer targets under ASan (the fuzz preset), in their own tree. Kept out of check: a
+  # second configure and a full ASan build of the parsers, and the fuzzing itself, cost minutes,
+  # where check costs seconds. Run one for a minute, from the repo root:
+  #   .moon/cache/cmake/fuzz/libs/bundle/bundle_fuzz_decode.exe .moon/cache/fuzz/bundle_decode
+  #     contracts/fact-bundle/v1 -max_total_time=60 -artifact_prefix=.moon/cache/fuzz/
+  # The first directory (create it first) collects the inputs it finds, the prefix any crash; both
+  # stay under the ignored .moon/cache. Each target's file says what to seed it with.
+  fuzz-build:
+    script: "cmake --preset fuzz && cmake --build --preset fuzz"
+    options:
+      cache: false
+      runInCI: false
   check:
     deps: ["~:build"]
     inputs:

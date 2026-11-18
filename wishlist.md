@@ -34,7 +34,6 @@ Everything discussed so far that isn't built yet. A backlog, not a spec: entries
 - MSVC STL, not libc++. Language gaps (reflection, contracts, `template for`) are clang's either way, and
   the library delta at 23.1.5 vs STL 14.51 is mixed. Revisit when clang ships P2996: `<meta>` is
   expected to come with libc++ (unverified).
-- An ASan preset when fuzzing needs one.
 - `lucent_module()` and `lucent_executable()` join `lucent_library()`/`lucent_test()` with their first
   users. A lint bans raw `add_library`, `add_executable` and `target_compile_options` outside
   `native/cmake/`.
@@ -54,7 +53,6 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
 - `provenance.py` (a uv script, with the first `foreign/`).
 - `-Wunsafe-buffer-usage` off by path in the foreign-memory layer; `misc-no-recursion` off by path in
   tools and tests once something there recurses.
-- libFuzzer targets for external-input parsers, under the ASan preset.
 - Lab C++ config sharing (clang-format and clang-tidy only search parents), with the first lab C++
   project; likely generated copies with a freshness check.
 - Reopen generic code (`describe()`, enum introspection) when clang ships reflection; preconditions

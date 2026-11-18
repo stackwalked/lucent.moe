@@ -12,8 +12,8 @@ also the `lucent/<name>/` include prefix (lucent_library(<name>) puts public hea
    dependencies do not count: a project that includes a header declares the dependency.
    A dependency of moon scope `development` (`{ id: os, scope: development }`) counts from
    `tests/` only; every other scope counts everywhere.
-   `lucent/testing/` is allowed from `tests/` only, and `lucent/fuzz/` (the libFuzzer entry in
-   native/cmake/fuzz, which no project owns) from `fuzz/` only.
+   `lucent/testing/` is allowed from `tests/` only, and `lucent/fuzzing/` (libFuzzer's entry, which
+   no project depends on: lucent_fuzz() links it) from `fuzz/` only.
 2. Private headers stay private: a quoted include never reaches into another project's
    `src/`, and a public header (under `include/`) never includes anything under a `src/`.
 3. Win32/SDK headers (WIN32_HEADERS below) appear only in `src/` and `tests/`, never in a
@@ -30,7 +30,7 @@ from pathlib import Path
 NATIVE = "native"
 IMPLICIT_DEPS = frozenset({"core"})
 TEST_ONLY = frozenset({"testing"})
-FUZZ_ONLY = frozenset({"fuzz"})
+FUZZ_ONLY = frozenset({"fuzzing"})
 DEFAULT_SCOPE = "production"
 TEST_SCOPE = "development"
 

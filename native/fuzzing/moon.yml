@@ -1,0 +1,9 @@
+language: "cpp"
+layer: "library"
+
+dependsOn: ["core"]
+
+# The fuzz host itself has no tests: it is libFuzzer's entry into every project's fuzz targets.
+workspace:
+  inheritedTasks:
+    exclude: ["test"]

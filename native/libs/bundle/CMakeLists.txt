@@ -4,6 +4,8 @@ lucent_library(bundle
     DEPS lucent::crypto
 )
 
+lucent_fuzz(bundle SOURCES fuzz/decode.cpp fuzz/verify.cpp)
+
 lucent_test(bundle SOURCES tests/bundle_test.cpp tests/vectors_test.cpp DEPS lucent::os)
 target_compile_definitions(
     lucent_bundle_tests

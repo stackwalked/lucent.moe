@@ -12,6 +12,7 @@ enable_testing()
 
 add_subdirectory(core)
 add_subdirectory(testing)
+add_subdirectory(fuzzing)
 add_subdirectory(libs/crypto)
 add_subdirectory(libs/bundle)
 add_subdirectory(libs/os)

@@ -31,6 +31,30 @@ add_compile_options(
     /DWIN32_LEAN_AND_MEAN
 )
 
+# The fuzz preset's switch. On, our whole tree is compiled with AddressSanitizer and libFuzzer's
+# coverage instrumentation, and the preset builds only the fuzzers: tests and modules link C++
+# dependencies vcpkg built without ASan. Those dependencies stay uninstrumented, on the same
+# triplet: the parsers are the code under test. Off, nothing below this block changes.
+set(LUCENT_FUZZ OFF CACHE BOOL "Build libFuzzer targets under AddressSanitizer (fuzz preset)")
+if(LUCENT_FUZZ)
+    add_compile_options(
+        /fsanitize=address
+        -fsanitize=fuzzer-no-link
+        # LLVM ships libFuzzer built against the MSVC STL without ASan's container annotations,
+        # and the STL refuses to link annotated and unannotated objects (/failifmismatch
+        # annotate_string, LLVM 23.1.5). The cost: overflows into a string's or vector's spare
+        # capacity go unreported; overflows past the allocation are still caught.
+        /D_DISABLE_STRING_ANNOTATION
+        /D_DISABLE_VECTOR_ANNOTATION
+    )
+    # CMake links with lld-link directly, so the runtimes clang-cl's driver would add are named
+    # here: the same three, in its order (checked with `clang-cl -###` on LLVM 23.1.5).
+    string(REGEX MATCH "^[0-9]+" lucent_llvm_major "${lucent_llvm_version}")
+    set(lucent_clang_runtime "${lucent_llvm_bin}/../lib/clang/${lucent_llvm_major}/lib/windows")
+    cmake_path(NORMAL_PATH lucent_clang_runtime)
+    add_custom_target(fuzzers)
+endif()
+
 # The prelude is needed by every file, so it's tool config rather than a line atop each file.
 set(lucent_prelude "${CMAKE_CURRENT_LIST_DIR}/../core/include/lucent/core/prelude.hpp")
 cmake_path(NORMAL_PATH lucent_prelude)
@@ -108,6 +132,49 @@ function(lucent_executable name)
     set_target_properties(${target} PROPERTIES OUTPUT_NAME ${name})
     target_include_directories(${target} PRIVATE "${source_root}")
     target_link_libraries(${target} PRIVATE lucent::core ${arg_DEPS})
+endfunction()
+
+# lucent_fuzz(<name> SOURCES <fuzz targets>... [DEPS <targets>...])
+#
+# One libFuzzer executable per source, <name>_fuzz_<source stem>, for lucent::<name>. Each source
+# defines lucent::fuzzing::run_one (<lucent/fuzzing/run_one.hpp>). Only the fuzz preset links and
+# instruments them; every other build compiles the sources unlinked, so -Werror and clang-tidy
+# keep them current with the parsers they call.
+function(lucent_fuzz name)
+    cmake_parse_arguments(PARSE_ARGV 1 arg "" "" "SOURCES;DEPS")
+    if(NOT LUCENT_FUZZ)
+        add_library(lucent_${name}_fuzz OBJECT ${arg_SOURCES})
+        target_link_libraries(
+            lucent_${name}_fuzz
+            PRIVATE lucent::${name} lucent::fuzzing ${arg_DEPS}
+        )
+        return()
+    endif()
+    foreach(source IN LISTS arg_SOURCES)
+        cmake_path(GET source STEM stem)
+        set(target lucent_${name}_fuzz_${stem})
+        add_executable(${target} ${source})
+        set_target_properties(${target} PROPERTIES OUTPUT_NAME ${name}_fuzz_${stem})
+        target_link_libraries(${target} PRIVATE lucent::${name} lucent::fuzzing ${arg_DEPS})
+        target_link_options(
+            ${target}
+            PRIVATE
+                "/wholearchive:${lucent_clang_runtime}/clang_rt.fuzzer-x86_64.lib"
+                "${lucent_clang_runtime}/clang_rt.asan_dynamic-x86_64.lib"
+                "/wholearchive:${lucent_clang_runtime}/clang_rt.asan_static_runtime_thunk-x86_64.lib"
+        )
+        # The ASan runtime is a DLL; it goes beside the executable so a run needs no PATH change.
+        add_custom_command(
+            TARGET ${target}
+            POST_BUILD
+            COMMAND
+                "${CMAKE_COMMAND}" -E copy_if_different
+                "${lucent_clang_runtime}/clang_rt.asan_dynamic-x86_64.dll"
+                "$<TARGET_FILE_DIR:${target}>"
+            VERBATIM
+        )
+        add_dependencies(fuzzers ${target})
+    endforeach()
 endfunction()
 
 # lucent_test(<name> SOURCES <tests>... [DEPS <targets>...])

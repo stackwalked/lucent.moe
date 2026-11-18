@@ -22,11 +22,24 @@
       "name": "release",
       "inherits": "base",
       "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+    },
+    {
+      "name": "fuzz",
+      "inherits": "base",
+      "$comment": [
+        "RelWithDebInfo, not Debug: optimized code runs more inputs a second, ASan does the",
+        "checking Debug's STL assertions would, and the release CRT (/MT) matches the release",
+        "libraries vcpkg links. Debug info keeps sanitizer stacks symbolized. Run a target with",
+        "`.moon/cache/cmake/fuzz/libs/<lib>/<lib>_fuzz_<name>.exe <new corpus dir> <seed dir>",
+        "-max_total_time=<seconds>`; each target's file says what to seed it with."
+      ],
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo", "LUCENT_FUZZ": true }
     }
   ],
   "buildPresets": [
     { "name": "dev", "configurePreset": "dev" },
-    { "name": "release", "configurePreset": "release" }
+    { "name": "release", "configurePreset": "release" },
+    { "name": "fuzz", "configurePreset": "fuzz", "targets": ["fuzzers"] }
   ],
   "testPresets": [
     {

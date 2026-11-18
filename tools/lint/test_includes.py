@@ -80,10 +80,10 @@ def test_testing_header_only_from_tests() -> None:
 
 
 def test_fuzz_header_only_from_fuzz() -> None:
-    text = "#include <lucent/fuzz/run_one.hpp>"
+    text = "#include <lucent/fuzzing/run_one.hpp>"
     assert messages("native/libs/pe/fuzz/imports.cpp", text) == []
     assert messages("native/libs/pe/tests/a_test.cpp", text) == [
-        "<lucent/fuzz/run_one.hpp> is for fuzz/ only"
+        "<lucent/fuzzing/run_one.hpp> is for fuzz/ only"
     ]
 
 
