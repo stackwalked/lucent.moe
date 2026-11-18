@@ -1,5 +1,6 @@
 #pragma once
 
+#include <source_location>
 #include <span>
 #include <string_view>
 
@@ -7,23 +8,36 @@ namespace lucent::kit {
 
 enum class fact_kind : u8 { method, global, vtable, slot, field, value };
 
+enum class fact_status : u8 {
+    // No value arrived for it.
+    unresolved,
+    // A value arrived and failed its kind's check.
+    rejected,
+    resolved,
+};
+
 // One fact as the fact section holds it. Every typed fact is exactly one of these, so the section
-// is an array of them, written at resolve and read through its owner afterwards.
+// is an array of them; resolve writes the mutable members, everything else is fixed at compile
+// time.
 struct fact_record {
     // 0 never names a fact: the linker may leave zeroed gaps between contributions.
     u64 key = 0;
     fact_kind kind = fact_kind::value;
     // An index the target assigns to the game modules it knows.
     u8 module = 0;
-    // The width of a field's or value's type, in bytes; 0 for the address and slot kinds.
+    // A field's or value's type: its width and required alignment, in bytes.
     u16 width = 0;
-    u32 reserved = 0;
-    // 0 until resolved. Mutable so a fact object can be const: the resolve stage is its only
-    // writer, at points where nothing reads it.
+    u8 alignment = 0;
+    mutable fact_status status = fact_status::unresolved;
+    u16 reserved = 0;
+    // What the kind's check measures against: a field's owner-size fact key, a slot's vtable fact
+    // key (0 for neither), or a value's range (see value_range).
+    u64 bound = 0;
+    // A method's, global's or vtable's address; a slot's index; a field's offset; a value.
     mutable u64 value = 0;
 };
 
-static_assert(sizeof(fact_record) == 24, "fact records tile the section with no padding");
+static_assert(sizeof(fact_record) == 32, "fact records tile the section with no padding");
 static_assert(alignof(fact_record) == 8, "fact records tile the section with no padding");
 
 // Dev builds hash keys with this seed; release builds will take theirs from the generated build
@@ -46,8 +60,239 @@ consteval auto fact_key(u64 seed, std::string_view name) noexcept -> u64 {
     return hash == 0 ? 1 : hash;
 }
 
-// Every fact the linked image holds, gaps skipped by the caller (key 0).
+// The inclusive range a value fact must fall in; carried in its record's bound.
+struct value_range {
+    i32 min = 0;
+    i32 max = 0;
+};
+
+consteval auto pack(value_range range) noexcept -> u64 {
+    return static_cast<u64>(static_cast<u32>(range.min))
+           | (static_cast<u64>(static_cast<u32>(range.max)) << 32U);
+}
+
+constexpr auto unpack_range(u64 bound) -> value_range {
+    return value_range{
+        .min = static_cast<i32>(static_cast<u32>(bound & 0xffff'ffffU)),
+        .max = static_cast<i32>(static_cast<u32>(bound >> 32U)),
+    };
+}
+
+// Every fact the linked image holds, gaps among them (key 0) included.
 auto linked_fact_records() -> std::span<const fact_record>;
+
+namespace detail {
+
+// What a typed fact is made of; built at compile time.
+struct fact_shape {
+    fact_kind kind = fact_kind::value;
+    u8 module = 0;
+    u16 width = 0;
+    u8 alignment = 0;
+    u64 bound = 0;
+};
+
+consteval auto make_record(std::string_view name, fact_shape shape) noexcept -> fact_record {
+    return fact_record{
+        .key = fact_key(dev_fact_seed, name),
+        .kind = shape.kind,
+        .module = shape.module,
+        .width = shape.width,
+        .alignment = shape.alignment,
+        .status = fact_status::unresolved,
+        .reserved = 0,
+        .bound = shape.bound,
+        .value = 0,
+    };
+}
+
+// The one way any fact's value is read. Reading a fact that didn't resolve is our own bug: the
+// feature reading it didn't require the capability that holds it.
+inline auto read(const fact_record& record) -> u64 {
+    LUCENT_INVARIANT(record.status == fact_status::resolved);
+    return record.value;
+}
+
+}
+
+// The typed kinds. Each holds one fact_record and nothing else, so a typed fact in the section is
+// a record. What a kind means to the code that reads it (a typed call, a typed read) arrives with
+// the foreign access boundary; here they expose their resolved values.
+namespace fact {
+
+template <typename Signature>
+class method;
+
+// A function in a game module; the value is its address.
+template <typename R, typename... Args>
+class method<R(Args...)> final {
+public:
+    consteval method(std::string_view name, u8 module) noexcept
+        : m_record{detail::make_record(name, {.kind = fact_kind::method, .module = module})} {}
+
+    constexpr auto record() const -> const fact_record& {
+        return m_record;
+    }
+
+    auto address() const -> uptr {
+        return detail::read(m_record);
+    }
+
+private:
+    fact_record m_record;
+};
+
+// Data in a game module; the value is its address.
+template <typename T>
+class global final {
+public:
+    consteval global(std::string_view name, u8 module) noexcept
+        : m_record{
+              detail::make_record(
+                  name, {.kind = fact_kind::global, .module = module, .alignment = alignof(T)}
+              ),
+          } {}
+
+    constexpr auto record() const -> const fact_record& {
+        return m_record;
+    }
+
+    auto address() const -> uptr {
+        return detail::read(m_record);
+    }
+
+private:
+    fact_record m_record;
+};
+
+// A class's complete-object vtable; the value is its address.
+template <typename Class>
+class vtable final {
+public:
+    consteval vtable(std::string_view name, u8 module) noexcept
+        : m_record{detail::make_record(name, {.kind = fact_kind::vtable, .module = module})} {}
+
+    constexpr auto record() const -> const fact_record& {
+        return m_record;
+    }
+
+    auto address() const -> uptr {
+        return detail::read(m_record);
+    }
+
+private:
+    fact_record m_record;
+};
+
+template <typename Signature>
+class slot;
+
+// A virtual method's index in its class's vtable. Bounded by that vtable's length when the vtable
+// is itself a fact (named by `vtable_name`).
+template <typename R, typename Class, typename... Args>
+class slot<R(Class*, Args...)> final {
+public:
+    consteval slot(std::string_view name, u8 module) noexcept
+        : m_record{detail::make_record(name, {.kind = fact_kind::slot, .module = module})} {}
+
+    consteval slot(std::string_view name, u8 module, std::string_view vtable_name) noexcept
+        : m_record{
+              detail::make_record(
+                  name,
+                  {
+                      .kind = fact_kind::slot,
+                      .module = module,
+                      .bound = fact_key(dev_fact_seed, vtable_name),
+                  }
+              ),
+          } {}
+
+    constexpr auto record() const -> const fact_record& {
+        return m_record;
+    }
+
+    auto index() const -> isize {
+        return static_cast<isize>(detail::read(m_record));
+    }
+
+private:
+    fact_record m_record;
+};
+
+// A T at a byte offset inside a foreign Owner. Bounded by Owner's size when that size is itself a
+// value fact (named by `owner_size_name`).
+template <typename Owner, typename T>
+class field final {
+public:
+    consteval field(std::string_view name, u8 module) noexcept
+        : m_record{
+              detail::make_record(
+                  name,
+                  {
+                      .kind = fact_kind::field,
+                      .module = module,
+                      .width = sizeof(T),
+                      .alignment = alignof(T),
+                  }
+              ),
+          } {}
+
+    consteval field(std::string_view name, u8 module, std::string_view owner_size_name) noexcept
+        : m_record{
+              detail::make_record(
+                  name,
+                  {
+                      .kind = fact_kind::field,
+                      .module = module,
+                      .width = sizeof(T),
+                      .alignment = alignof(T),
+                      .bound = fact_key(dev_fact_seed, owner_size_name),
+                  }
+              ),
+          } {}
+
+    constexpr auto record() const -> const fact_record& {
+        return m_record;
+    }
+
+    auto offset() const -> isize {
+        return static_cast<isize>(detail::read(m_record));
+    }
+
+private:
+    fact_record m_record;
+};
+
+// A number (a stride, an index, an enum value) within a declared range.
+template <typename T>
+class value final {
+public:
+    consteval value(std::string_view name, u8 module, value_range range) noexcept
+        : m_record{
+              detail::make_record(
+                  name,
+                  {
+                      .kind = fact_kind::value,
+                      .module = module,
+                      .width = sizeof(T),
+                      .bound = pack(range),
+                  }
+              ),
+          } {}
+
+    constexpr auto record() const -> const fact_record& {
+        return m_record;
+    }
+
+    auto get() const -> T {
+        return static_cast<T>(static_cast<i64>(detail::read(m_record)));
+    }
+
+private:
+    fact_record m_record;
+};
+
+}
 
 }
 
@@ -59,5 +304,5 @@ auto linked_fact_records() -> std::span<const fact_record>;
 
 // Declares a fact at namespace scope: one object per fact in the whole image (an inline variable
 // folds to one copy), placed in the fact section, constant-initialized with its key. The object is
-// const; only its resolved value is mutable, written at resolve.
+// const; only its status and resolved value are mutable, written at resolve.
 #define LUCENT_FACT __declspec(allocate(".lfact$m")) inline constinit const

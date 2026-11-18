@@ -7,23 +7,20 @@
 namespace lucent::kit::fixtures {
 namespace {
 
-LUCENT_FACT fact_record other_unit_fact{
-    .key = fact_key(dev_fact_seed, "other_unit_fact"),
-    .kind = fact_kind::field,
-    .module = 2,
-    .width = 8,
-    .reserved = 0,
-    .value = 0,
+struct other_owner {
+    u64 first;
 };
+
+LUCENT_FACT fact::field<other_owner, u64> other_unit_fact{"other_unit_fact", 2};
 
 }
 
 auto other_unit_shared_value() -> const fact_record* {
-    return &shared_value;
+    return &shared_value.record();
 }
 
 auto other_unit_own_fact() -> const fact_record* {
-    return &other_unit_fact;
+    return &other_unit_fact.record();
 }
 
 }

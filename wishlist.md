@@ -323,6 +323,12 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
 Foreign knowledge (RVAs, vtable slots, field and schema offsets, constants): declared, derived and
 delivered. Decided in full.
 
+Landed in kit (`fact.hpp`, `fact_resolve.hpp`): the fact section, the six typed kinds, one value
+accessor, resolve with every per-kind load check, and capabilities. Still to land, in order: the
+bundle (Monocypher through `libs/crypto`, via vcpkg), `libs/probe` with the generator and cs2
+finders, the first real facts end to end; then the read-only section between safe points, the
+per-release key seed, `core` capabilities refusing the start, and the requirement audit.
+
 - Declarations are C++ in the target's foreign layer, by subsystem, and ship. A `consteval`
   constructor hashes the name, which never reaches the binary; ast-grep checks it matches the
   identifier.
