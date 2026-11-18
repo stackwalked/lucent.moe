@@ -19,5 +19,13 @@ tasks:
       # Every project's tests share one build tree, and concurrent CTest runs in one tree mix
       # their state: a run reported tests from other projects as its own.
       mutex: "ctest"
+  # Applies misc-include-cleaner's fixes, the one lint finding that is pure bookkeeping, then
+  # formats. Run it before lint on new code; check never runs it.
+  fix:
+    command: "uv run $workspaceRoot/tools/lint/tidy.py --fix ."
+    deps: ["native:configure"]
+    options:
+      cache: false
+      runInCI: false
   check:
     deps: ["~:lint"]
