@@ -42,6 +42,20 @@ describe("accounts and the root account", () => {
         });
     });
 
+    test("rerunning the root bootstrap with the same email reports the existing root", async () => {
+        const cluster = await sharedTestCluster();
+        await cluster.withTestDb(async ({ nativeDb }) => {
+            const rng = createSeededRng(103);
+            const first = { db: nativeDb, rng, email: "root@lucent.test", username: "rootuser" };
+            expect((await bootstrapRootAccount(first)).ok).toBe(true);
+
+            expect(await bootstrapRootAccount(first)).toEqual({
+                ok: false,
+                error: { code: "ROOT_ALREADY_EXISTS" },
+            });
+        });
+    });
+
     test("the database refuses to suspend or lock the root account", async () => {
         const cluster = await sharedTestCluster();
         await cluster.withTestDb(async ({ nativeDb }) => {

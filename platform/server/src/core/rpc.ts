@@ -8,8 +8,12 @@ export const DEFAULT_BODY_LIMIT_BYTES = 16 * 1024;
 // 43 base64url characters hold 256 bits, what `openssl rand -base64 32` produces; a shorter key
 // cannot carry that strength in any printable alphabet we would generate it in. Visible ASCII
 // only: HTTP trims header whitespace, so a key with an edge space could never match.
-const MIN_PEER_KEY_LENGTH = 43;
+export const MIN_PEER_KEY_LENGTH = 43;
 const PEER_KEY_ALPHABET = /^[\x21-\x7e]+$/;
+
+export function isStrongPeerKey(key: string): boolean {
+    return key.length >= MIN_PEER_KEY_LENGTH && PEER_KEY_ALPHABET.test(key);
+}
 
 export const TransportRefusal = z.discriminatedUnion("code", [
     z.strictObject({ code: z.literal("AUTH_REQUIRED") }),
@@ -142,7 +146,7 @@ export function mountInternalRpc<Ctx, MapType extends ProcedureMap<Ctx>>(params:
     readonly maxBodyBytes?: number;
 }): Hono {
     invariant(
-        params.peerKey.length >= MIN_PEER_KEY_LENGTH && PEER_KEY_ALPHABET.test(params.peerKey),
+        isStrongPeerKey(params.peerKey),
         `internal peer key must be at least ${MIN_PEER_KEY_LENGTH} visible ASCII characters`,
     );
     const app = new Hono();

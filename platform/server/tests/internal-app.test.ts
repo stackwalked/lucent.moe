@@ -1,8 +1,7 @@
 import { expect, test } from "bun:test";
 import { invariant } from "../src/core/contain.ts";
 import { err } from "../src/core/result.ts";
-import { openEpochGuard } from "../src/db/epoch-guard.ts";
-import { execute, sql } from "../src/db/pool.ts";
+import { claimServiceEpoch, openEpochGuard } from "../src/db/epoch-guard.ts";
 import { createInternalWebApp } from "../src/internal/app.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 
@@ -11,14 +10,15 @@ const PEER_KEY = "test-peer-key-0123456789abcdefghijklmnopqrstuvwxyz";
 test("a superseded process answers internal RPC with 503", async () => {
     const cluster = await sharedTestCluster();
     await cluster.withTestDb(async ({ nativeDb }) => {
-        const guardRes = await openEpochGuard({
+        const claimed = await claimServiceEpoch(nativeDb);
+        invariant(claimed.ok, `claim failed: ${JSON.stringify(claimed)}`);
+        const guard = openEpochGuard({
             db: nativeDb,
+            ownEpoch: claimed.value,
             pollIntervalMs: 60_000,
             onReadFailure: () => {},
         });
-        invariant(guardRes.ok, `guard failed to open: ${JSON.stringify(guardRes)}`);
-        const guard = guardRes.value;
-        await execute(nativeDb, sql`update service set epoch = epoch + 1 where id = true`);
+        await claimServiceEpoch(nativeDb);
         await guard.checkNow();
         guard.close();
 

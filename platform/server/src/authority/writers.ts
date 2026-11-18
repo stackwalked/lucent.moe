@@ -12,7 +12,15 @@ import {
     type ProductId,
     RoleId,
 } from "../core/scalars.ts";
-import { type Db, type DbFailure, execute, sql, type Tx, toTimestamptz } from "../db/pool.ts";
+import {
+    type Db,
+    type DbFailure,
+    execute,
+    queryOne,
+    sql,
+    type Tx,
+    toTimestamptz,
+} from "../db/pool.ts";
 import { type ReceiptRefusal, readReplay, recordReceipt, toOperationKey } from "../db/receipt.ts";
 import { withTx } from "../db/tx.ts";
 import type { ProductCatalog } from "../products/catalog.ts";
@@ -88,6 +96,18 @@ export async function bootstrapRootAccount(params: {
     const accountId = newAccountId(params.rng);
 
     return await withTx(params.db, async (tx, txNow) => {
+        // Checked first: with the root's own email or username, the insert below would trip
+        // that unique key before the single-root index and misreport a rerun as a conflict.
+        const rootRes = await queryOne(
+            tx,
+            z.object({ present: z.boolean() }),
+            sql`select exists (select 1 from account where is_root) as present`,
+        );
+        if (!rootRes.ok) return rootRes;
+        if (rootRes.value?.present === true) {
+            return err({ code: "ROOT_ALREADY_EXISTS" });
+        }
+
         const insertAcc = await execute(
             tx,
             sql`insert into account (id, email, username, is_root, created_at)

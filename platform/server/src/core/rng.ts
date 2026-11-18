@@ -6,6 +6,12 @@ export type SeededRng = CryptoRng & {
     readonly nextUint32: () => number;
 };
 
+// The one ambient source of randomness (ast-grep: ts-no-ambient-randomness); everything else
+// takes a CryptoRng.
+export const systemCryptoRng: CryptoRng = {
+    fillBytes: (target) => crypto.getRandomValues(target),
+};
+
 // Deterministic splitmix32 stream for tests and seeded format logic.
 export function createSeededRng(seed: number): SeededRng {
     let state = seed >>> 0;

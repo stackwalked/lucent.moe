@@ -1,2 +1,14 @@
 language: "typescript"
 layer: "application"
+
+tasks:
+  # The server against a persistent local cluster under .moon/cache/dev, migrated on start.
+  dev:
+    command: "bun dev/dev.ts"
+    preset: "server"
+  # Migrates the dev database and writes its root account (root@lucent.localhost).
+  seed:
+    command: "bun dev/seed.ts"
+    options:
+      cache: false
+      runInCI: false

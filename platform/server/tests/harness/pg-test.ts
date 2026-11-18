@@ -1,7 +1,7 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
-import { homedir } from "node:os";
+import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
+import { resolvePgBinary, WORKSPACE_ROOT } from "../../dev/postgres.ts";
 import {
     ignoreErrors,
     ignoreErrorsSync,
@@ -13,29 +13,7 @@ import { toHex } from "../../src/core/scalars.ts";
 import { migrateDatabase } from "../../src/db/migrate.ts";
 import { type Db, execute, openPool, queryOne, sql, sqlIdent } from "../../src/db/pool.ts";
 
-const WORKSPACE_ROOT = join(import.meta.dir, "../../../..");
 const PG_TEST_CACHE_DIR = join(WORKSPACE_ROOT, ".moon/cache/pg-test");
-
-// The binaries proto installed for `.prototools`' pin, never PATH: proto's shim there runs postgres
-// as a grandchild that outlives this process (holding its output open), and a system install
-// would silently stand in for the pinned version.
-function resolvePgBinary(name: "initdb" | "postgres" | "pg_ctl"): string {
-    const pins = readFileSync(join(WORKSPACE_ROOT, ".prototools"), "utf8");
-    const version = /^postgresql = "([^"]+)"$/m.exec(pins)?.[1];
-    invariant(version !== undefined, ".prototools pins no postgresql version");
-    const suffix = process.platform === "win32" ? ".exe" : "";
-    const binary = join(
-        homedir(),
-        ".proto",
-        "tools",
-        "postgresql",
-        version,
-        "bin",
-        `${name}${suffix}`,
-    );
-    invariant(existsSync(binary), `${binary} is missing; run \`proto install\` in the repo root`);
-    return binary;
-}
 
 function allocateEphemeralPort(): number {
     const listener = Bun.listen({

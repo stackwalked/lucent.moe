@@ -1,40 +1,48 @@
 import { expect, test } from "bun:test";
 import { invariant } from "../src/core/contain.ts";
-import { openEpochGuard } from "../src/db/epoch-guard.ts";
-import { type DbFailure, execute, sql } from "../src/db/pool.ts";
+import { claimServiceEpoch, openEpochGuard } from "../src/db/epoch-guard.ts";
+import type { DbFailure } from "../src/db/pool.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 
-test("the guard marks the process superseded once service.epoch changes", async () => {
+test("an instance is superseded once a later instance claims the next epoch", async () => {
     const cluster = await sharedTestCluster();
     await cluster.withTestDb(async ({ nativeDb }) => {
-        const guardRes = await openEpochGuard({
+        const first = await claimServiceEpoch(nativeDb);
+        invariant(first.ok, `claim failed: ${JSON.stringify(first)}`);
+        const guard = openEpochGuard({
             db: nativeDb,
+            ownEpoch: first.value,
             pollIntervalMs: 60_000,
             onReadFailure: () => {},
         });
-        invariant(guardRes.ok, `guard failed to open: ${JSON.stringify(guardRes)}`);
-        const guard = guardRes.value;
-        await execute(nativeDb, sql`update service set epoch = epoch + 1 where id = true`);
-        await guard.checkNow();
+        const isSupersededAlone = await guard.checkNow();
+
+        const second = await claimServiceEpoch(nativeDb);
+        const isSupersededAfter = await guard.checkNow();
         guard.close();
-        expect(guard.isSuperseded()).toBe(true);
+
+        expect(second.ok && second.value > first.value).toBe(true);
+        expect(isSupersededAlone).toBe(false);
+        expect(isSupersededAfter).toBe(true);
     });
 });
 
 test("a failed epoch read is reported and leaves the process serving", async () => {
     const cluster = await sharedTestCluster();
     await cluster.withTestDb(async ({ nativeDb }) => {
+        const claimed = await claimServiceEpoch(nativeDb);
+        invariant(claimed.ok, `claim failed: ${JSON.stringify(claimed)}`);
         const failures: DbFailure[] = [];
-        const guardRes = await openEpochGuard({
+        const guard = openEpochGuard({
             db: nativeDb,
+            ownEpoch: claimed.value,
             pollIntervalMs: 60_000,
             onReadFailure: (failure) => failures.push(failure),
         });
-        invariant(guardRes.ok, `guard failed to open: ${JSON.stringify(guardRes)}`);
-        const guard = guardRes.value;
         await nativeDb.close();
         await guard.checkNow();
         guard.close();
+
         expect(guard.isSuperseded()).toBe(false);
         expect(failures.map((failure) => failure.code)).toEqual(["DB_UNAVAILABLE"]);
     });
