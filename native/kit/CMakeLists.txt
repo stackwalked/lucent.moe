@@ -4,12 +4,11 @@ lucent_library(kit
         include/lucent/kit/lifecycle.hpp
         include/lucent/kit/session.hpp
         include/lucent/kit/session_message.hpp
-        include/lucent/kit/unique_handle.hpp
     SOURCES
         src/lifecycle.cpp
         src/session.cpp
         src/session_message.cpp
-        src/unique_handle.cpp
+    DEPS lucent::os
 )
 
 lucent_test(kit SOURCES tests/session_message_test.cpp)

@@ -10,7 +10,7 @@
 #include <lucent/kit/boot_info.hpp>
 #include <lucent/kit/session.hpp>
 #include <lucent/kit/session_message.hpp>
-#include <lucent/kit/unique_handle.hpp>
+#include <lucent/os/unique_handle.hpp>
 
 // The linker's symbol for this image's own base, which is its HMODULE. The name is the linker's.
 #pragma clang diagnostic push
@@ -48,8 +48,8 @@ auto wait_for_unload(session& channel) -> void {
 
 auto run(const boot_info& info) -> void {
     session channel{session_ends{
-        .inbound = unique_handle{info.from_host},
-        .outbound = unique_handle{info.to_host},
+        .inbound = os::unique_handle{info.from_host},
+        .outbound = os::unique_handle{info.to_host},
     }};
     report(channel, stage::boot);
     report(channel, stage::attach);
@@ -75,7 +75,9 @@ auto WINAPI lifecycle_main(void* parameter) -> DWORD {
 
 auto start(const boot_info& info) -> result<void> {
     auto owned = std::make_unique<boot_info>(info);
-    const unique_handle thread{CreateThread(nullptr, 0, &lifecycle_main, owned.get(), 0, nullptr)};
+    const os::unique_handle thread{
+        CreateThread(nullptr, 0, &lifecycle_main, owned.get(), 0, nullptr)
+    };
     if (!thread.is_valid()) {
         return std::unexpected(last_system_error());
     }

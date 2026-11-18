@@ -1,15 +1,15 @@
 #pragma once
 
 #include <lucent/kit/session_message.hpp>
-#include <lucent/kit/unique_handle.hpp>
+#include <lucent/os/unique_handle.hpp>
 
 namespace lucent::kit {
 
 // The two one-way pipes between host and module. One pipe per direction, because synchronous
 // I/O on a single handle is serialized: a blocked read would hold up every write.
 struct session_ends {
-    unique_handle inbound;
-    unique_handle outbound;
+    os::unique_handle inbound;
+    os::unique_handle outbound;
 };
 
 class session final {
@@ -23,8 +23,8 @@ public:
     auto receive() -> result<session_message>;
 
 private:
-    unique_handle m_inbound;
-    unique_handle m_outbound;
+    os::unique_handle m_inbound;
+    os::unique_handle m_outbound;
 };
 
 }
