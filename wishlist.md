@@ -209,7 +209,35 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
     draw calls, records, passes, atlas evictions, stale-handle misses;
   - the glue draws only on the swapchain whose `OutputWindow` is the game's main window; whether to
     hook `Present1` too is a per-game call.
-- Still to decide for rendering: layout and widgets, animation and theme, testing.
+- Layout and widgets:
+  - each frame code declares a tree of elements (boxes with layout properties; text, icon and
+    custom-draw leaves); layout runs (widths bottom-up as fixed, fit, grow or percent with min and
+    max, text wrapped at final width, then heights and positions); then the tree records draw
+    lists. Measuring and drawing come from one declaration. Children are given as lambdas
+    (`function_ref`), so a scope can't be left open;
+  - layout: row or column, padding, gap, main and cross alignment, wrapping text with ellipsis,
+    absolute and anchored placement; flex-wrap of boxes when needed;
+  - IDs from a stack (parent plus local key); literal keys hashed `consteval`; settings rows key on
+    the setting's path, lists on their items. Per-ID state (animation, scroll, edit buffers) lives
+    in the frame's context, dropped after a few unseen frames. Hit-testing during declaration uses
+    each ID's rect from the previous frame, so hover is only stale in a frame where layout moves;
+  - windows, popups and tooltips are roots in a z-ordered stack; input goes to the topmost root
+    under the cursor; Escape closes the top popup; popups anchor to an element by ID and nest;
+  - scroll containers clip, scroll smoothly, have a draggable rail, and take the wheel when topmost
+    under the cursor;
+  - text fields, single and multi-line: mouse caret, selection, word jumps, clipboard through a
+    glue-provided interface, undo. The input snapshot carries IME composition events; the glue
+    feeds them from `WM_IME_*` when the first field needs it;
+  - focus is an ID; tab order is declaration order; arrows in lists, Enter or Space activates;
+  - the glue's window-procedure subclass builds one input snapshot per frame (cursor, buttons with
+    click counts, wheel, keys pressed, released and repeated, UTF-8 text, modifiers, the injected
+    clock); the UI reports whether it wants the mouse and keyboard, and the glue keeps those from
+    the game. Given snapshots, the UI is deterministic and tested without a GPU;
+  - the UI edits settings through the settings store, never feature state; changes reach the game
+    thread at a safe point;
+  - the menu is generated from settings' `describe()`; hand-written UI is for HUD windows and
+    bespoke pages.
+- Still to decide for rendering: animation and theme, testing.
 - Lease client: verify, renew, lapse, and feed entitlements to the registry.
 - Dev channel, stats and incident sink, compiled out of release (enforced in CMake).
 - An injectable clock.
