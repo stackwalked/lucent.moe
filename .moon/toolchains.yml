@@ -1,0 +1,4 @@
+# moon otherwise runs tasks under its bundled proto (0.62.2), whose shims can't resolve the LLVM
+# plugin's secondary binaries (clang-format, clang-tidy). Keep it at the proto that installed them.
+proto:
+  version: "0.64.0"

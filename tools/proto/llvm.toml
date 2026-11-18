@@ -32,17 +32,17 @@ x64 = "x86_64"
 
 # clang-cl is primary: it is the compiler driver the build invokes.
 [locate.exes.clang-cl]
-exe_path = "bin/clang-cl"
+exe_path = "bin/clang-cl.exe"
 primary = true
 
 [locate.exes.lld-link]
-exe_path = "bin/lld-link"
+exe_path = "bin/lld-link.exe"
 
 [locate.exes.clang-format]
-exe_path = "bin/clang-format"
+exe_path = "bin/clang-format.exe"
 
 [locate.exes.clang-tidy]
-exe_path = "bin/clang-tidy"
+exe_path = "bin/clang-tidy.exe"
 
 [locate.exes.clangd]
-exe_path = "bin/clangd"
+exe_path = "bin/clangd.exe"
