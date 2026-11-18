@@ -237,7 +237,21 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
     thread at a safe point;
   - the menu is generated from settings' `describe()`; hand-written UI is for HUD windows and
     bespoke pages.
-- Still to decide for rendering: animation and theme, testing.
+- Theme and animation:
+  - `derive_theme(inputs) -> theme` is pure, rerun only when an input changes (accent, preset,
+    scale, reduced motion, sampled backdrop light), and its result published. Tokens: colour roles
+    (surface, raised, ink, muted ink, accent, danger, focus), spacing and radius scales, type roles
+    (body, caption, title, numeric), elevation, two materials, motion. Widgets read tokens, never
+    literals (a review rule; a lint would guess);
+  - glass (blur, tint, grain, rim, scene-adaptive ink) for the menu; plate (solid, shadow, no pass)
+    for HUD windows, since glass over a bright scene reads as a mid-tone slab. Presets are token
+    sets;
+  - motion primitives on the input snapshot's clock (delta clamped), state per ID: approach
+    (exponential), spring (critically damped, velocity-preserving, fixed substeps), tween (duration
+    and easing), presence (0 to 1 on enter, back on exit, the caller declaring until it reaches 0);
+  - reduced motion zeroes every duration and snaps every spring;
+  - animated reflow waits until something needs it.
+- Still to decide for rendering: testing.
 - Lease client: verify, renew, lapse, and feed entitlements to the registry.
 - Dev channel, stats and incident sink, compiled out of release (enforced in CMake).
 - An injectable clock.
