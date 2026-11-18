@@ -1,8 +1,13 @@
 #pragma once
 
+#include <optional>
+
 #include <lucent/draw/rect.hpp>
 
 namespace lucent::draw {
+
+// Names a layer's sampled light, so the backend's readback can say which layer a value came from.
+enum class light_key : u32 {};
 
 // A surface: the draws inside it composite as one over what is already there, clipped to bounds
 // and masked to radius (a rounded clip is a layer). Only blur and opacity below one cost the
@@ -19,9 +24,9 @@ struct layer {
     // A band this wide along the edge where the backdrop is sampled from a little outside it, the
     // way a bevel bends light. Needs blur.
     f32 rim = 0.0F;
-    // The blurred backdrop is averaged now and then for the theme to read as the light behind the
-    // layer. Needs blur.
-    bool should_sample_light = false;
+    // When set, the blurred backdrop is averaged now and then and reported under this key, for the
+    // theme to read as the light behind the layer. Needs blur.
+    std::optional<light_key> light = std::nullopt;
 };
 
 }

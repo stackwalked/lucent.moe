@@ -5,6 +5,7 @@
 #include <cmath>
 #include <expected>
 #include <span>
+#include <utility>
 
 #include <lucent/core/match.hpp>
 #include <lucent/core/narrow.hpp>
@@ -13,6 +14,8 @@
 #include <lucent/draw/layer.hpp>
 #include <lucent/draw/path_vertex.hpp>
 #include <lucent/draw/quad_record.hpp>
+
+#include "lucent/draw/glyph_run.hpp"
 
 namespace lucent::draw {
 namespace {
@@ -43,6 +46,14 @@ auto is_length(u16 half) -> bool {
     return is_finite_half(half) && (half & 0x8000U) == 0;
 }
 
+// An atlas record names a page the texture array has.
+auto is_valid_page(const quad_record& record) -> bool {
+    const auto kinds = unpack_kinds(record.style[2]);
+    return kinds.has_value()
+           && (kinds->quad != quad_kind::atlas
+               || std::to_underlying(kinds->page) < atlas_page_count);
+}
+
 auto is_valid(const quad_record& record) -> bool {
     const u16 softness = narrow<u16>(record.style[3] & 0xffffU);
     const u16 stroke = narrow<u16>(record.style[3] >> 16U);
@@ -51,7 +62,8 @@ auto is_valid(const quad_record& record) -> bool {
            && is_finite(record.gradient)
            && unpack_kinds(record.style[2]).has_value()
            && is_length(softness)
-           && is_length(stroke);
+           && is_length(stroke)
+           && is_valid_page(record);
 }
 
 auto is_image(const quad_record& record) -> bool {
@@ -79,7 +91,8 @@ auto is_valid(const layer& surface) -> bool {
            && surface.blur >= 0.0F
            && surface.blur <= draw_list::max_layer_blur
            && surface.rim >= 0.0F
-           && (surface.rim <= 0.0F || surface.blur > 0.0F);
+           && (surface.rim <= 0.0F || surface.blur > 0.0F)
+           && (!surface.light.has_value() || surface.blur > 0.0F);
 }
 
 // Walks the commands in order, keeping the layer depth.

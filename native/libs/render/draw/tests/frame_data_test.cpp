@@ -1,6 +1,5 @@
 #include <lucent/draw/frame_data.hpp>
 
-#include <array>
 #include <expected>
 #include <limits>
 #include <optional>
@@ -15,6 +14,7 @@
 #include <lucent/draw/path_vertex.hpp>
 #include <lucent/draw/quad_record.hpp>
 
+#include "lucent/draw/glyph_run.hpp"
 #include "lucent/draw/rect.hpp"
 
 // check() is the backend's only defence against a bad frame reaching the GPU, which would draw
@@ -190,6 +190,26 @@ TEST_CASE("a negative softness or stroke width is refused") {
     }
     SECTION("stroke") {
         parts.records.front().style[3] = u32{to_half(-1.0F)} << 16U;
+    }
+    CHECK(check(frame_of(parts)) == std::unexpected(malformed));
+}
+
+TEST_CASE("an atlas page past the array, or a light key with no blur, is refused") {
+    frame_parts parts;
+    SECTION("atlas page") {
+        parts.records.front().style[2] =
+            pack(record_kinds{.quad = quad_kind::atlas, .page = atlas_page{atlas_page_count}});
+    }
+    SECTION("light without blur") {
+        const layer surface{
+            .bounds = box_at_origin,
+            .radius = 0.0F,
+            .opacity = 1.0F,
+            .blur = 0.0F,
+            .rim = 0.0F,
+            .light = light_key{1},
+        };
+        parts.commands = {layer_begin{.surface = surface, .clip = whole}, layer_end{}};
     }
     CHECK(check(frame_of(parts)) == std::unexpected(malformed));
 }

@@ -273,7 +273,7 @@ auto draw_list::push_layer(const layer& surface) -> void {
         .blur = std::clamp(surface.blur * m_scale, 0.0F, max_layer_blur),
         // The rim bends the blurred backdrop, so without a blur there is nothing to bend.
         .rim = surface.blur > 0.0F ? std::max(0.0F, surface.rim * m_scale) : 0.0F,
-        .should_sample_light = surface.should_sample_light,
+        .light = surface.blur > 0.0F ? surface.light : std::nullopt,
     };
     m_commands.emplace_back(layer_begin{.surface = in_pixels, .clip = clip()});
     m_layers.push_back(std::ssize(m_clips));
