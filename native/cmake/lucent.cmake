@@ -211,3 +211,54 @@ function(lucent_fixture name fixture)
         PRIVATE "LUCENT_FIXTURE_${macro_suffix}=\"$<TARGET_FILE:${target}>\""
     )
 endfunction()
+
+# lucent_shaders(<name> SHADERS <file>:<profile>... [INCLUDES <dirs>...] [DEPENDS <files>...])
+#
+# Compiles each HLSL file under src/shaders/ with the SDK's fxc at build time (D3D11 needs DXBC;
+# no runtime compiler) into <file stem>.hpp in the build tree: a constexpr std::array of its
+# bytecode in lucent::<name>::shaders, named after the stem. Dev builds keep debug info and skip
+# optimization; release optimizes and strips reflection and debug info. DEPENDS lists the headers
+# the shaders include, since fxc reports none.
+function(lucent_shaders name)
+    cmake_parse_arguments(PARSE_ARGV 1 arg "" "" "SHADERS;INCLUDES;DEPENDS")
+    set(fxc "${lucent_sdk_root}/bin/${lucent_sdk_version}/x64/fxc.exe")
+    if(NOT EXISTS "${fxc}")
+        message(FATAL_ERROR "no fxc.exe at ${fxc}")
+    endif()
+    set(generated "${CMAKE_CURRENT_BINARY_DIR}/shaders")
+    set(include_flags "")
+    foreach(directory IN LISTS arg_INCLUDES)
+        list(APPEND include_flags /I "${directory}")
+    endforeach()
+    set(headers "")
+    foreach(shader IN LISTS arg_SHADERS)
+        string(REPLACE ":" ";" parts "${shader}")
+        list(GET parts 0 file)
+        list(GET parts 1 profile)
+        cmake_path(GET file STEM stem)
+        set(source "${CMAKE_CURRENT_SOURCE_DIR}/src/shaders/${file}")
+        set(bytecode "${generated}/${stem}.cso")
+        set(header "${generated}/lucent/${name}/shaders/${stem}.hpp")
+        add_custom_command(
+            OUTPUT "${header}"
+            COMMAND "${CMAKE_COMMAND}" -E make_directory "${generated}/lucent/${name}/shaders"
+            COMMAND
+                "${fxc}" /nologo /WX /Ges /T ${profile} /E main ${include_flags}
+                "$<IF:$<CONFIG:Debug>,/Zi;/Od,/O3;/Qstrip_reflect;/Qstrip_debug>" /Fo "${bytecode}"
+                "${source}"
+            COMMAND
+                "${CMAKE_COMMAND}" "-DBYTECODE=${bytecode}" "-DHEADER=${header}"
+                "-DNAMESPACE=lucent::${name}::shaders" "-DVARIABLE=${stem}" "-DSOURCE=${file}" -P
+                "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/embed_shader.cmake"
+            DEPENDS
+                "${source}"
+                ${arg_DEPENDS}
+                "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/embed_shader.cmake"
+            COMMAND_EXPAND_LISTS
+            VERBATIM
+        )
+        list(APPEND headers "${header}")
+    endforeach()
+    target_sources(lucent_${name} PRIVATE ${headers})
+    target_include_directories(lucent_${name} PRIVATE "${generated}")
+endfunction()
