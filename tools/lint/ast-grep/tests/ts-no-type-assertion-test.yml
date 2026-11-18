@@ -1,0 +1,16 @@
+id: ts-no-type-assertion
+valid:
+  - "const roles = ['a', 'b'] as const;"
+  - "const roles = <const>['a', 'b'];"
+  - "import { foo as bar } from './foo.ts';"
+invalid:
+  - "const x = raw as Account;"
+  - "const y = value as unknown as number;"
+  - "const z = <Account>raw;"
+---
+id: ts-no-type-assertion-tsx
+valid:
+  - "const roles = ['a', 'b'] as const;"
+  - "export const View = () => <Account raw={raw} />;"
+invalid:
+  - "export const View = () => <p>{(raw as Account).name}</p>;"

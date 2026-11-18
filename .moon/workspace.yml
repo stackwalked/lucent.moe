@@ -1,6 +1,7 @@
 projects:
   globs:
     - "tools/*/moon.yml"
+    - "platform/*/moon.yml"
     - "native/moon.yml"
     - "native/*/moon.yml"
     - "native/libs/*/moon.yml"

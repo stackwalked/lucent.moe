@@ -1,0 +1,13 @@
+id: ts-no-ambient-env
+valid:
+  - "export function readPort(config: { readonly port: number }): number { return config.port; }"
+invalid:
+  - "const url = process.env.DATABASE_URL;"
+  - "const key = Bun.env.SECRET;"
+---
+id: ts-no-ambient-env-tsx
+valid:
+  - "export const View = ({ port }: { port: number }) => <p>{port}</p>;"
+invalid:
+  - "export const View = () => <p>{process.env.DATABASE_URL}</p>;"
+  - "export const View = () => <p>{Bun.env.SECRET}</p>;"

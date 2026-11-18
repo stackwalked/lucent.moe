@@ -1,0 +1,23 @@
+inheritedBy:
+  languages: ["typescript", "javascript"]
+
+# Biome owns formatting and import order for TS, JS and CSS; `biome ci` checks both with lint.
+# Root config and pins are inputs, or a stricter rule would be hidden behind a cached pass.
+implicitInputs:
+  - "/.biome.jsonc"
+  - "/.config/tsconfig.base.json"
+  - "/bun.lock"
+
+tasks:
+  lint:
+    command: "bun biome ci ."
+  typecheck:
+    command: "bun tsc --noEmit -p ."
+  test:
+    command: "bun test"
+  check:
+    deps: ["~:lint", "~:typecheck", "~:test"]
+  fix:
+    command: "bun biome check --write ."
+    options:
+      cache: false

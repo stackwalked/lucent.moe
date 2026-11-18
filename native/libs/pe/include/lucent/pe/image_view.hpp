@@ -92,4 +92,8 @@ private:
     std::array<directory, 16> m_directories{};
 };
 
+// The image as a loader lays it out before relocating it: headers and sections at their RVAs,
+// zeros elsewhere, so an offset from the base indexes the bytes directly.
+auto to_mapped_layout(const image_view& image) -> result<std::vector<std::byte>>;
+
 }

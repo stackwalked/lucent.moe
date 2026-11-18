@@ -1,0 +1,29 @@
+# ast-grep runs a rule over one language, so each rule here comes twice: TypeScript for .ts and
+# .mts, Tsx for .tsx. Keep both documents in step.
+id: ts-contain-only
+language: TypeScript
+severity: error
+message: "throw, try/catch and .catch() belong only in core/contain.ts (or web's route-control.ts): return Result<T, E> or call invariant()"
+files:
+  - "**/*.ts"
+  - "**/*.mts"
+rule:
+  any:
+    - kind: throw_statement
+    - kind: try_statement
+    - pattern: "$P.catch($$$)"
+ignores:
+  - "**/core/contain.ts"
+  - "**/web/src/server/route-control.ts"
+---
+id: ts-contain-only-tsx
+language: Tsx
+severity: error
+message: "throw, try/catch and .catch() belong only in core/contain.ts (or web's route-control.ts): return Result<T, E> or call invariant()"
+files:
+  - "**/*.tsx"
+rule:
+  any:
+    - kind: throw_statement
+    - kind: try_statement
+    - pattern: "$P.catch($$$)"

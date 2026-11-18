@@ -1,0 +1,17 @@
+id: ts-no-ambient-effects
+valid:
+  - "const bytes = new Uint8Array(16);"
+  - "const now = clock();"
+invalid:
+  - "const t = Date.now();"
+  - "const d = new Date();"
+  - "const i = Temporal.Now.instant();"
+  - "const b = Buffer.from('ab');"
+---
+id: ts-no-ambient-effects-tsx
+valid:
+  - "export const View = ({ now }: { now: number }) => <time>{now}</time>;"
+invalid:
+  - "export const View = () => <time>{Date.now()}</time>;"
+  - "export const View = () => <time>{new Date().toISOString()}</time>;"
+  - "export const View = () => <p>{Buffer.from('ab').length}</p>;"

@@ -1,0 +1,25 @@
+id: ts-no-get-prefix
+language: TypeScript
+severity: error
+message: "in-memory queries are nouns without get; fallible or DB reads use findX (X | null) or readX (Result<X, E>)"
+files:
+  - "**/*.ts"
+  - "**/*.mts"
+rule:
+  any:
+    - kind: function_declaration
+      has:
+        field: name
+        regex: ^get[A-Z0-9_]
+    - kind: variable_declarator
+      has:
+        field: name
+        regex: ^get[A-Z0-9_]
+      all:
+        - has:
+            field: value
+            any:
+              - kind: arrow_function
+              - kind: function_expression
+ignores:
+  - "**/foreign/**"

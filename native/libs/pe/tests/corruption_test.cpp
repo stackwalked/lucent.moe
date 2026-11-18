@@ -17,6 +17,7 @@
 #include <lucent/pe/image_view.hpp>
 #include <lucent/pe/imports.hpp>
 #include <lucent/pe/relocations.hpp>
+#include <lucent/pe/runtime_functions.hpp>
 #include <lucent/pe/tls.hpp>
 
 #include "images.hpp"
@@ -127,6 +128,7 @@ TEST_CASE("corrupted images fail cleanly, never by reading outside the input") {
         std::ignore = imports_of(*parsed);
         std::ignore = export_table::from_image(*parsed);
         std::ignore = tls_of(*parsed);
+        std::ignore = runtime_functions_of(*parsed);
         for (const section& stored : parsed->sections()) {
             std::ignore = parsed->contents_of(stored);
         }

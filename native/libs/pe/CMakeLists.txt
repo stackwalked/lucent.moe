@@ -4,12 +4,14 @@ lucent_library(pe
         include/lucent/pe/image_view.hpp
         include/lucent/pe/imports.hpp
         include/lucent/pe/relocations.hpp
+        include/lucent/pe/runtime_functions.hpp
         include/lucent/pe/tls.hpp
     SOURCES
         src/exports.cpp
         src/image_view.cpp
         src/imports.cpp
         src/relocations.cpp
+        src/runtime_functions.cpp
         src/tls.cpp
 )
 

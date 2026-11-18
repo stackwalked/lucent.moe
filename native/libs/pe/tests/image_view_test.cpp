@@ -21,6 +21,7 @@
 #include <lucent/pe/exports.hpp>
 #include <lucent/pe/imports.hpp>
 #include <lucent/pe/relocations.hpp>
+#include <lucent/pe/runtime_functions.hpp>
 #include <lucent/pe/tls.hpp>
 
 #include "images.hpp"
@@ -136,6 +137,33 @@ TEST_CASE("an image without a TLS directory reports none") {
     const image_view kernel32 =
         required(image_view::parse(loaded_image(L"kernel32.dll"), layout::mapped));
     CHECK_FALSE(required(tls_of(kernel32)).has_value());
+}
+
+TEST_CASE("a file laid out as mapped reads the exception table the loader mapped") {
+    const std::vector<std::byte> file = required(os::read_file(own_path()));
+    const std::vector<std::byte> mapped =
+        required(to_mapped_layout(required(image_view::parse(file, layout::file))));
+    const image_view from_file = required(image_view::parse(mapped, layout::mapped));
+    const image_view loaded = required(image_view::parse(loaded_image(L""), layout::mapped));
+
+    const std::vector<runtime_function> functions = required(runtime_functions_of(from_file));
+    CHECK_FALSE(functions.empty());
+    // .pdata holds only RVAs, so relocation leaves the loader's copy byte-identical.
+    CHECK(functions == required(runtime_functions_of(loaded)));
+}
+
+TEST_CASE("the unwinder finds this image's code in the entry the exception table lists for it") {
+    const std::vector<runtime_function> functions = required(
+        runtime_functions_of(required(image_view::parse(loaded_image(L""), layout::mapped)))
+    );
+    DWORD64 base = 0;
+    const RUNTIME_FUNCTION* const found =
+        RtlLookupFunctionEntry(std::bit_cast<uptr>(&own_path), &base, nullptr);
+    REQUIRE(found != nullptr);
+
+    CHECK(std::ranges::any_of(functions, [&](const runtime_function& entry) {
+        return entry.begin == found->BeginAddress && entry.end == found->EndAddress;
+    }));
 }
 
 }

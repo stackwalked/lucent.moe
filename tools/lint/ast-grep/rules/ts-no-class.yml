@@ -1,0 +1,25 @@
+# One document per language (TypeScript for .ts and .mts, Tsx for .tsx); keep both in step.
+id: ts-no-class
+language: TypeScript
+severity: error
+message: "classes are banned: use plain readonly types with free functions, or closure factories (openX/createX) for stateful handles"
+files:
+  - "**/*.ts"
+  - "**/*.mts"
+rule:
+  any:
+    - kind: class_declaration
+    - kind: abstract_class_declaration
+    - kind: class
+---
+id: ts-no-class-tsx
+language: Tsx
+severity: error
+message: "classes are banned: use plain readonly types with free functions, or closure factories (openX/createX) for stateful handles"
+files:
+  - "**/*.tsx"
+rule:
+  any:
+    - kind: class_declaration
+    - kind: abstract_class_declaration
+    - kind: class

@@ -1,0 +1,11 @@
+id: ts-no-mock-module
+valid:
+  - "const sendMail = async () => ({ ok: true as const, value: undefined });"
+invalid:
+  - "mock.module('./db.ts', () => ({}));"
+---
+id: ts-no-mock-module-tsx
+valid:
+  - "export const View = () => <p>module</p>;"
+invalid:
+  - "mock.module('./view.tsx', () => ({ View: () => <p /> }));"

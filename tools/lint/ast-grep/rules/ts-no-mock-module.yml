@@ -1,0 +1,19 @@
+# One document per language (TypeScript for .ts and .mts, Tsx for .tsx); keep both in step.
+id: ts-no-mock-module
+language: TypeScript
+severity: error
+message: "mock.module is banned: test against real dependencies and inject external adapters via parameters"
+files:
+  - "**/*.ts"
+  - "**/*.mts"
+rule:
+  pattern: "mock.module($$$)"
+---
+id: ts-no-mock-module-tsx
+language: Tsx
+severity: error
+message: "mock.module is banned: test against real dependencies and inject external adapters via parameters"
+files:
+  - "**/*.tsx"
+rule:
+  pattern: "mock.module($$$)"

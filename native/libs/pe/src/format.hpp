@@ -119,6 +119,12 @@ struct raw_relocation_block {
     u32 block_size;
 };
 
+struct raw_runtime_function {
+    u32 begin;
+    u32 end;
+    u32 unwind_info;
+};
+
 static_assert(sizeof(raw_file_header) == 20, "IMAGE_FILE_HEADER is 20 bytes");
 static_assert(
     sizeof(raw_optional_header) == 112,
@@ -134,6 +140,9 @@ static_assert(sizeof(raw_export_directory) == 40, "IMAGE_EXPORT_DIRECTORY is 40 
 static_assert(sizeof(raw_import_descriptor) == 20, "IMAGE_IMPORT_DESCRIPTOR is 20 bytes");
 static_assert(sizeof(raw_tls_directory) == 40, "IMAGE_TLS_DIRECTORY64 is 40 bytes");
 static_assert(sizeof(raw_relocation_block) == 8, "IMAGE_BASE_RELOCATION is 8 bytes");
+static_assert(
+    sizeof(raw_runtime_function) == 12, "IMAGE_RUNTIME_FUNCTION_ENTRY is 12 bytes on x64"
+);
 
 inline constexpr error malformed{.code = error_code::malformed};
 

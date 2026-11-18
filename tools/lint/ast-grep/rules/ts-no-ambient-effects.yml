@@ -1,0 +1,29 @@
+# One document per language (TypeScript for .ts and .mts, Tsx for .tsx); keep both in step.
+id: ts-no-ambient-effects
+language: TypeScript
+severity: error
+message: "ambient clock and Node Buffer are banned: take time as a parameter and use Uint8Array"
+files:
+  - "**/*.ts"
+  - "**/*.mts"
+rule:
+  any:
+    - pattern: "Date.now($$$)"
+    - pattern: "new Date($$$)"
+    - pattern: "Temporal.Now"
+    - kind: identifier
+      regex: ^Buffer$
+---
+id: ts-no-ambient-effects-tsx
+language: Tsx
+severity: error
+message: "ambient clock and Node Buffer are banned: take time as a parameter and use Uint8Array"
+files:
+  - "**/*.tsx"
+rule:
+  any:
+    - pattern: "Date.now($$$)"
+    - pattern: "new Date($$$)"
+    - pattern: "Temporal.Now"
+    - kind: identifier
+      regex: ^Buffer$

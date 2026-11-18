@@ -1,0 +1,33 @@
+# One document per language (TypeScript for .ts and .mts, Tsx for .tsx); keep both in step. The
+# angle-bracket form `<T>x` exists only in TypeScript; in Tsx it parses as JSX.
+id: ts-no-type-assertion
+language: TypeScript
+severity: error
+message: "type assertions (as T, <T>x) bypass parsing: parse at the boundary with Zod, or keep low-level casts inside core/ or db/"
+files:
+  - "**/*.ts"
+  - "**/*.mts"
+rule:
+  any:
+    - kind: as_expression
+      not:
+        regex: \bas\s+const$
+    - kind: type_assertion
+      not:
+        has:
+          kind: type_arguments
+          regex: ^<const>$
+ignores:
+  - "**/core/**"
+  - "**/db/**"
+---
+id: ts-no-type-assertion-tsx
+language: Tsx
+severity: error
+message: "type assertions (as T) bypass parsing: parse at the boundary with Zod"
+files:
+  - "**/*.tsx"
+rule:
+  kind: as_expression
+  not:
+    regex: \bas\s+const$

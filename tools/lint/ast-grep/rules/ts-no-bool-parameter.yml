@@ -1,0 +1,22 @@
+id: ts-no-bool-parameter
+language: TypeScript
+severity: error
+message: "a boolean parameter hides meaning at the call site: use two functions or a named union/options field"
+files:
+  - "**/*.ts"
+  - "**/*.mts"
+rule:
+  any:
+    - kind: required_parameter
+    - kind: optional_parameter
+  has:
+    field: type
+    regex: ^:\s*boolean$
+  inside:
+    kind: formal_parameters
+    inside:
+      any:
+        - kind: function_declaration
+        - kind: arrow_function
+        - kind: function_expression
+        - kind: method_definition

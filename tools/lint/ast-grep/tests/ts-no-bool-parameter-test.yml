@@ -1,0 +1,7 @@
+id: ts-no-bool-parameter
+valid:
+  - "export function setMode(mode: 'on' | 'off'): void {}"
+  - "export type Options = { readonly active: boolean };"
+invalid:
+  - "export function setFlag(active: boolean): void {}"
+  - "const toggle = (enabled?: boolean) => enabled;"

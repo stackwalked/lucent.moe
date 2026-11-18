@@ -4,5 +4,8 @@
 # moon regenerates these from vcs.hooks
 .moon/hooks
 
+# bun
+node_modules
+
 # uv
 .venv

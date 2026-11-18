@@ -14,12 +14,26 @@ spec = "23.1.5"
 version = "23.1.5"
 checksum = "sha256:62fdada7f6fa2b73856486dfbbdba3d2c1882991621615bcb55c60207611c6d4"
 
+[[tools.postgresql]]
+os = "windows"
+arch = "x64"
+spec = "18.7.0"
+version = "18.7.0"
+checksum = "sha256:64948bd862b2f9c253067d3476e971b8b31291376fb004c5c7d5d016509401f7"
+
 [[tools.proto]]
 os = "windows"
 arch = "x64"
 spec = "0.62.2"
 version = "0.62.2"
 checksum = "sha256:48975ccff8ac882abab325149e00d32740c22c5100f68e6c3d0241fba5b8e1ac"
+
+[[tools.proto]]
+os = "windows"
+arch = "x64"
+spec = "0.64.0"
+version = "0.64.0"
+checksum = "sha256:1ce776214bbab4e1f4396c196bdebdf4aaff3b6d290d1785963818e5ffeadc58"
 
 [[tools.stylua]]
 os = "windows"

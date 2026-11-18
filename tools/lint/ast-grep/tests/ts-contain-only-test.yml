@@ -1,0 +1,15 @@
+id: ts-contain-only
+valid:
+  - "export const f = () => ({ ok: true, value: 1 });"
+invalid:
+  - "function f() { throw new Error('boom'); }"
+  - "function f() { try { g(); } catch {} }"
+  - "promise.catch(() => {});"
+---
+id: ts-contain-only-tsx
+valid:
+  - "export const View = () => <p className=\"x\">{label}</p>;"
+invalid:
+  - "export const View = () => { throw new Error('boom'); return <p />; };"
+  - "export const View = () => { try { g(); } catch {} return <p />; };"
+  - "export const View = () => <p>{promise.catch(() => {})}</p>;"

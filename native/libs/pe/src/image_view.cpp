@@ -218,4 +218,14 @@ auto image_view::string_at(u32 rva) const -> result<std::string> {
     return std::unexpected(detail::malformed);
 }
 
+auto to_mapped_layout(const image_view& image) -> result<std::vector<std::byte>> {
+    std::vector<std::byte> mapped(image.size_of_image());
+    std::ranges::copy(image.headers(), mapped.begin());
+    for (const section& stored : image.sections()) {
+        const std::span<const std::byte> contents = LUCENT_TRY(image.contents_of(stored));
+        std::ranges::copy(contents, mapped.begin() + stored.virtual_address);
+    }
+    return mapped;
+}
+
 }

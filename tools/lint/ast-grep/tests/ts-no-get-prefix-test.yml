@@ -1,0 +1,8 @@
+id: ts-no-get-prefix
+valid:
+  - "export function accountId(): string { return 'x'; }"
+  - "export const findAccount = () => null;"
+  - "const getaway = 1;"
+invalid:
+  - "export function getAccount() { return null; }"
+  - "export const getRoles = () => [];"

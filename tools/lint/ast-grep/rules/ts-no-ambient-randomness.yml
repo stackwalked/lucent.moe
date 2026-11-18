@@ -1,0 +1,36 @@
+# One document per language (TypeScript for .ts and .mts, Tsx for .tsx); keep both in step.
+# Matches the names, not calls, so passing `crypto.getRandomValues` along is caught too.
+id: ts-no-ambient-randomness
+language: TypeScript
+severity: error
+message: "ambient randomness is banned outside core/rng.ts: take a CryptoRng or SeededRng parameter"
+files:
+  - "**/*.ts"
+  - "**/*.mts"
+rule:
+  any:
+    - pattern: "Math.random"
+    - kind: identifier
+      regex: ^(getRandomValues|randomUUID|randomUUIDv7|randomBytes|randomFill|randomFillSync|randomInt)$
+    - kind: property_identifier
+      regex: ^(getRandomValues|randomUUID|randomUUIDv7|randomBytes|randomFill|randomFillSync|randomInt)$
+      inside:
+        kind: member_expression
+ignores:
+  - "**/core/rng.ts"
+---
+id: ts-no-ambient-randomness-tsx
+language: Tsx
+severity: error
+message: "ambient randomness is banned outside core/rng.ts: take a CryptoRng or SeededRng parameter"
+files:
+  - "**/*.tsx"
+rule:
+  any:
+    - pattern: "Math.random"
+    - kind: identifier
+      regex: ^(getRandomValues|randomUUID|randomUUIDv7|randomBytes|randomFill|randomFillSync|randomInt)$
+    - kind: property_identifier
+      regex: ^(getRandomValues|randomUUID|randomUUIDv7|randomBytes|randomFill|randomFillSync|randomInt)$
+      inside:
+        kind: member_expression

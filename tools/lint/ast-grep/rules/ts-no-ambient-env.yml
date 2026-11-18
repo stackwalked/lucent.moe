@@ -1,0 +1,27 @@
+# One document per language (TypeScript for .ts and .mts, Tsx for .tsx); keep both in step.
+id: ts-no-ambient-env
+language: TypeScript
+severity: error
+message: "read environment variables once in config.ts and pass typed Config values"
+files:
+  - "**/*.ts"
+  - "**/*.mts"
+rule:
+  any:
+    - pattern: "process.env"
+    - pattern: "Bun.env"
+ignores:
+  - "**/config.ts"
+  - "**/*.config.ts"
+  - "**/*.config.mts"
+---
+id: ts-no-ambient-env-tsx
+language: Tsx
+severity: error
+message: "read environment variables once in config.ts and pass typed Config values"
+files:
+  - "**/*.tsx"
+rule:
+  any:
+    - pattern: "process.env"
+    - pattern: "Bun.env"

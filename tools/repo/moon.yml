@@ -12,13 +12,32 @@ tasks:
   # native/.clang-format, so a cached pass could hide a stricter rule.
   format:
     command: "dprint check --incremental=false"
-    inputs: ["/**/*"]
+    inputs: ["/**/*", "!/**/node_modules/**/*", "!/**/node_modules/*"]
   suppressions:
     command: "uv run tools/lint/suppressions.py"
-    inputs: ["/**/*"]
+    inputs: ["/**/*", "!/**/node_modules/**/*", "!/**/node_modules/*"]
   ast-grep:
-    command: "uv run --frozen ast-grep scan --config tools/lint/ast-grep/sgconfig.yml native"
-    inputs: ["/native/**/*", "/tools/lint/ast-grep/**/*", "/uv.lock"]
+    command: "uv run --frozen ast-grep scan --config tools/lint/ast-grep/sgconfig.yml native platform"
+    inputs:
+      - "/native/**/*"
+      - "/platform/**/*"
+      - "/tools/lint/ast-grep/**/*"
+      - "/uv.lock"
+      - "!/**/node_modules/**/*"
+      - "!/**/node_modules/*"
+  # The roots mirror ts_hygiene.py's TS_ROOTS; one left out lets a cached pass hide a violation.
+  ts-hygiene:
+    command: "uv run tools/lint/ts_hygiene.py"
+    inputs:
+      - "/**/package.json"
+      - "/contracts/**/*"
+      - "/platform/**/*"
+      - "/products/**/*"
+      - "/web/**/*"
+      - "/tools/lint/ts_hygiene.py"
+      - "/uv.lock"
+      - "!/**/node_modules/**/*"
+      - "!/**/node_modules/*"
   commit-msg:
     command: "uv run tools/lint/commit_msg.py"
     options:
@@ -27,8 +46,8 @@ tasks:
   # A deps-only task still needs inputs: moon decides "affected" from the requested
   # target's own inputs, not its deps'.
   check:
-    inputs: ["/**/*"]
-    deps: ["~:format", "~:suppressions", "~:ast-grep"]
+    inputs: ["/**/*", "!/**/node_modules/**/*", "!/**/node_modules/*"]
+    deps: ["~:format", "~:suppressions", "~:ast-grep", "~:ts-hygiene"]
   fix:
     command: "dprint fmt --incremental=false"
     options:

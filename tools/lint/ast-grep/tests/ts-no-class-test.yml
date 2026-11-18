@@ -1,0 +1,14 @@
+id: ts-no-class
+valid:
+  - "export type Guard = { readonly close: () => void };"
+  - "export const openGuard = (): Guard => ({ close: () => {} });"
+invalid:
+  - "class Guard {}"
+  - "abstract class Base {}"
+  - "const C = class {};"
+---
+id: ts-no-class-tsx
+valid:
+  - "export const View = () => <div className=\"guard\" />;"
+invalid:
+  - "export class View extends Component { render() { return <div />; } }"

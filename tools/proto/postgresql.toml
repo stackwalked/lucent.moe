@@ -1,0 +1,45 @@
+format = "2"
+
+[plugin]
+description = "PostgreSQL server and client binaries (theseus-rs standalone release)."
+homepage_url = "https://www.postgresql.org/"
+repository_url = "https://github.com/theseus-rs/postgresql-binaries"
+
+[metadata]
+name = "PostgreSQL"
+type = "command-line"
+
+# Tags are <pg_major>.<pg_minor>.<build> (e.g. 18.7.0); anchoring drops non-final tags.
+[resolve]
+git_url = "https://github.com/theseus-rs/postgresql-binaries"
+version_pattern = "^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)$"
+
+[install]
+download_url = "https://github.com/theseus-rs/postgresql-binaries/releases/download/{version}/{download_name}"
+checksum_url = "https://github.com/theseus-rs/postgresql-binaries/releases/download/{version}/{download_name}.sha256"
+
+[platform.windows]
+archs = ["x64"]
+download_name = "postgresql-{version}-{arch}-pc-windows-msvc.zip"
+archive_prefix = "postgresql-{version}-{arch}-pc-windows-msvc"
+
+[platform.windows.arch]
+x64 = "x86_64"
+
+[platform.linux]
+archs = ["x64"]
+download_name = "postgresql-{version}-{arch}-unknown-linux-gnu.tar.gz"
+archive_prefix = "postgresql-{version}-{arch}-unknown-linux-gnu"
+
+[platform.linux.arch]
+x64 = "x86_64"
+
+[locate.exes.postgres]
+exe_path = "bin/postgres"
+primary = true
+
+[locate.exes.initdb]
+exe_path = "bin/initdb"
+
+[locate.exes.pg_ctl]
+exe_path = "bin/pg_ctl"

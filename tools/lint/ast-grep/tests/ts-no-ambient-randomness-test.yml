@@ -1,0 +1,18 @@
+id: ts-no-ambient-randomness
+valid:
+  - "const bytes = rng.fillBytes(new Uint8Array(16));"
+  - "const options = { randomUUID: 1 };"
+invalid:
+  - "const r = Math.random();"
+  - "const bytes = crypto.getRandomValues(new Uint8Array(16));"
+  - "const id = crypto.randomUUID();"
+  - "const fill = crypto.getRandomValues;"
+  - "const id = Bun.randomUUIDv7();"
+  - "import { randomBytes } from 'node:crypto';"
+---
+id: ts-no-ambient-randomness-tsx
+valid:
+  - "export const View = ({ id }: { id: string }) => <p key={id} />;"
+invalid:
+  - "export const View = () => <p key={crypto.randomUUID()} />;"
+  - "export const View = () => <p>{Math.random()}</p>;"
