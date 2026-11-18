@@ -3,8 +3,9 @@ layer: "configuration"
 # The CMake tree as a whole: one configure and one build for every native project. Not cached by
 # moon: Ninja is incremental already, and a cached pass would skip a deleted build directory.
 tasks:
+  # Configures once, then leaves reruns to Ninja (cmake/configure.cmake says why).
   configure:
-    command: "cmake --preset dev"
+    command: "cmake -P cmake/configure.cmake"
     inputs:
       - "CMakeLists.txt"
       - "CMakePresets.json"
