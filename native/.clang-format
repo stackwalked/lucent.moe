@@ -35,7 +35,12 @@ AllowAllArgumentsOnNextLine: true
 Cpp11BracedListStyle: true
 
 BreakBeforeBinaryOperators: NonAssignment
-BreakBinaryOperations: OnePerLine
+# One clause per line for logic and pipelines; comparisons and arithmetic inside a clause stay whole.
+BreakBinaryOperations:
+  Default: Never
+  PerOperator:
+    - Operators: ["|", "&&", "||"]
+      Style: OnePerLine
 
 BreakTemplateDeclarations: Yes
 RequiresClausePosition: OwnLine

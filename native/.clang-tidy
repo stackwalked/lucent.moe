@@ -51,8 +51,9 @@ CheckOptions:
   readability-function-cognitive-complexity.Threshold: 25
   # Single letters only for loop indices and math.
   readability-identifier-length.MinimumLoopCounterNameLength: 1
-  readability-identifier-length.IgnoredVariableNames: '^[xyzwijn]$'
-  readability-identifier-length.IgnoredParameterNames: '^[xyzw]$'
+  # Plus `id` from the approved abbreviations, and C++26's `_` placeholder.
+  readability-identifier-length.IgnoredVariableNames: '^([xyzwijn]|id|_)$'
+  readability-identifier-length.IgnoredParameterNames: '^([xyzw]|id)$'
 
   readability-identifier-naming.NamespaceCase: lower_case
   readability-identifier-naming.ClassCase: lower_case

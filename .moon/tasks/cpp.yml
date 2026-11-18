@@ -16,5 +16,8 @@ tasks:
     deps: ["native:build"]
     options:
       cache: false
+      # Every project's tests share one build tree, and concurrent CTest runs in one tree mix
+      # their state: a run reported tests from other projects as its own.
+      mutex: "ctest"
   check:
     deps: ["~:lint"]
