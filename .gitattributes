@@ -3,3 +3,4 @@
 
 # Golden vectors are bytes, compared exactly.
 contracts/**/*.bin binary
+native/**/tests/fixtures/**/*.png binary

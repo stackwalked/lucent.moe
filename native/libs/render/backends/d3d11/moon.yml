@@ -1,0 +1,19 @@
+language: "cpp"
+layer: "library"
+
+# os is the golden harness's file reader only.
+dependsOn: ["core", "draw", { id: "os", scope: "development" }]
+
+tasks:
+  # Rewrites tests/fixtures/goldens from what the renderer draws on WARP here, with the OS build each
+  # was drawn on. A human reviews the image diff before committing: a changed golden is a changed
+  # rendering.
+  goldens:
+    command: "ctest --test-dir $workspaceRoot/.moon/cache/cmake/dev -L ^d3d11$ --output-on-failure"
+    deps: ["native:build"]
+    env:
+      LUCENT_UPDATE_GOLDENS: "1"
+    options:
+      cache: false
+      runInCI: false
+      mutex: "ctest"

@@ -112,8 +112,6 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
   and rewriting its widgets. Libraries, in dependency order:
   - `libs/render/text`: fonts, shaping, fallback, rasterization, the glyph atlas, measure and wrap.
     Emits glyph quads into a draw list.
-  - `libs/render/backends/d3d11`: consumes frame data; owns GPU resources, layer and blur passes,
-    atlas uploads, pipeline state save and restore. Depends on draw only.
   - `libs/render/ui`: input snapshot, layout, widgets, interaction, animation, theme tokens. No GPU.
   - `libs/render/menu`: menu pages from the settings' `describe()`.
   - The target glues it together (Present hook, snapshot, ui, backend). A backend draws into the
@@ -137,39 +135,16 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
     beside its v1 paints (`research/kb/windows/segoe-ui-emoji-colr.md`);
   - the text system lives on the render thread, takes UTF-8, and converts at the DirectWrite
     boundary.
-- Shaders:
-  - compiled at build time by the SDK's `fxc.exe` (D3D11 needs DXBC) into generated headers of
-    `constexpr` bytecode in the build tree; debug info and no optimization in dev, `/O3` with
-    reflection and debug info stripped in release. No runtime compiler. fxc's version follows the
-    SDK the toolchain picks;
-  - every cbuffer and the quad record are defined once in a `.hlsli` shared with C++, using only
-    16-byte vector members, with `static_assert`s on sizes and offsets;
-  - programs: quad VS (instanced, from `SV_VertexID`), path VS, one main PS branching on the
-    record's kind, blur PS (separable Gaussian, bilinear-folded taps), downsample PS, composite PS
-    (mask, opacity, rim). SDF antialiasing from screen-space derivatives, erf edges and shadows,
-    premultiplied output;
-  - colour: authored sRGB; blend in gamma space on UNORM targets; on `_SRGB` targets the shader
-    linearizes and the hardware re-encodes; blur in the target's space. HDR targets (scRGB, HDR10)
-    draw in linear scRGB at a fixed paper white, built when first seen;
-  - no shader hot reload: it would bring back a runtime compiler.
-- The D3D11 backend and resource lifetime:
-  - `renderer` is built from a device and its immediate context (feature level 11_0), on a worker
-    unless the device is single-threaded; states `idle → building → ready | failed`, three tries
-    per device, the overlay off until ready;
-  - `render(frame, target)` runs on the presenting thread; the target is a view the glue makes
-    from the back buffer each frame and releases before `Present` returns (no back buffer is held
-    between frames, so resizes need no hook);
+- Around the D3D11 backend (`libs/render/backends/d3d11` has landed):
+  - HDR targets (scRGB, HDR10) draw in linear scRGB at a fixed paper white, built when first seen;
+    until then the backend refuses them;
+  - the glue builds the renderer on a kit worker unless the device is single-threaded, and keeps
+    the overlay off until it is ready;
+  - the glue makes the target view from the back buffer each frame and releases it before
+    `Present` returns (no back buffer is held between frames, so resizes need no hook);
   - a new device (video settings, device removed) means a full rebuild: atlas pages re-upload from
     the text system's CPU copy, images re-create lazily from their owners' caches;
-  - `image_handle` is a slot plus a serial from one process-wide counter that never restarts, so a
-    stale handle never matches; it draws nothing and counts as a miss;
-  - one structured buffer for records and one vertex buffer for paths, grown geometrically and
-    mapped once per frame; atlas uploads as dirty rects per slice; scratch targets pooled in 64 px
-    buckets per format and evicted after 240 unused frames; light readback through a ring that
-    never waits; a layer that asks to sample light needs a key in draw's `layer_begin`, so the readback can say which layer it sampled;
-  - an RAII guard saves and restores the game's whole pipeline state (clearing hull, domain and
-    geometry stages while we draw); render runs inside `contain()`, and a fault turns the overlay
-    off;
+  - render runs inside `contain()`, and a fault turns the overlay off;
   - dev-only stats over the dev channel: GPU time from a timestamp ring, CPU record and submit time,
     draw calls, records, passes, atlas evictions, stale-handle misses;
   - the glue draws only on the swapchain whose `OutputWindow` is the game's main window; whether to
@@ -223,10 +198,7 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
   - `ui` and `menu` from input snapshots: layout rects, clicks, tab order, popup stacking, wheel
     routing, text-field edits, animation on a test clock, reduced motion; every setting kind maps
     to a control and search finds rows. Rects and state, not draw records;
-  - the backend renders `frame_data` on WARP against golden images (at most 3 per channel): shapes,
-    paints, shadows, paths, text, layers, atlas pages, on UNORM, `_SRGB`, typeless, BGRA and MSAA
-    targets. A moon task regenerates goldens, and a human reviews the diff before they're committed.
-    Each golden records its OS build; a mismatch on another build reads as drift;
+  - text joins the backend's WARP goldens once it lands;
   - `tools/menu-shot` (the real menu and HUD to PNG by page, scale and theme), micro-benchmarks and
     the dev frame stats inform but don't gate; a libFuzzer target for `frame_data` checking joins
     the parser fuzzing;
