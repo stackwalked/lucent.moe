@@ -1,0 +1,12 @@
+id: no-thread-local
+language: cpp
+severity: error
+message: "no static TLS: mapped modules get no TLS slot, so the first access crashes; keep per-thread state in an owner keyed by thread"
+rule:
+  any:
+    - kind: storage_class_specifier
+      regex: ^thread_local$
+    - kind: ms_declspec_modifier
+      has:
+        kind: identifier
+        regex: ^thread$

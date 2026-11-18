@@ -1,0 +1,8 @@
+id: no-thread-local
+valid:
+  - "static constexpr int limit = 3;"
+  - "__declspec(dllexport) auto f() -> int;"
+invalid:
+  - "thread_local int counter = 0;"
+  - "static thread_local int counter = 0;"
+  - "__declspec(thread) int counter = 0;"
