@@ -179,8 +179,8 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
 ## Facts
 
 Foreign knowledge (RVAs, vtable slots, field and schema offsets, constants): declared, derived and
-delivered. Decided topic by topic. Still open: build identity, finder vocabulary, schema and
-interfaces, validation layers, bundle shape, the update-day pipeline, the protection seam.
+delivered. Decided topic by topic. Still open: finder vocabulary, schema and interfaces, validation
+layers, bundle shape, the update-day pipeline, the protection seam.
 
 - Declarations are C++ in the target's foreign layer, by subsystem, and ship. A `consteval`
   constructor hashes the name, which never reaches the binary; ast-grep checks it matches the
@@ -213,6 +213,20 @@ interfaces, validation layers, bundle shape, the update-day pipeline, the protec
   reports any its capabilities don't cover, on first use, even when the value is valid.
 - Every fact reaches the module from a bundle (in dev, a local one signed with the dev key).
   Derivation happens only in the generator.
+- A module build is `(name, TimeDateStamp, SizeOfImage)`, read the same way from the file and from
+  the loaded headers. It keys the binaries cache, the fact set, the server's stored set and the
+  bundle section. The cache also records the file's SHA-256; nothing needs it at runtime.
+- One fact set per module build.
+  - A patch regenerates and publishes only the modules it touched.
+  - The module checks each set's key against the loaded headers before applying its values.
+  - A late-loaded module resolves when it appears; its capabilities are unavailable until then.
+- A capability may be `core`: an unavailable core capability refuses the start. Everything else
+  degrades on its own.
+- The modules that matter are the ones the manifest's facts name. No hand-kept module list anywhere.
+- A set has a revision per module build; the revision and the finders' commit are signed. The server
+  serves the latest enabled revision for each reported module build.
+- Steam's `buildid` and `PatchVersion` are labels for display, telemetry and update-day detection.
+  They never select facts.
 
 ## Server inputs and licensing integrity
 
