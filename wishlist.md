@@ -301,8 +301,20 @@ Preprocessor (decided):
 - Standard attribute syntax (`[[clang::...]]`, `[[msvc::...]]`) over `__declspec`/`__attribute__`
   where one exists. `std::source_location` over `__FILE__`/`__LINE__` outside the allowed macros.
 
-Topics still to settle:
-comments, formatting, enforcement.
+Comments and provenance (decided):
+
+- `//` only, on its own line above what it explains; sentences with a capital and a period. No
+  `///`, Doxygen, `@param`, or `/* */`. Public declarations get a comment only for contracts types
+  can't express (thread, borrow lifetime, preconditions beyond `LUCENT_ENSURE`). Tests don't narrate.
+- Every hardcoded foreign fact (field, offset, signature, vtable index, layout mirror) carries a
+  `// build:` / `// found:` / `// breaks:` block, one block per group allowed, checked under
+  `foreign/` by `tools/lint/provenance.py`. `found:` cites durable evidence (a `research/kb/` page,
+  module + build + IDA address, a lab project), never `scratch/`. `server_value`s carry none.
+- No `TODO`/`FIXME`/`HACK`/`XXX` (script); deferred work goes to the wishlist or issues. No
+  commented-out code, section banners or file headers (generated-file markers aside).
+- Suppressions keep the existing form: `// NOLINT(check): reason`, `// NOLINTNEXTLINE(check): reason`.
+
+Topics still to settle: formatting, enforcement.
 
 ## Kit
 
