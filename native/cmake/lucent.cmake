@@ -70,12 +70,22 @@ endfunction()
 
 # lucent_module(<name> SOURCES <sources>... [DEPS <targets>...])
 #
-# The loadable module lucent_<name>.dll: no import library, nothing links against it.
+# The loadable module lucent_<name>.dll: no import library, nothing links against it. Every module
+# is checked after linking for a TLS directory, which the mapper doesn't support (check_no_tls.cmake).
 function(lucent_module name)
     cmake_parse_arguments(PARSE_ARGV 1 arg "" "" "SOURCES;DEPS")
     set(target lucent_${name})
     add_library(${target} MODULE ${arg_SOURCES})
     target_link_libraries(${target} PRIVATE lucent::core ${arg_DEPS})
+    add_custom_command(
+        TARGET ${target}
+        POST_BUILD
+        COMMAND
+            "${CMAKE_COMMAND}" "-DREADOBJ=${lucent_llvm_bin}/llvm-readobj.exe"
+            "-DMODULE=$<TARGET_FILE:${target}>" -P
+            "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/check_no_tls.cmake"
+        VERBATIM
+    )
 endfunction()
 
 # lucent_executable(<name> SOURCES <sources>... [DEPS <targets>...])
