@@ -180,7 +180,7 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
 
 Foreign knowledge (RVAs, vtable slots, field and schema offsets, constants): declared, derived and
 delivered. Decided topic by topic. Still open: finder vocabulary (provisionally accepted, being
-tested on real data), validation layers, bundle shape, the update-day pipeline, the protection seam.
+tested on real data), bundle shape, the update-day pipeline, the protection seam.
 
 - Declarations are C++ in the target's foreign layer, by subsystem, and ship. A `consteval`
   constructor hashes the name, which never reaches the binary; ast-grep checks it matches the
@@ -249,6 +249,23 @@ tested on real data), validation layers, bundle shape, the update-day pipeline, 
   global that holds them. Resolve never calls into the game.
 - Class identity is vtable facts compared against an object's vtable pointer; is-a is an explicit
   declared set of classes.
+- Validation by layer:
+  - compile: ast-grep checks the name matches the identifier; owner-typed fields and typed
+    signatures. Key collisions are checked by the generator over the manifest and again at resolve
+    over the linked section (an invariant).
+  - generation: finders unique, agreeing, acyclic. Kind checks with the whole image: method at a
+    `.pdata` start, vtable through its RTTI locator, slot within the vtable's real length, field
+    against the schema's size and type. Coverage both ways, matching kinds. Deltas from the
+    previous build flagged for sign-off. The generator signs nothing.
+  - publish: the server refuses a set whose manifest digest isn't the release's, that lacks a fact
+    a `core` capability needs, or whose revision isn't newer.
+  - load: bundle signature, format and module keys; the per-kind checks against the loaded image
+    (`RtlLookupFunctionEntry` for methods), header reads through `contain()`. A failed fact makes
+    its capabilities unavailable; telemetry reports its key and module build.
+  - use: reads trust their facts; only a foreign fault fails one, through `contain()`.
+- Dev fault injection over the dev channel marks any fact invalid.
+- Live semantic probes: capabilities declare dev-only probes (value ranges, handle serials); the
+  update-day pipeline runs them in a real game before sign-off.
 
 ## Server inputs and licensing integrity
 
