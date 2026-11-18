@@ -154,8 +154,26 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
   - a draw list is a value with no globals, recorded by one thread at a time; limits are part of
     its type (an invariant when broken); the backend checks frame data once and refuses a bad frame
     whole.
-- Still to decide for rendering: text, shaders, the backend and lifetime, layout and widgets,
-  animation and theme, testing.
+- Text is DirectWrite end to end (an OS DLL: no dependency to vet for TLS), from an isolated
+  factory:
+  - shaping, bidi, line breaking, and fallback (our chain first, then the system's); our fonts
+    registered from bytes through an in-memory loader;
+  - hinted grayscale rasterization (`NATURAL_SYMMETRIC`) to A8 on the CPU, four horizontal subpixel
+    phases; no ClearType, which can't blend over arbitrary backgrounds;
+  - a fast path for strings fully in the primary font that need no shaping (cached advances plus
+    kerning pairs), and `IDWriteTextLayout` with a glyph-run-collecting renderer for the rest,
+    cached by string, font and width. Both yield one `text_layout` with one measure, wrap, ellipsis
+    and draw;
+  - the glyph atlas is fixed A8 pages (texture-array slices); entries carry their page's
+    generation; when full, the least recently used page not touched this frame is cleared and
+    reused. Icon pages are pinned. Rasterization is synchronous with a per-frame budget (an
+    over-budget glyph appears a frame later), and the UI's known characters are prewarmed;
+  - COLR emoji are stacked tinted glyph quads from the same atlas; bitmap emoji (sbix, CBDT) fall
+    back to the outline. Unverified: that Windows 11's Segoe UI Emoji still has COLRv0 layers;
+  - the text system lives on the render thread, takes UTF-8, and converts at the DirectWrite
+    boundary.
+- Still to decide for rendering: shaders, the backend and lifetime, layout and widgets, animation
+  and theme, testing.
 - Lease client: verify, renew, lapse, and feed entitlements to the registry.
 - Dev channel, stats and incident sink, compiled out of release (enforced in CMake).
 - An injectable clock.
@@ -441,6 +459,8 @@ delivered. Decided in full.
 
 ## Open
 
+- Where font files and other binary assets live: in git (e.g. `products/`), or outside it like game
+  builds ("binaries never enter git").
 - Release string hygiene (log stripping, hashed ids, string encryption). It shapes the logging API.
 - Isolating our allocations from the game's heap.
 - A generic "revise" round in an arbiter vs. a planner per domain.
