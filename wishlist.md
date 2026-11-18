@@ -50,20 +50,8 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
 `native/core/src/toolchain_probe.cpp`, `tools/lint/ast-grep/`, `tools/lint/suppressions.py`, and
 `native/AGENTS.md` for what no tool checks. Still to land, each with the first code it applies to:
 
-- core: a fail-fast `unreachable()`, `flags<E>`, `fixed_string`, and the generated
-  `lucent::build::*` header.
-- ast-grep rules:
-  - templates in features and domains;
-  - `std::get`, `holds_alternative`, bare `visit`, `.value()`;
-  - `std::map`/`set`/`list`/`forward_list`/`deque`, `vector<bool>`, `reference_wrapper`,
-    `std::function`, `std::async`, `std::rand`, `system_clock::now`, the `printf` family, `assert`,
-    `char8_t`/`u8string`;
-  - `int`/`long`/`unsigned`/`short` outside foreign signatures;
-  - `std::thread` and `CreateThread` outside the kit;
-  - `__FILE__`/`__LINE__` outside the allowed macros, `#pragma pack`, `#pragma comment(lib)`,
-    `__declspec` where a standard attribute exists.
-- uv scripts: `includes.py` (layering against moon dependencies, private headers, Windows headers only
-  in `src/`) and `provenance.py` (with the first `foreign/`).
+- core: `flags<E>`, `fixed_string`, and the generated `lucent::build::*` header.
+- `provenance.py` (a uv script, with the first `foreign/`).
 - `-Wunsafe-buffer-usage` off by path in the foreign-memory layer; `misc-no-recursion` off by path in
   tools and tests once something there recurses.
 - libFuzzer targets for external-input parsers, under the ASan preset.
@@ -171,7 +159,8 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
     reused. Icon pages are pinned. Rasterization is synchronous with a per-frame budget (an
     over-budget glyph appears a frame later), and the UI's known characters are prewarmed;
   - COLR emoji are stacked tinted glyph quads from the same atlas; bitmap emoji (sbix, CBDT) fall
-    back to the outline. Unverified: that Windows 11's Segoe UI Emoji still has COLRv0 layers;
+    back to the outline. Segoe UI Emoji on Windows 11 has v0 layers for every colour glyph,
+    beside its v1 paints (`research/kb/windows/segoe-ui-emoji-colr.md`);
   - the text system lives on the render thread, takes UTF-8, and converts at the DirectWrite
     boundary.
 - Shaders:
@@ -667,8 +656,15 @@ Still to land, in order:
     `can()`) and `catalog` (the `products/*.toml` reader). `db/`, `standing`, the writers,
     `receipt`, migrations and the internal app stay server-only. Declared package dependencies and
     moon `dependsOn` then enforce the layering that dependency-cruiser couldn't;
-  - `platform/server` boot wiring (`config.ts`, `verifySchemaCurrent` exit `2`, dual `Bun.serve`
-    listeners, periodic jobs, and `ops.ts` CLI verbs);
+  - the native `/v1` listener and periodic jobs, in the slice that gives them routes and work
+    (boot, the internal listener, `ops.ts` and `server:dev`/`server:seed` landed);
+  - slice 1B pins, spiked on bun 1.4.4 + TypeScript 7.0.2 strict, all holding: TanStack Start and
+    `@tanstack/react-router@1.170.46`, `nitro@3.0.261103-rc` (no stable 3.x yet), `vite` with
+    `@vitejs/plugin-react@6.3.0`, and React Compiler 1.0.0 through `@rolldown/plugin-babel@0.3.1`
+    (plugin order: `tanstackStart()`, `nitro({ preset: "bun" })`, `react()`, then babel);
+    `@types/react`/`@types/react-dom` `19.2.0`. Found on the way: the server-fn input method is
+    `.validator` (not `.inputValidator`); server functions demand `Origin` + `Sec-Fetch-Site` and
+    seroval-encoded bodies; `routeTree.gen.ts` needs a Biome ignore;
   - optional plan templates and `connector_discord_rule` tables when their consumers land.
 - Auth, credentials, sessions and authority:
   - No `better-auth`: old lucent spent too long fighting it, and its model has no room for the
@@ -807,8 +803,9 @@ DX11 overlay window; lazer and stable) is rewritten here as a second product.
   the runtime.
 - Stable is feature-locked: its finders (IL patterns, `clr.dll` navigation) are written once. JIT
   code addresses still differ per run, so no stable fact is a code address.
-- Spike first: whether `coreclr.dll` (.NET 9+) exports `DotNetRuntimeContractDescriptor`
-  describing the runtime structures the navigation needs (unverified).
+- `coreclr.dll` 10 exports `DotNetRuntimeContractDescriptor`, and lazer ships on 10. It
+  describes the path from the runtime's roots to a type's statics, but not `FieldDesc`: field
+  offsets still come from the harvest (`research/kb/dotnet/contract-descriptor.md`).
 - A live probe in dev (Tamaki's `ChainCheck`) walks every chain in a running game with the
   candidate facts before sign-off.
 - Out of scope: anything around osu!'s own client authentication.
