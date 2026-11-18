@@ -27,6 +27,9 @@ const started = await startServer({
         internalListen: { kind: "loopback", hostname: "127.0.0.1", port: 4712 },
         webInternalKey: DEV_INTERNAL_KEY,
         productsDir: join(WORKSPACE_ROOT, "products"),
+        // Public like the peer key: it seals only dev accounts' TOTP secrets.
+        totpKeys: [{ kid: "dev", raw: new Uint8Array(32) }],
+        relyingParty: { rpId: "localhost", rpName: "lucent.moe", origin: "http://localhost:3000" },
     },
     logger,
 });

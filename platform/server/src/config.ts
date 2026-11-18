@@ -1,3 +1,4 @@
+import type { RelyingParty } from "./auth/passkeys.ts";
 import { err, ok, type Result } from "./core/result.ts";
 import { isStrongPeerKey, MIN_PEER_KEY_LENGTH } from "./core/rpc.ts";
 
@@ -12,6 +13,8 @@ export type ServerConfig = {
     readonly internalListen: ListenAddress;
     readonly webInternalKey: string;
     readonly productsDir: string;
+    readonly totpKeys: readonly TotpKeyMaterial[];
+    readonly relyingParty: RelyingParty;
 };
 
 export type OpsConfig = {
@@ -29,9 +32,46 @@ export type Environment = {
     readonly LUCENT_INTERNAL_LISTEN: string | undefined;
     readonly LUCENT_WEB_INTERNAL_KEY: string | undefined;
     readonly LUCENT_PRODUCTS_DIR: string | undefined;
+    readonly LUCENT_TOTP_KEYS: string | undefined;
+    readonly LUCENT_WEBAUTHN_RP_ID: string | undefined;
+    readonly LUCENT_WEBAUTHN_ORIGIN: string | undefined;
 };
 
 const POSTGRES_URL = /^postgres(?:ql)?:\/\/./;
+
+export type TotpKeyMaterial = {
+    readonly kid: string;
+    readonly raw: Uint8Array;
+};
+
+// `kid:key,kid:key`, the first sealing new secrets. Order matters, so duplicates are refused
+// rather than guessed at.
+function parseTotpKeys(raw: string): readonly TotpKeyMaterial[] | null {
+    const keys: TotpKeyMaterial[] = [];
+    for (const entry of raw.split(",")) {
+        const match = /^([a-z0-9-]{1,16}):([A-Za-z0-9_-]{43})$/.exec(entry.trim());
+        if (match === null) return null;
+        const [, kid = "", encoded = ""] = match;
+        if (keys.some((key) => key.kid === kid)) return null;
+        keys.push({ kid, raw: Uint8Array.fromBase64(encoded, { alphabet: "base64url" }) });
+    }
+    return keys.length > 0 ? keys : null;
+}
+
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+// Browsers only allow WebAuthn on https, or http on localhost; the RP ID must be the origin's
+// host or a registrable suffix of it.
+function parseRelyingParty(rpId: string, origin: string): RelyingParty | null {
+    if (!URL.canParse(origin)) return null;
+    const url = new URL(origin);
+    if (url.origin !== origin) return null;
+    const secure =
+        url.protocol === "https:" || (url.protocol === "http:" && LOCAL_HOSTS.has(url.hostname));
+    if (!secure || rpId.length === 0) return null;
+    if (url.hostname !== rpId && !url.hostname.endsWith(`.${rpId}`)) return null;
+    return { rpId, rpName: "lucent.moe", origin };
+}
 
 function parseListen(raw: string): ListenAddress | null {
     if (raw.startsWith("unix:")) {
@@ -72,10 +112,37 @@ export function readServerConfig(env: Environment): Result<ServerConfig, ConfigE
     if (productsDir.length === 0) {
         problems.push("LUCENT_PRODUCTS_DIR must name the products/ directory");
     }
-    if (problems.length > 0 || internalListen === null) {
+    const totpKeys = parseTotpKeys(env.LUCENT_TOTP_KEYS ?? "");
+    if (totpKeys === null) {
+        problems.push(
+            "LUCENT_TOTP_KEYS must be kid:key pairs, comma-separated, newest first; each key 32 bytes in base64url",
+        );
+    }
+    const relyingParty = parseRelyingParty(
+        env.LUCENT_WEBAUTHN_RP_ID ?? "",
+        env.LUCENT_WEBAUTHN_ORIGIN ?? "",
+    );
+    if (relyingParty === null) {
+        problems.push(
+            "LUCENT_WEBAUTHN_ORIGIN must be an https:// origin (or http://localhost) whose host is LUCENT_WEBAUTHN_RP_ID or under it",
+        );
+    }
+    if (
+        problems.length > 0 ||
+        internalListen === null ||
+        totpKeys === null ||
+        relyingParty === null
+    ) {
         return err({ code: "CONFIG_INVALID", problems });
     }
-    return ok({ databaseUrl, internalListen, webInternalKey, productsDir });
+    return ok({
+        databaseUrl,
+        internalListen,
+        webInternalKey,
+        productsDir,
+        totpKeys,
+        relyingParty,
+    });
 }
 
 export function readOpsConfig(env: Environment): Result<OpsConfig, ConfigError> {
@@ -94,11 +161,17 @@ export function processEnvironment(): Environment {
         LUCENT_INTERNAL_LISTEN,
         LUCENT_WEB_INTERNAL_KEY,
         LUCENT_PRODUCTS_DIR,
+        LUCENT_TOTP_KEYS,
+        LUCENT_WEBAUTHN_RP_ID,
+        LUCENT_WEBAUTHN_ORIGIN,
     } = process.env;
     return {
         LUCENT_DATABASE_URL,
         LUCENT_INTERNAL_LISTEN,
         LUCENT_WEB_INTERNAL_KEY,
         LUCENT_PRODUCTS_DIR,
+        LUCENT_TOTP_KEYS,
+        LUCENT_WEBAUTHN_RP_ID,
+        LUCENT_WEBAUTHN_ORIGIN,
     };
 }

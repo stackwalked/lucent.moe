@@ -681,16 +681,15 @@ its own design discussion. Its bullets below are provisional until then.
   - optional plan templates and `connector_discord_rule` tables when their consumers land.
 - Auth, credentials, sessions and authority:
   - No `better-auth`: old lucent spent too long fighting it, and its model has no room for the
-    native DPoP flow. Own the auth tables directly over `@simplewebauthn/server@14.1.0` +
-    `@simplewebauthn/browser@14.0.0`, `Bun.password` (`argon2id`, 12–128 chars + breach denylist +
-    timing-equalized dummy verify), RFC 6238 TOTP on `crypto.subtle` (`TOTP_ENCRYPTION_KEY`
-    AES-256-GCM with `kid` tag, plus `last_used_step` replay guard), and `jose@6.2.17` for client
-    P-256 DPoP proofs.
-  - One `browser_session` table (`__Host-lucent` 256-bit token stored as SHA-256) with fixed-TTL
-    `purpose`: `"member"` (12h, never slides, carries `stepUpAt`), `"setup"` (15m, username + first
-    factor only) and `"appeal"` (30m, minted only after full 2FA on a suspended account, `/appeal`
-    only). DB `txNow` enforces 5m freshness for credential changes ("never remove the last
-    credential" under `account` lock) and 30m passkey step-up in place for sensitive admin actions.
+    native DPoP flow. Browser credentials and sessions landed in `platform/server/src/auth/` with
+    migration `0002_credentials.sql`. Still to land with them:
+    - the breach denylist for new passwords (only the 12–128 character rule is checked so far);
+    - a periodic job deleting expired sessions, flows and setup links (queries already ignore
+      them);
+    - the `"appeal"` session purpose (30m, minted only after full 2FA on a suspended account), with
+      `/appeal`;
+    - per-IP throttling of sign-in, in web or Caddy (the server caps wrong answers per flow only);
+    - `@simplewebauthn/browser@14.0.0` in web, and `jose@6.2.17` for client P-256 DPoP proofs.
   - Native loader sign-in uses pushed auth requests (`POST /v1/auth/requests` → clean
     `lucent.moe/auth/device/lauth_...` URL) + loopback `127.0.0.1:<port>/callback` PKCE + DPoP →
     30-day rotating refresh token (30s retry grace) + 5m DPoP-bound access token.

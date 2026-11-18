@@ -1,8 +1,12 @@
 import { rmSync } from "node:fs";
+import { createAuthDeps } from "./auth/deps.ts";
+import { createArgon2idHasher, type PasswordHasher } from "./auth/password.ts";
+import { createTotpKeyring } from "./auth/totp.ts";
 import type { ListenAddress, ServerConfig } from "./config.ts";
 import { describeUnknownError, ignoreErrorsSync, trySync } from "./core/contain.ts";
 import type { Logger } from "./core/log.ts";
 import { err, ok, type Result } from "./core/result.ts";
+import { systemCryptoRng } from "./core/rng.ts";
 import { claimServiceEpoch, openEpochGuard } from "./db/epoch-guard.ts";
 import type { MigrationError, MigrationFile } from "./db/migrate.ts";
 import { verifySchemaCurrent } from "./db/migrate.ts";
@@ -71,6 +75,7 @@ export async function startServer(params: {
     readonly logger: Logger;
     readonly migrations?: readonly MigrationFile[];
     readonly epochPollIntervalMs?: number;
+    readonly passwords?: PasswordHasher;
 }): Promise<Result<RunningServer, BootFailure>> {
     const { config, logger } = params;
     const db = openPool({
@@ -107,7 +112,15 @@ export async function startServer(params: {
         },
     });
 
+    const auth = createAuthDeps({
+        db,
+        rng: systemCryptoRng,
+        rp: config.relyingParty,
+        totpKeys: await createTotpKeyring(config.totpKeys),
+        passwords: params.passwords ?? createArgon2idHasher(),
+    });
     const app = createInternalWebApp({
+        auth,
         catalog: catalog.value,
         epochGuard,
         webInternalKey: config.webInternalKey,

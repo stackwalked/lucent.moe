@@ -9,6 +9,9 @@ function env(overrides: Partial<Environment>): Environment {
         LUCENT_INTERNAL_LISTEN: "127.0.0.1:4712",
         LUCENT_WEB_INTERNAL_KEY: KEY,
         LUCENT_PRODUCTS_DIR: "/srv/lucent/products",
+        LUCENT_TOTP_KEYS: `k1:${"A".repeat(43)}`,
+        LUCENT_WEBAUTHN_RP_ID: "lucent.moe",
+        LUCENT_WEBAUTHN_ORIGIN: "https://lucent.moe",
         ...overrides,
     };
 }
@@ -50,6 +53,9 @@ test("every missing variable is named at once", () => {
         LUCENT_INTERNAL_LISTEN: undefined,
         LUCENT_WEB_INTERNAL_KEY: undefined,
         LUCENT_PRODUCTS_DIR: undefined,
+        LUCENT_TOTP_KEYS: undefined,
+        LUCENT_WEBAUTHN_RP_ID: undefined,
+        LUCENT_WEBAUTHN_ORIGIN: undefined,
     });
     expect(config.ok).toBe(false);
     const problems = config.ok ? [] : config.error.problems;
@@ -58,7 +64,43 @@ test("every missing variable is named at once", () => {
         "LUCENT_INTERNAL_LISTEN",
         "LUCENT_WEB_INTERNAL_KEY",
         "LUCENT_PRODUCTS_DIR",
+        "LUCENT_TOTP_KEYS",
+        "LUCENT_WEBAUTHN_ORIGIN",
     ]) {
         expect(problems.some((problem) => problem.startsWith(name))).toBe(true);
     }
+});
+
+test("passkeys are refused an origin a browser wouldn't allow them on", () => {
+    for (const [rpId, origin] of [
+        ["lucent.moe", "http://lucent.moe"],
+        ["lucent.moe", "https://evil.example"],
+        ["lucent.moe", "https://notlucent.moe"],
+        ["lucent.moe", "https://lucent.moe/path"],
+        ["auth.lucent.moe", "https://lucent.moe"],
+    ] as const) {
+        const config = readServerConfig(
+            env({ LUCENT_WEBAUTHN_RP_ID: rpId, LUCENT_WEBAUTHN_ORIGIN: origin }),
+        );
+        expect(config.ok).toBe(false);
+    }
+    for (const [rpId, origin] of [
+        ["lucent.moe", "https://www.lucent.moe"],
+        ["localhost", "http://localhost:3000"],
+    ] as const) {
+        const config = readServerConfig(
+            env({ LUCENT_WEBAUTHN_RP_ID: rpId, LUCENT_WEBAUTHN_ORIGIN: origin }),
+        );
+        expect(config.ok).toBe(true);
+    }
+});
+
+test("TOTP keys keep their order and refuse a repeated kid", () => {
+    const key = (fill: string) => fill.repeat(43);
+    const config = readServerConfig(env({ LUCENT_TOTP_KEYS: `b:${key("B")},a:${key("A")}` }));
+    expect(config.ok && config.value.totpKeys.map((entry) => entry.kid)).toEqual(["b", "a"]);
+    expect(readServerConfig(env({ LUCENT_TOTP_KEYS: `a:${key("A")},a:${key("B")}` })).ok).toBe(
+        false,
+    );
+    expect(readServerConfig(env({ LUCENT_TOTP_KEYS: `a:${key("A").slice(1)}` })).ok).toBe(false);
 });

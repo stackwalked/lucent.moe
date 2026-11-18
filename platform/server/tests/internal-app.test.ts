@@ -1,8 +1,10 @@
 import { expect, test } from "bun:test";
 import { invariant } from "../src/core/contain.ts";
 import { err } from "../src/core/result.ts";
+import { createSeededRng } from "../src/core/rng.ts";
 import { claimServiceEpoch, openEpochGuard } from "../src/db/epoch-guard.ts";
 import { createInternalWebApp } from "../src/internal/app.ts";
+import { createTestAuthDeps } from "./harness/auth.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 
 const PEER_KEY = "test-peer-key-0123456789abcdefghijklmnopqrstuvwxyz";
@@ -24,6 +26,7 @@ test("a superseded process answers internal RPC with 503", async () => {
 
         const app = createInternalWebApp({
             catalog: new Map(),
+            auth: await createTestAuthDeps(nativeDb, createSeededRng(1)),
             epochGuard: guard,
             webInternalKey: PEER_KEY,
             logger: { write: () => {} },

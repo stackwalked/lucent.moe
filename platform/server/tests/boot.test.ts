@@ -7,6 +7,7 @@ import { invariant } from "../src/core/contain.ts";
 import { err, ok } from "../src/core/result.ts";
 import { createRpcClient } from "../src/core/rpc.ts";
 import { webRpc } from "../src/internal/app.ts";
+import { TEST_RELYING_PARTY } from "./harness/authenticator.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 
 const PEER_KEY = "test-peer-key-0123456789abcdefghijklmnopqrstuvwxyz";
@@ -18,6 +19,8 @@ function configFor(databaseUrl: string): ServerConfig {
         internalListen: { kind: "loopback", hostname: "127.0.0.1", port: 0 },
         webInternalKey: PEER_KEY,
         productsDir: join(WORKSPACE_ROOT, "products"),
+        totpKeys: [{ kid: "test", raw: new Uint8Array(32) }],
+        relyingParty: TEST_RELYING_PARTY,
     };
 }
 

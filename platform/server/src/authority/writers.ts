@@ -1,8 +1,10 @@
 import { z } from "zod";
+import { clearCredentials, issueSetupToken } from "../auth/setup.ts";
+import type { BearerToken } from "../auth/tokens.ts";
 import { err, ok, type Result } from "../core/result.ts";
 import type { CryptoRng } from "../core/rng.ts";
 import {
-    type AccountId,
+    AccountId,
     type ChannelId,
     EntitlementId,
     type EpochMs,
@@ -12,15 +14,8 @@ import {
     type ProductId,
     RoleId,
 } from "../core/scalars.ts";
-import {
-    type Db,
-    type DbFailure,
-    execute,
-    queryOne,
-    sql,
-    type Tx,
-    toTimestamptz,
-} from "../db/pool.ts";
+import { appendAudit } from "../db/audit.ts";
+import { type Db, type DbFailure, execute, queryOne, sql, toTimestamptz } from "../db/pool.ts";
 import { type ReceiptRefusal, readReplay, recordReceipt, toOperationKey } from "../db/receipt.ts";
 import { withTx } from "../db/tx.ts";
 import type { ProductCatalog } from "../products/catalog.ts";
@@ -66,30 +61,14 @@ function sortedUnique<T extends string>(values: readonly T[]): T[] {
     return [...new Set(values)].sort();
 }
 
-async function appendAudit(
-    tx: Tx,
-    params: {
-        readonly actorId: string;
-        readonly operation: string;
-        readonly target: Record<string, unknown>;
-        readonly at: EpochMs;
-    },
-): Promise<Result<void, DbFailure>> {
-    const res = await execute(
-        tx,
-        sql`insert into audit (at, actor_id, operation, target)
-            values (${toTimestamptz(params.at)}::timestamptz, ${params.actorId}, ${params.operation}, ${JSON.stringify(params.target)}::jsonb)`,
-    );
-    if (!res.ok) return res;
-    return ok(undefined);
-}
-
 export async function bootstrapRootAccount(params: {
     readonly db: Db;
     readonly rng: CryptoRng;
     readonly email: string;
     readonly username: string;
-}): Promise<Result<{ readonly accountId: AccountId }, WriterFailure>> {
+}): Promise<
+    Result<{ readonly accountId: AccountId; readonly setupToken: BearerToken }, WriterFailure>
+> {
     const parsedName = parseUsername(params.username);
     if (!parsedName.ok) return parsedName;
     const normalizedEmail = params.email.trim().toLowerCase();
@@ -138,6 +117,14 @@ export async function bootstrapRootAccount(params: {
             return claimRes;
         }
 
+        const setupToken = await issueSetupToken(tx, {
+            rng: params.rng,
+            accountId,
+            issuedBy: "cli:bootstrap",
+            txNow,
+        });
+        if (!setupToken.ok) return setupToken;
+
         const auditRes = await appendAudit(tx, {
             actorId: "cli:bootstrap",
             operation: "account.bootstrap_root",
@@ -146,7 +133,165 @@ export async function bootstrapRootAccount(params: {
         });
         if (!auditRes.ok) return auditRes;
 
-        return ok({ accountId });
+        return ok({ accountId, setupToken: setupToken.value });
+    });
+}
+
+const CreateAccountReceiptSchema = z.object({ accountId: AccountId });
+
+// The new account has an email and nothing else: whoever holds the setup link chooses its
+// username and credentials. A replay returns the account but no link (receipts never hold a
+// secret); `recoverAccount` issues a fresh one.
+export async function createAccount(params: {
+    readonly db: Db;
+    readonly rng: CryptoRng;
+    readonly caller: Caller;
+    readonly operationId: OperationId;
+    readonly email: string;
+}): Promise<
+    Result<
+        | {
+              readonly accountId: AccountId;
+              readonly setupToken: BearerToken;
+              readonly replayed: false;
+          }
+        | { readonly accountId: AccountId; readonly replayed: true },
+        WriterFailure
+    >
+> {
+    const email = params.email.trim().toLowerCase();
+    const op = await toOperationKey({
+        principal: principalOf(params.caller),
+        endpoint: "accounts.create",
+        operationId: params.operationId,
+        payload: { email },
+    });
+    const accountId = newAccountId(params.rng);
+
+    return await withTx(params.db, async (tx, txNow) => {
+        const locked = await lockCallerWith(tx, { caller: params.caller, targets: [], txNow });
+        if (!locked.ok) return locked;
+        const authz = authorize({
+            txNow,
+            subject: locked.value.subject,
+            action: "accounts:create",
+        });
+        if (!authz.ok) return authz;
+
+        const replay = await readReplay(tx, op, CreateAccountReceiptSchema);
+        if (!replay.ok) return replay;
+        if (replay.value.replayed) {
+            return ok({ accountId: replay.value.result.accountId, replayed: true as const });
+        }
+
+        const inserted = await execute(
+            tx,
+            sql`insert into account (id, email, created_at)
+                values (${accountId}, ${email}, ${toTimestamptz(txNow)}::timestamptz)`,
+        );
+        if (!inserted.ok) {
+            if (inserted.error.code === "UNIQUE_VIOLATION") return err({ code: "EMAIL_TAKEN" });
+            return inserted;
+        }
+        const setupToken = await issueSetupToken(tx, {
+            rng: params.rng,
+            accountId,
+            issuedBy: params.caller.accountId,
+            txNow,
+        });
+        if (!setupToken.ok) return setupToken;
+        const audited = await appendAudit(tx, {
+            actorId: params.caller.accountId,
+            operation: "account.create",
+            target: { accountId },
+            at: txNow,
+        });
+        if (!audited.ok) return audited;
+        const recorded = await recordReceipt(tx, op, { accountId });
+        if (!recorded.ok) return recorded;
+        return ok({ accountId, setupToken: setupToken.value, replayed: false as const });
+    });
+}
+
+// Recovery is staff-driven: every credential and session of the target goes, and a new setup
+// link is the only way back in. Not idempotent by design: each call issues a fresh link.
+export async function recoverAccount(params: {
+    readonly db: Db;
+    readonly rng: CryptoRng;
+    readonly caller: Caller;
+    readonly targetAccountId: AccountId;
+}): Promise<Result<{ readonly setupToken: BearerToken }, WriterFailure>> {
+    return await withTx(params.db, async (tx, txNow) => {
+        const locked = await lockCallerWith(tx, {
+            caller: params.caller,
+            targets: [params.targetAccountId],
+            txNow,
+        });
+        if (!locked.ok) return locked;
+        const target = locked.value.accounts.get(params.targetAccountId);
+        if (target === undefined) return err({ code: "NOT_FOUND" });
+        const authz = authorize({
+            txNow,
+            subject: locked.value.subject,
+            action: "accounts:recover",
+            target: { kind: "account", account: target },
+        });
+        if (!authz.ok) return authz;
+
+        const cleared = await clearCredentials(tx, params.targetAccountId);
+        if (!cleared.ok) return cleared;
+        const setupToken = await issueSetupToken(tx, {
+            rng: params.rng,
+            accountId: params.targetAccountId,
+            issuedBy: params.caller.accountId,
+            txNow,
+        });
+        if (!setupToken.ok) return setupToken;
+        const audited = await appendAudit(tx, {
+            actorId: params.caller.accountId,
+            operation: "account.recover",
+            target: { accountId: params.targetAccountId },
+            at: txNow,
+        });
+        if (!audited.ok) return audited;
+        return ok({ setupToken: setupToken.value });
+    });
+}
+
+// No caller can target the root account, so its recovery runs from ops, with database access
+// standing in for authority.
+export async function recoverRootAccount(params: {
+    readonly db: Db;
+    readonly rng: CryptoRng;
+}): Promise<
+    Result<{ readonly accountId: AccountId; readonly setupToken: BearerToken }, WriterFailure>
+> {
+    return await withTx(params.db, async (tx, txNow) => {
+        const root = await queryOne(
+            tx,
+            z.object({ id: AccountId }),
+            sql`select id from account where is_root for update`,
+        );
+        if (!root.ok) return root;
+        if (root.value === null) return err({ code: "NOT_FOUND" });
+        const accountId = root.value.id;
+        const cleared = await clearCredentials(tx, accountId);
+        if (!cleared.ok) return cleared;
+        const setupToken = await issueSetupToken(tx, {
+            rng: params.rng,
+            accountId,
+            issuedBy: "cli:recover-root",
+            txNow,
+        });
+        if (!setupToken.ok) return setupToken;
+        const audited = await appendAudit(tx, {
+            actorId: "cli:recover-root",
+            operation: "account.recover",
+            target: { accountId },
+            at: txNow,
+        });
+        if (!audited.ok) return audited;
+        return ok({ accountId, setupToken: setupToken.value });
     });
 }
 

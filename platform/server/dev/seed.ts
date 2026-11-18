@@ -1,4 +1,5 @@
-import { bootstrapRootAccount } from "../src/authority/writers.ts";
+import { setupPath } from "../src/auth/setup.ts";
+import { bootstrapRootAccount, recoverRootAccount } from "../src/authority/writers.ts";
 import { invariant } from "../src/core/contain.ts";
 import { systemCryptoRng } from "../src/core/rng.ts";
 import { migrateDatabase } from "../src/db/migrate.ts";
@@ -12,17 +13,24 @@ const db = openPool({ databaseUrl: cluster.databaseUrl, maxConnections: 2 });
 const migrated = await migrateDatabase(db);
 invariant(migrated.ok, `migrating the dev database failed: ${JSON.stringify(migrated)}`);
 
-const root = await bootstrapRootAccount({
-    db,
-    rng: systemCryptoRng,
-    email: "root@lucent.localhost",
-    username: "root",
-});
+// `moon run server:seed -- recover-root` signs the dev root out and prints a new setup link.
+const root = process.argv.includes("recover-root")
+    ? await recoverRootAccount({ db, rng: systemCryptoRng })
+    : await bootstrapRootAccount({
+          db,
+          rng: systemCryptoRng,
+          email: "root@lucent.localhost",
+          username: "root",
+      });
 invariant(
     root.ok || root.error.code === "ROOT_ALREADY_EXISTS",
-    `bootstrapping the dev root failed: ${JSON.stringify(root)}`,
+    `seeding the dev root failed: ${JSON.stringify(root)}`,
 );
-process.stdout.write(root.ok ? `root ${root.value.accountId}\n` : "root already exists\n");
+process.stdout.write(
+    root.ok
+        ? `root ${root.value.accountId}: set it up at ${setupPath(root.value.setupToken)}\n`
+        : "root already exists; `moon run server:seed -- recover-root` for a new setup link\n",
+);
 
 await db.close();
 cluster.release();

@@ -43,8 +43,10 @@ test("migrating refuses a database whose applied migration was since edited", as
 test("migrating refuses a database ahead of the code", async () => {
     const cluster = await sharedTestCluster();
     await cluster.withTestDb(async ({ nativeDb }) => {
-        expect(await migrateDatabase(nativeDb, [])).toEqual(
-            err({ code: "SCHEMA_AHEAD", versions: [1] }),
+        const migrations = await loadMigrations();
+        const latest = migrations.length;
+        expect(await migrateDatabase(nativeDb, migrations.slice(0, -1))).toEqual(
+            err({ code: "SCHEMA_AHEAD", versions: [latest] }),
         );
     });
 });

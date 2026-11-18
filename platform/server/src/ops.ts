@@ -1,5 +1,6 @@
 import { parseArgs } from "node:util";
-import { bootstrapRootAccount } from "./authority/writers.ts";
+import { setupPath } from "./auth/setup.ts";
+import { bootstrapRootAccount, recoverRootAccount } from "./authority/writers.ts";
 import { processEnvironment, readOpsConfig } from "./config.ts";
 import { trySync } from "./core/contain.ts";
 import { systemCryptoRng } from "./core/rng.ts";
@@ -11,6 +12,7 @@ import { openPool } from "./db/pool.ts";
 const USAGE = `usage:
   ops migrate
   ops bootstrap-superadmin --email <email> --username <username>
+  ops recover-root
 `;
 
 function report(stream: "stdout" | "stderr", value: unknown): void {
@@ -73,7 +75,23 @@ async function run(): Promise<number> {
                 report("stderr", root.error);
                 return 1;
             }
-            report("stdout", root.value);
+            report("stdout", {
+                accountId: root.value.accountId,
+                setupPath: setupPath(root.value.setupToken),
+            });
+            return 0;
+        }
+        case "recover-root": {
+            // Signs everyone out of the root account and removes its credentials.
+            const root = await recoverRootAccount({ db, rng: systemCryptoRng });
+            if (!root.ok) {
+                report("stderr", root.error);
+                return 1;
+            }
+            report("stdout", {
+                accountId: root.value.accountId,
+                setupPath: setupPath(root.value.setupToken),
+            });
             return 0;
         }
         default:
