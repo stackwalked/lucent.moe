@@ -1,11 +1,13 @@
 lucent_library(kit
     HEADERS
         include/lucent/kit/boot_info.hpp
+        include/lucent/kit/fact.hpp
         include/lucent/kit/hook.hpp
         include/lucent/kit/lifecycle.hpp
         include/lucent/kit/session.hpp
         include/lucent/kit/session_message.hpp
     SOURCES
+        src/fact_section.cpp
         src/hook.cpp
         src/lifecycle.cpp
         src/release.cpp
@@ -15,5 +17,10 @@ lucent_library(kit
 )
 
 lucent_test(kit
-    SOURCES tests/hook_test.cpp tests/session_message_test.cpp tests/unmap_stub_test.cpp
+    SOURCES
+        tests/fact_section_other.cpp
+        tests/fact_section_test.cpp
+        tests/hook_test.cpp
+        tests/session_message_test.cpp
+        tests/unmap_stub_test.cpp
 )

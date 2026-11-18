@@ -373,7 +373,10 @@ delivered. Decided in full.
   - Resolve walks the section before attach; live revisions rewrite it only at safe points; the
     section is read-only between them.
   - The manifest is the facts the shipped code links, so a stripped feature drops its facts.
-  - Spike first: inline variables fold to one copy, the section enumerates, the mapper carries it.
+  - The spike held (kit `fact.hpp`, `fact_section.cpp`): a header fact included by two units folds
+    to one object; `.lfact$a/$m/$z` merge into one `.lfact` section with no gaps between
+    24-byte records, on a page of its own; a mapped module enumerates and writes it. Fact objects
+    are `const` with only the value `mutable`, so they need no suppression per declaration.
 - Features never name facts. The foreign layer groups facts into capabilities beside them; features
   require capabilities in `features/all.cpp`; a capability is available when all its facts passed
   their checks. Reads inside a running feature don't re-check facts.
