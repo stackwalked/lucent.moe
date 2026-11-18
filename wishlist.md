@@ -120,7 +120,20 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
   - generate `describe()` with C++26 reflection if Clang ships it (unverified).
 - Config store: profiles, undo, scopes. Per-weapon scope may need to be a real dimension.
 - Binds: `bind_slot`. Activity (a held key) is separate from lifecycle (on/off).
-- Overlay contract (device + frame). Widgets live in `libs/ui`, the menu in `libs/menu`.
+- Overlay rendering is our own, not Dear ImGui: a highly custom look would mean patching its backend
+  and rewriting its widgets. Libraries, in dependency order:
+  - `libs/render/draw`: recording only (draw list to frame data, units and snapping, paths). No
+    GPU, no OS; tested headless.
+  - `libs/render/text`: fonts, shaping, fallback, rasterization, the glyph atlas, measure and wrap.
+    Emits glyph quads into a draw list.
+  - `libs/render/backends/d3d11`: consumes frame data; owns GPU resources, layer and blur passes,
+    atlas uploads, pipeline state save and restore. Depends on draw only.
+  - `libs/render/ui`: input snapshot, layout, widgets, interaction, animation, theme tokens. No GPU.
+  - `libs/render/menu`: menu pages from the settings' `describe()`.
+  - The target glues it together (Present hook, snapshot, ui, backend). A backend draws into the
+    device and target it's handed and knows no hooks, so the same stack runs in a standalone window.
+- Still to decide for rendering: the draw list, text, shaders, the backend and lifetime, layout and
+  widgets, animation and theme, testing.
 - Lease client: verify, renew, lapse, and feed entitlements to the registry.
 - Dev channel, stats and incident sink, compiled out of release (enforced in CMake).
 - An injectable clock.
