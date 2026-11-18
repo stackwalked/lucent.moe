@@ -17,6 +17,7 @@ Rules a tool can check live in that tool's config. This file holds only what can
   exists only when code needs it; no placeholders. A new layer appears in the commit that
   extracts it, and that commit says why.
 - `docs/` indexes per-project maps. User-facing docs belong to the site.
+- A runtime's own unchecked rules sit beside its code: `native/AGENTS.md`.
 - Binaries and secrets never enter git.
 
 ## Research
