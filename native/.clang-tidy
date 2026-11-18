@@ -1,0 +1,74 @@
+# The C++ dialect's lint (wishlist: C++ dialect, enforcement): whole families on, every disable
+# named with its reason, every finding an error.
+Checks: >
+  -*,
+  bugprone-*,
+  clang-analyzer-*,
+  concurrency-*,
+  cppcoreguidelines-*,
+  misc-*,
+  modernize-*,
+  performance-*,
+  portability-*,
+  readability-*,
+  fuchsia-default-arguments-declarations,
+  google-explicit-constructor,
+  -modernize-use-nodiscard,
+  -portability-avoid-pragma-once,
+  -readability-magic-numbers,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -bugprone-std-exception-baseclass
+# modernize-use-nodiscard: the dialect bans the attribute; bugprone-unused-return-value covers
+# every lucent function instead.
+# portability-avoid-pragma-once: the dialect uses #pragma once; every compiler we build with has it.
+# The magic-number pair: values that mean something are named by the dialect's own rules (fields,
+# settings, unit types); the literals left are expectations in static_asserts and tests.
+# bugprone-std-exception-baseclass: the dialect never inherits std types; raise() throws our own
+# fault type, caught only by contain().
+
+WarningsAsErrors: "*"
+HeaderFilterRegex: '.*[/\\]native[/\\].*'
+SystemHeaders: false
+
+CheckOptions:
+  bugprone-unused-return-value.CheckedFunctions: '^::lucent::.*'
+  bugprone-unused-return-value.AllowCastToVoid: false
+
+  cppcoreguidelines-macro-usage.AllowedRegexp: '^LUCENT_(TRY|ENSURE|INVARIANT|VIRT)$'
+
+  # Force-included into every file by lucent_library().
+  misc-include-cleaner.IgnoreHeaders: '.*prelude\.hpp'
+  misc-non-private-member-variables-in-classes.IgnoreClassesWithAllMemberVariablesBeingPublic: true
+
+  readability-function-cognitive-complexity.Threshold: 25
+  # Single letters only for loop indices and math.
+  readability-identifier-length.MinimumLoopCounterNameLength: 1
+  readability-identifier-length.IgnoredVariableNames: '^[xyzwijn]$'
+  readability-identifier-length.IgnoredParameterNames: '^[xyzw]$'
+
+  readability-identifier-naming.NamespaceCase: lower_case
+  readability-identifier-naming.ClassCase: lower_case
+  readability-identifier-naming.StructCase: lower_case
+  readability-identifier-naming.UnionCase: lower_case
+  readability-identifier-naming.EnumCase: lower_case
+  readability-identifier-naming.EnumConstantCase: lower_case
+  readability-identifier-naming.TypeAliasCase: lower_case
+  readability-identifier-naming.TypedefCase: lower_case
+  readability-identifier-naming.ConceptCase: lower_case
+  readability-identifier-naming.FunctionCase: lower_case
+  readability-identifier-naming.MethodCase: lower_case
+  readability-identifier-naming.VariableCase: lower_case
+  readability-identifier-naming.ParameterCase: lower_case
+  readability-identifier-naming.MemberCase: lower_case
+  readability-identifier-naming.PrivateMemberPrefix: m_
+  readability-identifier-naming.ProtectedMemberPrefix: m_
+  readability-identifier-naming.ConstexprVariableCase: lower_case
+  readability-identifier-naming.GlobalConstantCase: lower_case
+  readability-identifier-naming.StaticConstantCase: lower_case
+  readability-identifier-naming.ClassConstantCase: lower_case
+  readability-identifier-naming.MacroDefinitionCase: UPPER_CASE
+  readability-identifier-naming.MacroDefinitionPrefix: LUCENT_
+  readability-identifier-naming.TemplateParameterCase: CamelCase
+  readability-identifier-naming.TypeTemplateParameterCase: CamelCase
+  readability-identifier-naming.ValueTemplateParameterCase: CamelCase
+  readability-identifier-naming.TemplateTemplateParameterCase: CamelCase

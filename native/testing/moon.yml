@@ -1,0 +1,9 @@
+language: "cpp"
+layer: "library"
+
+dependsOn: ["core"]
+
+# The test host itself has no tests: every other project's tests run on it.
+workspace:
+  inheritedTasks:
+    exclude: ["test"]

@@ -1,0 +1,20 @@
+inheritedBy:
+  language: "cpp"
+
+# Lint and tests per project; native:build compiles the whole tree once. Lint needs only a
+# configured tree (compile_commands.json), not a build.
+implicitInputs:
+  - "/native/.clang-tidy"
+  - "/tools/lint/tidy.py"
+
+tasks:
+  lint:
+    command: "uv run $workspaceRoot/tools/lint/tidy.py ."
+    deps: ["native:configure"]
+  test:
+    command: "ctest --test-dir $workspaceRoot/.moon/cache/cmake/dev -L ^$project$ --output-on-failure --no-tests=error"
+    deps: ["native:build"]
+    options:
+      cache: false
+  check:
+    deps: ["~:lint"]

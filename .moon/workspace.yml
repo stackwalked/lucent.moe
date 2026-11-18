@@ -1,6 +1,14 @@
 projects:
   globs:
     - "tools/*/moon.yml"
+    - "native/moon.yml"
+    - "native/*/moon.yml"
+
+# Repo-wide tasks take /**/* as input; the native build tree under .moon/cache is output, and
+# vcpkg holds locks in it while configuring.
+hasher:
+  ignorePatterns:
+    - ".moon/cache/**"
 
 vcs:
   client: "git"

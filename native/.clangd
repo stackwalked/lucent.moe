@@ -1,0 +1,3 @@
+# The dev preset's build tree; CMakePresets.json puts it under .moon/cache to keep the root clear.
+CompileFlags:
+  CompilationDatabase: ../.moon/cache/cmake/dev

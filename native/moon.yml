@@ -1,0 +1,30 @@
+layer: "configuration"
+
+# The CMake tree as a whole: one configure and one build for every native project. Not cached by
+# moon: Ninja is incremental already, and a cached pass would skip a deleted build directory.
+tasks:
+  configure:
+    command: "cmake --preset dev"
+    inputs:
+      - "CMakeLists.txt"
+      - "CMakePresets.json"
+      - "vcpkg.json"
+      - "vcpkg-configuration.json"
+      - "cmake/**/*"
+      - "*/CMakeLists.txt"
+      - "/.prototools"
+    options:
+      cache: false
+  build:
+    command: "cmake --build --preset dev"
+    deps: ["~:configure"]
+    inputs:
+      - "**/*"
+      - "/.prototools"
+    options:
+      cache: false
+  check:
+    deps: ["~:build"]
+    inputs:
+      - "**/*"
+      - "/.prototools"

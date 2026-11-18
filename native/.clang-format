@@ -1,0 +1,98 @@
+# The C++ dialect's formatting (wishlist: C++ dialect, formatting). Tested on clang-format 23.1.5.
+BasedOnStyle: LLVM
+Language: Cpp
+Standard: Latest
+ColumnLimit: 100
+IndentWidth: 4
+ContinuationIndentWidth: 4
+UseTab: Never
+LineEnding: LF
+InsertNewlineAtEOF: true
+AccessModifierOffset: -4
+
+BreakBeforeBraces: Attach
+InsertBraces: true
+RemoveSemicolon: true
+RemoveParentheses: ReturnStatement
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortLambdasOnASingleLine: All
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Never
+AllowShortEnumsOnASingleLine: true
+
+# Overflowing signatures and calls go one per line with the closing bracket on its own line, so a
+# rename never re-aligns its neighbours.
+AlignAfterOpenBracket: false
+BreakAfterOpenBracketFunction: true
+BreakBeforeCloseBracketFunction: true
+BreakAfterOpenBracketBracedList: true
+BreakBeforeCloseBracketBracedList: true
+BinPackParameters: OnePerLine
+BinPackArguments: false
+AllowAllParametersOfDeclarationOnNextLine: true
+AllowAllArgumentsOnNextLine: true
+Cpp11BracedListStyle: true
+
+BreakBeforeBinaryOperators: NonAssignment
+BreakBinaryOperations: OnePerLine
+
+BreakTemplateDeclarations: Yes
+RequiresClausePosition: OwnLine
+IndentRequiresClause: true
+BreakConstructorInitializers: BeforeComma
+PackConstructorInitializers: Never
+
+QualifierAlignment: Custom
+QualifierOrder: [static, inline, constexpr, const, type]
+PointerAlignment: Left
+ReferenceAlignment: Left
+DerivePointerAlignment: false
+
+NamespaceIndentation: None
+FixNamespaceComments: false
+SeparateDefinitionBlocks: Always
+MaxEmptyLinesToKeep: 1
+KeepEmptyLines:
+  AtEndOfFile: false
+  AtStartOfBlock: false
+  AtStartOfFile: false
+EmptyLineBeforeAccessModifier: LogicalBlock
+EmptyLineAfterAccessModifier: Never
+
+ReflowComments: Always
+# Suppression markers bind to a line; reflowing them would move what they cover.
+CommentPragmas: '^ *(NOLINT|clang-format|ast-grep-ignore)'
+AlignTrailingComments:
+  Kind: Never
+
+IntegerLiteralSeparator:
+  Decimal: 3
+  DecimalMinDigitsInsert: 5
+NumericLiteralCase:
+  ExponentLetter: Lower
+  HexDigit: Lower
+  Prefix: Lower
+  Suffix: Upper
+
+# Own header first (a test's subject header counts), then std, the Windows SDK and compiler
+# intrinsics, third-party, lucent, and private headers from the same src/.
+SortIncludes:
+  Enabled: true
+  IgnoreCase: false
+IncludeBlocks: Regroup
+MainIncludeChar: Any
+IncludeIsMainRegex: '(_test)?$'
+IncludeCategories:
+  # Named explicitly so third-party .h headers don't land here.
+  - Regex: '^<(windows|winternl|ntstatus|psapi|tlhelp32|d3d11|dxgi|d3dcompiler|intrin)\.h>$'
+    Priority: 2
+  - Regex: '^<lucent/'
+    Priority: 4
+  # std: one bare word, no extension.
+  - Regex: '^<[a-z_0-9]+>$'
+    Priority: 1
+  - Regex: '^<'
+    Priority: 3
+  - Regex: '^"'
+    Priority: 5
