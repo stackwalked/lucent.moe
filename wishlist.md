@@ -559,7 +559,10 @@ Still to land, in order:
   - opt-in and release-only;
   - cold functions only, verified by tooling.
 - Seeded per release, with the seed recorded, `/Brepro` preserved, and differential tests (plain vs. virtualized).
-- Verify that LLVM pass plugins load in clang-cl from the prebuilt release. If not: our own LLVM build (which changes the pin) or a post-link rewriter.
+- LLVM pass plugins load in the prebuilt clang-cl through `-Xclang -fpass-plugin`, each carrying
+  its own static copy of LLVM, so it registers the analyses it uses. lld-link can't load one at
+  ThinLTO link time, so the virtualizer runs per translation unit, before the link
+  (`research/kb/llvm/clang-cl-pass-plugins.md`).
 - One VM generator for both the outer VM and the recipe VM, plus the server encoder.
 - The recipe runner is fully virtualized. The plan executor stays native.
 
