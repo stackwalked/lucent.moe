@@ -1,0 +1,17 @@
+language: "cpp"
+layer: "library"
+
+dependsOn: ["core", "crypto", "os"]
+
+tasks:
+  # Rewrites contracts/fact-bundle's golden vectors from the encoder. Review the diff before
+  # committing: a changed vector is a changed wire format.
+  vectors:
+    command: "ctest --test-dir $workspaceRoot/.moon/cache/cmake/dev -L ^bundle$ -R golden --output-on-failure"
+    deps: ["native:build"]
+    env:
+      LUCENT_WRITE_VECTORS: "1"
+    options:
+      cache: false
+      runInCI: false
+      mutex: "ctest"

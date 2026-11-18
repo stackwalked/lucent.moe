@@ -48,4 +48,24 @@ auto read_file(const std::filesystem::path& path) -> result<std::vector<std::byt
     return bytes;
 }
 
+auto write_file(const std::filesystem::path& path, std::span<const std::byte> bytes)
+    -> result<void> {
+    const unique_handle file{CreateFileW(
+        path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr
+    )};
+    if (!file.is_valid()) {
+        return std::unexpected(last_system_error());
+    }
+    std::span<const std::byte> remaining = bytes;
+    while (!remaining.empty()) {
+        DWORD written = 0;
+        const auto chunk = narrow<DWORD>(std::min<usize>(remaining.size(), MAXDWORD));
+        if (WriteFile(file.native(), remaining.data(), chunk, &written, nullptr) == 0) {
+            return std::unexpected(last_system_error());
+        }
+        remaining = remaining.subspan(written);
+    }
+    return {};
+}
+
 }

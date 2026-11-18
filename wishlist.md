@@ -324,10 +324,21 @@ Foreign knowledge (RVAs, vtable slots, field and schema offsets, constants): dec
 delivered. Decided in full.
 
 Landed in kit (`fact.hpp`, `fact_resolve.hpp`): the fact section, the six typed kinds, one value
-accessor, resolve with every per-kind load check, and capabilities. Still to land, in order: the
-bundle (Monocypher through `libs/crypto`, via vcpkg), `libs/probe` with the generator and cs2
-finders, the first real facts end to end; then the read-only section between safe points, the
-per-release key seed, and `core` capabilities refusing the start.
+accessor, resolve with every per-kind load check, and capabilities. Landed for the bundle:
+`libs/crypto` (Monocypher 4.0.2 through an overlay port in `native/cmake/ports`: vcpkg has none;
+standard Ed25519, BLAKE2b-256), `libs/bundle` (the format, RFC 6962 Merkle with multiproofs,
+canonical decoding, verification) and its golden vectors in `contracts/fact-bundle/v1`.
+
+Still to land, in order:
+
+- the dev key (`tools/devkey`: the seed under `%LOCALAPPDATA%\lucent\dev`, the public key as a
+  generated header), the module applying a bundle (signature, manifest digest, module keys, then
+  resolve) and `boot_info` v3 carrying it, with `libs/probe`, the generator and cs2 finders;
+- the first real facts end to end;
+- the read-only section between safe points, the per-release key seed, `core` capabilities
+  refusing the start;
+- release key handling: a release guard that refuses a build whose trusted keys differ from the
+  production list, and a post-link check that no release image holds the dev public key.
 
 - Declarations are C++ in the target's foreign layer, by subsystem, and ship. A `consteval`
   constructor hashes the name, which never reaches the binary; ast-grep checks it matches the

@@ -1,0 +1,50 @@
+{
+  "format": 1,
+  "signer_public_key": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+  "sets": [
+    {
+      "game": 1,
+      "revision": 3,
+      "modules": [
+        {
+          "name_hash": "1111222233334444",
+          "time_date_stamp": "6731a2f0",
+          "size_of_image": "04c2e000"
+        }
+      ],
+      "finders_commit": "0123456789abcdef0123456789abcdef01234567",
+      "manifest_digest": "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
+      "entry_count": 5,
+      "merkle_root": "4ad55cf8f7f96c0b753df18fe37785c72cdd0990c829fdc946432edcb675ed77",
+      "signature": "b707ae19f4bda747eb40ffd2079d6f8f10a776301b19f6fe60c2ac2cb8ccf6d86cb39a512f7087fbef87f2c2ab938a4446c0f547990721a58bfae93c8546fc04",
+      "delivered": [
+        {
+          "index": 0,
+          "key": "0000000000001000",
+          "literal": "000000000000a000"
+        },
+        {
+          "index": 1,
+          "key": "0000000000001010",
+          "literal": "000000000000a001"
+        },
+        {
+          "index": 2,
+          "key": "0000000000001020",
+          "literal": "000000000000a002"
+        },
+        {
+          "index": 3,
+          "key": "0000000000001030",
+          "literal": "000000000000a003"
+        },
+        {
+          "index": 4,
+          "key": "0000000000001040",
+          "literal": "000000000000a004"
+        }
+      ],
+      "proof": []
+    }
+  ]
+}

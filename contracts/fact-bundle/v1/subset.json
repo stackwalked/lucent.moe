@@ -1,0 +1,41 @@
+{
+  "format": 1,
+  "signer_public_key": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+  "sets": [
+    {
+      "game": 1,
+      "revision": 3,
+      "modules": [
+        {
+          "name_hash": "1111222233334444",
+          "time_date_stamp": "6731a2f0",
+          "size_of_image": "04c2e000"
+        }
+      ],
+      "finders_commit": "0123456789abcdef0123456789abcdef01234567",
+      "manifest_digest": "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff",
+      "entry_count": 9,
+      "merkle_root": "6fb49ecdb89b713c3116d7ec6e67fd179506a04bcfc0c5a4b319d7bac26e5298",
+      "signature": "b50c91b9fa562bb2c133e6cdee235e22d5d5059c210ceec097fc49b0ce064d8985dba2055f8c084d72aff75aefd57693c090ee95e0b2474ae17b20a26a5d700f",
+      "delivered": [
+        {
+          "index": 2,
+          "key": "0000000000001020",
+          "literal": "000000000000a002"
+        },
+        {
+          "index": 7,
+          "key": "0000000000001070",
+          "literal": "000000000000a007"
+        }
+      ],
+      "proof": [
+        "e3c6d05414c92c63274f3542944712e39373b7c3a26beddc2adfff84ef339c21",
+        "4af59e190f421d6df43b9b915ced64254930dfc639ba789a39857aa9a8a9e830",
+        "40178509d88b0496035ab397003633d3a342554430b429b1e5a6ac6225cd5456",
+        "cbb055874f7f30e70e23877091db189f8391d916ac2adf636f856487afdf2c76",
+        "e2b4722ec1a2a26dd9bcc2fa0bfba52dd6e24e4a081a1cd01381f253a0edcfe5"
+      ]
+    }
+  ]
+}
