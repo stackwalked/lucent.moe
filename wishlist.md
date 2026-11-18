@@ -503,7 +503,7 @@ Still to land, in order:
 - A broken finder makes its facts fail and its capabilities unavailable. A partial set may be
   published when no `core` capability is affected; the finder fix lands as the next revision.
 - Metrics: update-day latency per module and per step; load failures reported from the field.
-- Seams for the protection work (designed in "Server inputs" and "Protection toolchain"):
+- Seams for the protection work (designed in `wishlist/protection.md`):
   - every read of a fact value goes through one kit accessor, so storage can become encoded later
     by changing one function (and decoding stays about a load and an XOR);
   - a payload carries a tag: a literal now, a recipe later, evaluated by one resolve function, and
@@ -513,68 +513,10 @@ Still to land, in order:
     back through that release's manifest;
   - a post-link check fails a release build whose image contains any declared fact name.
 
-## Server inputs and licensing integrity
+## Protection
 
-- The lease and game data travel on separate channels.
-- Game data keys and types are declared in game code (see Facts).
-  - The build exports a manifest, and server tooling validates bundles against it.
-  - Only the container schema lives in `contracts/`.
-- Bundle shape and delivery: see Facts.
-- The release module discovers nothing. `libs/probe` (sig, schema, RTTI) is tooling and dev only, banned from release presets. Gate schema offsets too, so there's one rule.
-- Every server value is validated. A bad value makes a requirement unavailable; it never crashes.
-- Bundles are encrypted per session (key from the lease), expire with the lease, and are decrypted, used and wiped.
-- Entitlement is enforced by withholding data. Data is delivered lazily, per feature.
-- No labeled tables:
-  - recipes (load-time derivation bytecode);
-  - plans (copy plans run by a native executor).
-- Per-release format rotation from a seed:
-  - recipe opcodes;
-  - plan encoding;
-  - key derivation;
-  - struct field order;
-  - the bundle carries no descriptive data (names, types, lengths a decoder could do without),
-    and entry order follows the seeded key hashes, so it differs per release.
-
-  The point: public fact values are worth little to a cracker unless they can be encoded into a
-  bundle this release accepts.
-
-  The server encoder and the module decoders come from the same seed, with a contract test between them.
-- Per-session watermarking: equivalent but distinct bundles.
-- Walls interlock: getting past one breaks another's inputs (a patched signature check changes a
-  measured region, which changes the key the bundle decrypts with). No wall is a standalone check
-  that can be beaten on its own. The aim is a crack that is never worth its cost, not one that is
-  impossible.
-- Configs and scripts can live in the cloud only: one more server asset a crack has to replace.
-- Integrity as key material:
-  - `measure`/`mix`/`derive` ops, with regions chosen by the server per session;
-  - the runner measures itself;
-  - server-side challenge/response.
-- Measurement accounts for relocations and fixups. A contract test checks the expected hashes, and mismatch telemetry is tagged with the release seed.
-- Debugger and VM checks are signals only: risk scoring on the server, acted on later. Never a local gate, and never gate on hypervisor detection (VBS).
-- Never respond where a tamper is detected. Responses are delayed and decoupled.
-- The update-day pipeline: see Facts.
-- Dev: `loader-dev` takes local bundles signed with a dev key that release builds reject.
-- Later:
-  - fixups into code immediates;
-  - per-user diversified builds.
-
-## Protection toolchain
-
-The virtualizer is research from the ground up, unlike what migrates from the old repo, and gets
-its own design discussion. Its bullets below are provisional until then.
-
-- The `LUCENT_VIRT` annotation now. Mark the runner, decryption, lease and integrity code as it's written.
-- Compile-time virtualizer:
-  - starts as a lab project and graduates to `tools/`;
-  - opt-in and release-only;
-  - cold functions only, verified by tooling.
-- Seeded per release, with the seed recorded, `/Brepro` preserved, and differential tests (plain vs. virtualized).
-- LLVM pass plugins load in the prebuilt clang-cl through `-Xclang -fpass-plugin`, each carrying
-  its own static copy of LLVM, so it registers the analyses it uses. lld-link can't load one at
-  ThinLTO link time, so the virtualizer runs per translation unit, before the link
-  (`research/kb/llvm/clang-cl-pass-plugins.md`).
-- One VM generator for both the outer VM and the recipe VM, plus the server encoder.
-- The recipe runner is fully virtualized. The plan executor stays native.
+Integrity, licensing, strings and diagnostics, the virtualizer, obfuscation and operations
+live in `wishlist/protection.md`.
 
 ## Repo and platform
 
@@ -827,7 +769,6 @@ DX11 overlay window; lazer and stable) is rewritten here as a second product.
 
 ## Open
 
-- Release string hygiene (log stripping, hashed ids, string encryption). It shapes the logging API.
 - Isolating our allocations from the game's heap.
 - A generic "revise" round in an arbiter vs. a planner per domain.
 - Script precedence policy (a product decision).
