@@ -51,12 +51,15 @@ struct start_request {
     attach_fn attach = nullptr;
 };
 
-auto run(const start_request& request) -> void {
+// Whether the module may be freed: not when detach couldn't show that no thread will run its code
+// again.
+auto run(const start_request& request) -> bool {
     session channel{session_ends{
         .inbound = os::unique_handle{request.info.from_host},
         .outbound = os::unique_handle{request.info.to_host},
     }};
     report(channel, stage::boot);
+    bool is_detached = true;
     {
         // A target that fails to attach skips straight to detach: the host sees no attach stage.
         const result<std::unique_ptr<attachment>> attached = request.attach();
@@ -64,21 +67,31 @@ auto run(const start_request& request) -> void {
             report(channel, stage::attach);
             report(channel, stage::run);
             wait_for_unload(channel);
+            is_detached = (*attached)->detach().has_value();
         }
         report(channel, stage::detach);
     }
+    if (!is_detached) {
+        return false;
+    }
     report(channel, stage::unload);
+    return true;
 }
 
 // A raw thread, the one exception to kit workers: it ends by freeing the module its own code lives
 // in, so no object in the module may own it. A static std::jthread would be destroyed during that
 // unload and join this very thread.
 auto WINAPI lifecycle_main(void* parameter) -> DWORD {
+    bool may_free = false;
     {
         const std::unique_ptr<const start_request> request{
             static_cast<const start_request*>(parameter)
         };
-        run(*request);
+        may_free = run(*request);
+    }
+    if (!may_free) {
+        // Leaked on purpose: freeing would pull code out from under a thread still in it.
+        return 0;
     }
     // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast): __ImageBase is this module's HMODULE by definition.
     FreeLibraryAndExitThread(reinterpret_cast<HMODULE>(&__ImageBase), 0);

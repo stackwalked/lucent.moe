@@ -6,6 +6,7 @@
 #include <chrono>
 #include <optional>
 #include <thread>
+#include <tuple>
 #include <utility>
 
 #include <Windows.h>
@@ -125,6 +126,53 @@ TEST_CASE("removing hooks waits for calls still inside a detour") {
     CHECK_FALSE(removed_while_in_flight);
     CHECK(removed.load(std::memory_order_acquire));
     CHECK(caller_result.load(std::memory_order_acquire) == 6);
+    CHECK(tripled(2) == 6);
+}
+
+// Stands in for a thread caught between a detour's first instruction and its in-flight count: it
+// runs in this image without being counted.
+auto spin(const std::atomic<bool>& stop) -> void {
+    while (!stop.load(std::memory_order_relaxed)) {
+        std::atomic_signal_fence(std::memory_order_seq_cst);
+    }
+}
+
+TEST_CASE("removal waits while another thread runs in this module's code, uncounted") {
+    const std::array requests{hook_on<tripled_slot>(address_of(&tripled))};
+    result<hook_set> hooks = hook_set::install(requests);
+    REQUIRE(hooks.has_value());
+    std::atomic<bool> stop{false};
+    std::jthread spinner{[&] { spin(stop); }};
+    std::atomic<bool> removed{false};
+    std::jthread remover{[&] {
+        std::ignore = hooks->remove(unhook_patience);
+        removed.store(true, std::memory_order_release);
+    }};
+
+    std::this_thread::sleep_for(std::chrono::milliseconds{200});
+    const bool removed_while_spinning = removed.load(std::memory_order_acquire);
+    stop.store(true, std::memory_order_relaxed);
+    spinner.join();
+    remover.join();
+
+    CHECK_FALSE(removed_while_spinning);
+    CHECK(removed.load(std::memory_order_acquire));
+    CHECK(tripled(2) == 6);
+}
+
+TEST_CASE("removal gives up after its patience, leaving the target unpatched") {
+    const std::array requests{hook_on<tripled_slot>(address_of(&tripled))};
+    result<hook_set> hooks = hook_set::install(requests);
+    REQUIRE(hooks.has_value());
+    std::atomic<bool> stop{false};
+    std::jthread spinner{[&] { spin(stop); }};
+
+    const result<void> removed = hooks->remove(std::chrono::milliseconds{100});
+    stop.store(true, std::memory_order_relaxed);
+    spinner.join();
+
+    REQUIRE_FALSE(removed.has_value());
+    CHECK(removed.error().code == error_code::timed_out);
     CHECK(tripled(2) == 6);
 }
 

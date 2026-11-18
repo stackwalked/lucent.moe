@@ -6,8 +6,7 @@
 
 namespace lucent::kit {
 
-// What a target keeps alive while attached. Destroying it detaches: its members' destructors undo
-// what attach did (hooks first).
+// What a target keeps alive while attached.
 class attachment {
 public:
     attachment(const attachment&) = delete ("identity of the attached module");
@@ -15,6 +14,10 @@ public:
     attachment(attachment&&) = delete ("identity of the attached module");
     auto operator=(attachment&&) -> attachment& = delete ("identity of the attached module");
     virtual ~attachment() = default;
+
+    // Undoes attach, on the lifecycle thread. A failure means a thread may still run this
+    // module's code, so the lifecycle leaves the module loaded instead of freeing it.
+    virtual auto detach() -> result<void> = 0;
 
 protected:
     attachment() = default;
@@ -25,7 +28,8 @@ using attach_fn = auto (*)() -> result<std::unique_ptr<attachment>>;
 
 // Starts the module's lifecycle thread and returns at once. The thread reports each stage to the
 // host, attaches the target, runs until the host asks it to unload or goes away, detaches, then
-// frees the module. Call once, on the thread the host started the module with.
+// frees the module, unless detach failed: then the host sees no unload stage and the module stays
+// loaded, inert. Call once, on the thread the host started the module with.
 auto start(const boot_info& info, attach_fn attach) -> result<void>;
 
 }

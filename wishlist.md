@@ -85,9 +85,9 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
   - Safe points.
   - In-flight hook counting.
   - Unhooking only once no hook call is in progress.
-- Hook manager (inline hooks, all-or-nothing install and in-flight counts landed):
-  - removal checks the counts while every other thread is frozen, replacing the grace period
-    (a thread can be in a detour's first instructions, not yet counted);
+- Hook manager (inline hooks, all-or-nothing install, in-flight counts, and removal proven idle
+  with every other thread frozen landed):
+  - kit worker threads join before hook removal; until then removal counts them as busy;
   - `hook_object`: shadow vtables, only on objects that live as long as the module; removal restores
     the vtable pointer only if it's still ours (read under `contain()`) and frees the copy once
     drained. No patching of slots in the real vtable: it misses devirtualized and direct calls;
@@ -316,10 +316,8 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
   - one stage with many owners, in load order, below built-in features;
   - read-only schema reads by name;
   - scripts get values, not live handles. This breaks compatibility with the old `ext`.
-- Walking skeleton, on the OS loader through `loader-dev` first (lifecycle and session landed):
-  1. hook `IDXGISwapChain::Present` with safetyhook and draw a rectangle with `ClearView`;
-  2. unload cleanly: in-flight counting, unhook only when no call is in progress;
-  3. swap the OS loader for the manual mapper; the module stays unchanged.
+- Walking skeleton (Present hook and clean unload landed, on the OS loader through `loader-dev`):
+  swap the OS loader for the manual mapper; the module stays unchanged.
 - Separation the first skeleton slice still owes:
   - `kit`'s lifecycle mixes the stage sequence with OS-loader unload (`FreeLibraryAndExitThread`);
     the mapper step splits them.

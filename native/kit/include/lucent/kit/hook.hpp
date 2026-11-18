@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <bit>
+#include <chrono>
 #include <memory>
 #include <span>
 #include <type_traits>
@@ -104,6 +105,9 @@ auto hook_on(uptr target) -> hook_request {
     return std::remove_cvref_t<decltype(Slot)>::template request_for<Slot>(target);
 }
 
+// How long removal waits for the hooked code to fall idle before it gives up.
+inline constexpr std::chrono::milliseconds unhook_patience{5000};
+
 // Hooks installed together and removed together. Install and remove on one thread only (the
 // lifecycle thread): the hooking library is built without thread-safe statics.
 class hook_set final {
@@ -116,8 +120,15 @@ public:
     hook_set(hook_set&& other) noexcept;
     auto operator=(hook_set&& other) noexcept -> hook_set&;
 
-    // Unpatches every target, waits until no call is inside any detour, then frees the
-    // trampolines.
+    // Unpatches every target, then frees the trampolines once no thread can still be in one: every
+    // in-flight count is zero and no other thread, frozen to look, stands in this module's image
+    // or a trampoline. Until `patience` runs out it keeps looking; then it leaves the trampolines
+    // allocated and returns timed_out, and the module must stay loaded. Other threads of this
+    // module must have stopped first, or they count as busy.
+    auto remove(std::chrono::milliseconds patience) -> result<void>;
+
+    // Removes with unhook_patience if remove() wasn't called; a timeout there leaves the
+    // trampolines allocated.
     ~hook_set();
 
 private:
