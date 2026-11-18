@@ -180,7 +180,7 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
 
 Foreign knowledge (RVAs, vtable slots, field and schema offsets, constants): declared, derived and
 delivered. Decided topic by topic. Still open: finder vocabulary (provisionally accepted, being
-tested on real data), the update-day pipeline, the protection seam.
+tested on real data), the protection seam.
 
 - Declarations are C++ in the target's foreign layer, by subsystem, and ship. A `consteval`
   constructor hashes the name, which never reaches the binary; ast-grep checks it matches the
@@ -291,6 +291,18 @@ tested on real data), the update-day pipeline, the protection seam.
   vectors that the C++ decoder, the generator's encoder and the TS server all test against.
   - A format change adds a version, never mutates one. A module declares the formats it reads; the
     server keeps an encoder for every format a live release uses.
+- Only the latest build matters. The binaries cache, outside git and keyed by module build, holds
+  each module's latest build and the one before it (for checking a new finder isn't overfit);
+  reports compare against the last published set, not old binaries.
+- New builds come from snapshots of the installed game; later, SteamCMD fetches them headless when
+  app 730's `buildid` changes (a one-time login the human sets up).
+- The update-day pipeline, as moon tasks: ingest, generate (values, changes against the last
+  published set, finder warnings), harvest and probe (both need a running game), then sign-off.
+  Agents may run everything before sign-off; signing with the offline key and publishing (disabled,
+  then enabled) are always the human's.
+- A broken finder makes its facts fail and its capabilities unavailable. A partial set may be
+  published when no `core` capability is affected; the finder fix lands as the next revision.
+- Metrics: update-day latency per module and per step; load failures reported from the field.
 
 ## Server inputs and licensing integrity
 
@@ -321,7 +333,7 @@ tested on real data), the update-day pipeline, the protection seam.
 - Measurement accounts for relocations and fixups. A contract test checks the expected hashes, and mismatch telemetry is tagged with the release seed.
 - Debugger and VM checks are signals only: risk scoring on the server, acted on later. Never a local gate, and never gate on hypervisor detection (VBS).
 - Never respond where a tamper is detected. Responses are delayed and decoupled.
-- Bundle pipeline per game update: automated scan, manifest check, human sign-off, publish. Update-day latency is a product metric.
+- The update-day pipeline: see Facts.
 - Dev: `loader-dev` takes local bundles signed with a dev key that release builds reject.
 - Later:
   - fixups into code immediates;
