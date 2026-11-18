@@ -1,2 +1,5 @@
+project:
+  description: "The vocabulary every native project builds on: the prelude, result and fault, contain(), narrowing, std gaps."
+
 language: "cpp"
 layer: "library"

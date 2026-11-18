@@ -1,3 +1,6 @@
+project:
+  description: "What runs inside a target process: boot, lifecycle, the host session, hooks, facts and capabilities."
+
 language: "cpp"
 layer: "library"
 

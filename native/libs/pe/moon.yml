@@ -1,3 +1,6 @@
+project:
+  description: "Reads untrusted PE images, as files or as mapped, and the directories in them."
+
 language: "cpp"
 layer: "library"
 

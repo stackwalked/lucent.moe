@@ -1,3 +1,6 @@
+project:
+  description: "The libFuzzer host every project's fuzz targets link into."
+
 language: "cpp"
 layer: "library"
 

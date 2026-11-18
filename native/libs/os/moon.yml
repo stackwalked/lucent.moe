@@ -1,3 +1,6 @@
+project:
+  description: "Win32 behind our types: handles, files, pipes, processes, modules, remote memory and calls, frozen threads."
+
 language: "cpp"
 layer: "library"
 

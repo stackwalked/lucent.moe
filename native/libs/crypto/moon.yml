@@ -1,3 +1,6 @@
+project:
+  description: "The primitives the fact bundle signs and hashes with: Ed25519 and BLAKE2b."
+
 language: "cpp"
 layer: "library"
 

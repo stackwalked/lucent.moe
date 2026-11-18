@@ -1,3 +1,6 @@
+project:
+  description: "The checks no off-the-shelf tool expresses, and the dialects' ast-grep rules."
+
 language: "python"
 layer: "tool"
 

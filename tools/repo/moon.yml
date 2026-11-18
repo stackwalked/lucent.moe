@@ -1,3 +1,6 @@
+project:
+  description: "Repo-wide tasks: formatting, cross-language checks and the commit hooks."
+
 layer: "configuration"
 
 # Repo-wide tasks. Code is linted by its own project's inherited tasks; these cover what

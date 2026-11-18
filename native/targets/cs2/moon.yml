@@ -1,3 +1,6 @@
+project:
+  description: "The Counter-Strike 2 module."
+
 language: "cpp"
 layer: "application"
 

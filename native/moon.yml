@@ -1,3 +1,6 @@
+project:
+  description: "The CMake tree: toolchain, presets and vcpkg, and the one configure and build every native project shares."
+
 layer: "configuration"
 
 # The CMake tree as a whole: one configure and one build for every native project. Not cached by

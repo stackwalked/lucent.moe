@@ -1,3 +1,6 @@
+project:
+  description: "Finds things in a module's file: strings, RTTI vtables, byte patterns, and the code that references them."
+
 language: "cpp"
 layer: "library"
 

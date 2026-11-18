@@ -1,3 +1,6 @@
+project:
+  description: "The authority: accounts, credentials, sessions, roles and entitlements, over PostgreSQL."
+
 language: "typescript"
 layer: "application"
 

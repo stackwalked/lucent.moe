@@ -1,3 +1,6 @@
+project:
+  description: "The test host every native project's tests run on."
+
 language: "cpp"
 layer: "library"
 

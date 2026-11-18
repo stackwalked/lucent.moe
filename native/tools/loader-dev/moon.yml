@@ -1,3 +1,6 @@
+project:
+  description: "The development host: maps a module into a process and talks to it over the session."
+
 language: "cpp"
 layer: "tool"
 

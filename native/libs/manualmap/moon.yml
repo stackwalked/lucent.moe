@@ -1,3 +1,6 @@
+project:
+  description: "Maps a PE image into a process without the OS loader."
+
 language: "cpp"
 layer: "library"
 

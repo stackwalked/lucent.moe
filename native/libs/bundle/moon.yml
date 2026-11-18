@@ -1,3 +1,6 @@
+project:
+  description: "The fact bundle format: signed fact sets, and Merkle-proven subsets of them delivered to modules."
+
 language: "cpp"
 layer: "library"
 
