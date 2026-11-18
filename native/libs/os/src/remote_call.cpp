@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <span>
 #include <string>
+#include <tuple>
 
 #include <Windows.h>
 
@@ -65,10 +66,15 @@ auto load_library_remote(const process& target, const std::filesystem::path& lib
     remote_region path =
         LUCENT_TRY(remote_region::allocate(target, path_bytes.size(), page_access::read_write));
     LUCENT_TRY(path.write(0, path_bytes));
+    const result<u32> loaded = run_remote(target, {.start = load_library, .argument = path.base()});
+    if (!loaded) {
+        // After a timeout LoadLibraryW may still be reading the path; leak it rather than free it
+        // under the running thread.
+        std::ignore = path.release();
+        return std::unexpected(loaded.error());
+    }
     // The exit code is the HMODULE cut to 32 bits: only zero, a failed load, means anything.
-    const u32 loaded =
-        LUCENT_TRY(run_remote(target, {.start = load_library, .argument = path.base()}));
-    if (loaded == 0) {
+    if (*loaded == 0) {
         return std::unexpected(error{.code = error_code::not_found});
     }
     return {};
