@@ -187,8 +187,29 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
     linearizes and the hardware re-encodes; blur in the target's space. HDR targets (scRGB, HDR10)
     draw in linear scRGB at a fixed paper white, built when first seen;
   - no shader hot reload: it would bring back a runtime compiler.
-- Still to decide for rendering: the backend and lifetime, layout and widgets, animation and theme,
-  testing.
+- The D3D11 backend and resource lifetime:
+  - `renderer` is built from a device and its immediate context (feature level 11_0), on a worker
+    unless the device is single-threaded; states `idle → building → ready | failed`, three tries
+    per device, the overlay off until ready;
+  - `render(frame, target)` runs on the presenting thread; the target is a view the glue makes
+    from the back buffer each frame and releases before `Present` returns (no back buffer is held
+    between frames, so resizes need no hook);
+  - a new device (video settings, device removed) means a full rebuild: atlas pages re-upload from
+    the text system's CPU copy, images re-create lazily from their owners' caches;
+  - `image_handle` is a slot plus a serial from one process-wide counter that never restarts, so a
+    stale handle never matches; it draws nothing and counts as a miss;
+  - one structured buffer for records and one vertex buffer for paths, grown geometrically and
+    mapped once per frame; atlas uploads as dirty rects per slice; scratch targets pooled in 64 px
+    buckets per format and evicted after 240 unused frames; light readback through a ring that
+    never waits;
+  - an RAII guard saves and restores the game's whole pipeline state (clearing hull, domain and
+    geometry stages while we draw); render runs inside `contain()`, and a fault turns the overlay
+    off;
+  - dev-only stats over the dev channel: GPU time from a timestamp ring, CPU record and submit time,
+    draw calls, records, passes, atlas evictions, stale-handle misses;
+  - the glue draws only on the swapchain whose `OutputWindow` is the game's main window; whether to
+    hook `Present1` too is a per-game call.
+- Still to decide for rendering: layout and widgets, animation and theme, testing.
 - Lease client: verify, renew, lapse, and feed entitlements to the registry.
 - Dev channel, stats and incident sink, compiled out of release (enforced in CMake).
 - An injectable clock.
