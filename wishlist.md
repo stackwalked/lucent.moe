@@ -269,7 +269,22 @@ Structure (decided):
 - File-local code in an anonymous namespace; `static` free functions banned;
   `misc-use-internal-linkage`.
 
-Topics still to settle: tests, preprocessor,
+Tests (decided):
+
+- Catch2 v3 via vcpkg; doctest if it fails under `/GR-` (unverified). Tests build with the product's
+  flags, warnings and lints.
+- `tests/<unit>_test.cpp` per project, one executable via `lucent_test(<name> ...)`, an inherited
+  moon `test` task. Test names are behavior sentences.
+- Pure `constexpr` logic is tested only by `static_assert`.
+- `read_access` carries its memory source (live process or a test buffer), so the foreign layer is
+  tested with real `foreign_ptr`/`field`/`read` against laid-out bytes. No mocks.
+- `LUCENT_INVARIANT` goes through a host-installed handler: `__fastfail` in the module,
+  throws `invariant_violated` in tests. No death tests.
+- Every external-input parser (bundles, recipes, plans, config) gets a libFuzzer target in
+  `tests/fuzz/` under the ASan preset from its first commit.
+- In-target behavior and feel get manual test lists, not rigs.
+
+Topics still to settle: preprocessor,
 comments, formatting, enforcement.
 
 ## Kit
