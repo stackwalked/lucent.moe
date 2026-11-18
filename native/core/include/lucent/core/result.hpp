@@ -17,6 +17,10 @@ enum class error_code : u8 {
     not_found,
     // The peer speaks a different version of a format.
     version_mismatch,
+    // Well-formed, but something we don't handle (another machine type, say).
+    unsupported,
+    // A wait ran out before the other side finished.
+    timed_out,
 };
 
 struct error {
