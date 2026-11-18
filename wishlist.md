@@ -284,7 +284,24 @@ Tests (decided):
   `tests/fuzz/` under the ASan preset from its first commit.
 - In-target behavior and feel get manual test lists, not rigs.
 
-Topics still to settle: preprocessor,
+Preprocessor (decided):
+
+- Closed macro list, all `LUCENT_`: `TRY`, `ENSURE`, `INVARIANT`, `VIRT`, and possibly one logging
+  macro once release string hygiene is settled. Enforced by `cppcoreguidelines-macro-usage`
+  `AllowedRegexp`. Defined in one core header; each evaluates its arguments once. No X-macros, no
+  function-like macros as functions, no `#`/`##` elsewhere.
+- Build configuration is `lucent::build::*` constants from one generated header, branched with
+  `if constexpr`. `#if` only there and where code can't compile otherwise. Dev-only code lives in
+  dev-only projects release presets don't link; feature stripping goes through the feature list and
+  CMake.
+- Windows headers only in `src/` (includes script); `NOMINMAX` and `WIN32_LEAN_AND_MEAN` set by
+  `lucent_library()`; explicit `W` APIs, never `TCHAR` macros.
+- `#pragma once`. `#pragma clang diagnostic` silencing is a suppression (rule + reason, taught to
+  `suppressions.py` when C++ lands). `#pragma pack` and `#pragma comment(lib)` banned.
+- Standard attribute syntax (`[[clang::...]]`, `[[msvc::...]]`) over `__declspec`/`__attribute__`
+  where one exists. `std::source_location` over `__FILE__`/`__LINE__` outside the allowed macros.
+
+Topics still to settle:
 comments, formatting, enforcement.
 
 ## Kit
