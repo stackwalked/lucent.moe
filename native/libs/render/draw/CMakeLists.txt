@@ -1,0 +1,34 @@
+lucent_library(draw
+    HEADERS
+        include/lucent/draw/arc.hpp
+        include/lucent/draw/circle.hpp
+        include/lucent/draw/color.hpp
+        include/lucent/draw/draw_list.hpp
+        include/lucent/draw/frame_data.hpp
+        include/lucent/draw/glyph_run.hpp
+        include/lucent/draw/half.hpp
+        include/lucent/draw/image_quad.hpp
+        include/lucent/draw/layer.hpp
+        include/lucent/draw/paint.hpp
+        include/lucent/draw/path_stroke.hpp
+        include/lucent/draw/path_vertex.hpp
+        include/lucent/draw/quad_record.hpp
+        include/lucent/draw/rect.hpp
+        include/lucent/draw/rounded_rect.hpp
+        include/lucent/draw/segment.hpp
+        include/lucent/draw/shadow_style.hpp
+        include/lucent/draw/stroke_style.hpp
+        include/lucent/draw/vec2.hpp
+    SOURCES
+        src/draw_list.cpp
+        src/frame_data.cpp
+        src/path_builder.cpp
+)
+
+lucent_test(draw
+    SOURCES
+        tests/draw_list_test.cpp
+        tests/frame_data_test.cpp
+        tests/path_builder_test.cpp
+        tests/quad_record_test.cpp
+)

@@ -110,8 +110,6 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
 - Binds: `bind_slot`. Activity (a held key) is separate from lifecycle (on/off).
 - Overlay rendering is our own, not Dear ImGui: a highly custom look would mean patching its backend
   and rewriting its widgets. Libraries, in dependency order:
-  - `libs/render/draw`: recording only (draw list to frame data, units and snapping, paths). No
-    GPU, no OS; tested headless.
   - `libs/render/text`: fonts, shaping, fallback, rasterization, the glyph atlas, measure and wrap.
     Emits glyph quads into a draw list.
   - `libs/render/backends/d3d11`: consumes frame data; owns GPU resources, layer and blur passes,
@@ -120,28 +118,6 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
   - `libs/render/menu`: menu pages from the settings' `describe()`.
   - The target glues it together (Present hook, snapshot, ui, backend). A backend draws into the
     device and target it's handed and knows no hooks, so the same stack runs in a standalone window.
-- The draw list:
-  - one 64-byte quad record per shape, glyph, icon or image quad (bounds, geometry, paint, atlas
-    uv, two colours, kind bits), drawn instanced: the vertex shader builds corners from
-    `SV_VertexID` and reads the record from a structured buffer, with no vertex or index buffer.
-    Only tessellated paths emit triangles, as their own commands in the same ordered list;
-  - glyph and icon pages are slices of one `Texture2DArray`, so they never split a batch; only
-    arbitrary images bind their own texture;
-  - primitives: rect and rounded rect (radius per corner), circle, arc, segment with caps, Gaussian
-    shadow, convex and concave polygons, polylines (width and tint per point), glyph runs, images,
-    icons. Fills, and strokes inside closed edges or centred on open paths;
-  - paints: solid, linear gradient, noise; paint kind bits leave room for radial and conic, added
-    when needed;
-  - colour authored in sRGB with straight alpha; the backend premultiplies; blending in the
-    target's space;
-  - units times a scale per list; axis-aligned edges snap to pixels, strokes of one unit or less
-    become whole pixels; translation and uniform scale only;
-  - clipping is a stack of scissor rects; a rounded clip is a layer with a mask. `push_layer` takes
-    data (backdrop blur, group opacity, mask radius, effects such as rim and light sampling); only
-    blur and opacity cost a pass;
-  - a draw list is a value with no globals, recorded by one thread at a time; limits are part of
-    its type (an invariant when broken); the backend checks frame data once and refuses a bad frame
-    whole.
 - Text is DirectWrite end to end (an OS DLL: no dependency to vet for TLS), from an isolated
   factory:
   - shaping, bidi, line breaking, and fallback (our chain first, then the system's); our fonts
@@ -190,7 +166,7 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
   - one structured buffer for records and one vertex buffer for paths, grown geometrically and
     mapped once per frame; atlas uploads as dirty rects per slice; scratch targets pooled in 64 px
     buckets per format and evicted after 240 unused frames; light readback through a ring that
-    never waits;
+    never waits; a layer that asks to sample light needs a key in draw's `layer_begin`, so the readback can say which layer it sampled;
   - an RAII guard saves and restores the game's whole pipeline state (clearing hull, domain and
     geometry stages while we draw); render runs inside `contain()`, and a fault turns the overlay
     off;
@@ -241,9 +217,6 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
   - reduced motion zeroes every duration and snaps every spring;
   - animated reflow waits until something needs it.
 - Rendering tests, aimed at failures that would be silent:
-  - `draw`, no GPU: snapping, batch boundaries (clip and image split runs, atlas pages don't), path
-    tessellation (area preserved, nothing inverted, concave and self-touching inputs), limits;
-    `constexpr` parts by `static_assert`;
   - `text`: the atlas allocator and eviction as a pure component; layout against a fixture font
     (fast path and `IDWriteTextLayout` agree on Latin advances, fallback, wrap, ellipsis, bidi
     order). Never a system font: their metrics change between Windows builds;

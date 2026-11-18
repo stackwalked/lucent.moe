@@ -5,6 +5,7 @@ projects:
     - "native/moon.yml"
     - "native/*/moon.yml"
     - "native/libs/*/moon.yml"
+    - "native/libs/render/*/moon.yml"
     - "native/targets/*/moon.yml"
     - "native/tools/*/moon.yml"
 
