@@ -89,11 +89,24 @@ function(lucent_module name)
 endfunction()
 
 # lucent_executable(<name> SOURCES <sources>... [DEPS <targets>...])
+#
+# src/ holds main.cpp and folders named for their purpose, nothing else: main reads as the
+# program, the folders as its parts. Their files include each other as "<folder>/<file>.hpp".
 function(lucent_executable name)
     cmake_parse_arguments(PARSE_ARGV 1 arg "" "" "SOURCES;DEPS")
+    set(source_root "${CMAKE_CURRENT_SOURCE_DIR}/src")
+    file(GLOB root_files LIST_DIRECTORIES false RELATIVE "${source_root}" "${source_root}/*")
+    list(REMOVE_ITEM root_files main.cpp)
+    if(root_files)
+        message(
+            FATAL_ERROR
+            "${name}: src/ holds only main.cpp; move ${root_files} into a folder beside it"
+        )
+    endif()
     set(target lucent_${name})
     add_executable(${target} ${arg_SOURCES})
     set_target_properties(${target} PROPERTIES OUTPUT_NAME ${name})
+    target_include_directories(${target} PRIVATE "${source_root}")
     target_link_libraries(${target} PRIVATE lucent::core ${arg_DEPS})
 endfunction()
 

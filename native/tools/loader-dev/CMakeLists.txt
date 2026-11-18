@@ -1,4 +1,11 @@
 lucent_executable(loader-dev
-    SOURCES src/channel.cpp src/inject.cpp src/main.cpp
+    SOURCES
+        src/main.cpp
+        src/cli/describe.cpp
+        src/cli/options.cpp
+        src/inject/boot.cpp
+        src/inject/os_loader.cpp
+        src/session/channel.cpp
+        src/session/relay.cpp
     DEPS lucent::kit lucent::os lucent::pe
 )

@@ -1,137 +1,33 @@
-#include <cstddef>
 #include <cstdio>
-#include <expected>
-#include <filesystem>
-#include <format>
 #include <print>
-#include <random>
 #include <span>
-#include <string>
-#include <string_view>
-#include <system_error>
 #include <thread>
 #include <tuple>
-#include <vector>
 
-#include <lucent/core/match.hpp>
 #include <lucent/core/narrow.hpp>
-#include <lucent/core/text.hpp>
 #include <lucent/kit/session.hpp>
 #include <lucent/kit/session_message.hpp>
-#include <lucent/os/file.hpp>
-#include <lucent/os/modules.hpp>
 #include <lucent/os/process.hpp>
-#include <lucent/os/remote_call.hpp>
 
-#include "channel.hpp"
-#include "inject.hpp"
+#include "cli/describe.hpp"
+#include "cli/options.hpp"
+#include "inject/boot.hpp"
+#include "inject/os_loader.hpp"
+#include "session/channel.hpp"
+#include "session/relay.hpp"
 
 namespace lucent::loader_dev {
 namespace {
 
-struct options {
-    std::filesystem::path module;
-    std::string process = "cs2.exe";
-};
-
-auto name_of(error_code code) -> std::string_view {
-    switch (code) {
-    case error_code::system:
-        return "system";
-    case error_code::closed:
-        return "closed";
-    case error_code::malformed:
-        return "malformed";
-    case error_code::not_found:
-        return "not found";
-    case error_code::version_mismatch:
-        return "version mismatch";
-    case error_code::unsupported:
-        return "unsupported";
-    case error_code::timed_out:
-        return "timed out";
-    }
-    return "unknown";
-}
-
-auto name_of(kit::stage reached) -> std::string_view {
-    switch (reached) {
-    case kit::stage::boot:
-        return "boot";
-    case kit::stage::attach:
-        return "attach";
-    case kit::stage::run:
-        return "run";
-    case kit::stage::detach:
-        return "detach";
-    case kit::stage::unload:
-        return "unload";
-    }
-    return "unknown";
-}
-
-auto describe(const error& failure) -> std::string {
-    if (failure.code == error_code::system) {
-        return std::format("system error {}", failure.system_code);
-    }
-    return std::string{name_of(failure.code)};
-}
-
-// The OS loader locks the file it loads, so the module runs from a copy and the build stays free
-// to overwrite the original. Copies left by earlier runs are removed once nothing holds them.
-auto stage_copy(const std::filesystem::path& module) -> result<std::filesystem::path> {
-    const std::filesystem::path directory = std::filesystem::temp_directory_path() / "lucent-dev";
-    std::error_code failure;
-    std::filesystem::create_directories(directory, failure);
-    for (const std::filesystem::directory_entry& stale :
-        std::filesystem::directory_iterator{directory, failure}) {
-        std::error_code ignored;
-        std::filesystem::remove(stale.path(), ignored);
-    }
-    std::random_device entropy;
-    // Not const: it is returned, and const would block the move.
-    std::filesystem::path copy = directory / std::format("{:08x}{:08x}.dll", entropy(), entropy());
-    if (!std::filesystem::copy_file(module, copy, failure)) {
-        return std::unexpected(
-            error{.code = error_code::system, .system_code = narrow<u32>(failure.value())}
-        );
-    }
-    return copy;
-}
-
-auto print_message(const kit::session_message& message) -> void {
-    match(
-        message,
-        [](const kit::log_line& line) { std::println("module: {}", line.text); },
-        [](const kit::stage_reached& reached) {
-            std::println("stage: {}", name_of(reached.reached));
-        },
-        [](const kit::unload_request&) { std::println("module asked the host to unload?"); }
-    );
-}
-
-// Prints what the module sends until it closes its end.
-auto relay(kit::session& channel) -> void {
-    while (true) {
-        const result<kit::session_message> received = channel.receive();
-        if (!received) {
-            std::println("channel closed: {}", describe(received.error()));
-            return;
-        }
-        print_message(*received);
-    }
-}
-
 auto run(const options& chosen) -> result<void> {
     const u32 process_id = LUCENT_TRY(os::find_process_id(chosen.process));
     const os::process target = LUCENT_TRY(os::process::open(process_id));
-    const std::filesystem::path copy = LUCENT_TRY(stage_copy(chosen.module));
-    const std::vector<std::byte> module_file = LUCENT_TRY(os::read_file(copy));
-    const u32 boot_offset = LUCENT_TRY(boot_entry_offset(module_file));
-    LUCENT_TRY(os::load_library_remote(target, copy));
-    const os::remote_module module = LUCENT_TRY(os::find_remote_module(target, copy));
+    const staged_module staged = LUCENT_TRY(stage_module(chosen.module));
+    // Read before loading, so a module without the export never reaches the target.
+    const u32 boot_offset = LUCENT_TRY(boot_entry_offset(staged.file));
+    const uptr base = LUCENT_TRY(load_staged_module(target, staged));
     host_channel channel = LUCENT_TRY(open_channel(target));
-    LUCENT_TRY(start_module(target, module.base + boot_offset, channel.boot));
+    LUCENT_TRY(start_module(target, base + boot_offset, channel.boot));
     std::println("started in {} ({}); press Enter to unload", chosen.process, target.id());
 
     const std::jthread relaying{[&channel] { relay(channel.session); }};
@@ -139,19 +35,6 @@ auto run(const options& chosen) -> result<void> {
     // Fails only if the module is already gone, which the relay reports.
     std::ignore = channel.session.send(kit::unload_request{});
     return {};
-}
-
-auto parse(std::span<const wchar_t* const> arguments) -> result<options> {
-    if (arguments.size() < 2 || arguments.size() > 3) {
-        std::println(stderr, "usage: loader-dev <module.dll> [process name, default cs2.exe]");
-        return std::unexpected(error{.code = error_code::malformed});
-    }
-    const std::span<const wchar_t* const> given = arguments.subspan(1);
-    options chosen{.module = std::filesystem::absolute(given.front())};
-    if (given.size() == 2) {
-        chosen.process = to_utf8(given.back());
-    }
-    return chosen;
 }
 
 }
@@ -165,7 +48,8 @@ auto wmain(int argc, wchar_t* argv[]) -> int {
 #pragma clang diagnostic ignored "-Wunsafe-buffer-usage-in-container" // argc counts argv exactly
     const std::span<const wchar_t* const> arguments{argv, lucent::narrow<lucent::usize>(argc)};
 #pragma clang diagnostic pop
-    const lucent::result<lucent::loader_dev::options> chosen = lucent::loader_dev::parse(arguments);
+    const lucent::result<lucent::loader_dev::options> chosen =
+        lucent::loader_dev::parse_options(arguments);
     if (!chosen) {
         return 2;
     }
