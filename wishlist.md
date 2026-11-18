@@ -179,8 +179,8 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
 ## Facts
 
 Foreign knowledge (RVAs, vtable slots, field and schema offsets, constants): declared, derived and
-delivered. Decided topic by topic. Still open: finder vocabulary, schema and interfaces, validation
-layers, bundle shape, the update-day pipeline, the protection seam.
+delivered. Decided topic by topic. Still open: finder vocabulary (provisionally accepted, being
+tested on real data), validation layers, bundle shape, the update-day pipeline, the protection seam.
 
 - Declarations are C++ in the target's foreign layer, by subsystem, and ship. A `consteval`
   constructor hashes the name, which never reaches the binary; ast-grep checks it matches the
@@ -227,6 +227,28 @@ layers, bundle shape, the update-day pipeline, the protection seam.
   serves the latest enabled revision for each reported module build.
 - Steam's `buildid` and `PatchVersion` are labels for display, telemetry and update-day detection.
   They never select facts.
+- Source 2 knowledge is its own layer, `native/engines/source2/`. `libs/probe` stays generic (PE,
+  x64 code, patterns, MSVC RTTI).
+  - `engines/source2/probe` (tooling, banned from release presets like `libs/probe`): the offline
+    schema reader and the interface finder.
+  - `engines/source2/harvest`: a dev-only module `loader-dev` injects, which dumps the live
+    SchemaSystem into the binaries cache per module build.
+  - Source 2 foreign mirrors stay in `targets/cs2` until a second Source 2 target; then they move
+    to `engines/source2/foreign/`.
+- Schema data comes from the module files, read offline. Provisional on a spike: the offline
+  reading of 1.41.9.8 against a live harvest.
+  - The generator requires the offline reading and the harvest to agree for the current build.
+  - The harvester gets class data through the game's SchemaSystem calls where it can, so the two
+    derivations don't share one layout mirror.
+- A schema field is an ordinary finder (`source2::schema("C_BaseEntity", "m_iHealth")`).
+  - The generator checks the declared `T` against the schema's type name.
+  - Foreign type mirrors with schema fields declare a size fact, filled from the schema, and their
+    bases; a non-zero base offset is a fact.
+- Interfaces are `global<T>` facts found offline through their registration code
+  (`source2::interface_instance`). Objects the game creates at runtime are reached through the
+  global that holds them. Resolve never calls into the game.
+- Class identity is vtable facts compared against an object's vtable pointer; is-a is an explicit
+  declared set of classes.
 
 ## Server inputs and licensing integrity
 
