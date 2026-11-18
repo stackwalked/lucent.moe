@@ -9,15 +9,16 @@
 #include <span>
 #include <tuple>
 #include <utility>
-#include <variant>
 #include <vector>
 
 #include <Windows.h>
 
+#include <lucent/core/match.hpp>
 #include <lucent/core/narrow.hpp>
 #include <lucent/os/process.hpp>
 #include <lucent/os/remote_call.hpp>
 #include <lucent/os/remote_memory.hpp>
+#include <lucent/pe/exports.hpp>
 #include <lucent/pe/image_view.hpp>
 #include <lucent/pe/imports.hpp>
 #include <lucent/pe/relocations.hpp>
@@ -68,8 +69,14 @@ auto rtl_pc_slot_rvas(const pe::image_view& image) -> result<std::vector<u32>> {
     std::vector<u32> rvas;
     for (const pe::import_module& module : LUCENT_TRY(pe::imports_of(image))) {
         for (const pe::import_entry& entry : module.entries) {
-            const auto* by_name = std::get_if<pe::import_by_name>(&entry.target);
-            if (by_name != nullptr && by_name->name == "RtlPcToFileHeader") {
+            const bool is_rtl_pc_to_file_header = match(
+                entry.target,
+                [](const pe::import_by_name& by_name) {
+                    return by_name.name == "RtlPcToFileHeader";
+                },
+                [](pe::export_ordinal) { return false; }
+            );
+            if (is_rtl_pc_to_file_header) {
                 rvas.push_back(entry.slot_rva);
             }
         }

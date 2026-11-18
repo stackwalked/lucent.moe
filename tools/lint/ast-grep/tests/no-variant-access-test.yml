@@ -1,0 +1,10 @@
+id: no-variant-access
+valid:
+  - "auto x = match(shape, [](const circle& c) { return c.radius; });"
+  - "auto x = std::get_errno();"
+invalid:
+  - "auto x = std::get<circle>(shape);"
+  - "auto x = std::get_if<circle>(&shape);"
+  - "auto x = std::holds_alternative<circle>(shape);"
+  - "auto x = std::visit(area, shape);"
+  - "auto x = visit(area, shape);"

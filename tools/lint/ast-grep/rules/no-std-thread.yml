@@ -1,0 +1,7 @@
+id: no-std-thread
+language: cpp
+severity: error
+message: "std::thread joins nothing on destruction: use std::jthread (and in module code, a kit worker)"
+rule:
+  kind: qualified_identifier
+  regex: ^std::thread$

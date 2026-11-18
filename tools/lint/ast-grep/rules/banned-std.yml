@@ -1,0 +1,16 @@
+id: banned-std
+language: cpp
+severity: error
+message: "banned by the dialect: node containers (use vector or flat_map/flat_set), vector<bool>, reference_wrapper, std::function (function_ref or move_only_function), std::async, rand (seeded RNG), system_clock::now (the injected clock)"
+rule:
+  any:
+    - kind: qualified_identifier
+      not:
+        inside:
+          kind: qualified_identifier
+      regex: ^std::(map|multimap|set|multiset|list|forward_list|deque|reference_wrapper|function|async|rand|srand)\b|^std::vector\s*<\s*bool\s*>|system_clock::now$
+    - kind: call_expression
+      has:
+        field: function
+        kind: identifier
+        regex: ^s?rand$

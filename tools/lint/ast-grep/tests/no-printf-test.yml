@@ -1,0 +1,9 @@
+id: no-printf
+valid:
+  - "std::print(\"{}\", x);"
+  - "auto s = std::format(\"{}\", x);"
+invalid:
+  - "printf(\"%d\", x);"
+  - "std::snprintf(buffer, size, \"%d\", x);"
+  - "swprintf_s(buffer, size, L\"%d\", x);"
+  - "vfprintf(stream, format, args);"

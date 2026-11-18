@@ -1,0 +1,8 @@
+id: no-declspec-with-attribute
+valid:
+  - "extern \"C\" __declspec(dllexport) auto lucent_boot(const void* parameter) -> unsigned long;"
+  - "__declspec(allocate(\".lfact$a\")) constinit const fact_record section_begin{};"
+invalid:
+  - "__declspec(noreturn) auto die() -> void;"
+  - "__declspec(align(16)) struct block {};"
+  - "__declspec(selectany) u32 shared = 0;"

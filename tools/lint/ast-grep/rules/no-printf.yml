@@ -1,0 +1,9 @@
+id: no-printf
+language: cpp
+severity: error
+message: "the printf family is banned: std::format and std::print check their arguments at compile time"
+rule:
+  kind: call_expression
+  has:
+    field: function
+    regex: ^(::)?(std::)?_?v?(s|sn|f|w|sw|fw|snw|as)?printf(_s|_l|_p)?$

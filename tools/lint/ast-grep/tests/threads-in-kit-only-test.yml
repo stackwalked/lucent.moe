@@ -1,0 +1,7 @@
+id: threads-in-kit-only
+valid:
+  - "auto handle = CreateRemoteThread(process, nullptr, 0, routine, argument, 0, nullptr);"
+invalid:
+  - "std::jthread worker{work};"
+  - "auto handle = CreateThread(nullptr, 0, start, args, 0, nullptr);"
+  - "auto handle = _beginthreadex(nullptr, 0, start, args, 0, nullptr);"

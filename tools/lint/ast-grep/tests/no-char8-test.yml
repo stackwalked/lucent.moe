@@ -1,0 +1,9 @@
+id: no-char8
+valid:
+  - "std::string_view name = \"lucent\";"
+  - "u8 byte = 0;"
+invalid:
+  - "char8_t c = 0;"
+  - "std::u8string text;"
+  - "std::u8string_view text;"
+  - "auto text = u8\"lucent\";"

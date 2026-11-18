@@ -1,0 +1,16 @@
+id: no-value-unwrap
+language: cpp
+severity: error
+message: ".value() throws on an empty optional or expected: branch on it, or use LUCENT_TRY"
+rule:
+  kind: call_expression
+  all:
+    - has:
+        field: function
+        kind: field_expression
+        has:
+          field: field
+          regex: ^value$
+    - has:
+        field: arguments
+        regex: ^\(\s*\)$

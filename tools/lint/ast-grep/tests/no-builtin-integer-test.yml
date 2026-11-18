@@ -1,0 +1,15 @@
+id: no-builtin-integer
+valid:
+  - "i32 count = 0;"
+  - "auto size = narrow<i32>(std::ssize(text));"
+  - "auto main(int argc, char* argv[]) -> int { return 0; }"
+  - "extern \"C\" auto lucent_boot(const void* parameter) -> unsigned long;"
+  - "char letter = 'a';"
+invalid:
+  - "int count = 0;"
+  - "unsigned flags = 0;"
+  - "unsigned long long mask = 0;"
+  - "short delta = 0;"
+  - "auto size = narrow<int>(std::ssize(text));"
+  - "auto filter(const EXCEPTION_POINTERS& pointers) -> int;"
+  - "auto main(int argc, char* argv[]) -> int { int k = 0; return k; }"

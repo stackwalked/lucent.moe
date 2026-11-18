@@ -1,0 +1,6 @@
+id: no-source-macros
+valid:
+  - "auto where = std::source_location::current();"
+invalid:
+  - "auto line = __LINE__;"
+  - "auto file = __FILE__;"

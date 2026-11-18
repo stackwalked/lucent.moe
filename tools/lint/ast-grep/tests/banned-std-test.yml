@@ -1,0 +1,22 @@
+id: banned-std
+valid:
+  - "std::vector<u8> bytes;"
+  - "std::flat_map<u32, entry> entries;"
+  - "std::set_difference(a, b, out);"
+  - "stdx::function_ref<void()> step;"
+  - "std::move_only_function<void()> job;"
+  - "auto now = clock.now();"
+invalid:
+  - "std::map<u32, entry> entries;"
+  - "std::set<u32> seen;"
+  - "std::list<u32> queue;"
+  - "std::forward_list<u32> queue;"
+  - "std::deque<u32> queue;"
+  - "std::vector<bool> marks;"
+  - "std::vector<std::map<u32, u32>> nested;"
+  - "std::reference_wrapper<entry> borrowed;"
+  - "std::function<void()> job;"
+  - "auto later = std::async(work);"
+  - "auto roll = std::rand();"
+  - "auto roll = rand();"
+  - "auto now = std::chrono::system_clock::now();"

@@ -1,0 +1,7 @@
+id: banned-pragma
+valid:
+  - "#pragma once"
+  - "#pragma clang diagnostic push"
+invalid:
+  - "#pragma pack(push, 1)"
+  - "#pragma comment(lib, \"ntdll.lib\")"

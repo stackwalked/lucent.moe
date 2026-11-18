@@ -32,6 +32,8 @@ auto copy_to_fresh_name(const std::filesystem::path& module) -> result<std::file
     std::filesystem::path copy = directory / std::format("{:08x}{:08x}.dll", entropy(), entropy());
     if (!std::filesystem::copy_file(module, copy, failure)) {
         return std::unexpected(
+            // std::error_code::value() is the OS code itself, not an unchecked unwrap.
+            // ast-grep-ignore: no-value-unwrap
             error{.code = error_code::system, .system_code = narrow<u32>(failure.value())}
         );
     }

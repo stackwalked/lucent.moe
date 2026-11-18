@@ -1,0 +1,9 @@
+id: no-templates-in-features
+valid:
+  - "auto tick(context& ctx) -> void;"
+  - "auto cases = [](const auto& shape) { return area(shape); };"
+invalid:
+  - "template <typename T> struct cache {};"
+  - "template <typename T> auto pick(T value) -> T;"
+  - "auto scale(std::floating_point auto value) -> f32;"
+  - "auto echo(auto value) -> void;"

@@ -1,0 +1,12 @@
+id: no-variant-access
+language: cpp
+severity: error
+message: "a variant is taken apart only by match(): std::get, get_if, holds_alternative and visit skip its exhaustiveness check"
+rule:
+  kind: call_expression
+  has:
+    field: function
+    regex: ^(std::(get|get_if|holds_alternative|visit)\b|visit$)
+ignores:
+  # match() itself.
+  - "**/native/core/include/lucent/core/match.hpp"

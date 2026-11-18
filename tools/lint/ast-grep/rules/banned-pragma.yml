@@ -1,0 +1,13 @@
+id: banned-pragma
+language: cpp
+severity: error
+message: "#pragma pack hides a layout from its readers (spell out the members and static_assert the offsets); #pragma comment(lib) hides a link dependency from CMake"
+rule:
+  kind: preproc_call
+  all:
+    - has:
+        field: directive
+        regex: ^#pragma$
+    - has:
+        field: argument
+        regex: ^(pack|comment)\b

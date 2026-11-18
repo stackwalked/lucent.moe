@@ -1,0 +1,17 @@
+id: threads-in-kit-only
+language: cpp
+severity: error
+message: "module code starts threads only through the kit: its workers are named, run inside contain(), and are joined before unload"
+rule:
+  any:
+    - kind: qualified_identifier
+      regex: ^std::jthread$
+    - kind: call_expression
+      has:
+        field: function
+        regex: ^(::)?(CreateThread|_beginthread|_beginthreadex)$
+ignores:
+  - "**/native/kit/**"
+  # Tests and tools are executables of their own, never mapped into a target.
+  - "**/native/**/tests/**"
+  - "**/native/tools/**"

@@ -1,0 +1,14 @@
+id: no-char8
+language: cpp
+severity: error
+message: "char holds UTF-8: char8_t, u8string and u8 literals are a second spelling no API takes"
+rule:
+  any:
+    - kind: primitive_type
+      regex: ^char8_t$
+    - kind: qualified_identifier
+      regex: ^std::u8string(_view)?\b
+    - kind: string_literal
+      regex: ^u8
+    - kind: char_literal
+      regex: ^u8

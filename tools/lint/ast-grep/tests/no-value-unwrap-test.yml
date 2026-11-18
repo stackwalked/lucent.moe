@@ -1,0 +1,7 @@
+id: no-value-unwrap
+valid:
+  - "auto x = *found;"
+  - "auto x = settings.value(key);"
+invalid:
+  - "auto x = found.value();"
+  - "auto x = found->value();"

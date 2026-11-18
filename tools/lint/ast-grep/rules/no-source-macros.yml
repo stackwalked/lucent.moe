@@ -1,0 +1,7 @@
+id: no-source-macros
+language: cpp
+severity: error
+message: "__FILE__ and __LINE__ are replaced by std::source_location::current()"
+rule:
+  kind: identifier
+  regex: ^__(FILE|LINE)__$

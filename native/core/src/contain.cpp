@@ -38,7 +38,7 @@ auto memory_fault_kind(DWORD code) -> std::optional<fault_kind> {
 constexpr ULONG_PTR access_write = 1;
 
 // The __except filter. Its result must be an int, so what it learned leaves through `caught`.
-auto filter(const EXCEPTION_POINTERS& pointers, fault& caught) -> int {
+auto filter(const EXCEPTION_POINTERS& pointers, fault& caught) -> i32 {
     const EXCEPTION_RECORD& record = *pointers.ExceptionRecord;
     const std::optional<fault_kind> kind = memory_fault_kind(record.ExceptionCode);
     if (!kind) {

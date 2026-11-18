@@ -1,0 +1,20 @@
+id: no-templates-in-features
+language: cpp
+severity: error
+message: "feature and domain code declares no templates or concepts: generic machinery lives in kit libraries"
+files:
+  - "**/native/**/features/**"
+  - "**/native/**/domains/**"
+rule:
+  any:
+    - kind: template_declaration
+    - kind: concept_definition
+    # An abbreviated function template. Generic lambdas stay allowed: match() cases use them.
+    - kind: parameter_declaration
+      has:
+        field: type
+        kind: placeholder_type_specifier
+      inside:
+        kind: parameter_list
+        inside:
+          kind: function_declarator

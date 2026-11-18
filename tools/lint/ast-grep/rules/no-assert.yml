@@ -1,0 +1,15 @@
+id: no-assert
+language: cpp
+severity: error
+message: "assert vanishes in release: LUCENT_INVARIANT for our own bugs, LUCENT_ENSURE for a surprising world, static_assert at compile time"
+rule:
+  any:
+    - kind: call_expression
+      has:
+        field: function
+        kind: identifier
+        regex: ^assert$
+    - kind: preproc_include
+      has:
+        field: path
+        regex: ^<(cassert|assert\.h)>$

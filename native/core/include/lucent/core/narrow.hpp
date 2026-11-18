@@ -12,6 +12,8 @@ concept strict_integral = std::integral<T>
                           && !std::same_as<std::remove_cv_t<T>, bool>
                           && !std::same_as<std::remove_cv_t<T>, char>
                           && !std::same_as<std::remove_cv_t<T>, wchar_t>
+                          // Naming char8_t is how std's own integral set leaves it out.
+                          // ast-grep-ignore: no-char8
                           && !std::same_as<std::remove_cv_t<T>, char8_t>
                           && !std::same_as<std::remove_cv_t<T>, char16_t>
                           && !std::same_as<std::remove_cv_t<T>, char32_t>;

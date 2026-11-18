@@ -1,0 +1,28 @@
+id: no-builtin-integer
+language: cpp
+severity: error
+message: "int, long, short and unsigned have platform widths: use i32/u64 and friends, isize for counts; the C spellings stay only in signatures foreign code fixes (main, extern \"C\") and the foreign layer"
+rule:
+  any:
+    - kind: primitive_type
+      regex: ^int$
+    # signed, unsigned, short and long, alone or combined.
+    - kind: sized_type_specifier
+  not:
+    any:
+      - inside:
+          stopBy: end
+          kind: function_declarator
+          has:
+            field: declarator
+            regex: ^w?main$
+      - inside:
+          stopBy: end
+          kind: function_declarator
+          inside:
+            stopBy: end
+            kind: linkage_specification
+ignores:
+  - "**/native/**/foreign/**"
+  # Fixture modules stand in for a target and are written the way the target is.
+  - "**/native/**/tests/fixtures/**"

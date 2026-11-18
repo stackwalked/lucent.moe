@@ -1,0 +1,7 @@
+id: no-declspec-with-attribute
+language: cpp
+severity: error
+message: "a standard spelling exists: [[noreturn]], [[deprecated]], alignas, noexcept, inline variables instead of selectany"
+rule:
+  kind: ms_declspec_modifier
+  regex: ^__declspec\s*\(\s*(noreturn|deprecated|align|nothrow|selectany)\b
