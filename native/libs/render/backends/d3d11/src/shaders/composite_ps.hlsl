@@ -52,5 +52,6 @@ float4 main(pixel_input input) : SV_Target {
         // Premultiplied, so lifting rgb alone brightens without changing coverage.
         color = float4(color.rgb * lift, 1.0f);
     }
-    return color * (opacity * mask);
+    // The layer's own mask is closed by now; what is left are its parents'.
+    return color * (opacity * mask * mask_of(input.pixel));
 }

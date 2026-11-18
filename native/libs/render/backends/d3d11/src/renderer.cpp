@@ -128,7 +128,9 @@ auto is_supported(u32 format) -> bool {
     return view == DXGI_FORMAT_R8G8B8A8_UNORM
            || view == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB
            || view == DXGI_FORMAT_B8G8R8A8_UNORM
-           || view == DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;
+           || view == DXGI_FORMAT_B8G8R8A8_UNORM_SRGB
+           || view == DXGI_FORMAT_B8G8R8X8_UNORM
+           || view == DXGI_FORMAT_B8G8R8X8_UNORM_SRGB;
 }
 
 auto is_same_size(draw::pixel_size left, draw::pixel_size right) -> bool {

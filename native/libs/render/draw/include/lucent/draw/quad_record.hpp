@@ -80,7 +80,8 @@ constexpr auto unpack_kinds(u32 bits) -> std::optional<record_kinds> {
 //                           the sweep's mid angle in [-pi, pi]: radians clockwise from +x on screen
 //             segment       half the vector from start to end (x, y), half width, unused; a zero
 //                           vector is a round-capped dot, never a direction to normalise
-//             atlas, image  uv: min x, min y, max x, max y
+//             atlas         uv in the page's texels: min x, min y, max x, max y
+//             image         uv in [0, 1]: min x, min y, max x, max y
 //   gradient  linear paint: start x, y and end x, y in target pixels; otherwise zero
 //   style     from colour, to colour (packed()), kinds (pack()), and softness (a Gaussian's
 //             standard deviation; zero is a crisp antialiased edge) in the low half and stroke

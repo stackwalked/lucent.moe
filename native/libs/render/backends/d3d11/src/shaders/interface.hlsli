@@ -72,4 +72,19 @@ float rounded_box(float2 p, float2 half_size, float4 radii) {
     return length(max(q, 0.0f)) + min(max(q.x, q.y), 0.0f) - radius;
 }
 
+// The open rounded layers' corners, cut wherever something lands in target pixels: a rounded clip
+// costs no pass of its own, and a nested layer's composite stays inside its parents.
+float mask_of(float2 pixel) {
+    float coverage = 1.0f;
+    uint count = (uint)masks.count.x;
+    for (uint i = 0; i < count; ++i) {
+        float4 rect = masks.rects[i];
+        float2 centre = (rect.xy + rect.zw) * 0.5f;
+        float2 half_size = (rect.zw - rect.xy) * 0.5f;
+        float distance = rounded_box(pixel - centre, half_size, masks.radii[i].xxxx);
+        coverage *= saturate(0.5f - distance);
+    }
+    return coverage;
+}
+
 #endif

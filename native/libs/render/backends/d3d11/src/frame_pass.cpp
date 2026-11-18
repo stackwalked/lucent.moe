@@ -45,7 +45,22 @@ constexpr shared::float4 zero{};
 
 auto is_srgb(u32 format) -> bool {
     const auto view = static_cast<DXGI_FORMAT>(format);
-    return view == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB || view == DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;
+    return view == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB
+           || view == DXGI_FORMAT_B8G8R8A8_UNORM_SRGB
+           || view == DXGI_FORMAT_B8G8R8X8_UNORM_SRGB;
+}
+
+// A layer drawn aside needs alpha to be composited, which an X8 target doesn't keep. Backdrops
+// stay in the target's own format: they are copied from it, and read as opaque anyway.
+auto aside_format(u32 format) -> u32 {
+    const auto view = static_cast<DXGI_FORMAT>(format);
+    if (view == DXGI_FORMAT_B8G8R8X8_UNORM) {
+        return static_cast<u32>(DXGI_FORMAT_B8G8R8A8_UNORM);
+    }
+    if (view == DXGI_FORMAT_B8G8R8X8_UNORM_SRGB) {
+        return static_cast<u32>(DXGI_FORMAT_B8G8R8A8_UNORM_SRGB);
+    }
+    return format;
 }
 
 auto encoded_srgb(f32 linear) -> f32 {
@@ -446,7 +461,7 @@ private:
         }
         open_layer opened{.surface = begin.surface, .area = area, .aside = std::nullopt};
         if (begin.surface.opacity < 1.0F) {
-            const isize entry = LUCENT_TRY(acquire(size_of(area), m_target.format));
+            const isize entry = LUCENT_TRY(acquire(size_of(area), aside_format(m_target.format)));
             const scratch_surface& aside = m_gpu->scratch.at(narrow<usize>(entry));
             m_context->ClearRenderTargetView(aside.target.Get(), zero.data());
             m_surfaces.push_back({.target = aside.target.Get(), .area = area});

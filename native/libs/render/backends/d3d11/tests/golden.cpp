@@ -118,6 +118,8 @@ auto unorm(u8 value) -> f32 {
 enum class texel_layout : u8 {
     rgba8,
     bgra8,
+    // The X byte is undefined: the texel is opaque whatever it holds.
+    bgrx8,
     rgb10a2,
 };
 
@@ -128,6 +130,9 @@ auto layout_of(u32 view_format) -> result<texel_layout> {
     }
     if (format == DXGI_FORMAT_B8G8R8A8_UNORM || format == DXGI_FORMAT_B8G8R8A8_UNORM_SRGB) {
         return texel_layout::bgra8;
+    }
+    if (format == DXGI_FORMAT_B8G8R8X8_UNORM) {
+        return texel_layout::bgrx8;
     }
     if (format == DXGI_FORMAT_R10G10B10A2_UNORM) {
         return texel_layout::rgb10a2;
@@ -145,6 +150,8 @@ auto rgba_of(std::array<std::byte, 4> texel, texel_layout layout) -> std::array<
         return {texel[0], texel[1], texel[2], texel[3]};
     case texel_layout::bgra8:
         return {texel[2], texel[1], texel[0], texel[3]};
+    case texel_layout::bgrx8:
+        return {texel[2], texel[1], texel[0], std::byte{255}};
     case texel_layout::rgb10a2: {
         // Little-endian, as D3D lays out every format and as x64 reads a u32.
         const auto packed = std::bit_cast<u32>(texel);

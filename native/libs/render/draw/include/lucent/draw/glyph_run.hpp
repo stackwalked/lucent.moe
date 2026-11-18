@@ -21,6 +21,8 @@ inline constexpr isize atlas_page_count = 16;
 struct glyph_quad {
     atlas_page page{};
     rect bounds;
+    // In texels of the page, as the text system packed it: the page size stays the backend's
+    // business, and a glyph's edges stay whole numbers.
     rect uv;
     color tint = white;
 };

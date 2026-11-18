@@ -59,7 +59,7 @@ auto target_case_of(std::string_view name, DXGI_FORMAT texture, DXGI_FORMAT view
     };
 }
 
-auto every_target() -> std::array<target_case, 5> {
+auto every_target() -> std::array<target_case, 6> {
     return {
         target_case_of("unorm", DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM, 1),
         target_case_of("srgb", DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, 1),
@@ -67,6 +67,8 @@ auto every_target() -> std::array<target_case, 5> {
             "typeless", DXGI_FORMAT_R8G8B8A8_TYPELESS, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, 1
         ),
         target_case_of("bgra", DXGI_FORMAT_B8G8R8A8_UNORM, DXGI_FORMAT_B8G8R8A8_UNORM, 1),
+        // No alpha to keep: a layer drawn aside still needs one.
+        target_case_of("bgrx", DXGI_FORMAT_B8G8R8X8_UNORM, DXGI_FORMAT_B8G8R8X8_UNORM, 1),
         target_case_of("msaa", DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM, 4),
     };
 }
@@ -285,6 +287,41 @@ auto layers(draw::draw_list& list, renderer& /*drawer*/) -> void {
     list.pop_layer();
 }
 
+// Blurred panes wider than the rounded layers around them: their backdrops stay inside the parents'
+// corners, under a clip with no pass and under a translucent group alike.
+auto nested(draw::draw_list& list, renderer& /*drawer*/) -> void {
+    for (const i32 i : std::views::iota(0, 8)) {
+        const auto top = static_cast<f32>(i * 16);
+        const bool is_even = i % 2 == 0;
+        list.fill(
+            draw::rounded_rect{.bounds = box(0, top, 128, top + 16), .radii = draw::uniform(0)},
+            draw::solid(is_even ? rgba(250, 210, 60, 255) : rgba(40, 70, 160, 255))
+        );
+    }
+
+    list.push_layer(
+        draw::layer{.bounds = box(8, 8, 120, 60), .radius = 20, .opacity = 1, .blur = 0}
+    );
+    list.push_layer(
+        draw::layer{.bounds = box(0, 0, 128, 64), .radius = 0, .opacity = 1, .blur = 6, .rim = 3}
+    );
+    list.pop_layer();
+    list.pop_layer();
+
+    list.push_layer(
+        draw::layer{.bounds = box(8, 68, 120, 120), .radius = 20, .opacity = 0.7F, .blur = 0}
+    );
+    list.push_layer(
+        draw::layer{.bounds = box(0, 64, 128, 128), .radius = 4, .opacity = 1, .blur = 6}
+    );
+    list.fill(
+        draw::rounded_rect{.bounds = box(0, 64, 128, 128), .radii = draw::uniform(4)},
+        draw::solid(rgba(255, 255, 255, 50))
+    );
+    list.pop_layer();
+    list.pop_layer();
+}
+
 // Two atlas pages filled with synthetic coverage: a soft disc on page 0 and a checker on page 3,
 // tinted per glyph in one run.
 constexpr i32 cell = 24;
@@ -332,10 +369,8 @@ auto atlas_pages(draw::draw_list& list, renderer& drawer) -> void {
         },
     };
     drawer.upload_atlas(uploads);
-    constexpr f32 size = draw::atlas_page_size;
-    const draw::rect disc_uv = box(0, 0, cell / size, cell / size);
-    const draw::rect checker_uv =
-        box(512 / size, 512 / size, (512 + cell) / size, (512 + cell) / size);
+    const draw::rect disc_uv = box(0, 0, cell, cell);
+    const draw::rect checker_uv = box(512, 512, 512 + cell, 512 + cell);
     const auto glyph =
         [](draw::atlas_page page, f32 x, f32 y, draw::rect texture_box, draw::color tint) {
             return draw::glyph_quad{
@@ -445,6 +480,10 @@ TEST_CASE("paths match their goldens on every target") {
 
 TEST_CASE("layers match their goldens on every target") {
     check_scene("layers", layers);
+}
+
+TEST_CASE("blurred layers inside rounded ones match their goldens on every target") {
+    check_scene("nested", nested);
 }
 
 TEST_CASE("two atlas pages match their goldens on every target") {

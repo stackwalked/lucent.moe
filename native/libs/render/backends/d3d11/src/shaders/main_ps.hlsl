@@ -115,29 +115,18 @@ float4 shade(quad_record shape, float2 pixel) {
     float4 color = paint_of(shape, paint, pixel);
     float coverage = coverage_of(distance_of(shape, pixel), softness, pixel);
     if (kind == quad_kind_atlas) {
+        float width = 0.0f;
+        float height = 0.0f;
+        float pages = 0.0f;
+        atlas.GetDimensions(width, height, pages);
         float page = (float)(kinds >> atlas_page_shift);
-        float3 at = float3(uv_of(pixel, shape), page);
+        float3 at = float3(uv_of(pixel, shape) / float2(width, height), page);
         coverage = atlas.SampleLevel(linear_clamp, at, 0.0f) * inside(pixel, shape.rect);
     } else if (kind == quad_kind_image) {
         color *= image.SampleLevel(linear_clamp, uv_of(pixel, shape), 0.0f);
         coverage = inside(pixel, shape.rect);
     }
     return color * coverage;
-}
-
-
-// The open rounded layers' corners, cut here: a rounded clip costs no pass of its own.
-float mask_of(float2 pixel) {
-    float coverage = 1.0f;
-    uint count = (uint)masks.count.x;
-    for (uint i = 0; i < count; ++i) {
-        float4 rect = masks.rects[i];
-        float2 centre = (rect.xy + rect.zw) * 0.5f;
-        float2 half_size = (rect.zw - rect.xy) * 0.5f;
-        float distance = rounded_box(pixel - centre, half_size, masks.radii[i].xxxx);
-        coverage *= saturate(0.5f - distance);
-    }
-    return coverage;
 }
 
 float4 main(pixel_input input) : SV_Target {
