@@ -251,7 +251,26 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
     and easing), presence (0 to 1 on enter, back on exit, the caller declaring until it reaches 0);
   - reduced motion zeroes every duration and snaps every spring;
   - animated reflow waits until something needs it.
-- Still to decide for rendering: testing.
+- Rendering tests, aimed at failures that would be silent:
+  - `draw`, no GPU: snapping, batch boundaries (clip and image split runs, atlas pages don't), path
+    tessellation (area preserved, nothing inverted, concave and self-touching inputs), limits;
+    `constexpr` parts by `static_assert`;
+  - `text`: the atlas allocator and eviction as a pure component; layout against a fixture font
+    (fast path and `IDWriteTextLayout` agree on Latin advances, fallback, wrap, ellipsis, bidi
+    order). Never a system font: their metrics change between Windows builds;
+  - `ui` and `menu` from input snapshots: layout rects, clicks, tab order, popup stacking, wheel
+    routing, text-field edits, animation on a test clock, reduced motion; every setting kind maps
+    to a control and search finds rows. Rects and state, not draw records;
+  - the backend renders `frame_data` on WARP against golden images (at most 3 per channel): shapes,
+    paints, shadows, paths, text, layers, atlas pages, on UNORM, `_SRGB`, typeless, BGRA and MSAA
+    targets. A moon task regenerates goldens, and a human reviews the diff before they're committed.
+    Each golden records its OS build; a mismatch on another build reads as drift;
+  - `tools/menu-shot` (the real menu and HUD to PNG by page, scale and theme), micro-benchmarks and
+    the dev frame stats inform but don't gate; a libFuzzer target for `frame_data` checking joins
+    the parser fuzzing;
+  - fixtures (test font, goldens) live in each library's `tests/fixtures/`. Product fonts live in
+    git too, where they're first used.
+- Rendering is decided in full.
 - Lease client: verify, renew, lapse, and feed entitlements to the registry.
 - Dev channel, stats and incident sink, compiled out of release (enforced in CMake).
 - An injectable clock.
@@ -537,8 +556,6 @@ delivered. Decided in full.
 
 ## Open
 
-- Where font files and other binary assets live: in git (e.g. `products/`), or outside it like game
-  builds ("binaries never enter git").
 - Release string hygiene (log stripping, hashed ids, string encryption). It shapes the logging API.
 - Isolating our allocations from the game's heap.
 - A generic "revise" round in an arbiter vs. a planner per domain.

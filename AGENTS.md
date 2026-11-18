@@ -18,7 +18,8 @@ Rules a tool can check live in that tool's config. This file holds only what can
   extracts it, and that commit says why.
 - `docs/` indexes per-project maps. User-facing docs belong to the site.
 - A runtime's own unchecked rules sit beside its code: `native/AGENTS.md`.
-- Binaries and secrets never enter git.
+- Build outputs, game binaries and secrets never enter git. Test fixtures and product assets
+  (fonts, golden images) do, marked binary in `.gitattributes`.
 
 ## Research
 
