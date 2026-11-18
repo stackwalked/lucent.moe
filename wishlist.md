@@ -5,9 +5,13 @@ Everything discussed so far that isn't built yet. A backlog, not a spec: entries
 ## Gate and tooling
 
 - luau-lsp analysis, pinned with the first Luau code.
-- TS tooling returns with the first TS project: bun workspaces, Biome and strict `tsc` (`noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`) as inherited moon tasks. The working setup is in commit 5dbd739.
-- Complete `.protolock`: moon, bun, cmake, ninja and uv were installed before the lockfile was on, so they have no recorded hashes.
-- Architecture boundaries are enforced by moon constraints, CMake visibility and dependency-cruiser. Nothing depends on `research/`.
+- Complete `.protolock`: moon, cmake, ninja and uv were installed before the lockfile was on, so
+  they have no recorded hashes.
+- Architecture boundaries enforced by moon constraints and CMake visibility. Nothing depends on
+  `research/`. TS has no import-graph check: `platform/server` exports only types (`./rpc-type`),
+  so a runtime import from `web` or a connector fails to resolve, the one boundary that would fail
+  silently. dependency-cruiser was dropped (18.8.0 can't read TypeScript 7.0); revisit when TS
+  packages import each other at runtime.
 - Remaining custom checks, each a standalone uv script in `tools/lint` (no CLI, no shared package), landing when they have inputs:
   - file placement;
   - the doc-ref checker (paths and symbols named in docs must exist), once `docs/` maps exist;
@@ -643,82 +647,32 @@ Still to land, in order:
     `__Host-lucent-flow` cookie; cursors and sorts in React + `history.state`; RFC `?code=`
     callbacks `303`-redirect immediately); admin lists take at most one human-readable `?q=` when
     non-empty.
-- TS toolchain, workspaces and boundaries (landing with Slice 1):
-  - Repo-level pins: `bun = "1.4.4"` in `.prototools`; `@biomejs/biome@2.6.8`, `@types/bun@1.4.4`,
-    `dependency-cruiser@18.8.0` and `typescript@7.0.2` in root `devDependencies`; exact `x.y.z` or
-    `workspace:*` versions enforced everywhere (no `^`/`~`).
-  - Root holds only `package.json`, `bun.lock` and `.biome.jsonc`; `.config/` holds
-    `tsconfig.base.json` and `depcruise.mjs`; Vite caches go under `.moon/cache/vite/<project>`,
-    with no `.tsbuildinfo` files.
-  - Flat project roots: `platform/server` (moon id `server`) and `web` (moon id `web`) in Slice 1;
-    `contracts/*`, `products/*`, `platform/packages/*` and `platform/connectors/discord` (`discord`)
-    appear only with their consumers.
-  - Inherited `.moon/tasks/typescript.yml` runs `lint`, `typecheck` and `test`; `repo:boundaries`
-    runs `depcruise` across the whole TS graph.
-  - `platform/server` exposes only `"./rpc-type": { "types": "./src/internal/app.ts" }`; `depcruise`
-    enforces `type-only` imports from `web` and `connectors/*` to that entry, bans circular and
-    cross-layer imports inside `platform/server/src/` and `web/src/`, and keeps `contracts/*` and
-    `products/*` as pure leaves.
-- TS dialect — types, data and banned syntax:
-  - Plain imperative code at call sites; no Effect runtime; type-level machinery stays in `core/`
-    and `ui/` primitives.
-  - Everything is `type` + `function`: plain `readonly` object records with free functions for data,
-    and closure factories (`openX`/`createX`) for stateful handles. `class`, `#` private fields,
-    `interface`, `enum`/`const enum`, `namespace`, barrel `index.ts`, `export *` and
-    `export default` (except `*.config.*`) are banned.
-  - Parse at the edge into branded types (`zod` `.brand<Tag>()` or `Brand<T, Tag>`) for all opaque
-    IDs, digests and quantities. `EpochMs` (branded integer ms) is the universal timestamp value;
-    `Date` and Node `Buffer` are banned outside driver shims (`Uint8Array` everywhere).
-  - `null` is domain absence (`T | null`); `undefined` is only for omitted `?:` options
-    (`exactOptionalPropertyTypes`) and collection misses. Shorthand `readonly T[]`/`T[]`,
-    `ReadonlyMap`/`ReadonlySet` for dynamic keys, no `expr as T` casts outside `core/` and `db/`
-    (except `as const`), no `!`, and no `boolean` parameters in our own functions (React `.tsx`
-    props exempt).
-- TS dialect — errors, effects, async and naming:
-  - Three-tier error model: `Result<T, E>` (`ok`/`err`) for expected domain and I/O failures;
-    `trySync`/`tryAsync` in `core/contain.ts` around throwing foreign APIs (rethrows
-    `InvariantDefect`); `invariant()`/`unreachable()` for our own bugs, caught only at the top-level
-    request/job boundary (`503 SERVICE_UNAVAILABLE` + rollback + error log). `ast-grep` bans
-    `throw`, `try`/`catch` and `.catch()` outside `core/contain.ts` and `web`'s `route-control.ts`.
-  - Ambient globals banned by `ast-grep`: `Date.now()`, `new Date()`, `Temporal.Now`,
-    `Math.random()`, `process.env`/`Bun.env` (outside `config.ts`) and `console.*` (outside CLI
-    `ops.ts`). At most 3 positional parameters; 4+ take a `readonly` parameter object.
-  - Biome `noFloatingPromises` and `useAwait` as errors; every outbound `fetch` or `Bun.spawn`
-    requires an `AbortSignal` deadline; never run `Promise.all` over queries sharing one `Tx`.
-  - Naming: `camelCase` values/fields, `PascalCase` types/schemas/components, `kebab-case.ts` files
-    (`PascalCase.tsx` in `web/src/ui/`), SQL and native `/v1` JSON in `snake_case` mapped once at
-    the edge. Booleans start with `is`/`has`/`can`/`should`; pure queries drop `get`; DB reads split
-    `findX` (`X | null`) from `readX` (`Result<X, E>`); `utils.ts`/`helpers.ts`/`types.ts` banned.
-- TS static enforcement:
-  - `.config/tsconfig.base.json`: strict flags plus `erasableSyntaxOnly` and
-    `allowImportingTsExtensions`.
-  - `.biome.jsonc`: TS/JS plus `**/*.css` (`.module.css` auto-detected; JSON stays `dprint`'s);
-    enables `useImportExtensions`, `noBarrelFile`, `noReExportAll`, `noDelete`, `noExplicitAny`,
-    `noConsole` (off in `ops.ts`), `useAwait`, `noNonNullAssertion`, `useImportType`,
-    `useExportType`, `useConsistentTypeDefinitions` (`type`), `useConsistentArrayType`
-    (`shorthand`), `noEnum`, `noNamespace`, `noParameterAssign`, `noParameterProperties`,
-    `noDefaultExport` (off in `*.config.*`), and type-aware `noFloatingPromises` and
-    `useExhaustiveSwitchCases`.
-  - Six `ast-grep` rules (with tests) when Slice 1 lands: `ts-no-class`, `ts-contain-only`,
-    `ts-no-type-assertion`, `ts-no-bool-parameter`, `ts-no-get-prefix` and `ts-no-ambient-effects`.
-  - `routeTree.gen.ts` carries a generated marker, is skipped by format/lint, marked
-    `linguist-generated`, and freshness-checked in `web:check`.
-- Data layer:
-  - PostgreSQL `18.7` via `pg@8.23.1` (`@types/pg@8.23.1`), wrapped in `platform/server/src/db/`
-    with distinct branded `Db` and `Tx` handles, `sql` tagged templates (raw SQL strings banned
-    outside `migrate.ts`), Zod row decoders (`InvariantDefect` on mismatch), wire-level OID parsers
-    (`timestamptz` → `EpochMs`, `bytea` → `Uint8Array`), and a runtime `inFlight` guard against
-    concurrent queries on one `Tx`. No ORM or query builder.
-  - `withTx` captures DB `now()` as `txNow: EpochMs`, rolls back on `err(...)` and commits only on
-    `ok(...)` (or explicit `errCommit(...)` for security denials that persist failure/audit rows).
-  - Canonical lock order: `account` → `device` → `entitlement` → `product_slot` →
-    `load`/`runtime_session` → append-only `audit`/`inbox`/`receipt` (never locked); no I/O outside
-    Postgres while holding a `Tx`.
-  - Forward-only checksummed `migrations/NNNN_name.sql` under `pg_advisory_lock`; `checkSchema` at
-    boot exits `2` on mismatch. Prefixed 128-bit random IDs (`acc_...`) for entities and `bigint`
-    identity for ordered event/audit streams.
+- TS toolchain, dialect and Slice 1A authority core landed in `.biome.jsonc`,
+  `.config/tsconfig.base.json`, `tools/lint/ts_hygiene.py`,
+  `tools/lint/ast-grep/rules/ts-*.yml`, `tools/proto/postgresql.toml`, `products/*.toml`,
+  `platform/AGENTS.md`, `platform/server/migrations/0001_authority.sql`, and
+  `platform/server/src/{core,db,products,authority,internal}`. Exact package pins in this section
+  are provisional until their slice starts and checks them (TypeScript 7.0.2 was pinned before
+  any tool needing its API was tried). Still to land:
+  - Decide how `web`'s RPC client gets the procedure schemas it parses replies with: the server
+    exports only types (`./rpc-type`), so either `web` imports the procedure map at runtime or the
+    schemas move into a module with no dependencies.
+  - `web/` workspace (`web` moon id), Vite caches under `.moon/cache/vite/<project>`, and
+    `routeTree.gen.ts` generated marker + `linguist-generated` + freshness check in `web:check`;
+  - `contracts/*`, `platform/packages/*` and `platform/connectors/discord` (`discord`) as their
+    slices arrive;
+  - the packages split out of `platform/server` in the commit that adds `web` (its second
+    consumer): `platform/packages/core` (`Result`, `contain`, scalars), `rpc` (procedure builder,
+    contracts and client: this answers how `web` gets the schemas), `policy` (`actions.ts` and pure
+    `can()`) and `catalog` (the `products/*.toml` reader). `db/`, `standing`, the writers,
+    `receipt`, migrations and the internal app stay server-only. Declared package dependencies and
+    moon `dependsOn` then enforce the layering that dependency-cruiser couldn't;
+  - `platform/server` boot wiring (`config.ts`, `verifySchemaCurrent` exit `2`, dual `Bun.serve`
+    listeners, periodic jobs, and `ops.ts` CLI verbs);
+  - optional plan templates and `connector_discord_rule` tables when their consumers land.
 - Auth, credentials, sessions and authority:
-  - No `better-auth`. Own the auth tables directly over `@simplewebauthn/server@14.1.0` +
+  - No `better-auth`: old lucent spent too long fighting it, and its model has no room for the
+    native DPoP flow. Own the auth tables directly over `@simplewebauthn/server@14.1.0` +
     `@simplewebauthn/browser@14.0.0`, `Bun.password` (`argon2id`, 12–128 chars + breach denylist +
     timing-equalized dummy verify), RFC 6238 TOTP on `crypto.subtle` (`TOTP_ENCRYPTION_KEY`
     AES-256-GCM with `kid` tag, plus `last_used_step` replay guard), and `jose@6.2.17` for client
@@ -736,15 +690,30 @@ Still to land, in order:
       with per-action `{ stepUp, audit }` metadata; zero `if (role === ...)` checks anywhere.
     - Pure `can(subject, action, target?)` shared by `platform` and `web` (including integer `rank`
       precedence `subject.maxRank > target.maxRank`); transactional `authorize(txNow, caller,
-      action, target?)` enforces `can()` + 30m passkey step-up under `FOR UPDATE`.
+      action, target?)` enforces `can()` + 30m passkey step-up under `FOR UPDATE`. In `web`, `can()`
+      only decides what the UI shows; only `platform` authorizes.
+    - Writers take the caller's account id (plus session facts such as `stepUpAt`), never a
+      `Subject`: inside the transaction they lock the caller and any target account in ascending id
+      order and read status, lock, root and unexpired roles there, so a caller suspended a moment
+      ago is refused.
+    - Rules the slice 1A review showed `can()` needs (landed): a role's permissions must be a subset
+      of its author's (root exempt), also when assigning it; changing a role requires outranking
+      both its old and new rank; no action targets the caller's own account (none is
+      self-service); no caller, root included, targets the root account; stored permissions that
+      are no longer Actions grant nothing and are reported, never a crash.
+    - The database keeps root permanent (`account_root_permanent` trigger); `ops
+      transfer-superadmin` relaxes it when it lands.
     - Roles, optional plan templates and Discord sync predicates live in PostgreSQL (seeded from
       declarative config, editable live in `web` admin with step-up + audit); bootstrap `root` sits
       at max `rank` (transferred only via `ops transfer-superadmin`).
     - `Device` binds to `Account` (enroll PC P-256 key once per account; default `maxDevices = 1`,
       7d self-service replacement window); `Entitlement` covers 1..N products (`EntitlementProduct`:
       `productId`, `features: "*" | FeatureTag[]`, `channels`), unioned at `txNow`; `ProductSlot`
-      serializes active sessions per `(accountId, productId)`.
-    - Permanent confusable-checked `username_claim`; single-use 7-day account-only invites (no
+      serializes active sessions per `(accountId, productId)`. `device`, `device_change_window`
+      and `product_slot` arrive with slice 2, which first uses them.
+    - Permanent confusable-checked `username_claim`: the fold table is every Unicode
+      `confusables.txt` 18.0.0 entry whose source is an ASCII letter, digit or underscore, after
+      case folding (0→o, 1→l, i→l, m→rn, `_` dropped); single-use 7-day account-only invites (no
       cohorts) with inviter strike attribution; non-admin timing-padded email reset setting
       `reset_lock`.
 - Native contracts, lease channel and bundle pipeline:

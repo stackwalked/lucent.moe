@@ -1,0 +1,7 @@
+id = "cs2"
+name = "Counter-Strike 2"
+kind = "module"
+channels = ["stable", "beta", "alpha"]
+
+[defaults]
+concurrent_slots = 1

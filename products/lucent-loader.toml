@@ -1,0 +1,7 @@
+id = "lucent-loader"
+name = "Lucent Loader"
+kind = "standalone"
+channels = ["stable", "beta", "alpha"]
+
+[defaults]
+concurrent_slots = 1
