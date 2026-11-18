@@ -314,7 +314,33 @@ Comments and provenance (decided):
   commented-out code, section banners or file headers (generated-file markers aside).
 - Suppressions keep the existing form: `// NOLINT(check): reason`, `// NOLINTNEXTLINE(check): reason`.
 
-Topics still to settle: formatting, enforcement.
+Formatting (decided; tested on clang-format 23.1.5). `native/.clang-format`, created with the first
+native code, run by dprint exec with `--assume-filename={{file_path}}`:
+
+- LLVM base, `Standard: Latest`, 100 columns, 4-space indent, LF, attached braces,
+  `AccessModifierOffset: -4`.
+- `InsertBraces`, `RemoveSemicolon`, `RemoveParentheses: ReturnStatement`; single-line functions
+  only when empty; short lambdas may stay on one line; no single-line `if`/loops/blocks.
+- Overflowing signatures and calls: `AlignAfterOpenBracket: false`,
+  `BreakAfterOpenBracketFunction`/`BreakBeforeCloseBracketFunction` (and the `BracedList` pair),
+  `BinPackParameters: OnePerLine`, `BinPackArguments: false`.
+- `BreakBeforeBinaryOperators: NonAssignment`, `BreakBinaryOperations: OnePerLine`. Pipeline stages
+  take named functions (bind lambdas to a `const` first): inline lambdas in pipelines format badly
+  under every setting tried.
+- `BreakTemplateDeclarations: Yes`, `RequiresClausePosition: OwnLine`, `IndentRequiresClause`,
+  constructor initializers one per line before the comma.
+- `QualifierAlignment: Custom` with `[static, inline, constexpr, const, type]`; pointers and
+  references left.
+- `NamespaceIndentation: None`, `FixNamespaceComments: false`, `SeparateDefinitionBlocks: Always`,
+  one empty line max, none at block or file start, blank line before access modifiers.
+- Comments reflowed, never aligned. Digit separators on decimals of 5+ digits; lowercase hex digits;
+  uppercase suffixes.
+- Includes regrouped: std (bare word), Windows SDK (named list), third-party, `lucent/`, private
+  `"..."`; the file's own header first (`IncludeIsMainRegex: '$'`).
+- A designated-initializer list spanning lines ends with a trailing comma (ast-grep); clang-format
+  only goes one per line when one is present.
+
+Topics still to settle: enforcement.
 
 ## Kit
 
