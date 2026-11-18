@@ -1,0 +1,9 @@
+id: no-t-suffix
+valid:
+  - "using handle = u32;"
+  - "struct settings {};"
+  - "auto f(std::size_t n) -> void;"
+invalid:
+  - "using handle_t = u32;"
+  - "struct settings_t {};"
+  - "enum class state_t { on };"

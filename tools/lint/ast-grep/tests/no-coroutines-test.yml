@@ -1,0 +1,6 @@
+id: no-coroutines
+valid:
+  - "auto f() -> int { return 1; }"
+invalid:
+  - "auto f() -> task { co_return; }"
+  - "auto f() -> task { co_await next(); }"

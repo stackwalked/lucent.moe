@@ -1,0 +1,6 @@
+id: no-shared-ownership
+valid:
+  - "std::unique_ptr<hook> owned;"
+invalid:
+  - "std::shared_ptr<hook> shared;"
+  - "auto h = std::make_shared<hook>();"

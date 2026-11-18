@@ -1,0 +1,12 @@
+id: no-bool-parameter
+language: cpp
+severity: error
+message: "a bool argument doesn't say what it means at the call site: use an enum class or two functions"
+rule:
+  kind: parameter_declaration
+  has:
+    field: type
+    regex: ^bool$
+# Foreign signatures are what they are.
+ignores:
+  - "**/foreign/**"

@@ -1,0 +1,6 @@
+id: no-nodiscard
+valid:
+  - "auto f() -> int;"
+  - "[[maybe_unused]] auto f() -> int;"
+invalid:
+  - "[[nodiscard]] auto f() -> int;"

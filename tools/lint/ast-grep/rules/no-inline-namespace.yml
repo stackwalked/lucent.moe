@@ -1,0 +1,7 @@
+id: no-inline-namespace
+language: cpp
+severity: error
+message: "inline namespaces are banned: namespaces match include paths, nothing hides behind them"
+rule:
+  kind: namespace_definition
+  regex: ^inline\b

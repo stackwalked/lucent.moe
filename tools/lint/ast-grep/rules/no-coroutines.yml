@@ -1,0 +1,9 @@
+id: no-coroutines
+language: cpp
+severity: error
+message: "coroutines are banned: heap frames, invisible suspend points, and resumption across unload"
+rule:
+  any:
+    - kind: co_await_expression
+    - kind: co_yield_statement
+    - kind: co_return_statement

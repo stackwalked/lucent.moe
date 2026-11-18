@@ -1,0 +1,6 @@
+id: no-bool-parameter
+valid:
+  - "auto draw(const box& b, outline style) -> void;"
+  - "auto is_visible(const entity& e) -> bool;"
+invalid:
+  - "auto draw(const box& b, bool outlined) -> void;"

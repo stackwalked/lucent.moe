@@ -7,6 +7,9 @@
 The reason sits after the marker when the tool tolerates trailing text, otherwise
 on the comment line directly above (StyLua and gersemi stop matching their marker
 when anything follows it).
+
+Deferred-work markers (TODO and friends) are banned in code: deferred work goes to
+the wishlist or issues. Prose files may name them.
 """
 
 import re
@@ -21,10 +24,13 @@ class Marker:
     pattern: re.Pattern[str]
     needs_rules: bool
     banned: str | None = None
+    in_prose: bool = True
 
 
-def _marker(regex: str, *, needs_rules: bool = False, banned: str | None = None) -> Marker:
-    return Marker(re.compile(regex), needs_rules, banned)
+def _marker(
+    regex: str, *, needs_rules: bool = False, banned: str | None = None, in_prose: bool = True
+) -> Marker:
+    return Marker(re.compile(regex), needs_rules, banned, in_prose)
 
 
 # Each pattern captures the named rules (if the syntax has them) and the text after.
@@ -48,13 +54,32 @@ MARKERS = (
     _marker(r"@ts-(?:ignore|nocheck)", banned="use @ts-expect-error with a reason"),
     _marker(r"stylua:\s*ignore(?:-start)?(?!-end)(?P<rest>.*)"),
     _marker(r"gersemi:\s*off(?P<rest>.*)"),
+    _marker(
+        r"#\s*pragma\s+clang\s+diagnostic\s+ignored(?P<rules>\s+\"-W[^\"]+\")?(?P<rest>.*)",
+        needs_rules=True,
+    ),
+    # ast-grep reads what follows the marker as rule ids, so the reason goes above.
+    _marker(
+        r"ast-grep-ignore(?P<rules>:\s*[a-z0-9-]+(?:\s*,\s*[a-z0-9-]+)*)?(?P<rest>)",
+        needs_rules=True,
+    ),
+    _marker(
+        r"\b(?:TODO|FIXME|HACK|XXX)\b",
+        banned="deferred work goes to the wishlist or issues, not the code",
+        in_prose=False,
+    ),
 )
+
+# Prose may name the deferred-work markers, e.g. to state the rule above.
+PROSE_SUFFIXES = frozenset({".md"})
 
 COMMENT = re.compile(r"^\s*(?://|#|--|/\*|\*)\s*(?P<text>.*?)\s*(?:\*/)?$")
 REASON_NOISE = " \t-:#*/"
 
 # These files spell the markers out as data.
-EXEMPT = frozenset({"tools/lint/suppressions.py", "tools/lint/test_suppressions.py"})
+EXEMPT = frozenset(
+    {"tools/lint/suppressions.py", "tools/lint/test_suppressions.py", "native/.clang-format"}
+)
 
 
 @dataclass(frozen=True)
@@ -74,10 +99,12 @@ def _comment_text(line: str) -> str:
     return text
 
 
-def scan(lines: list[str]) -> list[Finding]:
+def scan(lines: list[str], *, prose: bool = False) -> list[Finding]:
     findings: list[Finding] = []
     for index, line in enumerate(lines):
         for marker in MARKERS:
+            if prose and not marker.in_prose:
+                continue
             match = marker.pattern.search(line)
             if match is None:
                 continue
@@ -115,7 +142,7 @@ def main() -> int:
             lines = path.read_text(encoding="utf-8").splitlines()
         except UnicodeDecodeError:
             continue
-        for finding in scan(lines):
+        for finding in scan(lines, prose=path.suffix in PROSE_SUFFIXES):
             print(f"{name}:{finding.line}: {finding.message}")
             failed = True
     return 1 if failed else 0

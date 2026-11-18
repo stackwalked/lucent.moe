@@ -1,0 +1,7 @@
+id: no-get-prefix
+valid:
+  - "auto origin() const -> vec3;"
+  - "auto target_of(entity_handle handle) -> entity;"
+invalid:
+  - "auto get_origin() const -> vec3;"
+  - "auto lucent::kit::slot::get_state() const -> feature_state {}"

@@ -1,0 +1,17 @@
+id: no-t-suffix
+language: cpp
+severity: error
+message: "_t is reserved by POSIX and says nothing: drop the suffix"
+rule:
+  any:
+    - kind: alias_declaration
+    - kind: struct_specifier
+    - kind: class_specifier
+    - kind: union_specifier
+    - kind: enum_specifier
+  has:
+    field: name
+    regex: _t$
+# Foreign identifiers keep their own spelling.
+ignores:
+  - "**/foreign/**"

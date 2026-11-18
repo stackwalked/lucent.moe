@@ -1,0 +1,6 @@
+id: exceptions-in-contain-only
+valid:
+  - "auto f() -> int { return 1; }"
+invalid:
+  - "auto f() -> void { throw fault{}; }"
+  - "auto f() -> void { try { g(); } catch (...) {} }"

@@ -1,0 +1,9 @@
+id: banned-header
+language: cpp
+severity: error
+message: "banned by the feature ledger: iostreams (use std::print), <regex>, <any>, coroutines"
+rule:
+  kind: preproc_include
+  has:
+    field: path
+    regex: ^<(iostream|istream|ostream|sstream|fstream|regex|any|coroutine|generator)>$

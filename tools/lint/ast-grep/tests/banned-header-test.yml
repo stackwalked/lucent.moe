@@ -1,0 +1,8 @@
+id: banned-header
+valid:
+  - "#include <print>"
+  - "#include <lucent/core/narrow.hpp>"
+invalid:
+  - "#include <iostream>"
+  - "#include <regex>"
+  - "#include <coroutine>"

@@ -1,0 +1,10 @@
+id: no-shared-ownership
+language: cpp
+severity: error
+message: "ownership is always single: if something seems to need sharing, its owner is in the wrong place"
+rule:
+  any:
+    - kind: type_identifier
+      regex: ^(shared_ptr|weak_ptr|enable_shared_from_this)$
+    - kind: identifier
+      regex: ^(make_shared|allocate_shared)$

@@ -1,0 +1,9 @@
+id: no-nodiscard
+language: cpp
+severity: error
+message: "[[nodiscard]] is banned: bugprone-unused-return-value already covers every lucent function"
+rule:
+  kind: attribute
+  has:
+    field: name
+    regex: ^nodiscard$

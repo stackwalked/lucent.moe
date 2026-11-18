@@ -1,0 +1,16 @@
+id: no-function-local-static
+language: cpp
+severity: error
+message: "function-local statics read implicit TLS on every call (MSVC ABI guard); give the state a named owner"
+rule:
+  kind: declaration
+  has:
+    kind: storage_class_specifier
+    regex: ^static$
+  not:
+    has:
+      kind: type_qualifier
+      regex: ^constexpr$
+  inside:
+    kind: compound_statement
+    stopBy: end

@@ -1,0 +1,6 @@
+# Syntactic bans from the C++ dialect that clang-tidy has no check for. Run with --config from
+# the repo root so the config stays out of it.
+ruleDirs:
+  - rules
+testConfigs:
+  - testDir: tests

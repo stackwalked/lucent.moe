@@ -4,3 +4,5 @@ layer: "tool"
 tasks:
   test:
     command: "uv run --frozen pytest -q"
+  test-rules:
+    command: "uv run --frozen ast-grep test --config ast-grep/sgconfig.yml --skip-snapshot-tests"

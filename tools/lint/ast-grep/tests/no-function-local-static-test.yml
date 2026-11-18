@@ -1,0 +1,6 @@
+id: no-function-local-static
+valid:
+  - "auto f() -> int { static constexpr int limit = 3; return limit; }"
+  - "class slot { static auto from_name(std::string_view name) -> slot; };"
+invalid:
+  - "auto f() -> int { static int calls = 0; return ++calls; }"

@@ -1,0 +1,5 @@
+id: no-inline-namespace
+valid:
+  - "namespace lucent::kit {}"
+invalid:
+  - "inline namespace v1 {}"

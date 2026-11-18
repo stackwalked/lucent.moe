@@ -1,0 +1,7 @@
+id: no-volatile
+language: cpp
+severity: error
+message: "volatile is banned: cross-thread data goes through kit atomics, foreign memory through read()"
+rule:
+  kind: type_qualifier
+  regex: ^volatile$

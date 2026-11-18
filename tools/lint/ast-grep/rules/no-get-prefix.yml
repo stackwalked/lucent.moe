@@ -1,0 +1,11 @@
+id: no-get-prefix
+language: cpp
+severity: error
+message: "queries are nouns: name it for what it returns, without get_"
+rule:
+  kind: function_declarator
+  has:
+    field: declarator
+    regex: (^|::)get_\w+$
+ignores:
+  - "**/foreign/**"

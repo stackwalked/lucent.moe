@@ -1,0 +1,5 @@
+id: no-volatile
+valid:
+  - "const int x = 0;"
+invalid:
+  - "volatile int x = 0;"

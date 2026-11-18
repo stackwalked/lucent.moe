@@ -1,0 +1,12 @@
+id: exceptions-in-contain-only
+language: cpp
+severity: error
+message: "throw only through raise(), try/catch/__try only inside contain()"
+rule:
+  any:
+    - kind: throw_statement
+    - kind: try_statement
+    - kind: seh_try_statement
+# The test host stands in for raise(): its invariant handler throws so tests can assert.
+ignores:
+  - "**/native/testing/src/main.cpp"
