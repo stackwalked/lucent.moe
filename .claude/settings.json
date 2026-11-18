@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "uv run tools/lint/format_file.py",
+            "command": "uv run --project \"$CLAUDE_PROJECT_DIR\" \"$CLAUDE_PROJECT_DIR/tools/lint/format_file.py\"",
             "timeout": 30
           }
         ]

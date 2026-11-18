@@ -8,12 +8,17 @@ taskOptions:
   runFromWorkspaceRoot: true
 
 tasks:
+  # Without dprint's incremental cache: it can't see formatter versions or config files such as
+  # native/.clang-format, so a cached pass could hide a stricter rule.
   format:
-    command: "dprint check"
+    command: "dprint check --incremental=false"
     inputs: ["/**/*"]
   suppressions:
     command: "uv run tools/lint/suppressions.py"
     inputs: ["/**/*"]
+  ast-grep:
+    command: "uv run --frozen ast-grep scan --config tools/lint/ast-grep/sgconfig.yml native"
+    inputs: ["/native/**/*", "/tools/lint/ast-grep/**/*", "/uv.lock"]
   commit-msg:
     command: "uv run tools/lint/commit_msg.py"
     options:
@@ -23,8 +28,8 @@ tasks:
   # target's own inputs, not its deps'.
   check:
     inputs: ["/**/*"]
-    deps: ["~:format", "~:suppressions"]
+    deps: ["~:format", "~:suppressions", "~:ast-grep"]
   fix:
-    command: "dprint fmt"
+    command: "dprint fmt --incremental=false"
     options:
       cache: false

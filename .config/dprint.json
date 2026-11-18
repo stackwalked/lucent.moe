@@ -17,16 +17,21 @@
   },
   "exec": {
     // StyLua and gersemi run only through here, so their settings live on these command lines
-    // instead of in root config files. dprint's incremental cache can't see their versions:
-    // bump this key with their pins in .prototools and pyproject.toml.
-    "cacheKey": "stylua-2.6.0 gersemi-0.29.2",
+    // instead of in root config files. clang-format finds native/.clang-format from the file's
+    // path. dprint's incremental cache can't see versions or config files, so repo:format runs
+    // without it; bump this key with the pins anyway for local `dprint fmt` runs.
+    "cacheKey": "stylua-2.6.0 gersemi-0.29.2 clang-format-23.1.5",
     "commands": [
+      {
+        "command": "clang-format --assume-filename={{file_path}}",
+        "exts": ["cpp", "hpp"]
+      },
       {
         "command": "stylua --syntax Luau --column-width 100 --indent-type Spaces --indent-width 4 --line-endings Unix --quote-style AutoPreferDouble --call-parentheses Always --stdin-filepath {{file_path}} -",
         "exts": ["lua", "luau"]
       },
       {
-        "command": "uv run --frozen gersemi --line-length 100 --indent 4 --list-expansion favour-expansion --no-warn-about-unknown-commands -",
+        "command": "uv run --frozen gersemi --line-length 100 --indent 4 --list-expansion favour-inlining --no-warn-about-unknown-commands -",
         "exts": ["cmake"],
         "fileNames": ["CMakeLists.txt"]
       }
