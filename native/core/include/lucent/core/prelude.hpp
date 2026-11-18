@@ -25,3 +25,6 @@ static_assert(sizeof(f32) == 4, "f32 is IEEE-754 binary32, the width foreign lay
 static_assert(sizeof(f64) == 8, "f64 is IEEE-754 binary64");
 
 }
+
+// After the aliases, which it uses.
+#include <lucent/core/result.hpp>
