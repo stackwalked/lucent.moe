@@ -798,6 +798,44 @@ per-release key seed, and `core` capabilities refusing the start.
   - CI stays in `.github/workflows`, toolchains in `.prototools`/`tools/proto/`, and migrations and
     DB operator verbs in `platform/server/`.
 
+## osu (Tamaki)
+
+Tamaki (github.com/gorelace/tamaki: a standalone exe reading osu! from outside, SendInput, its own
+DX11 overlay window; lazer and stable) is rewritten here as a second product.
+
+- Proposed, not yet decided:
+  - one product format (a module plus fact bundles) with two placements: mapped into the game
+    (cs2), or into a `lucent-host` process the loader spawns per product (osu: remote reads, an
+    overlay window, an input domain); same lease, session, lifecycle and protection;
+  - a memory source under `read_access` (local under `contain()`, remote through a process handle,
+    fixture bytes in tests), so domains and features don't change between placements;
+  - `foreign_ptr32<T>` for 32-bit stable, read by the x64 host;
+  - `kit` split by placement: facts, registry, context, settings and session shared; hooks and
+    in-game Present injected-only; attach loop, remote reads, overlay window and input injection
+    host-only;
+  - two domain loops: play state at the game's rate, input at about 1 kHz (aim proposes cursor
+    corrections, relax and tap propose key events, the input domain applies them once per pump).
+- .NET facts come from a layout harvest: `tools/dotnet-layout` (C#) loads the target's assemblies
+  in a worker on the target's own runtime and reads the layouts back with ClrMD, as Tamaki's dumper
+  does; the generator takes the harvest as an input. The .NET SDK is pinned through proto with a
+  TOML plugin vendored into `tools/proto` (the registry's community plugin as a starting point),
+  landing with the first C# code.
+- `engines/dotnet/`: the probe half (metadata, an IL decoder for stable's obfuscated assembly,
+  managed finders `dotnet::field`, `type_token`, `static_field`) and the shipped half (navigating
+  the CLR's runtime structures to roots; no heap or pattern scans in release).
+- A managed fact set is keyed by every module that shapes it: the assembly, its base assemblies,
+  the runtime.
+- Stable is feature-locked: its finders (IL patterns, `clr.dll` navigation) are written once. JIT
+  code addresses still differ per run, so no stable fact is a code address.
+- Spike first: whether `coreclr.dll` (.NET 9+) exports `DotNetRuntimeContractDescriptor`
+  describing the runtime structures the navigation needs (unverified).
+- A live probe in dev (Tamaki's `ChainCheck`) walks every chain in a running game with the
+  candidate facts before sign-off.
+- Out of scope: anything around osu!'s own client authentication.
+- Order, after the facts machinery: memory source and kit split; `engines/dotnet` and lazer's
+  foreign layer; host placement; features (relax, tap assist, aim assist, autobot and replay, with
+  `humanize` as a library); stable; the `products/` entry.
+
 ## Open
 
 - Release string hygiene (log stripping, hashed ids, string encryption). It shapes the logging API.
