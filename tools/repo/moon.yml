@@ -4,6 +4,11 @@ layer: "configuration"
 # belongs to the whole tree: docs and data formatting, and cross-language rules. The project
 # lives here rather than at the root to keep the root clear; its tasks still run over and
 # from the whole workspace. Its id doubles as the commit scope for changes outside any project.
+#
+# The file checks run through staged.py: in a commit hook they see the index being committed, not
+# the working tree, so a checkout shared by several sessions can't fail one session's commit on
+# another's unstaged work. moon hashes the working tree, which in a hook is not what is checked,
+# so their results are never cached.
 taskOptions:
   runFromWorkspaceRoot: true
 
@@ -11,13 +16,16 @@ tasks:
   # Without dprint's incremental cache: it can't see formatter versions or config files such as
   # native/.clang-format, so a cached pass could hide a stricter rule.
   format:
-    command: "dprint check --incremental=false"
+    command: "uv run tools/lint/staged.py dprint check --incremental=false"
+    options: { cache: false }
     inputs: ["/**/*", "!/**/node_modules/**/*", "!/**/node_modules/*"]
   suppressions:
-    command: "uv run tools/lint/suppressions.py"
+    command: "uv run tools/lint/staged.py uv run tools/lint/suppressions.py"
+    options: { cache: false }
     inputs: ["/**/*", "!/**/node_modules/**/*", "!/**/node_modules/*"]
   includes:
-    command: "uv run tools/lint/includes.py"
+    command: "uv run tools/lint/staged.py uv run tools/lint/includes.py"
+    options: { cache: false }
     inputs:
       - "/native/**/*"
       - "/tools/lint/includes.py"
@@ -25,7 +33,8 @@ tasks:
       - "!/**/node_modules/**/*"
       - "!/**/node_modules/*"
   ast-grep:
-    command: "uv run --frozen ast-grep scan --config tools/lint/ast-grep/sgconfig.yml native platform"
+    command: "uv run tools/lint/staged.py uv run --frozen ast-grep scan --config tools/lint/ast-grep/sgconfig.yml native platform"
+    options: { cache: false }
     inputs:
       - "/native/**/*"
       - "/platform/**/*"
@@ -35,7 +44,8 @@ tasks:
       - "!/**/node_modules/*"
   # The roots mirror ts_hygiene.py's TS_ROOTS; one left out lets a cached pass hide a violation.
   ts-hygiene:
-    command: "uv run tools/lint/ts_hygiene.py"
+    command: "uv run tools/lint/staged.py uv run tools/lint/ts_hygiene.py"
+    options: { cache: false }
     inputs:
       - "/**/package.json"
       - "/contracts/**/*"

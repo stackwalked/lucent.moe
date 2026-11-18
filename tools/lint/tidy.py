@@ -81,7 +81,7 @@ def fix_includes(units: list[Path]) -> int:
     changed = [unit for unit in units if unit.read_bytes() != before[unit]]
     if changed:
         # The fixes insert includes where clang-tidy thinks they go; the formatter decides.
-        subprocess.run(["dprint", "fmt", *map(str, changed)], check=True, cwd=ROOT)
+        _ = subprocess.run(["dprint", "fmt", *map(str, changed)], check=True, cwd=ROOT)
     for unit in changed:
         print(f"tidy: fixed includes in {unit.relative_to(ROOT)}")
     return 0 if all(result.returncode == 0 for result in results) else 1

@@ -21,7 +21,10 @@ vcs:
   sync: true
   hooks:
     pre-commit:
-      - "moon run :check --affected --status staged"
+      # The staged files come from git, which reads the index being committed (GIT_INDEX_FILE: a
+      # temporary one for `git commit -- <paths>`). moon's own --status staged reads the real index,
+      # so such a commit ran no checks at all for files not already added to it.
+      - "git diff --cached --name-only | moon run :check --affected --stdin"
     commit-msg:
       # Through moon, so the hook runs the pinned uv rather than whatever PATH finds first.
       - "moon run repo:commit-msg --quiet -- $ARG1"
