@@ -132,8 +132,30 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
   - `libs/render/menu`: menu pages from the settings' `describe()`.
   - The target glues it together (Present hook, snapshot, ui, backend). A backend draws into the
     device and target it's handed and knows no hooks, so the same stack runs in a standalone window.
-- Still to decide for rendering: the draw list, text, shaders, the backend and lifetime, layout and
-  widgets, animation and theme, testing.
+- The draw list:
+  - one 64-byte quad record per shape, glyph, icon or image quad (bounds, geometry, paint, atlas
+    uv, two colours, kind bits), drawn instanced: the vertex shader builds corners from
+    `SV_VertexID` and reads the record from a structured buffer, with no vertex or index buffer.
+    Only tessellated paths emit triangles, as their own commands in the same ordered list;
+  - glyph and icon pages are slices of one `Texture2DArray`, so they never split a batch; only
+    arbitrary images bind their own texture;
+  - primitives: rect and rounded rect (radius per corner), circle, arc, segment with caps, Gaussian
+    shadow, convex and concave polygons, polylines (width and tint per point), glyph runs, images,
+    icons. Fills, and strokes inside closed edges or centred on open paths;
+  - paints: solid, linear gradient, noise; paint kind bits leave room for radial and conic, added
+    when needed;
+  - colour authored in sRGB with straight alpha; the backend premultiplies; blending in the
+    target's space;
+  - units times a scale per list; axis-aligned edges snap to pixels, strokes of one unit or less
+    become whole pixels; translation and uniform scale only;
+  - clipping is a stack of scissor rects; a rounded clip is a layer with a mask. `push_layer` takes
+    data (backdrop blur, group opacity, mask radius, effects such as rim and light sampling); only
+    blur and opacity cost a pass;
+  - a draw list is a value with no globals, recorded by one thread at a time; limits are part of
+    its type (an invariant when broken); the backend checks frame data once and refuses a bad frame
+    whole.
+- Still to decide for rendering: text, shaders, the backend and lifetime, layout and widgets,
+  animation and theme, testing.
 - Lease client: verify, renew, lapse, and feed entitlements to the registry.
 - Dev channel, stats and incident sink, compiled out of release (enforced in CMake).
 - An injectable clock.
