@@ -174,7 +174,6 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
   2. unload cleanly: in-flight counting, unhook only when no call is in progress;
   3. swap the OS loader for the manual mapper; the module stays unchanged.
 - Separation the first skeleton slice still owes:
-  - `loader-dev`'s `main.cpp` parses, stages the copy, orchestrates and prints; split those.
   - `kit`'s lifecycle mixes the stage sequence with OS-loader unload (`FreeLibraryAndExitThread`);
     the mapper step splits them.
   - Names for `error_code` and `stage` live in the loader; they belong beside their types.
