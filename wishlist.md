@@ -554,16 +554,81 @@ live in `wishlist/protection.md`.
     zero exceptions. Wrapped by a streaming byte-capped body reader (`16 KiB` default → `413` before
     buffering), prefix auth before route matching, and `503` (never `500`) fallback.
   - Validation: `zod@4.6.7` everywhere (`z.strictObject` at external boundaries).
-  - `web/`: `@tanstack/react-start@1.169.5` + `vite@8.3.8` (Nitro `bun` preset), `react@19.3.1` +
-    `babel-plugin-react-compiler@1.0.0`, CSS Modules with cascade layers, native `<dialog>` and
-    `popover` primitives, no UI kit and no Tailwind. Confirm dialog + page twins use nested child
-    routes with route masks; markdown and syntax highlighting run in server
-    loaders/`createServerFn`.
-  - Clean browser URLs: `URLSearchParams` + `stripSearchParams` replaces TanStack Router's default
-    JSON search serializer; zero query strings on member and auth pages (`returnTo` in short-lived
-    `__Host-lucent-flow` cookie; cursors and sorts in React + `history.state`; RFC `?code=`
-    callbacks `303`-redirect immediately); admin lists take at most one human-readable `?q=` when
-    non-empty.
+  - `web/`: see "Web design" below.
+- Web design, settled topic by topic (T1–T14):
+  - Users and boundary: invite-only, hundreds of people. Web holds no authority (no DB, no keys;
+    `can()` only steers UI); a compromised web can't act as anyone without their session token,
+    and staff actions need a passkey step-up it can't forge. One browser origin, zero third-party
+    requests, no state across requests (one exception: per-IP throttle buckets), no UI copy in
+    platform. Server-rendered and JS-required (no no-JS path); evergreen browsers only; English
+    only, without i18n machinery.
+  - Runtime: TanStack Start + Vite, React 19 + React Compiler, no RSC. Served by our own
+    `web/src/server.ts` on `Bun.serve` (Unix socket in prod, Vite dev on `http://localhost:4710`),
+    no Nitro: `/assets/*` from `dist/client`, the rest to Start's `fetch` handler. Config:
+    `LUCENT_WEB_LISTEN`, `LUCENT_PLATFORM_INTERNAL_URL`, `LUCENT_WEB_INTERNAL_KEY`,
+    `LUCENT_PUBLIC_ORIGIN`.
+  - Contract: `platform/packages/rpc/src/web.ts` holds each procedure's input/output/error
+    schemas and the session it needs (`none`/`member`/`setup`/both); the server binds handlers
+    with a typed `implement`. Own strict WebAuthn L3 JSON schemas. Names `<area>.<noun…>.<verb>`
+    (`signIn.*`, `session.*`, `setup.*`, `credentials.*`, `stepUp.*`, `admin.*`). Session token in
+    a `Lucent-Session` header; client IP and user agent in `Lucent-Client` (trusted from web only);
+    request id in `Lucent-Request`. Skew rule: platform deploys first, changes stay compatible for
+    one deploy, removals take two.
+  - Sessions: `__Host-lucent` (`Secure`, `HttpOnly`, `SameSite=Lax`, `Max-Age` = session).
+    Member sessions last 7 days (fixed, never slide), setup sessions 30 minutes. Unsigned
+    `__Host-lucent-flow` (10 minutes) holds flow tokens and `returnTo`; no token ever reaches
+    JavaScript. `session.resolve` returns the viewer (with `can()` standing); session list with
+    `public_id`, client info and `last_seen_at` (written at most every 5 minutes). CSRF: `Lax` plus
+    an Origin/`Sec-Fetch-Site` gate on every non-GET in the entry; GET never mutates.
+  - Auth flows: one sign-in form with conditional passkey autofill and a passkey button;
+    passkey-first second factor when the account has one; `GET /setup/<token>` stores the token
+    and 303s to `/setup`, redeem is a POST, links stay single-use; re-auth is the step-up dialog
+    for passkey holders, a fresh sign-in otherwise; step-up retries the action with the same
+    `operationId`. `uqr` renders TOTP QR codes server-side.
+  - Routes: pathless `_public`/`_auth`/`_member`/`_admin`/`_dev` layouts; `/admin/accounts`,
+    `/admin/accounts/$accountId`, `/admin/roles`, `/admin/audit`; non-staff get 404 on `/admin`.
+    No query strings on member and auth pages; admin lists take one `?q=` with `key:value` tokens;
+    sort and cursor in `history.state`; lowercase, no trailing slash, 303/308 only. `returnTo` must
+    be one leading `/`, same origin, a known non-auth route. Confirm dialogs are component state
+    (no route-masked twins).
+  - Data: router loaders only (no TanStack Query), authority data never fresh, intent preload
+    valid 10s, `invalidate()` after mutations, refetch on focus after 60s. POST server functions
+    return results through React 19 form actions; one `operationId` per form instance; no
+    optimistic updates; one server-only `callPlatform` gateway handles `SESSION_INVALID`,
+    `NOT_FOUND` and `SERVICE_UNAVAILABLE`. Keyset pages of 50, no totals on growing lists.
+  - Design system: layers `reset, tokens, base, layout, components, features, overrides`; module
+    CSS uses semantic tokens only (lint); tokens written in TypeScript, emitted as CSS by a Vite
+    plugin, contrast-tested (WCAG 2.2 AA; `ink-3` inert only). Old lucent's palette: Graphite and
+    Washi themes, pink (yours, current, needs you) and shu (stopped, danger), no other hues;
+    `lucent-theme` cookie, else the system. IBM Plex Sans 400/500, Geist Mono (trial), Lucide
+    icons vendored as one sprite. One shell (admin side nav inside it, auth pages a bare card);
+    widths 1600 / 1040 / 480; fixed page anatomy (trail, one `h1` with verbs, captioned sections);
+    components re-implemented with old lucent's CSS as visual reference only.
+  - Copy: minimal, no filler or AI phrasing (rules and glossary in `web/AGENTS.md`). Uncontrolled
+    forms, native constraints with our own messages, shared validation constants from `core`;
+    every contract error code has compiler-checked copy; a support reference only on unexpected
+    failures. Times as "18 Nov 2026, 14:05" in the viewer's zone (`lucent-tz` cookie).
+  - Admin (slice 1): accounts list and detail (sign-in summary, roles with expiry, recent audit,
+    suspend with reason, reinstate, rename, recover with typed confirmation), add account showing
+    the setup link once, role editor without channel grants, no role deletion, audit with typed
+    operation labels. Hidden, not disabled, when `can()` says no; step-up checked before submit.
+  - Hardening: nonce CSP with `'strict-dynamic'`, no inline styles (`style` prop banned), Trusted
+    Types report-only then enforced, `dangerouslySetInnerHTML` banned, `no-referrer`, HSTS
+    preload, COOP/CORP same-origin, Permissions-Policy off except WebAuthn, 421 on a wrong `Host`.
+    Per-IP buckets: `signIn.*` 10/min, `setup.redeem` 5/min, `stepUp.*` 10/min, 300/min overall.
+  - Failure: public pages never need platform; 503/500/404 pages with layout boundaries; reads
+    retried once after 250ms, mutations never automatically; `POST /_report` for CSP and browser
+    errors; one JSONL line per request (with account id, no PII); `/_health` on the socket only;
+    10s SIGTERM drain.
+  - Testing: unit tests on `returnTo`, `?q=` parsing, cookies, the entry's gates, throttles,
+    `loggablePath` and contrast; HTTP-level integration tests against a real platform (shared
+    harness in `platform/packages/testing`); no browser E2E, a manual list per slice instead.
+    `routeTree.gen.ts` gitignored and generated by `web:routes`; `.config/dev.env` feeds both dev
+    tasks; `/dev/kit` 404s outside dev.
+  - Delivery: ≤150 KB gzipped JS per first load (build fails over it), route-split chunks, Plex
+    preloaded with metric-matched fallbacks, no streaming in slice 1, immutable hashed assets,
+    Caddy compresses, no service worker, only `/` and `/legal/*` indexable, source maps kept but
+    never served.
 - TS toolchain, dialect and Slice 1A authority core landed in `.biome.jsonc`,
   `.config/tsconfig.base.json`, `tools/lint/ts_hygiene.py`,
   `tools/lint/ast-grep/rules/ts-*.yml`, `tools/proto/postgresql.toml`, `products/*.toml`,
@@ -571,27 +636,24 @@ live in `wishlist/protection.md`.
   `platform/server/src/{core,db,products,authority,internal}`. Exact package pins in this section
   are provisional until their slice starts and checks them (TypeScript 7.0.2 was pinned before
   any tool needing its API was tried). Still to land:
-  - Decide how `web`'s RPC client gets the procedure schemas it parses replies with: the server
-    exports only types (`./rpc-type`), so either `web` imports the procedure map at runtime or the
-    schemas move into a module with no dependencies.
-  - `web/` workspace (`web` moon id), Vite caches under `.moon/cache/vite/<project>`, and
-    `routeTree.gen.ts` generated marker + `linguist-generated` + freshness check in `web:check`;
+  - `web/` workspace (`web` moon id), Vite caches under `.moon/cache/vite/<project>`;
   - `contracts/*`, `platform/packages/*` and `platform/connectors/discord` (`discord`) as their
     slices arrive;
   - the packages split out of `platform/server` in the commit that adds `web` (its second
     consumer): `platform/packages/core` (`Result`, `contain`, scalars), `rpc` (procedure builder,
-    contracts and client: this answers how `web` gets the schemas), `policy` (`actions.ts` and pure
+    contracts and client, including the web contract), `policy` (`actions.ts` and pure
     `can()`) and `catalog` (the `products/*.toml` reader). `db/`, `standing`, the writers,
     `receipt`, migrations and the internal app stay server-only. Declared package dependencies and
     moon `dependsOn` then enforce the layering that dependency-cruiser couldn't;
   - the native `/v1` listener and periodic jobs, in the slice that gives them routes and work
     (boot, the internal listener, `ops.ts` and `server:dev`/`server:seed` landed);
   - slice 1B pins, spiked on bun 1.4.4 + TypeScript 7.0.2 strict, all holding: TanStack Start and
-    `@tanstack/react-router@1.170.46`, `nitro@3.0.261103-rc` (no stable 3.x yet), `vite` with
-    `@vitejs/plugin-react@6.3.0`, and React Compiler 1.0.0 through `@rolldown/plugin-babel@0.3.1`
-    (plugin order: `tanstackStart()`, `nitro({ preset: "bun" })`, `react()`, then babel);
-    `@types/react`/`@types/react-dom` `19.2.0`. Found on the way: the server-fn input method is
-    `.validator` (not `.inputValidator`); server functions demand `Origin` + `Sec-Fetch-Site` and
+    `@tanstack/react-router@1.170.46`, `vite` with `@vitejs/plugin-react@6.3.0`, and React
+    Compiler 1.0.0 through `@rolldown/plugin-babel@0.3.1` (plugin order: `tanstackStart()`,
+    `react()`, then babel); `@types/react`/`@types/react-dom` `19.2.0`. The spike ran through
+    `nitro@3.0.261103-rc`, which the design drops for our own `Bun.serve` entry (fallback if Start's
+    build lacks a `fetch` handler). Found on the way: the server-fn input method is `.validator`
+    (not `.inputValidator`); server functions demand `Origin` + `Sec-Fetch-Site` and
     seroval-encoded bodies; `routeTree.gen.ts` needs a Biome ignore;
   - optional plan templates and `connector_discord_rule` tables when their consumers land.
 - Auth, credentials, sessions and authority:
