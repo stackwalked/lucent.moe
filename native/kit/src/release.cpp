@@ -5,7 +5,6 @@
 #include <cstddef>
 #include <expected>
 #include <optional>
-#include <source_location>
 #include <span>
 
 #include <Windows.h>
@@ -117,7 +116,7 @@ auto plan_unmap(u64 trampolines) -> result<unmap_plan> {
     const auto stub = std::bit_cast<unmap_stub>(page);
     stub(std::bit_cast<const unmap_args*>(page + unmap_args_offset));
     // The stub ends the thread; reaching here means its bytes are wrong.
-    invariant_violated(std::source_location::current());
+    LUCENT_UNREACHABLE();
 }
 
 }
@@ -131,7 +130,7 @@ auto release_module(image_kind kind, u64 trampolines) -> void {
         unmap_self(trampolines);
     }
     // kit::start refuses any other kind before the lifecycle thread exists.
-    invariant_violated(std::source_location::current());
+    LUCENT_UNREACHABLE();
 }
 
 }

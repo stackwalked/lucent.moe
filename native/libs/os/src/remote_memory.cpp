@@ -3,7 +3,6 @@
 #include <bit>
 #include <cstddef>
 #include <expected>
-#include <source_location>
 #include <span>
 #include <utility>
 #include <vector>
@@ -28,7 +27,7 @@ auto protection_of(page_access access) -> DWORD {
     case page_access::read_write_execute:
         return PAGE_EXECUTE_READWRITE;
     }
-    invariant_violated(std::source_location::current());
+    LUCENT_UNREACHABLE();
 }
 
 }

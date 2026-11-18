@@ -34,7 +34,7 @@ CheckOptions:
   bugprone-unused-return-value.CheckedFunctions: '^::lucent::.*'
   bugprone-unused-return-value.AllowCastToVoid: false
 
-  cppcoreguidelines-macro-usage.AllowedRegexp: '^LUCENT_(TRY|ENSURE|INVARIANT|VIRT)$'
+  cppcoreguidelines-macro-usage.AllowedRegexp: '^LUCENT_(TRY|ENSURE|INVARIANT|UNREACHABLE|VIRT)$'
 
   # The prelude and what it includes are force-included into every file by lucent_library().
   # Windows SDK symbols live in internal headers (winbase.h, fileapi.h, ...) that are only meant

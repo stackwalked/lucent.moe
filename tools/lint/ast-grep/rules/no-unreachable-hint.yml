@@ -1,0 +1,9 @@
+id: no-unreachable-hint
+language: cpp
+severity: error
+message: "reaching an optimizer hint is undefined behavior: call LUCENT_UNREACHABLE(), which fails fast with a location"
+rule:
+  kind: call_expression
+  has:
+    field: function
+    regex: ^(::)?(std::unreachable|__assume|__builtin_unreachable|__builtin_assume)$

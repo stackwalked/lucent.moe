@@ -24,7 +24,7 @@ auto name_of(error_code code) -> std::string_view {
     case error_code::timed_out:
         return "timed out";
     }
-    return "unknown";
+    LUCENT_UNREACHABLE();
 }
 
 }

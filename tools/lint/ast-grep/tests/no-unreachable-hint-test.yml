@@ -1,0 +1,7 @@
+id: no-unreachable-hint
+valid:
+  - "LUCENT_UNREACHABLE();"
+invalid:
+  - "std::unreachable();"
+  - "__assume(0);"
+  - "__builtin_unreachable();"
