@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import { createAuthDeps } from "../src/auth/deps.ts";
-import { AuthenticationResponse } from "../src/auth/passkeys.ts";
 import { createArgon2idHasher } from "../src/auth/password.ts";
 import { resolveSession } from "../src/auth/sessions.ts";
 import {
@@ -10,6 +9,7 @@ import {
     signInWithTotp,
 } from "../src/auth/sign-in.ts";
 import { createTotpKeyring } from "../src/auth/totp.ts";
+import { AuthenticationResponse } from "../src/contract/webauthn.ts";
 import { invariant } from "../src/core/contain.ts";
 import { err } from "../src/core/result.ts";
 import { createSeededRng } from "../src/core/rng.ts";

@@ -2,14 +2,18 @@ import {
     type AuthenticationResponseJSON,
     generateAuthenticationOptions,
     generateRegistrationOptions,
-    type PublicKeyCredentialCreationOptionsJSON,
-    type PublicKeyCredentialRequestOptionsJSON,
     type RegistrationResponseJSON,
     verifyAuthenticationResponse,
     verifyRegistrationResponse,
 } from "@simplewebauthn/server";
-import { z } from "zod";
-import { tryAsync } from "../core/contain.ts";
+import type { z } from "zod";
+import {
+    type AuthenticationResponse,
+    CreationOptions,
+    type RegistrationResponse,
+    RequestOptions,
+} from "../contract/webauthn.ts";
+import { invariant, tryAsync } from "../core/contain.ts";
 import { err, ok, type Result } from "../core/result.ts";
 import type { AccountId } from "../core/scalars.ts";
 import { toBase64Url } from "../core/scalars.ts";
@@ -22,41 +26,6 @@ export type RelyingParty = {
     readonly origin: string;
 };
 
-const Base64UrlString = z
-    .string()
-    .regex(/^[A-Za-z0-9_-]*$/)
-    .refine((value) => value.length % 4 !== 1, "not base64url")
-    .max(16_384);
-
-const ClientExtensionResults = z.object({});
-
-export const RegistrationResponse = z.strictObject({
-    id: Base64UrlString,
-    rawId: Base64UrlString,
-    type: z.literal("public-key"),
-    authenticatorAttachment: z.enum(["cross-platform", "platform"]).optional(),
-    clientExtensionResults: ClientExtensionResults,
-    response: z.object({
-        clientDataJSON: Base64UrlString,
-        attestationObject: Base64UrlString,
-        transports: z.array(z.string().max(32)).max(8).optional(),
-    }),
-});
-
-export const AuthenticationResponse = z.strictObject({
-    id: Base64UrlString,
-    rawId: Base64UrlString,
-    type: z.literal("public-key"),
-    authenticatorAttachment: z.enum(["cross-platform", "platform"]).optional(),
-    clientExtensionResults: ClientExtensionResults,
-    response: z.object({
-        clientDataJSON: Base64UrlString,
-        authenticatorData: Base64UrlString,
-        signature: Base64UrlString,
-        userHandle: Base64UrlString.optional(),
-    }),
-});
-
 export type StoredPasskey = {
     readonly id: Uint8Array;
     readonly publicKey: Uint8Array;
@@ -68,16 +37,24 @@ export type PasskeyRefusal = { readonly code: "PASSKEY_REJECTED" };
 
 const rejected: PasskeyRefusal = { code: "PASSKEY_REJECTED" };
 
+// The library's options pass through our wire schemas here, so a change in what it emits stops at
+// this line instead of reaching browsers.
+function asWire<T>(schema: z.ZodType<T>, options: unknown, what: string): T {
+    const parsed = schema.safeParse(options);
+    invariant(parsed.success, `@simplewebauthn/server emitted ${what} our schema refuses`);
+    return parsed.data;
+}
+
 // The user handle is the account id: discoverable passkeys hand it back, and it names no one
 // outside lucent.
-export function registrationOptions(params: {
+export async function registrationOptions(params: {
     readonly rp: RelyingParty;
     readonly challenge: Uint8Array;
     readonly accountId: AccountId;
     readonly username: string;
     readonly existing: readonly StoredPasskey[];
-}): Promise<PublicKeyCredentialCreationOptionsJSON> {
-    return generateRegistrationOptions({
+}): Promise<CreationOptions> {
+    const options = await generateRegistrationOptions({
         rpName: params.rp.rpName,
         rpID: params.rp.rpId,
         userName: params.username,
@@ -90,6 +67,7 @@ export function registrationOptions(params: {
         })),
         authenticatorSelection: { residentKey: "required", userVerification: "required" },
     });
+    return asWire(CreationOptions, options, "creation options");
 }
 
 export type RegisteredPasskey = {
@@ -103,7 +81,7 @@ export type RegisteredPasskey = {
 export async function verifyRegistration(params: {
     readonly rp: RelyingParty;
     readonly challenge: Uint8Array;
-    readonly response: z.output<typeof RegistrationResponse>;
+    readonly response: RegistrationResponse;
 }): Promise<Result<RegisteredPasskey, PasskeyRefusal>> {
     const verified = await tryAsync(
         () =>
@@ -128,12 +106,12 @@ export async function verifyRegistration(params: {
     });
 }
 
-export function authenticationOptions(params: {
+export async function authenticationOptions(params: {
     readonly rp: RelyingParty;
     readonly challenge: Uint8Array;
     readonly allow: readonly StoredPasskey[];
-}): Promise<PublicKeyCredentialRequestOptionsJSON> {
-    return generateAuthenticationOptions({
+}): Promise<RequestOptions> {
+    const options = await generateAuthenticationOptions({
         rpID: params.rp.rpId,
         challenge: Uint8Array.from(params.challenge),
         userVerification: "required",
@@ -142,6 +120,7 @@ export function authenticationOptions(params: {
             transports: [...passkey.transports],
         })),
     });
+    return asWire(RequestOptions, options, "request options");
 }
 
 export function rawIdOf(response: { readonly rawId: string }): Uint8Array {
@@ -153,7 +132,7 @@ export function rawIdOf(response: { readonly rawId: string }): Uint8Array {
 export async function verifyAssertion(params: {
     readonly rp: RelyingParty;
     readonly challenge: Uint8Array;
-    readonly response: z.output<typeof AuthenticationResponse>;
+    readonly response: AuthenticationResponse;
     readonly passkey: StoredPasskey;
 }): Promise<Result<{ readonly signCount: number }, PasskeyRefusal>> {
     const verified = await tryAsync(
@@ -179,11 +158,11 @@ export async function verifyAssertion(params: {
 }
 
 // Zod reports an absent optional field as `undefined`; the library's types (under
-// exactOptionalPropertyTypes) want it missing.
-function toRegistrationJSON(
-    parsed: z.output<typeof RegistrationResponse>,
-): RegistrationResponseJSON {
-    const { transports, ...response } = parsed.response;
+// exactOptionalPropertyTypes) want it missing. Verification reads only the attestation object and
+// client data; the browser's convenience copies of what they contain stay behind.
+function toRegistrationJSON(parsed: RegistrationResponse): RegistrationResponseJSON {
+    const { clientDataJSON, attestationObject, transports } = parsed.response;
+    const response = { clientDataJSON, attestationObject };
     return {
         id: parsed.id,
         rawId: parsed.rawId,
@@ -193,9 +172,7 @@ function toRegistrationJSON(
     };
 }
 
-function toAuthenticationJSON(
-    parsed: z.output<typeof AuthenticationResponse>,
-): AuthenticationResponseJSON {
+function toAuthenticationJSON(parsed: AuthenticationResponse): AuthenticationResponseJSON {
     const { userHandle, ...response } = parsed.response;
     return {
         id: parsed.id,

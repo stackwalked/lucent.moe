@@ -1,8 +1,8 @@
-import type { PublicKeyCredentialRequestOptionsJSON } from "@simplewebauthn/server";
 import { z } from "zod";
+import type { AuthenticationResponse, RequestOptions } from "../contract/webauthn.ts";
 import { invariant } from "../core/contain.ts";
 import { err, ok, type Result } from "../core/result.ts";
-import { AccountId, type EpochMs } from "../core/scalars.ts";
+import { AccountId, type BearerToken, type EpochMs } from "../core/scalars.ts";
 import { type DbFailure, execute, queryOne, sql, type Tx } from "../db/pool.ts";
 import { errCommit, withTx } from "../db/tx.ts";
 import { findPasskey, lockAccount, readPasskeys } from "./accounts.ts";
@@ -17,7 +17,6 @@ import {
     startFlow,
 } from "./flows.ts";
 import {
-    type AuthenticationResponse,
     authenticationOptions,
     type PasskeyRefusal,
     rawIdOf,
@@ -25,7 +24,7 @@ import {
 } from "./passkeys.ts";
 import { normalizePasswordAttempt } from "./password.ts";
 import { mintSession } from "./sessions.ts";
-import { type BearerToken, hashToken } from "./tokens.ts";
+import { hashToken } from "./tokens.ts";
 import { matchTotpCode, openTotpSecret } from "./totp.ts";
 
 export type SignedIn = {
@@ -213,7 +212,7 @@ export async function beginPasskeySignIn(
     Result<
         {
             readonly flowToken: BearerToken;
-            readonly options: PublicKeyCredentialRequestOptionsJSON;
+            readonly options: RequestOptions;
         },
         SignInRefusal
     >
@@ -265,7 +264,7 @@ export async function finishPasskeySignIn(
     deps: AuthDeps,
     params: {
         readonly flowToken: BearerToken;
-        readonly response: z.output<typeof AuthenticationResponse>;
+        readonly response: AuthenticationResponse;
     },
 ): Promise<Result<SignedIn, SignInRefusal>> {
     const tokenHash = await hashToken(params.flowToken);

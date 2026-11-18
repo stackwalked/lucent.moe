@@ -2,34 +2,72 @@ import { expect, test } from "bun:test";
 import { z } from "zod";
 import { containBoundary, invariant } from "../src/core/contain.ts";
 import { err, ok } from "../src/core/result.ts";
-import { createRpcClient, mountInternalRpc, procedure } from "../src/core/rpc.ts";
+import {
+    createRpcClient,
+    defineContract,
+    implement,
+    mountInternalRpc,
+    RequestId,
+    type UnhandledFailure,
+} from "../src/core/rpc.ts";
+import { BearerToken } from "../src/core/scalars.ts";
 
 const PEER_KEY = "test-peer-key-0123456789abcdefghijklmnopqrstuvwxyz";
 const ENDPOINT = "http://localhost/internal/web/rpc";
+const SESSION = BearerToken.parse("s".repeat(43));
 
-const procedures = {
-    "math.double": procedure({
+const contract = defineContract({
+    "math.double": {
+        session: "none",
         input: z.strictObject({ n: z.number().int() }),
-        output: z.strictObject({ doubled: z.number().int() }),
-        error: z.strictObject({ code: z.literal("NEGATIVE_INPUT") }),
-        run: (_ctx: unknown, { n }) => {
-            if (n < 0) return Promise.resolve(err({ code: "NEGATIVE_INPUT" as const }));
-            return Promise.resolve(ok({ doubled: n * 2 }));
-        },
-    }),
-    "bug.defect": procedure({
+        output: z.object({ doubled: z.number().int() }),
+        error: z.object({ code: z.literal("NEGATIVE_INPUT") }),
+    },
+    "session.echo": {
+        session: "member",
         input: z.strictObject({}),
-        output: z.strictObject({}),
+        output: z.object({ session: z.string() }),
         error: z.never(),
-        run: () => {
-            invariant(false, "simulated programmer bug");
-        },
-    }),
-};
+    },
+    "leak.extra": {
+        session: "none",
+        input: z.strictObject({}),
+        output: z.object({ shown: z.string() }),
+        error: z.never(),
+    },
+    "bug.offContract": {
+        session: "none",
+        input: z.strictObject({}),
+        output: z.object({ count: z.number() }),
+        error: z.never(),
+    },
+    "bug.defect": {
+        session: "none",
+        input: z.strictObject({}),
+        output: z.object({}),
+        error: z.never(),
+    },
+});
+
+const procedures = implement<unknown, typeof contract>(contract, {
+    "math.double": (_ctx, { n }) => {
+        if (n < 0) return Promise.resolve(err({ code: "NEGATIVE_INPUT" as const }));
+        return Promise.resolve(ok({ doubled: n * 2 }));
+    },
+    "session.echo": (_ctx, _input, session) => Promise.resolve(ok({ session })),
+    "leak.extra": () => {
+        const row = { shown: "yes", tokenHash: "never on the wire" };
+        return Promise.resolve(ok(row));
+    },
+    "bug.offContract": () => Promise.resolve(ok(JSON.parse('{"count":"many"}'))),
+    "bug.defect": () => {
+        invariant(false, "simulated programmer bug");
+    },
+});
 
 function mount(overrides?: {
     readonly createContext?: () => Promise<{ readonly ok: true; readonly value: unknown }>;
-    readonly onUnhandledError?: () => void;
+    readonly onUnhandledError?: (failure: UnhandledFailure) => void;
 }) {
     return mountInternalRpc({
         path: "/internal/web/rpc",
@@ -42,7 +80,7 @@ function mount(overrides?: {
 }
 
 function clientFor(app: ReturnType<typeof mount>, peerKey = PEER_KEY) {
-    return createRpcClient(procedures, {
+    return createRpcClient(contract, {
         endpointUrl: ENDPOINT,
         peerKey,
         fetcher: async (req) => await app.fetch(req),
@@ -64,6 +102,53 @@ function rpcRequest(init: {
     });
 }
 
+test("a procedure that needs a session is refused without Lucent-Session before its handler runs", async () => {
+    const res = await mount().fetch(
+        rpcRequest({ body: JSON.stringify({ procedure: "session.echo", input: {} }) }),
+    );
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual(
+        err({ code: "INVALID_REQUEST", detail: "missing or malformed Lucent-Session" }),
+    );
+});
+
+test("the client sends the session in Lucent-Session and the handler receives it", async () => {
+    const reply = await clientFor(mount()).call("session.echo", {}, { session: SESSION });
+    expect(reply).toEqual(ok({ session: SESSION }));
+});
+
+test("a field a handler returns outside its contract never reaches the wire", async () => {
+    const res = await mount().fetch(
+        rpcRequest({ body: JSON.stringify({ procedure: "leak.extra", input: {} }) }),
+    );
+    expect(await res.json()).toEqual(ok({ shown: "yes" }));
+});
+
+test("a reply that breaks its contract answers 503 and is logged as a defect", async () => {
+    const failures: UnhandledFailure[] = [];
+    const res = await mount({ onUnhandledError: (failure) => failures.push(failure) }).fetch(
+        rpcRequest({
+            body: JSON.stringify({ procedure: "bug.offContract", input: {} }),
+            headers: { "lucent-request": "req-0123456789" },
+        }),
+    );
+    expect(res.status).toBe(503);
+    expect(failures).toEqual([
+        {
+            detail: "bug.offContract replied outside its contract",
+            kind: "defect",
+            requestId: RequestId.parse("req-0123456789"),
+        },
+    ]);
+});
+
+test("an Object.prototype name is an unknown procedure", async () => {
+    const res = await mount().fetch(
+        rpcRequest({ body: JSON.stringify({ procedure: "toString", input: {} }) }),
+    );
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual(err({ code: "UNKNOWN_PROCEDURE" }));
+});
 test("mounting refuses a peer key shorter than 43 characters", async () => {
     const outcome = await containBoundary({
         run: () =>
@@ -159,7 +244,7 @@ test("a streamed body over the limit is refused with 413 before it is buffered",
 });
 
 test("the client treats a reply that does not match the procedure's schemas as unavailable", async () => {
-    const client = createRpcClient(procedures, {
+    const client = createRpcClient(contract, {
         endpointUrl: ENDPOINT,
         peerKey: PEER_KEY,
         fetcher: () => Promise.resolve(Response.json(ok({ doubled: "forty-two" }))),

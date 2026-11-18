@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { err, ok, type Result } from "../core/result.ts";
 import type { CryptoRng } from "../core/rng.ts";
-import { AccountId, EpochMs } from "../core/scalars.ts";
+import { AccountId, type BearerToken, EpochMs } from "../core/scalars.ts";
 import {
     type Db,
     type DbFailure,
@@ -13,7 +13,7 @@ import {
     toTimestamptz,
 } from "../db/pool.ts";
 import { withTx } from "../db/tx.ts";
-import { type BearerToken, hashToken, issueToken } from "./tokens.ts";
+import { hashToken, issueToken } from "./tokens.ts";
 
 // Fixed lifetimes; a session never slides. A member signs in again after 12 hours whatever they
 // did meanwhile, so a stolen cookie is worth at most that.

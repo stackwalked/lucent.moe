@@ -8,6 +8,7 @@ export type LogOrigin = "boot" | "epoch-guard" | "internal-web";
 export type LogFields = {
     readonly origin?: LogOrigin;
     readonly detail?: string;
+    readonly requestId?: string | null;
 };
 
 // Positive allowlist of safe route shapes. Any path not matched here is truncated to its first

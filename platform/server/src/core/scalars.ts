@@ -46,6 +46,13 @@ export const ChannelId = z
     .brand<"ChannelId">();
 export type ChannelId = z.infer<typeof ChannelId>;
 
+// 256 random bits, base64url: what a browser holds for a session, flow or setup link.
+export const BearerToken = z
+    .string()
+    .regex(/^[A-Za-z0-9_-]{43}$/)
+    .brand<"BearerToken">();
+export type BearerToken = z.output<typeof BearerToken>;
+
 export const FeatureTag = z
     .string()
     .regex(/^[a-z0-9][a-z0-9._-]{0,63}$/)

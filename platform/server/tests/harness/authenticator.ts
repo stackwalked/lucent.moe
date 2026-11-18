@@ -1,13 +1,11 @@
-import type {
-    PublicKeyCredentialCreationOptionsJSON,
-    PublicKeyCredentialRequestOptionsJSON,
-} from "@simplewebauthn/server";
 import type { z } from "zod";
+import type { RelyingParty } from "../../src/auth/passkeys.ts";
 import type {
     AuthenticationResponse,
+    CreationOptions,
     RegistrationResponse,
-    RelyingParty,
-} from "../../src/auth/passkeys.ts";
+    RequestOptions,
+} from "../../src/contract/webauthn.ts";
 import { invariant } from "../../src/core/contain.ts";
 import type { CryptoRng } from "../../src/core/rng.ts";
 import { toBase64Url } from "../../src/core/scalars.ts";
@@ -79,11 +77,11 @@ function u32(value: number): number[] {
 export type TestAuthenticator = {
     readonly credentialId: Uint8Array;
     readonly register: (
-        options: PublicKeyCredentialCreationOptionsJSON,
+        options: CreationOptions,
         overrides?: { readonly origin?: string },
     ) => Promise<z.input<typeof RegistrationResponse>>;
     readonly assert: (
-        options: PublicKeyCredentialRequestOptionsJSON,
+        options: RequestOptions,
         overrides?: { readonly origin?: string; readonly signCount?: number },
     ) => Promise<z.input<typeof AuthenticationResponse>>;
 };

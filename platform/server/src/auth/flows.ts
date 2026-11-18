@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { err, ok, type Result } from "../core/result.ts";
 import type { CryptoRng } from "../core/rng.ts";
-import { AccountId, EpochMs } from "../core/scalars.ts";
+import { AccountId, type BearerToken, EpochMs } from "../core/scalars.ts";
 import {
     type DbFailure,
     execute,
@@ -12,7 +12,7 @@ import {
     type Tx,
     toTimestamptz,
 } from "../db/pool.ts";
-import { type BearerToken, hashToken, issueToken } from "./tokens.ts";
+import { hashToken, issueToken } from "./tokens.ts";
 
 // A sign-in, step-up or registration in progress, held by the browser in `__Host-lucent-flow`.
 const FLOW_TTL_MS = 10 * 60 * 1_000;

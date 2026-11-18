@@ -3,10 +3,10 @@ import { join } from "node:path";
 import { WORKSPACE_ROOT } from "../dev/postgres.ts";
 import { type RunningServer, startServer } from "../src/boot.ts";
 import type { ServerConfig } from "../src/config.ts";
+import { webContract } from "../src/contract/web.ts";
 import { invariant } from "../src/core/contain.ts";
 import { err, ok } from "../src/core/result.ts";
 import { createRpcClient } from "../src/core/rpc.ts";
-import { webRpc } from "../src/internal/app.ts";
 import { TEST_RELYING_PARTY } from "./harness/authenticator.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 
@@ -25,7 +25,7 @@ function configFor(databaseUrl: string): ServerConfig {
 }
 
 function clientFor(server: RunningServer) {
-    return createRpcClient(webRpc, {
+    return createRpcClient(webContract, {
         endpointUrl: `${server.internalAddress}/internal/web/rpc`,
         peerKey: PEER_KEY,
     });

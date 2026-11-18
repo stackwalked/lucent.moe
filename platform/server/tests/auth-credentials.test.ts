@@ -8,13 +8,13 @@ import {
     removeCredential,
     setPassword,
 } from "../src/auth/credentials.ts";
-import { AuthenticationResponse, RegistrationResponse } from "../src/auth/passkeys.ts";
 import { resolveSession, signOutOthers } from "../src/auth/sessions.ts";
 import { redeemSetupLink } from "../src/auth/setup.ts";
 import { signInWithPassword } from "../src/auth/sign-in.ts";
 import { hashToken } from "../src/auth/tokens.ts";
 import { STEP_UP_WINDOW_SECONDS } from "../src/authority/policy.ts";
 import { createAccount, recoverAccount } from "../src/authority/writers.ts";
+import { AuthenticationResponse, RegistrationResponse } from "../src/contract/webauthn.ts";
 import { invariant } from "../src/core/contain.ts";
 import { err, ok } from "../src/core/result.ts";
 import { createSeededRng } from "../src/core/rng.ts";

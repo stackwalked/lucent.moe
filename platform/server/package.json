@@ -2,11 +2,6 @@
   "name": "@lucent/server",
   "private": true,
   "type": "module",
-  "exports": {
-    "./rpc-type": {
-      "types": "./src/internal/app.ts"
-    }
-  },
   "dependencies": {
     "@hono/standard-validator": "0.4.1",
     "@simplewebauthn/server": "14.1.0",

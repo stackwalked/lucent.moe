@@ -1,15 +1,7 @@
-import { z } from "zod";
 import type { CryptoRng } from "../core/rng.ts";
-import { toBase64Url } from "../core/scalars.ts";
+import { BearerToken, toBase64Url } from "../core/scalars.ts";
 
-// 256 random bits, base64url: what a browser holds for a session, flow or setup link. Only the
-// SHA-256 is stored, so a database read never yields a usable token.
-export const BearerToken = z
-    .string()
-    .regex(/^[A-Za-z0-9_-]{43}$/)
-    .brand<"BearerToken">();
-export type BearerToken = z.output<typeof BearerToken>;
-
+// Only a token's SHA-256 is stored, so a database read never yields a usable token.
 export type IssuedToken = {
     readonly token: BearerToken;
     readonly hash: Uint8Array;

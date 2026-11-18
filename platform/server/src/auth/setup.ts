@@ -2,14 +2,14 @@ import { z } from "zod";
 import { parseUsername, type UsernameInvalid } from "../authority/usernames.ts";
 import { err, ok, type Result } from "../core/result.ts";
 import type { CryptoRng } from "../core/rng.ts";
-import { AccountId, EpochMs } from "../core/scalars.ts";
+import { AccountId, type BearerToken, EpochMs } from "../core/scalars.ts";
 import { appendAudit } from "../db/audit.ts";
 import { type DbFailure, execute, queryOne, sql, type Tx, toTimestamptz } from "../db/pool.ts";
 import { withTx } from "../db/tx.ts";
 import { lockAccount } from "./accounts.ts";
 import type { AuthDeps } from "./deps.ts";
 import { lockSession, mintSession, type SessionRefusal } from "./sessions.ts";
-import { type BearerToken, hashToken, issueToken } from "./tokens.ts";
+import { hashToken, issueToken } from "./tokens.ts";
 
 // Long enough to reach someone through whatever channel staff use, short enough that a link
 // found in an old chat log is dead.

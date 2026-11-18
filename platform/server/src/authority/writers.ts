@@ -1,10 +1,10 @@
 import { z } from "zod";
 import { clearCredentials, issueSetupToken } from "../auth/setup.ts";
-import type { BearerToken } from "../auth/tokens.ts";
 import { err, ok, type Result } from "../core/result.ts";
 import type { CryptoRng } from "../core/rng.ts";
 import {
     AccountId,
+    type BearerToken,
     type ChannelId,
     EntitlementId,
     type EpochMs,

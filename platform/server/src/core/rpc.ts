@@ -1,7 +1,8 @@
 import { type Context, Hono } from "hono";
 import { z } from "zod";
 import { containBoundary, invariant, tryAsync, trySync } from "./contain.ts";
-import { err, type Result } from "./result.ts";
+import { err, ok, type Result } from "./result.ts";
+import { BearerToken } from "./scalars.ts";
 
 export const DEFAULT_BODY_LIMIT_BYTES = 16 * 1024;
 
@@ -15,6 +16,17 @@ export function isStrongPeerKey(key: string): boolean {
     return key.length >= MIN_PEER_KEY_LENGTH && PEER_KEY_ALPHABET.test(key);
 }
 
+const SESSION_HEADER = "lucent-session";
+const REQUEST_HEADER = "lucent-request";
+
+// Names one browser request across web's and platform's logs; web shows it as the support
+// reference when something fails unexpectedly.
+export const RequestId = z
+    .string()
+    .regex(/^[A-Za-z0-9_-]{8,64}$/)
+    .brand<"RequestId">();
+export type RequestId = z.output<typeof RequestId>;
+
 export const TransportRefusal = z.discriminatedUnion("code", [
     z.strictObject({ code: z.literal("AUTH_REQUIRED") }),
     z.strictObject({ code: z.literal("PAYLOAD_TOO_LARGE") }),
@@ -24,42 +36,59 @@ export const TransportRefusal = z.discriminatedUnion("code", [
 ]);
 export type TransportRefusal = z.output<typeof TransportRefusal>;
 
-// The schemas a caller needs to send a procedure's input and parse its Result.
+// Which browser session a procedure runs for. The mount refuses a call that lacks the token
+// before any handler runs; the handler still locks and checks the session in its own
+// transaction, which is what decides.
+export type SessionNeed = "none" | "member" | "setup" | "either";
+
 export type ProcedureContract = {
+    readonly session: SessionNeed;
     readonly input: z.ZodType;
     readonly output: z.ZodType;
     readonly error: z.ZodType;
 };
+export type ContractMap = Readonly<Record<string, ProcedureContract>>;
 
-export type Procedure<
-    Ctx,
-    Input extends z.ZodType,
-    Output extends z.ZodType,
-    Failure extends z.ZodType,
-> = {
-    readonly input: Input;
-    readonly output: Output;
-    readonly error: Failure;
-    readonly run: (
-        ctx: Ctx,
-        input: z.output<Input>,
-    ) => Promise<Result<z.output<Output>, z.output<Failure>>>;
-};
-
-export function procedure<
-    Ctx,
-    Input extends z.ZodType,
-    Output extends z.ZodType,
-    Failure extends z.ZodType,
->(spec: Procedure<Ctx, Input, Output, Failure>): Procedure<Ctx, Input, Output, Failure> {
-    return spec;
+export function defineContract<const Contracts extends ContractMap>(
+    contracts: Contracts,
+): Contracts {
+    return contracts;
 }
 
-export type AnyProcedure<Ctx> = ProcedureContract & {
-    // biome-ignore lint/suspicious/noExplicitAny: variance-erased constraint for heterogeneous procedure maps
-    readonly run: (ctx: Ctx, input: any) => Promise<Result<unknown, unknown>>;
+type SessionFor<C extends ProcedureContract> = C["session"] extends "none" ? null : BearerToken;
+
+export type Handler<Ctx, C extends ProcedureContract> = (
+    ctx: Ctx,
+    input: z.output<C["input"]>,
+    session: SessionFor<C>,
+) => Promise<Result<z.output<C["output"]>, z.output<C["error"]>>>;
+
+export type Handlers<Ctx, Contracts extends ContractMap> = {
+    readonly [K in keyof Contracts]: Handler<Ctx, Contracts[K]>;
 };
-export type ProcedureMap<Ctx> = Readonly<Record<string, AnyProcedure<Ctx>>>;
+
+type BoundProcedure<Ctx> = {
+    readonly contract: ProcedureContract;
+    // biome-ignore lint/suspicious/noExplicitAny: variance-erased handler; `implement` typed it against its contract
+    readonly run: (ctx: Ctx, input: any, session: any) => Promise<Result<unknown, unknown>>;
+};
+export type ProcedureMap<Ctx> = ReadonlyMap<string, BoundProcedure<Ctx>>;
+
+// Binds one handler to each procedure of a contract: a missing or extra handler, or one whose
+// input, session or Result disagrees with its contract, doesn't compile.
+export function implement<Ctx, Contracts extends ContractMap>(
+    contracts: Contracts,
+    handlers: Handlers<Ctx, Contracts>,
+): ProcedureMap<Ctx> {
+    const runs = new Map(Object.entries(handlers));
+    const bound = new Map<string, BoundProcedure<Ctx>>();
+    for (const [name, contract] of Object.entries(contracts)) {
+        const run = runs.get(name);
+        invariant(run !== undefined, `no handler for procedure ${name}`);
+        bound.set(name, { contract, run });
+    }
+    return bound;
+}
 
 export function timingSafeEqualStrings(left: string, right: string): boolean {
     const encoder = new TextEncoder();
@@ -137,12 +166,33 @@ const RpcEnvelopeSchema = z.strictObject({
 
 type FailureKind = "defect" | "exception";
 
-export function mountInternalRpc<Ctx, MapType extends ProcedureMap<Ctx>>(params: {
+export type UnhandledFailure = {
+    readonly detail: string;
+    readonly kind: FailureKind;
+    readonly requestId: RequestId | null;
+};
+
+function requestIdOf(req: Request): RequestId | null {
+    const parsed = RequestId.safeParse(req.headers.get(REQUEST_HEADER));
+    return parsed.success ? parsed.data : null;
+}
+
+function sessionFor(
+    contract: ProcedureContract,
+    req: Request,
+): Result<BearerToken | null, TransportRefusal> {
+    if (contract.session === "none") return ok(null);
+    const parsed = BearerToken.safeParse(req.headers.get(SESSION_HEADER));
+    if (parsed.success) return ok(parsed.data);
+    return err({ code: "INVALID_REQUEST", detail: "missing or malformed Lucent-Session" });
+}
+
+export function mountInternalRpc<Ctx>(params: {
     readonly path: string;
     readonly peerKey: string;
-    readonly procedures: MapType;
+    readonly procedures: ProcedureMap<Ctx>;
     readonly createContext: (req: Request) => Promise<Result<Ctx, TransportRefusal>>;
-    readonly onUnhandledError: (detail: string, failureKind: FailureKind) => void;
+    readonly onUnhandledError: (failure: UnhandledFailure) => void;
     readonly maxBodyBytes?: number;
 }): Hono {
     invariant(
@@ -155,8 +205,9 @@ export function mountInternalRpc<Ctx, MapType extends ProcedureMap<Ctx>>(params:
 
     // The answer to anything uncontained, so it must not throw itself: a failing logger is dropped.
     const unavailable = async (c: Context, detail: string, kind: FailureKind) => {
+        const requestId = requestIdOf(c.req.raw);
         await containBoundary({
-            run: () => Promise.resolve(params.onUnhandledError(detail, kind)),
+            run: () => Promise.resolve(params.onUnhandledError({ detail, kind, requestId })),
             onUnhandled: () => undefined,
         });
         return c.json(err<TransportRefusal>({ code: "SERVICE_UNAVAILABLE" }), 503);
@@ -198,11 +249,13 @@ export function mountInternalRpc<Ctx, MapType extends ProcedureMap<Ctx>>(params:
                 400,
             );
         }
-        const target = params.procedures[envelope.data.procedure];
+        const name = envelope.data.procedure;
+        const target = params.procedures.get(name);
         if (target === undefined) {
             return c.json(err<TransportRefusal>({ code: "UNKNOWN_PROCEDURE" }), 404);
         }
-        const parsedInput = target.input.safeParse(envelope.data.input);
+        const { contract } = target;
+        const parsedInput = contract.input.safeParse(envelope.data.input);
         if (!parsedInput.success) {
             return c.json(
                 err<TransportRefusal>({
@@ -212,30 +265,48 @@ export function mountInternalRpc<Ctx, MapType extends ProcedureMap<Ctx>>(params:
                 400,
             );
         }
+        const session = sessionFor(contract, c.req.raw);
+        if (!session.ok) return c.json(session, 400);
         const ctxRes = await params.createContext(c.req.raw);
         if (!ctxRes.ok) {
             const status = ctxRes.error.code === "SERVICE_UNAVAILABLE" ? 503 : 401;
             return c.json(ctxRes, status);
         }
-        return c.json(await target.run(ctxRes.value, parsedInput.data), 200);
+        const result = await target.run(ctxRes.value, parsedInput.data, session.value);
+        // The reply leaves through the contract's own schemas: a field a handler added by accident
+        // is dropped, and one that breaks the contract is a defect, not a reply.
+        const reply = result.ok
+            ? contract.output.safeParse(result.value)
+            : contract.error.safeParse(result.error);
+        if (!reply.success) {
+            return await unavailable(c, `${name} replied outside its contract`, "defect");
+        }
+        return c.json(result.ok ? ok(reply.data) : err(reply.data), 200);
     });
 
     return app;
 }
 
-type ContractMap = Readonly<Record<string, ProcedureContract>>;
+type CallOptions = {
+    readonly signal?: AbortSignal;
+    readonly requestId?: RequestId;
+};
+
+type CallOptionsFor<C extends ProcedureContract> = C["session"] extends "none"
+    ? [options?: CallOptions]
+    : [options: CallOptions & { readonly session: BearerToken }];
+
+type ReplyOf<C extends ProcedureContract> = Result<
+    z.output<C["output"]>,
+    z.output<C["error"]> | TransportRefusal
+>;
 
 export type RpcClient<Contracts extends ContractMap> = {
     readonly call: <K extends keyof Contracts & string>(
         name: K,
         input: z.input<Contracts[K]["input"]>,
-        options?: {
-            readonly signal?: AbortSignal;
-            readonly headers?: Readonly<Record<string, string>>;
-        },
-    ) => Promise<
-        Result<z.output<Contracts[K]["output"]>, z.output<Contracts[K]["error"]> | TransportRefusal>
-    >;
+        ...options: CallOptionsFor<Contracts[K]>
+    ) => Promise<ReplyOf<Contracts[K]>>;
 };
 
 // A reply is untrusted bytes like any other: it is parsed against the procedure's schemas, and
@@ -253,47 +324,55 @@ export function createRpcClient<Contracts extends ContractMap>(
     const send = config.fetcher ?? ((req: Request) => fetch(req));
     const unavailable = err<TransportRefusal>({ code: "SERVICE_UNAVAILABLE" });
 
-    return {
-        async call(name, input, options) {
-            const contract = contracts[name];
-            invariant(contract !== undefined, `no RPC contract for procedure ${name}`);
-            const Reply = z.union([
-                z.strictObject({ ok: z.literal(true), value: contract.output }),
-                z.strictObject({
-                    ok: z.literal(false),
-                    error: z.union([contract.error, TransportRefusal]),
-                }),
-            ]);
+    const call = async (
+        name: string,
+        input: unknown,
+        options?: CallOptions & { readonly session?: BearerToken },
+    ): Promise<Result<unknown, unknown>> => {
+        const contract = contracts[name];
+        invariant(contract !== undefined, `no RPC contract for procedure ${name}`);
+        const session = options?.session;
+        invariant(
+            (contract.session === "none") === (session === undefined),
+            `${name} is called with a session exactly when its contract needs one`,
+        );
+        const Reply = z.union([
+            z.strictObject({ ok: z.literal(true), value: contract.output }),
+            z.strictObject({
+                ok: z.literal(false),
+                error: z.union([contract.error, TransportRefusal]),
+            }),
+        ]);
 
-            const timeoutSignal = AbortSignal.timeout(timeoutMs);
-            const signal =
-                options?.signal !== undefined
-                    ? AbortSignal.any([options.signal, timeoutSignal])
-                    : timeoutSignal;
-            const req = new Request(config.endpointUrl, {
-                method: "POST",
-                headers: {
-                    accept: "application/json",
-                    authorization: `Bearer ${config.peerKey}`,
-                    "content-type": "application/json",
-                    ...(options?.headers ?? {}),
-                },
-                body: JSON.stringify({ procedure: name, input }),
-                signal,
-            });
+        const timeoutSignal = AbortSignal.timeout(timeoutMs);
+        const signal =
+            options?.signal !== undefined
+                ? AbortSignal.any([options.signal, timeoutSignal])
+                : timeoutSignal;
+        const headers = new Headers({
+            accept: "application/json",
+            authorization: `Bearer ${config.peerKey}`,
+            "content-type": "application/json",
+        });
+        if (session !== undefined) headers.set(SESSION_HEADER, session);
+        if (options?.requestId !== undefined) headers.set(REQUEST_HEADER, options.requestId);
+        const req = new Request(config.endpointUrl, {
+            method: "POST",
+            headers,
+            body: JSON.stringify({ procedure: name, input }),
+            signal,
+        });
 
-            const bodyRes = await tryAsync(
-                async (): Promise<unknown> => await (await send(req)).json(),
-                () => unavailable,
-            );
-            if (!bodyRes.ok) return unavailable;
-            const reply = Reply.safeParse(bodyRes.value);
-            if (!reply.success) return unavailable;
-            // Parsed by this procedure's own schemas; zod infers through the generic only as unknown.
-            return reply.data as Result<
-                z.output<(typeof contracts)[typeof name]["output"]>,
-                z.output<(typeof contracts)[typeof name]["error"]> | TransportRefusal
-            >;
-        },
+        const bodyRes = await tryAsync(
+            async (): Promise<unknown> => await (await send(req)).json(),
+            () => unavailable,
+        );
+        if (!bodyRes.ok) return unavailable;
+        const reply = Reply.safeParse(bodyRes.value);
+        if (!reply.success) return unavailable;
+        return reply.data;
     };
+
+    // Parsed by the named procedure's own schemas; zod infers through the generic only as unknown.
+    return { call } as RpcClient<Contracts>;
 }

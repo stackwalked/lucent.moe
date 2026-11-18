@@ -1,11 +1,13 @@
-import type {
-    PublicKeyCredentialCreationOptionsJSON,
-    PublicKeyCredentialRequestOptionsJSON,
-} from "@simplewebauthn/server";
 import { z } from "zod";
+import type {
+    AuthenticationResponse,
+    CreationOptions,
+    RegistrationResponse,
+    RequestOptions,
+} from "../contract/webauthn.ts";
 import { invariant } from "../core/contain.ts";
 import { err, ok, type Result } from "../core/result.ts";
-import { type AccountId, EpochMs, toBase64Url } from "../core/scalars.ts";
+import { type AccountId, type BearerToken, EpochMs, toBase64Url } from "../core/scalars.ts";
 import { appendAudit } from "../db/audit.ts";
 import { type DbFailure, execute, queryAll, queryOne, sql, type Tx } from "../db/pool.ts";
 import { errCommit, withTx } from "../db/tx.ts";
@@ -13,10 +15,8 @@ import { findPasskey, lockAccount, readPasskeys } from "./accounts.ts";
 import type { AuthDeps } from "./deps.ts";
 import { endFlow, type FlowRefusal, lockFlow, startFlow } from "./flows.ts";
 import {
-    type AuthenticationResponse,
     authenticationOptions,
     type PasskeyRefusal,
-    type RegistrationResponse,
     rawIdOf,
     registrationOptions,
     verifyAssertion,
@@ -32,7 +32,7 @@ import {
     type SessionRefusal,
 } from "./sessions.ts";
 import { newChallenge } from "./sign-in.ts";
-import { type BearerToken, hashToken } from "./tokens.ts";
+import { hashToken } from "./tokens.ts";
 import { matchTotpCode, newTotpSecret, openTotpSecret, sealTotpSecret, totpUri } from "./totp.ts";
 
 const TOTP_ISSUER = "lucent.moe";
@@ -324,7 +324,7 @@ export async function beginPasskeyRegistration(
     Result<
         {
             readonly flowToken: BearerToken;
-            readonly options: PublicKeyCredentialCreationOptionsJSON;
+            readonly options: CreationOptions;
         },
         CredentialRefusal
     >
@@ -368,7 +368,7 @@ export async function finishPasskeyRegistration(
         readonly sessionToken: BearerToken;
         readonly flowToken: BearerToken;
         readonly label: string;
-        readonly response: z.output<typeof RegistrationResponse>;
+        readonly response: RegistrationResponse;
     },
 ): Promise<Result<{ readonly id: string }, CredentialRefusal>> {
     const flowHash = await hashToken(params.flowToken);
@@ -481,7 +481,7 @@ export async function beginStepUp(
     Result<
         {
             readonly flowToken: BearerToken;
-            readonly options: PublicKeyCredentialRequestOptionsJSON;
+            readonly options: RequestOptions;
         },
         CredentialRefusal
     >
@@ -522,7 +522,7 @@ export async function finishStepUp(
     params: {
         readonly sessionToken: BearerToken;
         readonly flowToken: BearerToken;
-        readonly response: z.output<typeof AuthenticationResponse>;
+        readonly response: AuthenticationResponse;
     },
 ): Promise<Result<{ readonly stepUpAt: EpochMs }, CredentialRefusal>> {
     const flowHash = await hashToken(params.flowToken);

@@ -7,15 +7,14 @@ import {
     setPassword,
 } from "../src/auth/credentials.ts";
 import type { AuthDeps } from "../src/auth/deps.ts";
-import { RegistrationResponse } from "../src/auth/passkeys.ts";
 import { mintSession } from "../src/auth/sessions.ts";
 import { chooseUsername, redeemSetupLink } from "../src/auth/setup.ts";
-import type { BearerToken } from "../src/auth/tokens.ts";
 import { totpCode, totpStepAt } from "../src/auth/totp.ts";
 import { createAccount } from "../src/authority/writers.ts";
+import { RegistrationResponse } from "../src/contract/webauthn.ts";
 import { invariant } from "../src/core/contain.ts";
 import type { SeededRng } from "../src/core/rng.ts";
-import { type AccountId, newOperationId } from "../src/core/scalars.ts";
+import { type AccountId, type BearerToken, newOperationId } from "../src/core/scalars.ts";
 import type { Db } from "../src/db/pool.ts";
 import { withTx } from "../src/db/tx.ts";
 import { dbNow, seedRoot, steppedUp } from "./authority-fixtures.ts";
