@@ -1,19 +1,18 @@
 #pragma once
 
-#include <filesystem>
-#include <string_view>
+#include <cstddef>
+#include <span>
 
 #include <lucent/kit/boot_info.hpp>
+#include <lucent/os/process.hpp>
 
 namespace lucent::loader_dev {
 
-// Loads the module into the process with the OS loader, on a remote thread.
-auto load_library_remote(void* process, const std::filesystem::path& module) -> result<void>;
+// The offset of the module's lucent_boot export from its base, read from the module's file.
+auto boot_entry_offset(std::span<const std::byte> module_file) -> result<u32>;
 
-// The offset of an export from the module's base, read from a local, unresolved load of the file.
-auto export_offset(const std::filesystem::path& module, std::string_view name) -> result<uptr>;
-
-// Runs the module's entry point on a remote thread with this boot_info and waits for it.
-auto start_remote(void* process, uptr entry, const kit::boot_info& info) -> result<void>;
+// Runs the module's boot entry on a remote thread with this boot_info, and waits for it.
+auto start_module(const os::process& target, uptr entry, const kit::boot_info& info)
+    -> result<void>;
 
 }

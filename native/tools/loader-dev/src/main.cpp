@@ -1,3 +1,4 @@
+#include <cstddef>
 #include <cstdio>
 #include <expected>
 #include <filesystem>
@@ -10,24 +11,27 @@
 #include <system_error>
 #include <thread>
 #include <tuple>
+#include <vector>
 
 #include <lucent/core/match.hpp>
 #include <lucent/core/narrow.hpp>
 #include <lucent/core/text.hpp>
 #include <lucent/kit/session.hpp>
 #include <lucent/kit/session_message.hpp>
-#include <lucent/kit/unique_handle.hpp>
+#include <lucent/os/file.hpp>
+#include <lucent/os/modules.hpp>
+#include <lucent/os/process.hpp>
+#include <lucent/os/remote_call.hpp>
 
 #include "channel.hpp"
 #include "inject.hpp"
-#include "process.hpp"
 
 namespace lucent::loader_dev {
 namespace {
 
 struct options {
     std::filesystem::path module;
-    std::wstring process = L"cs2.exe";
+    std::string process = "cs2.exe";
 };
 
 auto name_of(error_code code) -> std::string_view {
@@ -42,6 +46,10 @@ auto name_of(error_code code) -> std::string_view {
         return "not found";
     case error_code::version_mismatch:
         return "version mismatch";
+    case error_code::unsupported:
+        return "unsupported";
+    case error_code::timed_out:
+        return "timed out";
     }
     return "unknown";
 }
@@ -115,15 +123,16 @@ auto relay(kit::session& channel) -> void {
 }
 
 auto run(const options& chosen) -> result<void> {
-    const u32 process_id = LUCENT_TRY(find_process(chosen.process));
+    const u32 process_id = LUCENT_TRY(os::find_process_id(chosen.process));
+    const os::process target = LUCENT_TRY(os::process::open(process_id));
     const std::filesystem::path copy = LUCENT_TRY(stage_copy(chosen.module));
-    const uptr boot_offset = LUCENT_TRY(export_offset(copy, "lucent_boot"));
-    const kit::unique_handle process = LUCENT_TRY(open_process(process_id));
-    LUCENT_TRY(load_library_remote(process.native(), copy));
-    const uptr base = LUCENT_TRY(module_base(process_id, copy));
-    host_channel channel = LUCENT_TRY(open_channel(process.native()));
-    LUCENT_TRY(start_remote(process.native(), base + boot_offset, channel.boot));
-    std::println("started in {} ({}); press Enter to unload", to_utf8(chosen.process), process_id);
+    const std::vector<std::byte> module_file = LUCENT_TRY(os::read_file(copy));
+    const u32 boot_offset = LUCENT_TRY(boot_entry_offset(module_file));
+    LUCENT_TRY(os::load_library_remote(target, copy));
+    const os::remote_module module = LUCENT_TRY(os::find_remote_module(target, copy));
+    host_channel channel = LUCENT_TRY(open_channel(target));
+    LUCENT_TRY(start_module(target, module.base + boot_offset, channel.boot));
+    std::println("started in {} ({}); press Enter to unload", chosen.process, target.id());
 
     const std::jthread relaying{[&channel] { relay(channel.session); }};
     std::ignore = std::getchar();
@@ -140,7 +149,7 @@ auto parse(std::span<const wchar_t* const> arguments) -> result<options> {
     const std::span<const wchar_t* const> given = arguments.subspan(1);
     options chosen{.module = std::filesystem::absolute(given.front())};
     if (given.size() == 2) {
-        chosen.process = given.back();
+        chosen.process = to_utf8(given.back());
     }
     return chosen;
 }

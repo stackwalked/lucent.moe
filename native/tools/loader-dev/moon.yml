@@ -1,7 +1,7 @@
 language: "cpp"
 layer: "tool"
 
-dependsOn: ["kit"]
+dependsOn: ["kit", "os", "pe"]
 
 workspace:
   inheritedTasks:
