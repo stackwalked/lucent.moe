@@ -180,7 +180,7 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
 
 Foreign knowledge (RVAs, vtable slots, field and schema offsets, constants): declared, derived and
 delivered. Decided topic by topic. Still open: finder vocabulary (provisionally accepted, being
-tested on real data), the protection seam.
+tested on real data).
 
 - Declarations are C++ in the target's foreign layer, by subsystem, and ship. A `consteval`
   constructor hashes the name, which never reaches the binary; ast-grep checks it matches the
@@ -303,6 +303,15 @@ tested on real data), the protection seam.
 - A broken finder makes its facts fail and its capabilities unavailable. A partial set may be
   published when no `core` capability is affected; the finder fix lands as the next revision.
 - Metrics: update-day latency per module and per step; load failures reported from the field.
+- Seams for the protection work (designed in "Server inputs" and "Protection toolchain"):
+  - every read of a fact value goes through one kit accessor, so storage can become encoded later
+    by changing one function (and decoding stays about a load and an XOR);
+  - a payload carries a tag: a literal now, a recipe later, evaluated by one resolve function, and
+    validated on what it yields;
+  - key hashes are `H(release seed, name)` from the first release, the seed from the generated
+    `lucent::build` header (fixed in dev). Telemetry keys are per release; the server maps them
+    back through that release's manifest;
+  - a post-link check fails a release build whose image contains any declared fact name.
 
 ## Server inputs and licensing integrity
 
