@@ -108,6 +108,13 @@ set(lucent_sysroot_link
 
 set(CMAKE_C_FLAGS_INIT "${lucent_sysroot_compile} /utf-8")
 set(CMAKE_CXX_FLAGS_INIT "${lucent_sysroot_compile} /utf-8")
+# In a port build, vcpkg passes the triplet's per-port flags; a chainloaded toolchain applies them.
+if(VCPKG_C_FLAGS)
+    string(APPEND CMAKE_C_FLAGS_INIT " ${VCPKG_C_FLAGS}")
+endif()
+if(VCPKG_CXX_FLAGS)
+    string(APPEND CMAKE_CXX_FLAGS_INIT " ${VCPKG_CXX_FLAGS}")
+endif()
 foreach(kind IN ITEMS EXE SHARED MODULE)
     set(CMAKE_${kind}_LINKER_FLAGS_INIT "${lucent_sysroot_link}")
 endforeach()

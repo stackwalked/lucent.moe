@@ -46,16 +46,27 @@ auto wait_for_unload(session& channel) -> void {
     }
 }
 
-auto run(const boot_info& info) -> void {
+struct start_request {
+    boot_info info;
+    attach_fn attach = nullptr;
+};
+
+auto run(const start_request& request) -> void {
     session channel{session_ends{
-        .inbound = os::unique_handle{info.from_host},
-        .outbound = os::unique_handle{info.to_host},
+        .inbound = os::unique_handle{request.info.from_host},
+        .outbound = os::unique_handle{request.info.to_host},
     }};
     report(channel, stage::boot);
-    report(channel, stage::attach);
-    report(channel, stage::run);
-    wait_for_unload(channel);
-    report(channel, stage::detach);
+    {
+        // A target that fails to attach skips straight to detach: the host sees no attach stage.
+        const result<std::unique_ptr<attachment>> attached = request.attach();
+        if (attached) {
+            report(channel, stage::attach);
+            report(channel, stage::run);
+            wait_for_unload(channel);
+        }
+        report(channel, stage::detach);
+    }
     report(channel, stage::unload);
 }
 
@@ -64,8 +75,10 @@ auto run(const boot_info& info) -> void {
 // unload and join this very thread.
 auto WINAPI lifecycle_main(void* parameter) -> DWORD {
     {
-        const std::unique_ptr<const boot_info> info{static_cast<const boot_info*>(parameter)};
-        run(*info);
+        const std::unique_ptr<const start_request> request{
+            static_cast<const start_request*>(parameter)
+        };
+        run(*request);
     }
     // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast): __ImageBase is this module's HMODULE by definition.
     FreeLibraryAndExitThread(reinterpret_cast<HMODULE>(&__ImageBase), 0);
@@ -73,8 +86,9 @@ auto WINAPI lifecycle_main(void* parameter) -> DWORD {
 
 }
 
-auto start(const boot_info& info) -> result<void> {
-    auto owned = std::make_unique<boot_info>(info);
+auto start(const boot_info& info, attach_fn attach) -> result<void> {
+    LUCENT_INVARIANT(attach != nullptr);
+    auto owned = std::make_unique<start_request>(start_request{.info = info, .attach = attach});
     const os::unique_handle thread{
         CreateThread(nullptr, 0, &lifecycle_main, owned.get(), 0, nullptr)
     };

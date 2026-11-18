@@ -4,6 +4,7 @@ project(lucent LANGUAGES CXX)
 include(cmake/lucent.cmake)
 
 find_package(Catch2 3 CONFIG REQUIRED)
+find_package(safetyhook CONFIG REQUIRED)
 include(Catch)
 enable_testing()
 

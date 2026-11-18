@@ -35,7 +35,8 @@ Everything discussed so far that isn't built yet. A backlog, not a spec: entries
   users. A lint bans raw `add_library`, `add_executable` and `target_compile_options` outside
   `native/cmake/`.
 - vcpkg overlay ports instead of vendored source, once a port needs patching.
-- Verify zydis, safetyhook, luau and tracy build under clang-cl with `/GR-` (Catch2 3.16.1 does).
+- Verify luau and tracy build under clang-cl with `/GR-` (Catch2 3.16.1, safetyhook 0.7.0 and
+  zydis 4.1.1 do).
 - Debug info: PDBs archived per release, never shipped.
 - Release hygiene: `/Brepro`, `-ffile-prefix-map`, `/pdbaltpath`, ThinLTO.
 
@@ -84,9 +85,14 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
   - Safe points.
   - In-flight hook counting.
   - Unhooking only once no hook call is in progress.
-- Hook manager:
-  - all-or-nothing install and remove;
-  - in-flight counters per hook;
+- Hook manager (inline hooks, all-or-nothing install and in-flight counts landed):
+  - removal checks the counts while every other thread is frozen, replacing the grace period
+    (a thread can be in a detour's first instructions, not yet counted);
+  - `hook_object`: shadow vtables, only on objects that live as long as the module; removal restores
+    the vtable pointer only if it's still ours (read under `contain()`) and frees the copy once
+    drained. No patching of slots in the real vtable: it misses devirtualized and direct calls;
+  - hook requests from facts, with the slot's signature checked against the fact's, and install
+    checking `vtable[slot] == method` when both are facts;
   - `hook_access` created per call.
 - Access boundary:
   - `read_access`/`write_access` tokens, `foreign_ptr` and `field`;
@@ -234,6 +240,8 @@ delivered. Decided in full.
   reports any its capabilities don't cover, on first use, even when the value is valid.
 - Every fact reaches the module from a bundle (in dev, a local one signed with the dev key).
   Derivation happens only in the generator.
+- Facts cover game modules only. OS and driver interfaces (DXGI, D3D) are reached through their
+  public APIs at runtime; a throwaway swap chain's vtable isn't foreign knowledge.
 - A module build is `(name, TimeDateStamp, SizeOfImage)`, read the same way from the file and from
   the loaded headers. It keys the binaries cache, the fact set, the server's stored set and the
   bundle section. The cache also records the file's SHA-256; nothing needs it at runtime.
