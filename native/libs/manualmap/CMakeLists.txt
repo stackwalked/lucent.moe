@@ -4,4 +4,4 @@ lucent_library(manualmap
     DEPS lucent::os lucent::pe
 )
 
-lucent_test(manualmap SOURCES tests/stubs_test.cpp)
+lucent_test(manualmap SOURCES tests/attach_test.cpp tests/stubs_test.cpp)

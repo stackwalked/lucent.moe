@@ -7,6 +7,7 @@
 #include <expected>
 #include <optional>
 #include <span>
+#include <tuple>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -189,6 +190,10 @@ auto map(const os::process& target, std::span<const std::byte> image_file) -> re
 }
 
 auto attach(const os::process& target, const mapped& image, uptr reserved) -> result<void> {
+    // The stub calls the entry point unconditionally; an image without one has nothing to attach.
+    if (image.entry_point == 0) {
+        return std::unexpected(unsupported);
+    }
     const uptr add_function_table = LUCENT_TRY(ntdll_address("RtlAddFunctionTable"));
     const detail::attach_args args{
         .function_table = image.exception_table,
@@ -206,12 +211,17 @@ auto attach(const os::process& target, const mapped& image, uptr reserved) -> re
     LUCENT_TRY(region.protect(
         {.offset = 0, .size = detail::attach_region_size}, os::page_access::read_execute
     ));
-    const u32 exit_code = LUCENT_TRY(
-        os::run_remote(
-            target, {.start = region.base(), .argument = region.base() + detail::attach_args_offset}
-        )
+    const result<u32> ran = os::run_remote(
+        target, {.start = region.base(), .argument = region.base() + detail::attach_args_offset}
     );
-    switch (exit_code) {
+    if (!ran) {
+        // After a timeout the entry point may still be running with the stub's return address on
+        // its stack; freeing the stub would crash the target when it returns. Leak the page
+        // instead.
+        std::ignore = region.release();
+        return std::unexpected(ran.error());
+    }
+    switch (*ran) {
     case 1:
         return {};
     case 0:
