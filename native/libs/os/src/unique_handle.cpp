@@ -1,10 +1,10 @@
-#include <lucent/kit/unique_handle.hpp>
+#include <lucent/os/unique_handle.hpp>
 
 #include <utility>
 
 #include <Windows.h>
 
-namespace lucent::kit {
+namespace lucent::os {
 
 unique_handle::unique_handle(void* handle)
     : m_handle(handle == INVALID_HANDLE_VALUE ? nullptr : handle) {}

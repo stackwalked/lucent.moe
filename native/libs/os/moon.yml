@@ -1,0 +1,9 @@
+language: "cpp"
+layer: "library"
+
+dependsOn: ["core"]
+
+# Thin wrappers over Win32; what they're for is exercised through loader-dev and the mapper.
+workspace:
+  inheritedTasks:
+    exclude: ["test"]

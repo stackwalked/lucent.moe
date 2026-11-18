@@ -1,6 +1,6 @@
 #pragma once
 
-namespace lucent::kit {
+namespace lucent::os {
 
 // Owns a Windows kernel handle and closes it when destroyed. The handle is a void* so that this
 // header stays free of windows.h.
