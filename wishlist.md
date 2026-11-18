@@ -34,8 +34,6 @@ Everything discussed so far that isn't built yet. A backlog, not a spec: entries
 - `lucent_module()` and `lucent_executable()` join `lucent_library()`/`lucent_test()` with their first
   users. A lint bans raw `add_library`, `add_executable` and `target_compile_options` outside
   `native/cmake/`.
-- vcpkg builds ports with whichever `cmake` is first on PATH: the pinned one inside moon tasks, possibly
-  an older one in a bare shell. Pin it for vcpkg too.
 - vcpkg overlay ports instead of vendored source, once a port needs patching.
 - Verify zydis, safetyhook, luau and tracy build under clang-cl with `/GR-` (Catch2 3.16.1 does).
 - Debug info: PDBs archived per release, never shipped.
