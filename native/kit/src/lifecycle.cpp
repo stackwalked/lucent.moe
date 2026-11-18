@@ -12,12 +12,7 @@
 #include <lucent/kit/session_message.hpp>
 #include <lucent/os/unique_handle.hpp>
 
-// The linker's symbol for this image's own base, which is its HMODULE. The name is the linker's.
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wreserved-identifier" // the linker defines __ImageBase
-// NOLINTNEXTLINE(bugprone-reserved-identifier,readability-identifier-naming): the linker's name.
-extern "C" IMAGE_DOS_HEADER __ImageBase;
-#pragma clang diagnostic pop
+#include "release.hpp"
 
 namespace lucent::kit {
 namespace {
@@ -83,24 +78,31 @@ auto run(const start_request& request) -> bool {
 // unload and join this very thread.
 auto WINAPI lifecycle_main(void* parameter) -> DWORD {
     bool may_free = false;
+    image_kind kind = image_kind::loaded;
+    u64 trampolines = 0;
     {
         const std::unique_ptr<const start_request> request{
             static_cast<const start_request*>(parameter)
         };
+        kind = request->info.kind;
+        trampolines = request->info.trampolines;
         may_free = run(*request);
     }
     if (!may_free) {
         // Leaked on purpose: freeing would pull code out from under a thread still in it.
         return 0;
     }
-    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast): __ImageBase is this module's HMODULE by definition.
-    FreeLibraryAndExitThread(reinterpret_cast<HMODULE>(&__ImageBase), 0);
+    detail::release_module(kind, trampolines);
 }
 
 }
 
 auto start(const boot_info& info, attach_fn attach) -> result<void> {
     LUCENT_INVARIANT(attach != nullptr);
+    // The host wrote it: an unknown kind is bad input, and releasing by guess would crash later.
+    if (info.kind != image_kind::loaded && info.kind != image_kind::mapped) {
+        return std::unexpected(error{.code = error_code::malformed});
+    }
     auto owned = std::make_unique<start_request>(start_request{.info = info, .attach = attach});
     const os::unique_handle thread{
         CreateThread(nullptr, 0, &lifecycle_main, owned.get(), 0, nullptr)

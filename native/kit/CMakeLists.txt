@@ -8,9 +8,12 @@ lucent_library(kit
     SOURCES
         src/hook.cpp
         src/lifecycle.cpp
+        src/release.cpp
         src/session.cpp
         src/session_message.cpp
-    DEPS lucent::os safetyhook::safetyhook
+    DEPS lucent::os lucent::pe safetyhook::safetyhook
 )
 
-lucent_test(kit SOURCES tests/hook_test.cpp tests/session_message_test.cpp)
+lucent_test(kit
+    SOURCES tests/hook_test.cpp tests/session_message_test.cpp tests/unmap_stub_test.cpp
+)

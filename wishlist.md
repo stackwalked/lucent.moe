@@ -70,13 +70,11 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
 
 ## Kit
 
-- `boot_info` grows with the mapper (v1 carries only the session ends):
-  - image and readiness (unwind tables);
+- `boot_info` grows (v2 carries the session ends, the image kind and the mapper's trampolines):
   - host and build ids;
   - the lease blob and the game-data blob.
-- The mapper registers unwind tables (`RtlAddFunctionTable`), runs CRT and static init, and redirects
-  the image's `RtlPcToFileHeader` import: the static CRT's `_CxxThrowException` asks it for the
-  ThrowInfo image base, which the loader doesn't know for a mapped image.
+- A release boot path: dev starts the module through its `lucent_boot` export after either loader;
+  release needs its own way in.
 - No static TLS in mapped modules: `lucent_module()` fails the build on a TLS directory, ast-grep bans
   `thread_local`/`__declspec(thread)`, and our code bans function-local statics. A dependency that
   needs TLS is a decision: build it with `/Zc:threadSafeInit-`, keep it out of the module, or implement
@@ -316,12 +314,7 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
   - one stage with many owners, in load order, below built-in features;
   - read-only schema reads by name;
   - scripts get values, not live handles. This breaks compatibility with the old `ext`.
-- Walking skeleton (Present hook and clean unload landed, on the OS loader through `loader-dev`):
-  swap the OS loader for the manual mapper; the module stays unchanged.
-- Separation the first skeleton slice still owes:
-  - `kit`'s lifecycle mixes the stage sequence with OS-loader unload (`FreeLibraryAndExitThread`);
-    the mapper step splits them.
-  - Names for `error_code` and `stage` live in the loader; they belong beside their types.
+- Names for `error_code` and `stage` live in the loader; they belong beside their types.
 - Extraction candidate: "one owner by precedence" (command stages, scene restyle, movement goals), once the third copy exists.
 - Split the `domains` object by phase when it grows.
 

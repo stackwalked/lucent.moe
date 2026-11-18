@@ -5,8 +5,8 @@
 
 #include "attach.hpp"
 
-// The dev loader's way in: after LoadLibraryW it starts this export on a remote thread, with
-// boot_info written into this process. Dev builds only; release modules are started by the mapper.
+// The dev loader's way in: once the image is in (mapped, or by LoadLibraryW), it starts this export
+// on a remote thread, with boot_info written into this process. Dev builds only.
 // The signature is Win32's LPTHREAD_START_ROUTINE; the exit code is 0 or an error_code plus one.
 extern "C" __declspec(dllexport) auto lucent_boot(const void* parameter) -> unsigned long;
 

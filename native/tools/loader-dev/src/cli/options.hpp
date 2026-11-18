@@ -4,11 +4,15 @@
 #include <span>
 #include <string>
 
+#include <lucent/kit/boot_info.hpp>
+
 namespace lucent::loader_dev {
 
 struct options {
     std::filesystem::path module;
     std::string process = "cs2.exe";
+    // Mapped, as release does; the OS loader on request, for debugging with symbols.
+    kit::image_kind loading = kit::image_kind::mapped;
 };
 
 // Prints the usage line to stderr when the arguments don't fit it.

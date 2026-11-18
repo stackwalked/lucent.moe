@@ -1,4 +1,4 @@
 language: "cpp"
 layer: "library"
 
-dependsOn: ["core", "os"]
+dependsOn: ["core", "os", "pe"]

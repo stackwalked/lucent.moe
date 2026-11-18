@@ -5,6 +5,7 @@
 #include <tuple>
 
 #include <lucent/core/narrow.hpp>
+#include <lucent/kit/boot_info.hpp>
 #include <lucent/kit/session.hpp>
 #include <lucent/kit/session_message.hpp>
 #include <lucent/os/process.hpp>
@@ -12,7 +13,7 @@
 #include "cli/describe.hpp"
 #include "cli/options.hpp"
 #include "inject/boot.hpp"
-#include "inject/os_loader.hpp"
+#include "inject/load.hpp"
 #include "session/channel.hpp"
 #include "session/relay.hpp"
 
@@ -22,13 +23,18 @@ namespace {
 auto run(const options& chosen) -> result<void> {
     const u32 process_id = LUCENT_TRY(os::find_process_id(chosen.process));
     const os::process target = LUCENT_TRY(os::process::open(process_id));
-    const staged_module staged = LUCENT_TRY(stage_module(chosen.module));
-    // Read before loading, so a module without the export never reaches the target.
-    const u32 boot_offset = LUCENT_TRY(boot_entry_offset(staged.file));
-    const uptr base = LUCENT_TRY(load_staged_module(target, staged));
+    const loaded_module module = LUCENT_TRY(load_module(target, chosen));
     host_channel channel = LUCENT_TRY(open_channel(target));
-    LUCENT_TRY(start_module(target, base + boot_offset, channel.boot));
-    std::println("started in {} ({}); press Enter to unload", chosen.process, target.id());
+    channel.boot.kind = module.kind;
+    channel.boot.trampolines = module.trampolines;
+    LUCENT_TRY(start_module(target, module.base + module.boot_offset, channel.boot));
+    std::println(
+        "started in {} ({}), {} at {:#x}; press Enter to unload",
+        chosen.process,
+        target.id(),
+        module.kind == kit::image_kind::mapped ? "mapped" : "OS-loaded",
+        module.base
+    );
 
     const std::jthread relaying{[&channel] { relay(channel.session); }};
     std::ignore = std::getchar();

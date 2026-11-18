@@ -1,14 +1,15 @@
 language: "cpp"
 layer: "tool"
 
-dependsOn: ["kit", "os", "pe"]
+dependsOn: ["kit", "manualmap", "os", "pe"]
 
 workspace:
   inheritedTasks:
     exclude: ["test"]
 
 tasks:
-  # Injects the dev build of the cs2 module; pass another process name after `--` to try it on a
+  # Maps the dev build of the cs2 module (`-- --os-loader` loads it with LoadLibraryW instead, for a
+  # debugger with symbols); pass another process name after `--` to try it on a
   # stand-in. Interactive: Enter unloads.
   inject:
     command: "$workspaceRoot/.moon/cache/cmake/dev/tools/loader-dev/loader-dev.exe $workspaceRoot/.moon/cache/cmake/dev/targets/cs2/lucent_cs2.dll"
