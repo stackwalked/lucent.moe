@@ -45,12 +45,10 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
 `native/core/src/toolchain_probe.cpp`, `tools/lint/ast-grep/`, `tools/lint/suppressions.py`, and
 `native/AGENTS.md` for what no tool checks. Still to land, each with the first code it applies to:
 
-- core: `result`/`error` and `LUCENT_TRY` (with the kit's first fallible function), `LUCENT_ENSURE`
-  with `raise()`/`contain()`, a fail-fast `unreachable()`, `match`, `flags<E>`, `fixed_string`,
-  `stdx`, `to_utf8`/`to_wide`, and the generated `lucent::build::*` header.
+- core: `LUCENT_ENSURE` with `raise()`/`contain()`, a fail-fast `unreachable()`, `flags<E>`,
+  `fixed_string`, `stdx`, and the generated `lucent::build::*` header.
 - ast-grep rules:
   - templates in features and domains;
-  - multi-line designated initializers end with a comma;
   - `std::get`, `holds_alternative`, bare `visit`, `.value()`;
   - `std::map`/`set`/`list`/`forward_list`/`deque`, `vector<bool>`, `reference_wrapper`,
     `std::function`, `std::async`, `std::rand`, `system_clock::now`, the `printf` family, `assert`,
@@ -71,13 +69,12 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
 
 ## Kit
 
-- Boot handshake with the mapper (`boot_info`):
+- `boot_info` grows with the mapper (v1 carries only the session ends):
   - image and readiness (unwind tables, TLS);
   - host and build ids;
-  - the lease blob and the game-data blob;
-  - the session channel.
+  - the lease blob and the game-data blob.
 - The mapper does the Windows loader's full job: unwind tables (`RtlAddFunctionTable`), static TLS, CRT and static init. Exceptions work natively, with no `_CxxThrowException` replacement.
-- Lifecycle: boot → resolve → attach → run → detach → unload.
+- Lifecycle: a resolve stage between boot and attach (boot → attach → run → detach → unload exists).
   - Safe points.
   - In-flight hook counting.
   - Unhooking only once no hook call is in progress.
@@ -166,7 +163,10 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
   - one stage with many owners, in load order, below built-in features;
   - read-only schema reads by name;
   - scripts get values, not live handles. This breaks compatibility with the old `ext`.
-- Walking skeleton first: map → hook present → draw a rectangle → unload cleanly.
+- Walking skeleton, on the OS loader through `loader-dev` first (lifecycle and session landed):
+  1. hook `IDXGISwapChain::Present` with safetyhook and draw a rectangle with `ClearView`;
+  2. unload cleanly: in-flight counting, unhook only when no call is in progress;
+  3. swap the OS loader for the manual mapper; the module stays unchanged.
 - Extraction candidate: "one owner by precedence" (command stages, scene restyle, movement goals), once the third copy exists.
 - Split the `domains` object by phase when it grows.
 
