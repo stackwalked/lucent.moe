@@ -41,6 +41,12 @@ CheckOptions:
   # to be reached through Windows.h.
   misc-include-cleaner.IgnoreHeaders: '.*lucent[/\\]core[/\\](prelude|result|invariant)\.hpp;.*[/\\]um[/\\].*;.*[/\\]shared[/\\].*'
 
+  # A fixed array is indexed with []: cppcoreguidelines-pro-bounds-constant-array-index proves a
+  # constant index in range at compile time and flags a runtime one, which takes .at(). Every
+  # other container is unchecked under [] whatever the index, so it keeps .at() (the defaults
+  # exclude the maps, whose [] inserts rather than reads out of bounds).
+  cppcoreguidelines-pro-bounds-avoid-unchecked-container-access.ExcludeClasses: '::std::map;::std::unordered_map;::std::flat_map;::std::array'
+
   # Lambdas may deduce their return type (dialect: declarations).
   modernize-use-trailing-return-type.TransformLambdas: none
 
