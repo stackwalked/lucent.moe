@@ -169,10 +169,6 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
   3. swap the OS loader for the manual mapper; the module stays unchanged.
 - Separation the first skeleton slice still owes:
   - `loader-dev`'s `main.cpp` parses, stages the copy, orchestrates and prints; split those.
-  - `inject.cpp` holds remote memory, remote threads and export lookup together. Export lookup by
-    `LoadLibraryExW` becomes a PE export reader, which the mapper needs anyway.
-  - Win32 handles, snapshots and process lookup are spread over `kit` and `loader-dev`; they want
-    one OS library.
   - `kit`'s lifecycle mixes the stage sequence with OS-loader unload (`FreeLibraryAndExitThread`);
     the mapper step splits them.
   - Names for `error_code` and `stage` live in the loader; they belong beside their types.
