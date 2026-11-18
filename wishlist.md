@@ -54,7 +54,7 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
     `std::function`, `std::async`, `std::rand`, `system_clock::now`, the `printf` family, `assert`,
     `char8_t`/`u8string`;
   - `int`/`long`/`unsigned`/`short` outside foreign signatures;
-  - `std::thread`, `CreateThread` and `thread_local` outside the kit;
+  - `std::thread` and `CreateThread` outside the kit;
   - `__FILE__`/`__LINE__` outside the allowed macros, `#pragma pack`, `#pragma comment(lib)`,
     `__declspec` where a standard attribute exists.
 - uv scripts: `includes.py` (layering against moon dependencies, private headers, Windows headers only
@@ -70,10 +70,16 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
 ## Kit
 
 - `boot_info` grows with the mapper (v1 carries only the session ends):
-  - image and readiness (unwind tables, TLS);
+  - image and readiness (unwind tables);
   - host and build ids;
   - the lease blob and the game-data blob.
-- The mapper does the Windows loader's full job: unwind tables (`RtlAddFunctionTable`), static TLS, CRT and static init. Exceptions work natively, with no `_CxxThrowException` replacement.
+- The mapper registers unwind tables (`RtlAddFunctionTable`), runs CRT and static init, and redirects
+  the image's `RtlPcToFileHeader` import: the static CRT's `_CxxThrowException` asks it for the
+  ThrowInfo image base, which the loader doesn't know for a mapped image.
+- No static TLS in mapped modules: `lucent_module()` fails the build on a TLS directory, ast-grep bans
+  `thread_local`/`__declspec(thread)`, and our code bans function-local statics. A dependency that
+  needs TLS is a decision: build it with `/Zc:threadSafeInit-`, keep it out of the module, or implement
+  TLS through ntdll internals with a check per Windows build.
 - Lifecycle: a resolve stage between boot and attach (boot → attach → run → detach → unload exists).
   - Safe points.
   - In-flight hook counting.
