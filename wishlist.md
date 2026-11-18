@@ -180,7 +180,7 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
 
 Foreign knowledge (RVAs, vtable slots, field and schema offsets, constants): declared, derived and
 delivered. Decided topic by topic. Still open: finder vocabulary (provisionally accepted, being
-tested on real data), bundle shape, the update-day pipeline, the protection seam.
+tested on real data), the update-day pipeline, the protection seam.
 
 - Declarations are C++ in the target's foreign layer, by subsystem, and ship. A `consteval`
   constructor hashes the name, which never reaches the binary; ast-grep checks it matches the
@@ -266,6 +266,31 @@ tested on real data), bundle shape, the update-day pipeline, the protection seam
 - Dev fault injection over the dev channel marks any fact invalid.
 - Live semantic probes: capabilities declare dev-only probes (value ranges, handle serials); the
   update-day pipeline runs them in a real game before sign-off.
+- Three documents, two keys:
+  - fact set, per manifest digest, module build and revision, signed with the offline release key
+    after sign-off. Header: format, game, module build key, revision, finders commit, manifest
+    digest. Entries are `(key hash, payload)` leaves sorted by key under a Merkle root; the
+    signature covers the header and the root. Payloads are opaque bytes (a value now, a recipe
+    later). Releases sharing a manifest share sets.
+  - overrides (force features or capabilities off), signed with an online server key: a kill switch
+    needs no offline key, and the worst a stolen online key does is what withholding already can.
+  - session bundle: the entitled entries with their Merkle proofs plus the overrides, bound to the
+    session and encrypted with a key from the lease. Watermarking belongs here, never in values.
+- A compromised server can withhold facts, never forge one: values are trusted only through the
+  offline key.
+- Delivery:
+  - the loader sends the module build keys; per module build the server picks the latest enabled
+    revision for the release's manifest and drops entries the session isn't entitled to;
+  - a module with no set is "not yet supported" and its capabilities are unavailable; the server
+    refuses the session only when a `core` capability is uncovered;
+  - the bundle rides in `boot_info`; revisions and newly entitled entries arrive over the session
+    and apply at a safe point.
+- No client cache in release: no server, no start. Dev reads local bundles signed with the dev key,
+  which release builds reject.
+- The container format lives in `contracts/`: little-endian, canonical, versioned, with golden
+  vectors that the C++ decoder, the generator's encoder and the TS server all test against.
+  - A format change adds a version, never mutates one. A module declares the formats it reads; the
+    server keeps an encoder for every format a live release uses.
 
 ## Server inputs and licensing integrity
 
@@ -273,14 +298,7 @@ tested on real data), bundle shape, the update-day pipeline, the protection seam
 - Game data keys and types are declared in game code (see Facts).
   - The build exports a manifest, and server tooling validates bundles against it.
   - Only the container schema lives in `contracts/`.
-- Bundle:
-  - game, build, revision;
-  - entries with hashed keys;
-  - overrides (can only force features off);
-  - an ed25519 signature.
-- Delivery:
-  - the loader identifies the build, fetches or caches the bundle, and passes it in the boot handshake;
-  - live revisions arrive over the session, are applied at a safe point, and the affected requirements are re-resolved.
+- Bundle shape and delivery: see Facts.
 - The release module discovers nothing. `libs/probe` (sig, schema, RTTI) is tooling and dev only, banned from release presets. Gate schema offsets too, so there's one rule.
 - Every server value is validated. A bad value makes a requirement unavailable; it never crashes.
 - Bundles are encrypted per session (key from the lease), expire with the lease, and are decrypted, used and wiped.
@@ -342,5 +360,4 @@ tested on real data), bundle shape, the update-day pipeline, the protection seam
 - Isolating our allocations from the game's heap.
 - A generic "revise" round in an arbiter vs. a planner per domain.
 - Script precedence policy (a product decision).
-- Release behavior when there's no server and no cached bundle.
 - RTTI and exceptions: confirm the `/GR-` decision when the first DLL boundary is built.
