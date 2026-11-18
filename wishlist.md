@@ -45,8 +45,8 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
 `native/core/src/toolchain_probe.cpp`, `tools/lint/ast-grep/`, `tools/lint/suppressions.py`, and
 `native/AGENTS.md` for what no tool checks. Still to land, each with the first code it applies to:
 
-- core: `LUCENT_ENSURE` with `raise()`/`contain()`, a fail-fast `unreachable()`, `flags<E>`,
-  `fixed_string`, `stdx`, and the generated `lucent::build::*` header.
+- core: a fail-fast `unreachable()`, `flags<E>`, `fixed_string`, and the generated
+  `lucent::build::*` header.
 - ast-grep rules:
   - templates in features and domains;
   - `std::get`, `holds_alternative`, bare `visit`, `.value()`;
@@ -97,11 +97,6 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
   - `LUCENT_ENSURE` → `fault` → the feature is disabled;
   - `LUCENT_INVARIANT` → die (`__fastfail`);
   - foreign faults (access violations) are caught at the boundary.
-- `contain()`:
-  - an SEH outer layer and a C++ inner layer;
-  - the only `__try`/`catch` sites (enforced by lint);
-  - `throw` only through `raise()`, which throws one fault type: under `/GR-` every thrown type
-    still keeps its `.?AU...@@` name in the binary (checked on 23.1.5).
 - Features never hold kit resources while touching foreign memory. This closes the `/EHs` destructor gap.
 - Feature registry:
   - `feature_id`, hashed at compile time;

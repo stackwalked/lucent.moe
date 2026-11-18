@@ -26,5 +26,6 @@ static_assert(sizeof(f64) == 8, "f64 is IEEE-754 binary64");
 
 }
 
-// After the aliases, which it uses.
+// After the aliases, which they use.
+#include <lucent/core/fault.hpp>
 #include <lucent/core/result.hpp>
