@@ -180,10 +180,27 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
 - Extraction candidate: "one owner by precedence" (command stages, scene restyle, movement goals), once the third copy exists.
 - Split the `domains` object by phase when it grows.
 
+## Facts
+
+Foreign knowledge (RVAs, vtable slots, field and schema offsets, constants): declared, derived and
+delivered. Decided topic by topic. Still open: kinds and consumption, build identity, finder
+vocabulary, schema and interfaces, validation layers, bundle shape, the update-day pipeline, the
+protection seam.
+
+- Declarations are C++ in the target's foreign layer, by subsystem, and ship. A `consteval`
+  constructor hashes the name, which never reaches the binary; ast-grep checks it matches the
+  identifier.
+- Finders are C++ in a tooling-only library per target (`targets/<game>/finders/`), linked only by
+  the generator; moon layering and the release presets keep it out of the module. A finder refers
+  to its fact by symbol and carries the `build:`/`found:`/`breaks:` provenance.
+- The generator reuses `libs/pe` and `libs/probe`: one PE stack.
+- Values never enter git. They're generated per module build into the binaries cache and published
+  to the server; git holds what derives them.
+
 ## Server inputs and licensing integrity
 
 - The lease and game data travel on separate channels.
-- Game data keys and types are declared in game code (`server_value<T>`).
+- Game data keys and types are declared in game code (see Facts).
   - The build exports a manifest, and server tooling validates bundles against it.
   - Only the container schema lives in `contracts/`.
 - Bundle:
