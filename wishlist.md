@@ -803,7 +803,7 @@ per-release key seed, and `core` capabilities refusing the start.
 Tamaki (github.com/gorelace/tamaki: a standalone exe reading osu! from outside, SendInput, its own
 DX11 overlay window; lazer and stable) is rewritten here as a second product.
 
-- Proposed, not yet decided:
+- Decided (names still open: the osu target, the two halves of the kit split):
   - one product format (a module plus fact bundles) with two placements: mapped into the game
     (cs2), or into a `lucent-host` process the loader spawns per product (osu: remote reads, an
     overlay window, an input domain); same lease, session, lifecycle and protection;
