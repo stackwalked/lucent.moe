@@ -531,10 +531,20 @@ Still to land, in order:
   - recipe opcodes;
   - plan encoding;
   - key derivation;
-  - struct field order.
+  - struct field order;
+  - the bundle carries no descriptive data (names, types, lengths a decoder could do without),
+    and entry order follows the seeded key hashes, so it differs per release.
+
+  The point: public fact values are worth little to a cracker unless they can be encoded into a
+  bundle this release accepts.
 
   The server encoder and the module decoders come from the same seed, with a contract test between them.
 - Per-session watermarking: equivalent but distinct bundles.
+- Walls interlock: getting past one breaks another's inputs (a patched signature check changes a
+  measured region, which changes the key the bundle decrypts with). No wall is a standalone check
+  that can be beaten on its own. The aim is a crack that is never worth its cost, not one that is
+  impossible.
+- Configs and scripts can live in the cloud only: one more server asset a crack has to replace.
 - Integrity as key material:
   - `measure`/`mix`/`derive` ops, with regions chosen by the server per session;
   - the runner measures itself;
@@ -546,10 +556,12 @@ Still to land, in order:
 - Dev: `loader-dev` takes local bundles signed with a dev key that release builds reject.
 - Later:
   - fixups into code immediates;
-  - per-user diversified builds;
-  - server-sent feature logic, only if replaying data proves to be enough for crackers.
+  - per-user diversified builds.
 
 ## Protection toolchain
+
+The virtualizer is research from the ground up, unlike what migrates from the old repo, and gets
+its own design discussion. Its bullets below are provisional until then.
 
 - The `LUCENT_VIRT` annotation now. Mark the runner, decryption, lease and integrity code as it's written.
 - Compile-time virtualizer:
