@@ -17,3 +17,5 @@ tasks:
       cache: false
       interactive: true
       runInCI: false
+      # Through pwsh, the quoted exe path followed by an argument parses as an expression.
+      shell: false
