@@ -550,7 +550,7 @@ delivered. Decided in full.
 - Find homes for leftovers from the old repo:
   - cs2 `presets`, `assets`, `scenarios`, `bench`, `examples`;
   - den `bot` (→ `connectors/discord`), `geo`, `keys`.
-- A remote, then GitHub issues for deferred items.
+- GitHub issues for deferred items (origin: github.com/stackwalked/lucent.moe).
 
 ## Open
 
