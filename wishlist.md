@@ -121,10 +121,6 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
 - Binds: `bind_slot`. Activity (a held key) is separate from lifecycle (on/off).
 - Overlay contract (device + frame). Widgets live in `libs/ui`, the menu in `libs/menu`.
 - Lease client: verify, renew, lapse, and feed entitlements to the registry.
-- Resolution:
-  - `server_only<T>` has no fallback slot; `derivable<T>` may derive locally;
-  - validators;
-  - per-build availability.
 - Dev channel, stats and incident sink, compiled out of release (enforced in CMake).
 - An injectable clock.
 - Named kit worker threads, joined on unload, run inside `contain()`.
@@ -183,9 +179,8 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
 ## Facts
 
 Foreign knowledge (RVAs, vtable slots, field and schema offsets, constants): declared, derived and
-delivered. Decided topic by topic. Still open: kinds and consumption, build identity, finder
-vocabulary, schema and interfaces, validation layers, bundle shape, the update-day pipeline, the
-protection seam.
+delivered. Decided topic by topic. Still open: build identity, finder vocabulary, schema and
+interfaces, validation layers, bundle shape, the update-day pipeline, the protection seam.
 
 - Declarations are C++ in the target's foreign layer, by subsystem, and ship. A `consteval`
   constructor hashes the name, which never reaches the binary; ast-grep checks it matches the
@@ -196,6 +191,28 @@ protection seam.
 - The generator reuses `libs/pe` and `libs/probe`: one PE stack.
 - Values never enter git. They're generated per module build into the binaries cache and published
   to the server; git holds what derives them.
+- A fact's kind says what its value means; how a finder gets it is separate. Kinds:
+  `method<R(Args...)>`, `global<T>`, `vtable<C>`, `slot<R(C*, Args...)>`, `field<Owner, T>`,
+  `value<T>`. Schema offsets are fields. Each kind defines its load-time check:
+  - method: in an executable section, at a `.pdata` function start;
+  - global: in a data section, aligned for `T`;
+  - vtable: in `.rdata`, 8-aligned, first entry in code;
+  - slot: within its vtable's bound;
+  - field: aligned for `T`, inside `Owner`'s size when that size is a fact;
+  - value: the declared range.
+- A fact object holds its resolved value, in a linker section the kit's fact table owns
+  (`LUCENT_FACT`: `inline constinit` plus placement).
+  - Resolve walks the section before attach; live revisions rewrite it only at safe points; the
+    section is read-only between them.
+  - The manifest is the facts the shipped code links, so a stripped feature drops its facts.
+  - Spike first: inline variables fold to one copy, the section enumerates, the mapper carries it.
+- Features never name facts. The foreign layer groups facts into capabilities beside them; features
+  require capabilities in `features/all.cpp`; a capability is available when all its facts passed
+  their checks. Reads inside a running feature don't re-check facts.
+- Dev builds audit requirements: slot dispatch records the facts read during a feature's slot and
+  reports any its capabilities don't cover, on first use, even when the value is valid.
+- Every fact reaches the module from a bundle (in dev, a local one signed with the dev key).
+  Derivation happens only in the generator.
 
 ## Server inputs and licensing integrity
 
