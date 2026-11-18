@@ -4,8 +4,9 @@ Everything discussed so far that isn't built yet. A backlog, not a spec: entries
 
 ## Gate and tooling
 
-- clang-tidy runs as a build-dependent, cached `native:lint`, with the first native project.
-- C++ style: `.clang-format` and `.clang-tidy`, under discussion. clang-format then joins dprint via exec.
+- The C++ dialect's configs (`.clang-format`, `.clang-tidy`, ast-grep rules, uv scripts,
+  `native/AGENTS.md`) land with the first native project; see the C++ dialect section.
+  clang-format joins dprint via exec.
 - luau-lsp analysis, pinned with the first Luau code.
 - TS tooling returns with the first TS project: bun workspaces, Biome and strict `tsc` (`noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`) as inherited moon tasks. The working setup is in commit 5dbd739.
 - Complete `.protolock`: moon, bun, cmake, ninja and uv were installed before the lockfile was on, so they have no recorded hashes.
@@ -14,7 +15,6 @@ Everything discussed so far that isn't built yet. A backlog, not a spec: entries
   - file placement;
   - the doc-ref checker (paths and symbols named in docs must exist), once `docs/` maps exist;
   - no hand-edits to generated files.
-- ast-grep for syntactic rules (banned APIs per layer, `__try`/`catch` only in `contain()`), pinned with its first rule.
 - Generated code:
   - carries a header marker;
   - is skipped by format and lint;
@@ -38,7 +38,7 @@ Everything discussed so far that isn't built yet. A backlog, not a spec: entries
 - CMake presets + Ninja. `dev` and `release` to start; an ASan preset when fuzzing needs one.
 - CMake fails on configure when VS Build Tools are below a version floor. The STL, SDK and CRT come from the latest VS.
 - `native/cmake/` provides `lucent_library/module/executable`, which own all flags. A lint bans raw `add_library`, `add_executable` and `target_compile_options`.
-- Warnings: `-Wall -Wextra -Werror`, plus `-Wshadow`, with a trial of `-Wconversion`. `/external:` flags silence third-party headers.
+- Warnings per the C++ dialect's enforcement entry. `/external:` flags silence third-party headers.
 - Static CRT everywhere.
 - vcpkg:
   - a custom triplet that chainloads the clang-cl toolchain;
@@ -54,7 +54,7 @@ Everything discussed so far that isn't built yet. A backlog, not a spec: entries
 
 ## C++ dialect
 
-Being settled one topic at a time. Decisions land as `.clang-format`, `.clang-tidy`, ast-grep rules,
+Settled topic by topic; all topics decided. Decisions land as `.clang-format`, `.clang-tidy`, ast-grep rules,
 or, for what no tool can check, `native/AGENTS.md`.
 
 Principles (decided; they break ties between later rules):
@@ -340,7 +340,33 @@ native code, run by dprint exec with `--assume-filename={{file_path}}`:
 - A designated-initializer list spanning lines ends with a trailing comma (ast-grep); clang-format
   only goes one per line when one is present.
 
-Topics still to settle: enforcement.
+Enforcement (decided). Each rule above has exactly one enforcer:
+
+- Compiler: `-Weverything -Werror` minus named, reasoned disables (likely `c++98-compat*`,
+  `pre-c++XX-compat`, `padded`, `switch-default`; `c23-extensions` only on `#embed` files).
+  `-Wunsafe-buffer-usage` stays on, off by path in the foreign-memory layer. The exact list is
+  settled on first code.
+- clang-tidy: families `bugprone`, `clang-analyzer`, `concurrency`, `cppcoreguidelines`, `misc`,
+  `modernize`, `performance`, `portability`, `readability`, plus
+  `fuchsia-default-arguments-declarations` and `google-explicit-constructor`; disables by name with a
+  reason (`modernize-use-nodiscard`; all-public structs allowed; short loop/math names allowed);
+  all warnings as errors. Magic numbers and `pro-bounds-*` in kit memory primitives settled on first
+  code. `native:lint` is build-dependent (`compile_commands.json`) and cached.
+- ast-grep (`ast-grep-cli` pinned in `uv.lock`, rules in `tools/lint/ast-grep/` via `--config`):
+  `get_`, `_t`, `bool` parameters, `[[nodiscard]]`, function-local statics, templates in features
+  and domains, designated-init trailing commas, banned headers (iostreams, `<regex>`, `<any>`),
+  `shared_ptr`, coroutine keywords, `volatile`, `inline namespace`, `std::get` on variants,
+  `.value()`, `throw` outside `raise()`, `try`/`catch`/`__try` outside `contain()`.
+- uv scripts: `includes.py` (layering vs moon deps, private headers, Windows headers in `src/`),
+  `provenance.py`; `suppressions.py` gains `#pragma clang diagnostic` and bans
+  `TODO`/`FIXME`/`HACK`/`XXX`.
+- Probes: `toolchain_probe.cpp` and the `stdx` replacement probes.
+- `native/AGENTS.md`, created with the first native code, holds only what no tool checks: the
+  principles, struct/class and polymorphism choice, member vs free, verb/noun and bool naming,
+  abbreviations, the `auto` rule, `ENSURE` vs `INVARIANT`, comment placement, no commented-out code.
+  This section is deleted once everything in it has landed.
+- Lab C++ config sharing (clang-format and clang-tidy only search parents) is decided with the first
+  lab C++ project; likely generated copies with a freshness check.
 
 ## Kit
 
