@@ -92,6 +92,23 @@ function(lucent_library name)
     target_link_libraries(${target} ${scope} ${arg_DEPS})
 endfunction()
 
+# The release id every container of a Release build carries: 16 bytes as 32 lowercase hex digits,
+# drawn with the master seed and archived beside it. Not a secret. A Release tree configured
+# without one (release-check) draws its own once, so nothing built there names a real release.
+set(LUCENT_RELEASE_ID "" CACHE STRING "The release's id: 32 lowercase hex digits")
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    if(NOT LUCENT_RELEASE_ID)
+        string(RANDOM LENGTH 32 ALPHABET "0123456789abcdef" drawn_release_id)
+        set(LUCENT_RELEASE_ID "${drawn_release_id}" CACHE STRING "The release's id" FORCE)
+        message(STATUS "LUCENT_RELEASE_ID drawn for this build tree: ${LUCENT_RELEASE_ID}")
+    endif()
+    # CMake's regex has no {n} repetition, so the length is checked apart.
+    string(LENGTH "${LUCENT_RELEASE_ID}" release_id_length)
+    if(NOT LUCENT_RELEASE_ID MATCHES "^[0-9a-f]+$" OR NOT release_id_length EQUAL 32)
+        message(FATAL_ERROR "LUCENT_RELEASE_ID must be 32 lowercase hex digits")
+    endif()
+endif()
+
 # lucent_module(<name> SOURCES <sources>... [DEPS <targets>...])
 #
 # The loadable module lucent_<name>.dll: no import library, nothing links against it. Every module
@@ -117,15 +134,24 @@ function(lucent_module name)
     # The release gate, release builds only: the image may hold no declared fact name (facts
     # check, which knows the names from the target's searches) and not this machine's dev public
     # key (devkey check). A finding fails the link step. The module's name is its finder target's.
+    # Then pack writes what ships, lucent_<name>.container beside the DLL, or fails the link step
+    # naming what the container can't carry; dev keeps mapping the DLL itself. A release module has no
+    # lucent_boot until kit's release boot path lands: pack gets --require-boot then.
     if(CMAKE_BUILD_TYPE STREQUAL "Release")
         add_custom_command(
             TARGET ${target}
             POST_BUILD
             COMMAND lucent_facts check --target ${name} "$<TARGET_FILE:${target}>"
             COMMAND lucent_devkey check "$<TARGET_FILE:${target}>"
+            COMMAND
+                lucent_pack "$<TARGET_FILE:${target}>"
+                "$<TARGET_FILE_DIR:${target}>/lucent_${name}.container" --release
+                "${LUCENT_RELEASE_ID}"
             VERBATIM
         )
-        add_dependencies(${target} lucent_facts lucent_devkey)
+        add_dependencies(${target} lucent_facts lucent_devkey lucent_pack)
+        # A changed pack relinks the module, so its container is rewritten too.
+        set_property(TARGET ${target} APPEND PROPERTY LINK_DEPENDS "$<TARGET_FILE:lucent_pack>")
     endif()
     set_property(GLOBAL APPEND PROPERTY lucent_modules ${target})
     get_property(is_layering_deferred GLOBAL PROPERTY lucent_layering_deferred)
