@@ -201,5 +201,51 @@ TEST_CASE("an id's state outlives a frame or two undeclared, then is forgotten")
     CHECK(value == 1.0F);
 }
 
+TEST_CASE("a press on an element in its first frame reaches it the frame after") {
+    testing::fixture_text fixture = testing::plex_text();
+    testing::driver run{
+        fixture.text, testing::test_theme(fixture.plex, testing::motion_preference::full)
+    };
+    context& frame = run.ui();
+    three_buttons buttons;
+    run.step([&] { declare(frame, buttons); });
+    const draw::vec2 on_b = testing::centre(testing::rect_of(frame, buttons.b.id));
+
+    testing::driver fresh{
+        fixture.text, testing::test_theme(fixture.plex, testing::motion_preference::full)
+    };
+    context& opened = fresh.ui();
+    fresh.step(testing::press(on_b), [&] { declare(opened, buttons); });
+    CHECK(opened.focused() == buttons.b.id);
+    fresh.step(testing::hold(on_b), [&] { declare(opened, buttons); });
+    CHECK(buttons.b.is_just_pressed);
+    CHECK(buttons.b.is_pressed);
+    fresh.step(testing::release(on_b), [&] { declare(opened, buttons); });
+    CHECK(buttons.b.is_activated);
+}
+
+TEST_CASE("a click begun and ended in an element's first frame clicks it the frame after") {
+    testing::fixture_text fixture = testing::plex_text();
+    testing::driver run{
+        fixture.text, testing::test_theme(fixture.plex, testing::motion_preference::full)
+    };
+    context& frame = run.ui();
+    three_buttons buttons;
+    run.step([&] { declare(frame, buttons); });
+    const draw::vec2 on_c = testing::centre(testing::rect_of(frame, buttons.c.id));
+
+    testing::driver fresh{
+        fixture.text, testing::test_theme(fixture.plex, testing::motion_preference::full)
+    };
+    context& opened = fresh.ui();
+    input_snapshot click = testing::press(on_c);
+    click.left = {.is_down = false, .click_count = 1, .is_released = true};
+    fresh.step(click, [&] { declare(opened, buttons); });
+    fresh.step(testing::hover(on_c), [&] { declare(opened, buttons); });
+    CHECK(buttons.c.is_activated);
+    fresh.step(testing::hover(on_c), [&] { declare(opened, buttons); });
+    CHECK_FALSE(buttons.c.is_activated);
+}
+
 }
 }

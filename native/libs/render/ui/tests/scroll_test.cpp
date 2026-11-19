@@ -148,5 +148,39 @@ TEST_CASE("an element scrolled out of its scroll's view can't be hit") {
     CHECK(hit.is_hovered);
 }
 
+TEST_CASE("dragging the rail's thumb scrolls in step with the hand") {
+    testing::fixture_text fixture = testing::plex_text();
+    testing::driver run{
+        fixture.text, testing::test_theme(fixture.plex, testing::motion_preference::full)
+    };
+    context& frame = run.ui();
+    run.step([&] { declare(frame); });
+    const draw::rect area = testing::rect_of(frame, outer);
+    // 200 of 1000 shown: the thumb is 40 long and travels 160 over 800 of scrolling.
+    const draw::vec2 thumb{.x = area.max.x - 1.0F, .y = area.min.y + 20.0F};
+
+    run.step(testing::press(thumb), [&] { declare(frame); });
+    CHECK(run.report().wants_mouse);
+    run.step(testing::hold(thumb + draw::vec2{.x = -100.0F, .y = 80.0F}), [&] { declare(frame); });
+    CHECK(testing::rect_of(frame, outer_top).min.y + 400.0F == 200.0F);
+    run.step(testing::release(thumb + draw::vec2{.x = 0.0F, .y = 500.0F}), [&] { declare(frame); });
+    CHECK(testing::rect_of(frame, outer_top).min.y + 800.0F == 200.0F);
+}
+
+TEST_CASE("a press on the rail away from the thumb centres the thumb there") {
+    testing::fixture_text fixture = testing::plex_text();
+    testing::driver run{
+        fixture.text, testing::test_theme(fixture.plex, testing::motion_preference::reduced)
+    };
+    context& frame = run.ui();
+    run.step([&] { declare(frame); });
+    const draw::rect area = testing::rect_of(frame, outer);
+    run.step(testing::press({.x = area.max.x - 1.0F, .y = area.min.y + 100.0F}), [&] {
+        declare(frame);
+    });
+    // The thumb's top at 80 of its 160 of travel: halfway.
+    CHECK(testing::rect_of(frame, outer_top).min.y + 400.0F == 200.0F);
+}
+
 }
 }

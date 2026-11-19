@@ -8,6 +8,8 @@
 #include <optional>
 #include <ranges>
 #include <string>
+#include <string_view>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -29,6 +31,9 @@
 
 #include "element.hpp"
 #include "layout.hpp"
+#include "lucent/text/text_layout.hpp"
+#include "lucent/ui/clipboard.hpp"
+#include "lucent/ui/edit_buffer.hpp"
 #include "record.hpp"
 
 namespace lucent::ui {
@@ -61,8 +66,37 @@ struct id_memory {
     motion_memory motion;
     f32 scroll_target = 0.0F;
     f32 scroll_limit = 0.0F;
+    // Where the rail's thumb was taken, from its top, while it is dragged.
+    f32 rail_grab = 0.0F;
     // Windows stack by this: higher is nearer the top.
     i64 raised_at = 0;
+    // A tooltip's anchor: since when the cursor has rested on it.
+    std::optional<std::chrono::steady_clock::time_point> rested_since;
+    std::optional<f32> kept;
+};
+
+// A pressable element the press found no rect for: it was declared for the first time this frame.
+struct unseen_pressable {
+    element_id id{};
+    flags<sense> senses;
+};
+
+// A press that landed on an element only this frame's layout placed: that element takes it in the
+// next frame, as if it had been pressed then.
+struct carried_press {
+    element_id id{};
+    // The click ended in the frame it began.
+    bool is_released = false;
+};
+
+// Where a scroll's rail thumb sits, from last frame's layout.
+struct rail_geometry {
+    // The strip along the right edge the thumb runs in, as wide as the rail's reach.
+    draw::rect strip;
+    f32 thumb_top = 0.0F;
+    f32 thumb_length = 0.0F;
+    // How far the thumb's top can move.
+    f32 travel = 0.0F;
 };
 
 struct last_element {
@@ -104,6 +138,26 @@ auto anonymous_key(isize ordinal) -> local_key {
     return local_key{detail::mixed(detail::anonymous_seed ^ static_cast<u64>(ordinal))};
 }
 
+// A thumb as long as the viewport is in the content, never shorter than two rail widths.
+auto rail_of(const draw::rect& area, f32 limit, f32 offset, const control_metrics& controls)
+    -> rail_geometry {
+    const f32 viewport = area.max.y - area.min.y;
+    const f32 content = viewport + limit;
+    const f32 length = std::max(viewport * viewport / content, controls.rail_width * 2.0F);
+    const f32 travel = viewport - length;
+    const f32 reach = limit > 0.0F ? std::clamp(offset / limit, 0.0F, 1.0F) : 0.0F;
+    return {
+        .strip =
+            {
+                .min = {.x = area.max.x - controls.rail_reach, .y = area.min.y},
+                .max = area.max,
+            },
+        .thumb_top = area.min.y + (travel * reach),
+        .thumb_length = length,
+        .travel = travel,
+    };
+}
+
 }
 
 struct context::state {
@@ -126,7 +180,10 @@ struct context::state {
     std::vector<custom_draw> drawers;
     std::vector<focusable> focusables;
     std::vector<element_id> declared_popups;
+    std::vector<unseen_pressable> unseen;
     bool is_press_claimed = false;
+    // The press the last frame placed too late for its element, which takes it this frame.
+    std::optional<carried_press> carried;
 
     // The last laid-out frame's, for hit-testing this one. last_elements is sorted by id.
     std::vector<last_element> last_elements;
@@ -137,6 +194,8 @@ struct context::state {
 
     // Across frames.
     std::flat_map<element_id, id_memory> memory;
+    // Apart from memory, so a field's state stays put while memory grows.
+    std::flat_map<element_id, std::unique_ptr<field_memory>> fields;
     std::optional<element_id> focus;
     // Focus as this frame's keys found it: only what held it then is activated by them, not what
     // takes it during the declaration.
@@ -333,7 +392,7 @@ struct context::state {
 
     auto take_keys() -> void {
         const bool is_backward = frame.input.modifiers.has(modifier::shift);
-        for (const key_event& event : frame.input.keys) {
+        for (const key_event& event : keys_of(frame.input)) {
             if (event.action == key_action::released) {
                 continue;
             }
@@ -360,12 +419,19 @@ struct context::state {
             case key_code::enter:
             case key_code::space:
             case key_code::backspace:
+            case key_code::forward_delete:
             case key_code::left:
             case key_code::right:
             case key_code::home:
             case key_code::end:
             case key_code::page_up:
             case key_code::page_down:
+            case key_code::letter_a:
+            case key_code::letter_c:
+            case key_code::letter_v:
+            case key_code::letter_x:
+            case key_code::letter_y:
+            case key_code::letter_z:
                 break;
             }
         }
@@ -457,7 +523,15 @@ struct context::state {
         last_roots.clear();
         for (const isize index : root_order) {
             const element& root = elements.at(narrow<usize>(index));
-            last_roots.push_back({.id = root.id, .rect = detail::rect_of(root)});
+            if (roots.at(narrow<usize>(root.root)).input == input_policy::taken) {
+                last_roots.push_back({.id = root.id, .rect = detail::rect_of(root)});
+            }
+        }
+        // Drawn on top, never hit: last_roots leaves them out.
+        for (const root_entry& entry : roots) {
+            if (entry.layer == root_layer::tooltip) {
+                root_order.push_back(entry.element);
+            }
         }
     }
 
@@ -465,6 +539,64 @@ struct context::state {
         std::erase_if(memory, [&](const auto& entry) {
             return entry.second.last_seen < frame_number - forget_after;
         });
+        std::erase_if(fields, [&](const auto& entry) { return !memory.contains(entry.first); });
+    }
+
+    // The innermost element first declared this frame that this frame's layout put under the
+    // press, in the topmost root: what the press would have hit had it been laid out before.
+    auto take_late_press() -> void {
+        const bool is_unclaimed_press = frame.input.left.click_count > 0 && !is_press_claimed;
+        const std::optional<element_id> root = hit_root();
+        if (!is_unclaimed_press || !root || !frame.input.cursor) {
+            return;
+        }
+        const auto hit = std::ranges::find_if(std::views::reverse(unseen), [&](const auto& seen) {
+            const last_element* const placed = last(seen.id);
+            return placed != nullptr
+                   && placed->root == *root
+                   && contains(placed->visible, *frame.input.cursor);
+        });
+        if (hit == std::views::reverse(unseen).end()) {
+            return;
+        }
+        is_press_claimed = true;
+        if (hit->senses.has(sense::focus)) {
+            focus = hit->id;
+        }
+        active = hit->id;
+        carried = carried_press{.id = hit->id, .is_released = frame.input.left.is_released};
+    }
+
+    // Moves the rail's thumb with the press holding it, and starts that hold on a press in the
+    // rail's strip: on the thumb it keeps its grip, elsewhere the thumb centres on the cursor.
+    auto drag_rail(element_id scroll) -> void {
+        const last_element* const seen = last(scroll);
+        id_memory& scrolled = remembered(scroll);
+        const element_id thumb = rail_id(scroll);
+        const input_snapshot& input = frame.input;
+        if (seen == nullptr || scrolled.scroll_limit <= 0.0F || !input.cursor) {
+            return;
+        }
+        const rail_geometry rail = rail_of(
+            seen->rect, scrolled.scroll_limit, scrolled.motion.value, frame.tokens.controls
+        );
+        const bool is_on_strip =
+            hovered_root == seen->root
+            && contains(draw::intersect(rail.strip, seen->visible), *input.cursor);
+        if (input.left.click_count > 0 && is_on_strip && !is_press_claimed) {
+            is_press_claimed = true;
+            active = thumb;
+            const f32 into = input.cursor->y - rail.thumb_top;
+            const bool is_on_thumb = into >= 0.0F && into < rail.thumb_length;
+            scrolled.rail_grab = is_on_thumb ? into : rail.thumb_length / 2.0F;
+        }
+        if (active != thumb || rail.travel <= 0.0F) {
+            return;
+        }
+        const f32 reach = (input.cursor->y - scrolled.rail_grab - seen->rect.min.y) / rail.travel;
+        scrolled.scroll_target = std::clamp(reach, 0.0F, 1.0F) * scrolled.scroll_limit;
+        // The thumb follows the hand, not the smoothing.
+        scrolled.motion.value = scrolled.scroll_target;
     }
 
     auto wants_mouse() const -> bool {
@@ -506,6 +638,7 @@ auto context::begin_frame(frame_input input) -> void {
     self.drawers.clear();
     self.focusables.clear();
     self.declared_popups.clear();
+    self.unseen.clear();
     self.is_press_claimed = false;
     self.is_declaring = true;
     self.is_laid_out = false;
@@ -538,9 +671,13 @@ auto context::end_frame() -> result<frame_report> {
     );
     self.is_laid_out = true;
 
+    self.remember_layout();
+    self.stack_roots();
+    self.carried.reset();
+    self.take_late_press();
     const bool is_unclaimed_press = self.frame.input.left.click_count > 0 && !self.is_press_claimed;
     const bool is_focus_declared =
-        self.focus && std::ranges::any_of(self.focusables, [&](const focusable& candidate) {
+        self.focus && std::ranges::any_of(self.last_focusables, [&](const focusable& candidate) {
             return candidate.id == *self.focus;
         });
     if (is_unclaimed_press || !is_focus_declared) {
@@ -549,8 +686,6 @@ auto context::end_frame() -> result<frame_report> {
     if (self.frame.input.left.is_released || !self.frame.input.left.is_down) {
         self.active.reset();
     }
-    self.remember_layout();
-    self.stack_roots();
     self.forget_unseen();
     return frame_report{
         .wants_mouse = self.wants_mouse(),
@@ -569,6 +704,7 @@ auto context::record(draw::draw_list& list) -> result<void> {
             .order = &self.root_order,
             .drawers = &self.drawers,
             .rail = self.frame.tokens.colors.muted_ink,
+            .held_rail = self.frame.tokens.colors.ink,
             .rail_width = self.frame.tokens.controls.rail_width,
         }
     );
@@ -589,6 +725,7 @@ auto context::window(const window_spec& spec, stdx::function_ref<void()> childre
             .id = id,
             .element = 0,
             .layer = root_layer::window,
+            .input = spec.input,
             .position = spec.position,
             .anchor_element = std::nullopt,
             .anchor_rect = std::nullopt,
@@ -618,12 +755,17 @@ auto context::scroll(local_key key, const box_style& style, stdx::function_ref<v
     -> void {
     state& self = *m_state;
     const element_id id = id_of(key);
+    self.drag_rail(id);
     const f32 offset = approach(id, self.remembered(id).scroll_target);
+    const bool is_rail_held = self.active == rail_id(id);
+    const f32 emphasis =
+        approach(child_id(rail_id(id), ui::key<"emphasis">()), is_rail_held ? 1.0F : 0.0F);
     const isize index = std::ssize(self.elements);
     self.push_child(id, style, detail::no_leaf{});
     element& declared = self.elements.at(narrow<usize>(index));
     declared.is_scroll = true;
     declared.scroll_offset = offset;
+    declared.rail_emphasis = emphasis;
     self.declare_children(index, children);
 }
 
@@ -690,6 +832,7 @@ auto context::popup(element_id anchor, const box_style& style, stdx::function_re
         .id = popup_id(anchor),
         .element = 0,
         .layer = root_layer::popup,
+        .input = input_policy::taken,
         .position = {.x = 0.0F, .y = 0.0F},
         .anchor_element = std::nullopt,
         .anchor_rect = std::nullopt,
@@ -707,6 +850,77 @@ auto context::popup(element_id anchor, const box_style& style, stdx::function_re
     const isize index = self.push_root(entry.id, style, entry);
     self.declare_children(index, children);
     self.open = std::move(outer);
+}
+
+auto context::tooltip(
+    element_id anchor, const box_style& style, stdx::function_ref<void()> children
+) -> void {
+    state& self = *m_state;
+    const input_snapshot& input = self.frame.input;
+    const last_element* const seen = self.last(anchor);
+    id_memory& rested = self.remembered(tooltip_id(anchor));
+    const bool is_resting = seen != nullptr
+                            && input.cursor
+                            && self.hovered_root == seen->root
+                            && contains(seen->visible, *input.cursor)
+                            && !input.left.is_down
+                            && input.left.click_count == 0;
+    if (!is_resting) {
+        rested.rested_since.reset();
+        return;
+    }
+    if (!rested.rested_since) {
+        rested.rested_since = input.time;
+    }
+    if (input.time - *rested.rested_since < self.frame.tokens.motion.tooltip_delay) {
+        return;
+    }
+    const root_entry entry{
+        .id = tooltip_id(anchor),
+        .element = 0,
+        .layer = root_layer::tooltip,
+        .input = input_policy::passed,
+        .position = {.x = 0.0F, .y = 0.0F},
+        .anchor_element = std::nullopt,
+        .anchor_rect = seen->rect,
+    };
+    std::vector<isize> outer = std::exchange(self.open, {});
+    const isize index = self.push_root(entry.id, style, entry);
+    self.declare_children(index, children);
+    self.open = std::move(outer);
+}
+
+auto context::field(element_id id, std::string_view utf8) -> field_memory& {
+    state& self = *m_state;
+    std::ignore = self.remembered(id);
+    auto found = self.fields.find(id);
+    if (found == self.fields.end()) {
+        found = self.fields
+                    .emplace(
+                        id,
+                        std::make_unique<field_memory>(field_memory{
+                            .buffer = edit_buffer{std::string{utf8}},
+                            .scroll = {.x = 0.0F, .y = 0.0F},
+                            .caret_moved = self.frame.input.time,
+                            .press_clicks = 0,
+                        })
+                    )
+                    .first;
+    }
+    return *found->second;
+}
+
+auto context::measure(const text_spec& spec, f32 max_width) -> result<const text::text_layout*> {
+    const state& self = *m_state;
+    return self.text->layout({
+        .utf8 = spec.utf8,
+        .style = spec.style,
+        .max_width = max_width,
+        .wrap = spec.wrap,
+        .overflow = spec.overflow,
+        .max_lines = spec.max_lines,
+        .pixels_per_unit = self.frame.pixels_per_unit,
+    });
 }
 
 auto context::id_of(local_key key) const -> element_id {
@@ -742,6 +956,10 @@ auto context::interact(element_id id, flags<sense> senses) -> interaction {
             self.focus = id;
         }
     }
+    if (seen == nullptr && is_pressable) {
+        self.unseen.push_back({.id = id, .senses = senses});
+    }
+    const bool is_carried = self.carried && self.carried->id == id;
     const bool is_held = self.active == id;
     const bool is_focused = self.focus == id;
     const bool is_key_activated =
@@ -749,12 +967,14 @@ auto context::interact(element_id id, flags<sense> senses) -> interaction {
         && self.key_focus == id
         && (has_key(input, {.code = key_code::enter, .action = key_action::pressed})
             || has_key(input, {.code = key_code::space, .action = key_action::pressed}));
+    const bool is_released_over = is_held && input.left.is_released && is_under_cursor;
+    const bool is_carried_click = is_carried && self.carried->is_released && is_under_cursor;
     return {
         .id = id,
         .is_hovered = is_hovered,
         .is_pressed = is_held && (input.left.is_down || input.left.is_released),
-        .is_just_pressed = is_held && input.left.click_count > 0,
-        .is_activated = (is_held && input.left.is_released && is_under_cursor) || is_key_activated,
+        .is_just_pressed = (is_held && input.left.click_count > 0) || is_carried,
+        .is_activated = is_released_over || is_carried_click || is_key_activated,
         .is_focused = is_focused,
         .rect = seen != nullptr ? std::optional{seen->rect} : std::nullopt,
         .cursor = input.cursor,
@@ -861,6 +1081,26 @@ auto context::input() const -> const input_snapshot& {
 
 auto context::tokens() const -> const theme& {
     return m_state->frame.tokens;
+}
+
+auto context::system_clipboard() const -> clipboard* {
+    return m_state->frame.system_clipboard;
+}
+
+auto context::viewport() const -> draw::vec2 {
+    return m_state->frame.viewport;
+}
+
+auto context::kept(element_id id) const -> std::optional<f32> {
+    const auto found = m_state->memory.find(id);
+    if (found == m_state->memory.end()) {
+        return std::nullopt;
+    }
+    return found->second.kept;
+}
+
+auto context::keep(element_id id, f32 value) -> void {
+    m_state->remembered(id).kept = value;
 }
 
 auto context::rect(element_id id) const -> std::optional<draw::rect> {

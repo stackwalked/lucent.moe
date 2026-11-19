@@ -3,6 +3,7 @@
 #include <chrono>
 #include <optional>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include <lucent/core/flags.hpp>
@@ -25,6 +26,7 @@ enum class key_code : u8 {
     space,
     escape,
     backspace,
+    forward_delete,
     left,
     right,
     up,
@@ -33,6 +35,13 @@ enum class key_code : u8 {
     end,
     page_up,
     page_down,
+    // The letters text fields take shortcuts on, with control held.
+    letter_a,
+    letter_c,
+    letter_v,
+    letter_x,
+    letter_y,
+    letter_z,
 };
 
 enum class key_action : u8 {
@@ -48,6 +57,26 @@ struct key_event {
 
     auto operator==(const key_event&) const -> bool = default;
 };
+
+// Characters typed, control characters left out: keys bring those.
+struct typed_text {
+    std::string utf8;
+
+    auto operator==(const typed_text&) const -> bool = default;
+};
+
+// An input method's text in the making: shown where the caret is, not yet part of the text. It
+// replaces the composition before it; an empty one ends it. What the input method commits arrives
+// as typed text.
+struct composition {
+    std::string utf8;
+    // A byte of utf8: where the input method's own caret sits.
+    isize caret = 0;
+
+    auto operator==(const composition&) const -> bool = default;
+};
+
+using keyboard_event = std::variant<key_event, typed_text, composition>;
 
 enum class modifier : u8 {
     shift = 1U << 0U,
@@ -69,15 +98,15 @@ struct input_snapshot {
     button_input middle;
     // Wheel notches this frame; y is positive away from the user, x to the right.
     draw::vec2 wheel;
-    // In the order they happened.
-    std::vector<key_event> keys;
-    // UTF-8 typed this frame.
-    std::string text;
+    // Keys, typing and composition, in the order they happened: a text field replays them.
+    std::vector<keyboard_event> keyboard;
     flags<modifier> modifiers = no_modifiers;
 };
 
 auto has_key(const input_snapshot& input, key_event event) -> bool;
 // Pressed, or repeated while held: what moves a selection.
 auto has_press(const input_snapshot& input, key_code code) -> bool;
+// The frame's key events alone, in order.
+auto keys_of(const input_snapshot& input) -> std::vector<key_event>;
 
 }

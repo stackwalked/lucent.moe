@@ -11,6 +11,7 @@
 #include <lucent/text/text_layout.hpp>
 #include <lucent/text/text_system.hpp>
 #include <lucent/ui/box_style.hpp>
+#include <lucent/ui/context.hpp>
 #include <lucent/ui/element_id.hpp>
 
 namespace lucent::ui::detail {
@@ -59,6 +60,8 @@ using leaf = std::variant<no_leaf, text_leaf, icon_leaf, custom_leaf>;
 enum class root_layer : u8 {
     window,
     popup,
+    // Above everything, and never hit: input passes through to what is below.
+    tooltip,
 };
 
 // One declared element. Elements sit in declaration order (pre-order), so a subtree is the
@@ -76,6 +79,8 @@ struct element {
     isize last_child = -1;
     isize next_sibling = -1;
     isize child_count = 0;
+    // Children in its flow: those not pinned.
+    isize flow_count = 0;
     isize end = 0;
 
     // Layout, per axis.
@@ -86,6 +91,8 @@ struct element {
     // The least it shrinks to.
     std::array<f32, 2> floor{};
     f32 scroll_offset = 0.0F;
+    // A scroll's rail, 0 at rest to 1 while held.
+    f32 rail_emphasis = 0.0F;
     // What its rect is cut by: the viewport and every scroll it sits in. Only what is inside can be
     // seen or hit.
     draw::rect clip{};
@@ -95,12 +102,17 @@ struct root_entry {
     element_id id{};
     isize element = 0;
     root_layer layer = root_layer::window;
+    input_policy input = input_policy::taken;
     draw::vec2 position;
-    // A popup's anchor this frame: its element when declared before the popup, else last frame's
-    // rect.
+    // A popup's or tooltip's anchor this frame: its element when declared before the root, else
+    // last frame's rect.
     std::optional<isize> anchor_element;
     std::optional<draw::rect> anchor_rect;
 };
+
+constexpr auto is_pinned(const element& declared) -> bool {
+    return declared.style.pinned.has_value();
+}
 
 constexpr auto rect_of(const element& laid_out) -> draw::rect {
     return {

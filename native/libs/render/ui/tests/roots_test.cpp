@@ -38,6 +38,11 @@ auto clickable_window(context& frame, local_key key, draw::vec2 position) -> int
     return hit;
 }
 
+// The clickable area of the window below.
+constexpr auto windows_area() -> element_id {
+    return child_id(root_id(key<"below">()), key<"area">());
+}
+
 struct two_windows {
     interaction below;
     interaction above;
@@ -201,6 +206,34 @@ TEST_CASE("a popup its code stops declaring closes") {
         );
     });
     CHECK_FALSE(frame.is_popup_open(outer_anchor));
+}
+
+TEST_CASE("a tooltip shows once the cursor rests on its anchor, and input passes through it") {
+    testing::fixture_text fixture = testing::plex_text();
+    testing::driver run{
+        fixture.text, testing::test_theme(fixture.plex, testing::motion_preference::full)
+    };
+    context& frame = run.ui();
+    two_windows windows;
+    const element_id area = windows_area();
+    const auto declare_tipped = [&] {
+        declare(frame, windows);
+        frame.tooltip(area, sized(fixed(250.0F), fixed(300.0F)), [] {});
+    };
+    run.step(declare_tipped);
+    const draw::vec2 rest{.x = 50.0F, .y = 50.0F};
+    run.step(testing::hover(rest), declare_tipped);
+    CHECK_FALSE(frame.rect(tooltip_id(area)).has_value());
+
+    run.wait(frame.tokens().motion.tooltip_delay);
+    run.step(testing::hover(rest), declare_tipped);
+    run.step(testing::hover(rest), declare_tipped);
+    REQUIRE(frame.rect(tooltip_id(area)).has_value());
+    // Over the tooltip, which covers part of the window above: that window still takes the click.
+    const draw::vec2 under{.x = 120.0F, .y = 250.0F};
+    REQUIRE(testing::rect_of(frame, tooltip_id(area)).max.y > under.y);
+    click(run, under, windows);
+    CHECK(windows.above.is_activated);
 }
 
 }

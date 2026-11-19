@@ -16,6 +16,7 @@
 #include <lucent/draw/vec2.hpp>
 #include <lucent/os/file.hpp>
 #include <lucent/text/text_system.hpp>
+#include <lucent/ui/clipboard.hpp>
 #include <lucent/ui/context.hpp>
 #include <lucent/ui/input_snapshot.hpp>
 #include <lucent/ui/theme.hpp>
@@ -58,6 +59,7 @@ inline auto test_theme(text::face_id face, motion_preference motion) -> theme {
         .preset = theme_preset::dark,
         .scale = 1.0F,
         .is_reduced_motion = motion == motion_preference::reduced,
+        .backdrop = std::nullopt,
         .text_face = face,
         .numeric_face = face,
     });
@@ -84,6 +86,11 @@ public:
         return m_report;
     }
 
+    // Borrowed from now on; it must outlive the driver's frames.
+    auto lend(clipboard& shared) -> void {
+        m_clipboard = &shared;
+    }
+
     // Moves the clock on before the next frame, on top of the usual step.
     auto wait(std::chrono::milliseconds span) -> void {
         m_now += span;
@@ -98,6 +105,7 @@ public:
             .tokens = m_tokens,
             .viewport = viewport,
             .pixels_per_unit = 1.0F,
+            .system_clipboard = m_clipboard,
         });
         declare();
         result<frame_report> laid_out = m_ui.end_frame();
@@ -115,6 +123,24 @@ private:
     theme m_tokens;
     std::chrono::milliseconds m_now{};
     frame_report m_report;
+    clipboard* m_clipboard = nullptr;
+};
+
+// The glue's clipboard stood in for by a string.
+class memory_clipboard final : public clipboard {
+public:
+    memory_clipboard() = default;
+
+    auto text() const -> std::optional<std::string> override {
+        return m_text;
+    }
+
+    auto put_text(std::string_view utf8) -> void override {
+        m_text = std::string{utf8};
+    }
+
+private:
+    std::optional<std::string> m_text;
 };
 
 // The last laid-out frame's rect; a test that asks for an element it never declared is wrong.
@@ -148,9 +174,17 @@ inline auto release(draw::vec2 cursor) -> input_snapshot {
     return input;
 }
 
-inline auto keys(std::vector<key_event> events) -> input_snapshot {
+inline auto keys(const std::vector<key_event>& events) -> input_snapshot {
     input_snapshot input;
-    input.keys = std::move(events);
+    for (const key_event& event : events) {
+        input.keyboard.emplace_back(event);
+    }
+    return input;
+}
+
+inline auto typed(std::string utf8) -> input_snapshot {
+    input_snapshot input;
+    input.keyboard.emplace_back(typed_text{.utf8 = std::move(utf8)});
     return input;
 }
 

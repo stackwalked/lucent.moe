@@ -4,11 +4,13 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <lucent/core/flags.hpp>
 #include <lucent/draw/rect.hpp>
 #include <lucent/text/text_layout.hpp>
 #include <lucent/ui/box_style.hpp>
 #include <lucent/ui/context.hpp>
 #include <lucent/ui/element_id.hpp>
+#include <lucent/ui/interaction.hpp>
 #include <lucent/ui/text_spec.hpp>
 
 #include "fixture.hpp"
@@ -233,6 +235,93 @@ TEST_CASE("text with an ellipsis shrinks to its parent while rigid siblings keep
         testing::edges(frame.rect(in_window(key<"rigid">())))
         == rect_at(160.0F, 20.0F, 210.0F, 30.0F)
     );
+}
+
+TEST_CASE("a wrapping row breaks its children into lines, each as tall as its tallest") {
+    testing::fixture_text fixture = testing::plex_text();
+    testing::driver run{
+        fixture.text, testing::test_theme(fixture.plex, testing::motion_preference::full)
+    };
+    context& frame = run.ui();
+    box_style row = box_of(fixed(100.0F), fit());
+    row.gap = 10.0F;
+    row.lines = line_break::wrap;
+    run.step([&] {
+        frame.window(window_of(row), [&] {
+            frame.box(key<"a">(), box_of(fixed(40.0F), fixed(10.0F)), [] {});
+            frame.box(key<"b">(), box_of(fixed(40.0F), fixed(20.0F)), [] {});
+            frame.box(key<"c">(), box_of(fixed(40.0F), fixed(15.0F)), [] {});
+        });
+    });
+
+    CHECK(
+        testing::edges(frame.rect(in_window(key<"b">()))) == rect_at(60.0F, 20.0F, 100.0F, 40.0F)
+    );
+    CHECK(testing::edges(frame.rect(in_window(key<"c">()))) == rect_at(10.0F, 50.0F, 50.0F, 65.0F));
+    CHECK(testing::rect_of(frame, root_id(key<"window">())).max.y == 65.0F);
+}
+
+TEST_CASE("pinned children sit at a point of the parent and take no room in its flow") {
+    testing::fixture_text fixture = testing::plex_text();
+    testing::driver run{
+        fixture.text, testing::test_theme(fixture.plex, testing::motion_preference::full)
+    };
+    context& frame = run.ui();
+    box_style column = box_of(fixed(200.0F), fit());
+    column.flow = direction::column;
+    column.padding = even(10.0F);
+    box_style badge = box_of(fixed(20.0F), fixed(20.0F));
+    badge.pinned = pin{
+        .parent_point = {.x = 1.0F, .y = 0.0F},
+        .own_point = {.x = 0.5F, .y = 0.5F},
+        .offset = {.x = 0.0F, .y = 0.0F},
+    };
+    box_style corner = box_of(fixed(5.0F), fixed(5.0F));
+    corner.pinned = absolute({.x = 3.0F, .y = 4.0F});
+    run.step([&] {
+        frame.window(window_of(column), [&] {
+            frame.box(key<"badge">(), badge, [] {});
+            frame.box(key<"body">(), box_of(grow(), fixed(30.0F)), [] {});
+            frame.box(key<"corner">(), corner, [] {});
+        });
+    });
+
+    CHECK(
+        testing::edges(frame.rect(in_window(key<"body">()))) == rect_at(20.0F, 30.0F, 200.0F, 60.0F)
+    );
+    CHECK(
+        testing::edges(frame.rect(in_window(key<"badge">())))
+        == rect_at(190.0F, 20.0F, 210.0F, 40.0F)
+    );
+    CHECK(
+        testing::edges(frame.rect(in_window(key<"corner">())))
+        == rect_at(23.0F, 34.0F, 28.0F, 39.0F)
+    );
+    CHECK(testing::rect_of(frame, root_id(key<"window">())).max.y == 70.0F);
+}
+
+TEST_CASE("a box clipping its children leaves what spills out of it unhittable") {
+    testing::fixture_text fixture = testing::plex_text();
+    testing::driver run{
+        fixture.text, testing::test_theme(fixture.plex, testing::motion_preference::full)
+    };
+    context& frame = run.ui();
+    box_style clipped = box_of(fixed(50.0F), fixed(50.0F));
+    clipped.clip = clipping::children;
+    interaction hit;
+    const auto declare = [&] {
+        frame.window(window_of(box_of(fixed(300.0F), fixed(300.0F))), [&] {
+            frame.box(key<"clip">(), clipped, [&] {
+                hit = frame.interact(frame.id_of(key<"wide">()), flags{sense::click});
+                frame.box(key<"wide">(), box_of(fixed(200.0F), fixed(20.0F)), [] {});
+            });
+        });
+    };
+    run.step(declare);
+    run.step(testing::hover({.x = 40.0F, .y = 25.0F}), declare);
+    CHECK(hit.is_hovered);
+    run.step(testing::hover({.x = 100.0F, .y = 25.0F}), declare);
+    CHECK_FALSE(hit.is_hovered);
 }
 
 }

@@ -18,6 +18,8 @@ struct record_input {
     const std::vector<isize>* order = nullptr;
     std::vector<custom_draw>* drawers = nullptr;
     draw::color rail;
+    // The rail's colour while held.
+    draw::color held_rail;
     f32 rail_width = 0.0F;
 };
 

@@ -12,23 +12,51 @@
 #include <lucent/draw/vec2.hpp>
 #include <lucent/text/text_system.hpp>
 #include <lucent/ui/box_style.hpp>
+#include <lucent/ui/theme.hpp>
 
 #include "element.hpp"
 
 namespace lucent::ui::detail {
 namespace {
 
-struct open_scroll {
+// A box whose children are clipped to it, until its subtree ends.
+struct open_clip {
     isize element = 0;
     isize end = 0;
 };
+
+// The backdrop blurred inside the box, the fill over it, then the grain: one surface.
+auto draw_glass(
+    draw::draw_list& list,
+    const draw::rounded_rect& shape,
+    const decoration& look,
+    const glass_look& glass
+) -> void {
+    list.push_layer({
+        .bounds = shape.bounds,
+        .radius = look.radius,
+        .opacity = 1.0F,
+        .blur = glass.blur,
+        .rim = glass.rim,
+        .light = glass.light,
+    });
+    if (!draw::is_invisible(look.fill)) {
+        list.fill(shape, look.fill);
+    }
+    if (glass.grain.a > 0) {
+        list.fill(shape, draw::noise(glass.grain));
+    }
+    list.pop_layer();
+}
 
 auto decorate(draw::draw_list& list, const draw::rect& area, const decoration& look) -> void {
     const draw::rounded_rect shape{.bounds = area, .radii = draw::uniform(look.radius)};
     if (look.shadow) {
         list.shadow(shape, *look.shadow);
     }
-    if (!draw::is_invisible(look.fill)) {
+    if (look.glass) {
+        draw_glass(list, shape, look, *look.glass);
+    } else if (!draw::is_invisible(look.fill)) {
         list.fill(shape, look.fill);
     }
     if (look.outline_width > 0.0F && look.outline.a > 0) {
@@ -84,7 +112,7 @@ auto draw_rail(draw::draw_list& list, const element& scroll, const record_input&
                 },
             .radii = draw::uniform(input.rail_width / 2.0F),
         },
-        draw::solid(input.rail)
+        draw::solid(composite(input.rail, input.held_rail, scroll.rail_emphasis))
     );
 }
 
@@ -92,14 +120,16 @@ auto record_root(
     draw::draw_list& list, text::text_system& text, const record_input& input, isize root
 ) -> result<void> {
     const element& top = input.elements->at(narrow<usize>(root));
-    std::vector<open_scroll> scrolls;
+    std::vector<open_clip> clips;
     // One past the subtree's end too, so every scroll still open closes there.
     for (isize index = root; index <= top.end; ++index) {
-        while (!scrolls.empty() && index >= scrolls.back().end) {
-            const isize closed = scrolls.back().element;
-            scrolls.pop_back();
+        while (!clips.empty() && index >= clips.back().end) {
+            const element& closed = input.elements->at(narrow<usize>(clips.back().element));
+            clips.pop_back();
             list.pop_clip();
-            draw_rail(list, input.elements->at(narrow<usize>(closed)), input);
+            if (closed.is_scroll) {
+                draw_rail(list, closed, input);
+            }
         }
         if (index == top.end) {
             break;
@@ -113,9 +143,9 @@ auto record_root(
             decorate(list, area, drawn.style.look);
             LUCENT_TRY(draw_leaf(list, text, drawn, input));
         }
-        if (drawn.is_scroll) {
+        if (drawn.is_scroll || drawn.style.clip == clipping::children) {
             list.push_clip(area);
-            scrolls.push_back({.element = index, .end = drawn.end});
+            clips.push_back({.element = index, .end = drawn.end});
         }
     }
     return {};

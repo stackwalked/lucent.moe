@@ -2,39 +2,55 @@ lucent_library(ui
     HEADERS
         include/lucent/ui/box_style.hpp
         include/lucent/ui/button.hpp
+        include/lucent/ui/clipboard.hpp
+        include/lucent/ui/color_picker.hpp
         include/lucent/ui/context.hpp
         include/lucent/ui/dropdown.hpp
+        include/lucent/ui/edit_buffer.hpp
         include/lucent/ui/element_id.hpp
+        include/lucent/ui/hud_window.hpp
         include/lucent/ui/input_snapshot.hpp
         include/lucent/ui/interaction.hpp
         include/lucent/ui/label.hpp
         include/lucent/ui/motion.hpp
         include/lucent/ui/slider.hpp
+        include/lucent/ui/text_field.hpp
         include/lucent/ui/text_spec.hpp
         include/lucent/ui/theme.hpp
         include/lucent/ui/toggle.hpp
+        include/lucent/ui/tooltip.hpp
     SOURCES
         src/button.cpp
+        src/color_picker.cpp
         src/context.cpp
         src/dropdown.cpp
+        src/edit_buffer.cpp
+        src/hud_window.cpp
         src/input_snapshot.cpp
         src/label.cpp
         src/layout.cpp
         src/motion.cpp
         src/record.cpp
         src/slider.cpp
+        src/text_field.cpp
         src/theme.cpp
         src/toggle.cpp
+        src/tooltip.cpp
     DEPS lucent::draw lucent::text
 )
 
 lucent_test(ui
     SOURCES
+        tests/color_picker_test.cpp
+        tests/edit_buffer_test.cpp
+        tests/hud_window_test.cpp
         tests/interaction_test.cpp
         tests/layout_test.cpp
         tests/motion_test.cpp
         tests/roots_test.cpp
         tests/scroll_test.cpp
+        tests/text_field_test.cpp
+        tests/theme_test.cpp
         tests/widgets_test.cpp
     DEPS lucent::os
 )
