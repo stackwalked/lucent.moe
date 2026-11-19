@@ -14,36 +14,42 @@ const SESSION = BearerToken.parse("s".repeat(43));
 const contract = defineContract({
     "math.double": {
         session: "none",
+        effect: "read",
         input: z.strictObject({ n: z.number().int() }),
         output: z.object({ doubled: z.number().int() }),
         error: z.object({ code: z.literal("NEGATIVE_INPUT") }),
     },
     "session.echo": {
         session: "member",
+        effect: "read",
         input: z.strictObject({}),
         output: z.object({ session: z.string() }),
         error: z.never(),
     },
     "client.echo": {
         session: "none",
+        effect: "read",
         input: z.strictObject({}),
         output: z.object({ ip: z.string().nullable() }),
         error: z.never(),
     },
     "leak.extra": {
         session: "none",
+        effect: "read",
         input: z.strictObject({}),
         output: z.object({ shown: z.string() }),
         error: z.never(),
     },
     "bug.offContract": {
         session: "none",
+        effect: "read",
         input: z.strictObject({}),
         output: z.object({ count: z.number() }),
         error: z.never(),
     },
     "bug.defect": {
         session: "none",
+        effect: "read",
         input: z.strictObject({}),
         output: z.object({}),
         error: z.never(),

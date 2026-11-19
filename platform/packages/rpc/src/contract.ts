@@ -38,8 +38,13 @@ export type TransportRefusal = z.output<typeof TransportRefusal>;
 // transaction, which is what decides.
 export type SessionNeed = "none" | "member" | "setup" | "either";
 
+// A read changes nothing, so a caller may retry it; a write is never retried automatically
+// (one taking an operationId replays its first result when the user retries it).
+export type ProcedureEffect = "read" | "write";
+
 export type ProcedureContract = {
     readonly session: SessionNeed;
+    readonly effect: ProcedureEffect;
     readonly input: z.ZodType;
     readonly output: z.ZodType;
     readonly error: z.ZodType;

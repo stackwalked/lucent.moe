@@ -141,12 +141,14 @@ const PasskeyChallenge = z.object({ flowToken: BearerToken, options: RequestOpti
 export const webContract = defineContract({
     "health.check": {
         session: "none",
+        effect: "read",
         input: z.strictObject({}),
         output: z.object({ productsLoaded: z.number().int().nonnegative() }),
         error: z.never(),
     },
     "catalog.list": {
         session: "none",
+        effect: "read",
         input: z.strictObject({}),
         output: z.array(ProductDefinition).readonly(),
         error: z.never(),
@@ -154,6 +156,7 @@ export const webContract = defineContract({
 
     "signIn.password": {
         session: "none",
+        effect: "write",
         input: z.strictObject({ username: Username, password: Password }),
         output: z.object({
             flowToken: BearerToken,
@@ -163,18 +166,21 @@ export const webContract = defineContract({
     },
     "signIn.totp": {
         session: "none",
+        effect: "write",
         input: z.strictObject({ flowToken: BearerToken, code: TotpCode }),
         output: SignedIn,
         error: SignInRefusal,
     },
     "signIn.passkey.begin": {
         session: "none",
+        effect: "write",
         input: z.strictObject({ flowToken: BearerToken.nullable() }),
         output: PasskeyChallenge,
         error: SignInRefusal,
     },
     "signIn.passkey.finish": {
         session: "none",
+        effect: "write",
         input: z.strictObject({ flowToken: BearerToken, response: AuthenticationResponse }),
         output: SignedIn,
         error: SignInRefusal,
@@ -182,6 +188,7 @@ export const webContract = defineContract({
 
     "session.resolve": {
         session: "either",
+        effect: "read",
         input: z.strictObject({}),
         output: z.object({
             sessionId: SessionId,
@@ -202,6 +209,7 @@ export const webContract = defineContract({
     },
     "session.list": {
         session: "member",
+        effect: "read",
         input: z.strictObject({}),
         output: z.object({
             sessions: z
@@ -227,12 +235,14 @@ export const webContract = defineContract({
     // which takes a member session.
     "session.end": {
         session: "either",
+        effect: "write",
         input: z.strictObject({ sessionId: SessionId.nullable() }),
         output: Done,
         error: SessionRefusal,
     },
     "session.endOthers": {
         session: "member",
+        effect: "write",
         input: z.strictObject({}),
         output: Done,
         error: SessionRefusal,
@@ -240,6 +250,7 @@ export const webContract = defineContract({
 
     "setup.redeem": {
         session: "none",
+        effect: "write",
         input: z.strictObject({ setupToken: BearerToken }),
         output: z.object({
             sessionToken: BearerToken,
@@ -250,6 +261,7 @@ export const webContract = defineContract({
     },
     "setup.username.choose": {
         session: "setup",
+        effect: "write",
         input: z.strictObject({ username: Username }),
         output: z.object({ username: z.string() }),
         error: SetupRefusal,
@@ -257,6 +269,7 @@ export const webContract = defineContract({
 
     "credentials.list": {
         session: "either",
+        effect: "read",
         input: z.strictObject({}),
         output: z.object({
             passkeys: z
@@ -277,30 +290,35 @@ export const webContract = defineContract({
     },
     "credentials.password.set": {
         session: "either",
+        effect: "write",
         input: z.strictObject({ password: Password }),
         output: Done,
         error: CredentialRefusal,
     },
     "credentials.totp.enroll": {
         session: "either",
+        effect: "write",
         input: z.strictObject({}),
         output: z.object({ uri: z.string(), secret: z.string() }),
         error: CredentialRefusal,
     },
     "credentials.totp.confirm": {
         session: "either",
+        effect: "write",
         input: z.strictObject({ code: TotpCode }),
         output: Done,
         error: CredentialRefusal,
     },
     "credentials.passkey.register.begin": {
         session: "either",
+        effect: "write",
         input: z.strictObject({}),
         output: z.object({ flowToken: BearerToken, options: CreationOptions }),
         error: CredentialRefusal,
     },
     "credentials.passkey.register.finish": {
         session: "either",
+        effect: "write",
         input: z.strictObject({
             flowToken: BearerToken,
             label: z.string().trim().min(1).max(64),
@@ -311,6 +329,7 @@ export const webContract = defineContract({
     },
     "credentials.remove": {
         session: "either",
+        effect: "write",
         input: z.strictObject({
             credential: z.discriminatedUnion("kind", [
                 z.strictObject({ kind: z.literal("passkey"), id: PasskeyId }),
@@ -324,12 +343,14 @@ export const webContract = defineContract({
 
     "stepUp.begin": {
         session: "member",
+        effect: "write",
         input: z.strictObject({}),
         output: PasskeyChallenge,
         error: CredentialRefusal,
     },
     "stepUp.finish": {
         session: "member",
+        effect: "write",
         input: z.strictObject({ flowToken: BearerToken, response: AuthenticationResponse }),
         output: z.object({ stepUpAt: EpochMs }),
         error: CredentialRefusal,
@@ -337,6 +358,7 @@ export const webContract = defineContract({
 
     "admin.accounts.list": {
         session: "member",
+        effect: "read",
         input: z.strictObject({
             filter: z.strictObject({
                 status: AccountStatus.nullable(),
@@ -351,6 +373,7 @@ export const webContract = defineContract({
     },
     "admin.accounts.get": {
         session: "member",
+        effect: "read",
         input: z.strictObject({ accountId: AccountId }),
         output: AccountSummary.extend({
             signIn: z.object({
@@ -376,12 +399,14 @@ export const webContract = defineContract({
     // The setup link is in this reply only; a replay has none (receipts hold no secrets).
     "admin.accounts.create": {
         session: "member",
+        effect: "write",
         input: z.strictObject({ operationId: OperationId, email: z.email().max(254) }),
         output: z.object({ accountId: AccountId, setupToken: BearerToken.nullable() }),
         error: z.discriminatedUnion("code", [...StaffRefusals, Reused, refusal("EMAIL_TAKEN")]),
     },
     "admin.accounts.suspend": {
         session: "member",
+        effect: "write",
         input: z.strictObject({
             operationId: OperationId,
             accountId: AccountId,
@@ -392,12 +417,14 @@ export const webContract = defineContract({
     },
     "admin.accounts.reinstate": {
         session: "member",
+        effect: "write",
         input: z.strictObject({ operationId: OperationId, accountId: AccountId }),
         output: Done,
         error: z.discriminatedUnion("code", [...StaffRefusals, Reused, refusal("NOT_FOUND")]),
     },
     "admin.accounts.rename": {
         session: "member",
+        effect: "write",
         input: z.strictObject({
             operationId: OperationId,
             accountId: AccountId,
@@ -415,6 +442,7 @@ export const webContract = defineContract({
     // Not receipt-backed: every call wipes the account's ways in and issues a fresh link.
     "admin.accounts.recover": {
         session: "member",
+        effect: "write",
         input: z.strictObject({ accountId: AccountId }),
         output: z.object({ setupToken: BearerToken }),
         error: z.discriminatedUnion("code", [...StaffRefusals, refusal("NOT_FOUND")]),
@@ -422,12 +450,14 @@ export const webContract = defineContract({
 
     "admin.roles.list": {
         session: "member",
+        effect: "read",
         input: z.strictObject({}),
         output: z.object({ roles: z.array(RoleSummary).readonly() }),
         error: ReadRefusal,
     },
     "admin.roles.get": {
         session: "member",
+        effect: "read",
         input: z.strictObject({ roleId: RoleId }),
         output: RoleSummary,
         error: ReadRefusal,
@@ -435,6 +465,7 @@ export const webContract = defineContract({
     // Creates or rewrites a role. Channel grants aren't edited here and stay as they are.
     "admin.roles.save": {
         session: "member",
+        effect: "write",
         input: z.strictObject({
             operationId: OperationId,
             roleId: RoleId,
@@ -452,6 +483,7 @@ export const webContract = defineContract({
     },
     "admin.roles.assign": {
         session: "member",
+        effect: "write",
         input: z.strictObject({
             accountId: AccountId,
             roleId: RoleId,
@@ -462,6 +494,7 @@ export const webContract = defineContract({
     },
     "admin.roles.unassign": {
         session: "member",
+        effect: "write",
         input: z.strictObject({ accountId: AccountId, roleId: RoleId }),
         output: Done,
         error: z.discriminatedUnion("code", [...StaffRefusals, refusal("NOT_FOUND")]),
@@ -469,6 +502,7 @@ export const webContract = defineContract({
 
     "admin.audit.list": {
         session: "member",
+        effect: "read",
         input: z.strictObject({
             filter: z.strictObject({
                 actorId: z.string().max(64).nullable(),

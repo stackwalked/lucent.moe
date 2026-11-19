@@ -11,7 +11,7 @@ import {
     toClientHeader,
 } from "./contract.ts";
 
-type CallOptions = {
+export type CallOptions = {
     readonly signal?: AbortSignal;
     readonly requestId?: RequestId;
     readonly client?: ClientInfo;
@@ -21,7 +21,7 @@ type CallOptionsFor<C extends ProcedureContract> = C["session"] extends "none"
     ? [options?: CallOptions]
     : [options: CallOptions & { readonly session: BearerToken }];
 
-type ReplyOf<C extends ProcedureContract> = Result<
+export type ReplyOf<C extends ProcedureContract> = Result<
     z.output<C["output"]>,
     z.output<C["error"]> | TransportRefusal
 >;
@@ -31,6 +31,13 @@ export type RpcClient<Contracts extends ContractMap> = {
         name: K,
         input: z.input<Contracts[K]["input"]>,
         ...options: CallOptionsFor<Contracts[K]>
+    ) => Promise<ReplyOf<Contracts[K]>>;
+    // For a gateway that decides the session at run time: it must be present exactly when the
+    // procedure's contract needs one, which is checked instead of typed.
+    readonly send: <K extends keyof Contracts & string>(
+        name: K,
+        input: z.input<Contracts[K]["input"]>,
+        options: CallOptions & { readonly session: BearerToken | null },
     ) => Promise<ReplyOf<Contracts[K]>>;
 };
 
@@ -46,16 +53,10 @@ export function createRpcClient<Contracts extends ContractMap>(
     },
 ): RpcClient<Contracts> {
     const timeoutMs = config.defaultTimeoutMs ?? 5_000;
-    const send = config.fetcher ?? ((req: Request) => fetch(req));
+    const transport = config.fetcher ?? ((req: Request) => fetch(req));
     const unavailable = err<TransportRefusal>({ code: "SERVICE_UNAVAILABLE" });
 
-    // The overload is what callers see; the body works on what every procedure has in common.
-    function call<K extends keyof Contracts & string>(
-        name: K,
-        input: z.input<Contracts[K]["input"]>,
-        ...options: CallOptionsFor<Contracts[K]>
-    ): Promise<ReplyOf<Contracts[K]>>;
-    async function call(
+    async function invoke(
         name: string,
         input: unknown,
         options?: CallOptions & { readonly session?: BearerToken },
@@ -98,7 +99,7 @@ export function createRpcClient<Contracts extends ContractMap>(
         });
 
         const bodyRes = await tryAsync(
-            async (): Promise<unknown> => await (await send(req)).json(),
+            async (): Promise<unknown> => await (await transport(req)).json(),
             () => unavailable,
         );
         if (!bodyRes.ok) return unavailable;
@@ -107,5 +108,33 @@ export function createRpcClient<Contracts extends ContractMap>(
         return reply.data;
     }
 
-    return { call };
+    // The overloads are what callers see; `invoke` works on what every procedure has in common.
+    function call<K extends keyof Contracts & string>(
+        name: K,
+        input: z.input<Contracts[K]["input"]>,
+        ...options: CallOptionsFor<Contracts[K]>
+    ): Promise<ReplyOf<Contracts[K]>>;
+    function call(
+        name: string,
+        input: unknown,
+        options?: CallOptions & { readonly session?: BearerToken },
+    ): Promise<Result<unknown, unknown>> {
+        return invoke(name, input, options);
+    }
+
+    function send<K extends keyof Contracts & string>(
+        name: K,
+        input: z.input<Contracts[K]["input"]>,
+        options: CallOptions & { readonly session: BearerToken | null },
+    ): Promise<ReplyOf<Contracts[K]>>;
+    function send(
+        name: string,
+        input: unknown,
+        options: CallOptions & { readonly session: BearerToken | null },
+    ): Promise<Result<unknown, unknown>> {
+        const { session, ...rest } = options;
+        return invoke(name, input, session === null ? rest : { ...rest, session });
+    }
+
+    return { call, send };
 }
