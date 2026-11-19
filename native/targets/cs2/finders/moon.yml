@@ -6,7 +6,7 @@ project:
 language: "cpp"
 layer: "library"
 
-dependsOn: ["core", "cs2-modules", "finder", "kit", "pe", "probe"]
+dependsOn: ["core", "cs2-modules", "finder", "kit", "pe", "probe", "source2-probe"]
 
 # Its finders run against real game binaries, which never enter git; the finder language is tested
 # in libs/probe against fixtures, and the finders by the generator's report.
