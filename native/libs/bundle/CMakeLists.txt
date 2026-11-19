@@ -13,6 +13,7 @@ lucent_test(bundle
     SOURCES
         tests/bundle_test.cpp
         tests/release_manifest_test.cpp
+        tests/release_manifest_v2_test.cpp
         tests/release_manifest_vectors_test.cpp
         tests/vectors_test.cpp
     DEPS lucent::os

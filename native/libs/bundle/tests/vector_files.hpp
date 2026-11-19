@@ -84,4 +84,10 @@ inline auto directory_of(std::string_view contract) -> std::filesystem::path {
     return std::filesystem::path{LUCENT_CONTRACTS_DIR} / contract / "v1";
 }
 
+// The same at another version, such as "release-manifest" / "v2".
+inline auto directory_of(std::string_view contract, std::string_view version)
+    -> std::filesystem::path {
+    return std::filesystem::path{LUCENT_CONTRACTS_DIR} / contract / version;
+}
+
 }
