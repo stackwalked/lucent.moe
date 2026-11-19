@@ -4,6 +4,7 @@ lucent_library(core
         include/lucent/core/fault.hpp
         include/lucent/core/fixed_string.hpp
         include/lucent/core/flags.hpp
+        include/lucent/core/identifier_hash.hpp
         include/lucent/core/invariant.hpp
         include/lucent/core/match.hpp
         include/lucent/core/narrow.hpp
@@ -24,6 +25,7 @@ lucent_test(core
         tests/contain_test.cpp
         tests/fixed_string_test.cpp
         tests/flags_test.cpp
+        tests/identifier_hash_test.cpp
         tests/narrow_test.cpp
         tests/subkeys_test.cpp
         tests/text_test.cpp
