@@ -1,5 +1,5 @@
 project:
-  description: "Renders the real settings menu to PNG, by theme and scale, on WARP without starting a game. It informs a look; nothing gates on it."
+  description: "Renders the real settings menu and HUD windows to PNG, by theme and scale, on WARP over a stand-in scene, without starting a game. It informs a look; nothing gates on it."
 
 language: "cpp"
 layer: "tool"
@@ -7,19 +7,34 @@ layer: "tool"
 dependsOn: ["core", "cs2-features", "cs2-overlay", "d3d11", "draw", "kit", "menu", "text", "ui"]
 
 # `menu-shot --help` prints its usage. What it draws is judged by eye; the renderer's pixels are
-# held by d3d11's goldens and the page's behavior by menu's tests.
+# held by d3d11's goldens and the page's behavior by menu's and ui's tests.
 workspace:
   inheritedTasks:
     exclude: ["test"]
 
 tasks:
-  # The settings page in both themes at 1x and 2x, into .moon/cache/menu-shot.
-  settings:
+  # The settings page and the HUD windows in every theme at 1x and 2x, the HUD both locked and
+  # being arranged, into .moon/cache/menu-shot.
+  shots:
     script: >-
       $workspaceRoot/.moon/cache/cmake/dev/tools/menu-shot/menu-shot.exe settings $workspaceRoot/.moon/cache/menu-shot/settings-dark-1x.png dark 1 &&
+      $workspaceRoot/.moon/cache/cmake/dev/tools/menu-shot/menu-shot.exe hud $workspaceRoot/.moon/cache/menu-shot/hud-dark-1x.png dark 1 locked &&
+      $workspaceRoot/.moon/cache/cmake/dev/tools/menu-shot/menu-shot.exe hud $workspaceRoot/.moon/cache/menu-shot/hud-dark-arranging-1x.png dark 1 arranging &&
       $workspaceRoot/.moon/cache/cmake/dev/tools/menu-shot/menu-shot.exe settings $workspaceRoot/.moon/cache/menu-shot/settings-dark-2x.png dark 2 &&
+      $workspaceRoot/.moon/cache/cmake/dev/tools/menu-shot/menu-shot.exe hud $workspaceRoot/.moon/cache/menu-shot/hud-dark-2x.png dark 2 locked &&
+      $workspaceRoot/.moon/cache/cmake/dev/tools/menu-shot/menu-shot.exe hud $workspaceRoot/.moon/cache/menu-shot/hud-dark-arranging-2x.png dark 2 arranging &&
       $workspaceRoot/.moon/cache/cmake/dev/tools/menu-shot/menu-shot.exe settings $workspaceRoot/.moon/cache/menu-shot/settings-light-1x.png light 1 &&
-      $workspaceRoot/.moon/cache/cmake/dev/tools/menu-shot/menu-shot.exe settings $workspaceRoot/.moon/cache/menu-shot/settings-light-2x.png light 2
+      $workspaceRoot/.moon/cache/cmake/dev/tools/menu-shot/menu-shot.exe hud $workspaceRoot/.moon/cache/menu-shot/hud-light-1x.png light 1 locked &&
+      $workspaceRoot/.moon/cache/cmake/dev/tools/menu-shot/menu-shot.exe hud $workspaceRoot/.moon/cache/menu-shot/hud-light-arranging-1x.png light 1 arranging &&
+      $workspaceRoot/.moon/cache/cmake/dev/tools/menu-shot/menu-shot.exe settings $workspaceRoot/.moon/cache/menu-shot/settings-light-2x.png light 2 &&
+      $workspaceRoot/.moon/cache/cmake/dev/tools/menu-shot/menu-shot.exe hud $workspaceRoot/.moon/cache/menu-shot/hud-light-2x.png light 2 locked &&
+      $workspaceRoot/.moon/cache/cmake/dev/tools/menu-shot/menu-shot.exe hud $workspaceRoot/.moon/cache/menu-shot/hud-light-arranging-2x.png light 2 arranging &&
+      $workspaceRoot/.moon/cache/cmake/dev/tools/menu-shot/menu-shot.exe settings $workspaceRoot/.moon/cache/menu-shot/settings-contrast-1x.png contrast 1 &&
+      $workspaceRoot/.moon/cache/cmake/dev/tools/menu-shot/menu-shot.exe hud $workspaceRoot/.moon/cache/menu-shot/hud-contrast-1x.png contrast 1 locked &&
+      $workspaceRoot/.moon/cache/cmake/dev/tools/menu-shot/menu-shot.exe hud $workspaceRoot/.moon/cache/menu-shot/hud-contrast-arranging-1x.png contrast 1 arranging &&
+      $workspaceRoot/.moon/cache/cmake/dev/tools/menu-shot/menu-shot.exe settings $workspaceRoot/.moon/cache/menu-shot/settings-contrast-2x.png contrast 2 &&
+      $workspaceRoot/.moon/cache/cmake/dev/tools/menu-shot/menu-shot.exe hud $workspaceRoot/.moon/cache/menu-shot/hud-contrast-2x.png contrast 2 locked &&
+      $workspaceRoot/.moon/cache/cmake/dev/tools/menu-shot/menu-shot.exe hud $workspaceRoot/.moon/cache/menu-shot/hud-contrast-arranging-2x.png contrast 2 arranging
     deps: ["native:build"]
     options:
       cache: false
