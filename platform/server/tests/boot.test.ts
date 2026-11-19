@@ -24,6 +24,7 @@ function configFor(databaseUrl: string): ServerConfig {
         passwordOnly: false,
         // Nothing in these tests sets a password.
         pwnedPasswordsUrl: "http://127.0.0.1:9/range/",
+        native: null,
     };
 }
 

@@ -32,6 +32,13 @@ const inputs: SinglePurpose = {
     "session.endOthers": {},
     "setup.username.choose": { username: "unclaimed" },
     "stepUp.begin": {},
+    "devices.signIn.read": { requestId: `lauth_${"a".repeat(22)}` },
+    "devices.signIn.approve": { requestId: `lauth_${"a".repeat(22)}` },
+    "devices.signIn.deny": { requestId: `lauth_${"a".repeat(22)}` },
+    "devices.enrollments.list": {},
+    "devices.enrollments.approve": { operationId: OPERATION, enrollmentId: "0".repeat(32) },
+    "devices.enrollments.deny": { enrollmentId: "0".repeat(32) },
+    "devices.list": {},
     "admin.accounts.list": {
         filter: { status: null, roleId: null, text: null },
         sort: "newest",

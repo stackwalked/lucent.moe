@@ -1,7 +1,13 @@
 import { type Clock, toIsoTimestamp } from "@lucent/core/clock";
 
 export type LogLevel = "info" | "warn" | "error";
-export type LogOrigin = "boot" | "epoch-guard" | "internal-web" | "jobs" | "breach-check";
+export type LogOrigin =
+    | "boot"
+    | "epoch-guard"
+    | "internal-web"
+    | "native"
+    | "jobs"
+    | "breach-check";
 
 // A closed set of fields: a value only reaches the log through a field named here, so a request
 // body, a token or an email can't be logged by passing an object along.

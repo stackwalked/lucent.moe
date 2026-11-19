@@ -21,7 +21,24 @@ export type ServerConfig = {
     // Where new passwords are checked against known breaches: Have I Been Pwned's range API, or a
     // stand-in for it in tests.
     readonly pwnedPasswordsUrl: string;
+    // The loaders' listener, or null to run without one (web's integration tests, a dev server
+    // with no native config).
+    readonly native: NativeConfig | null;
 };
+
+// Where loaders reach the server, and the key that signs their leases. The origin is what DPoP
+// proofs name (`htu`): the server sits behind Caddy, so the URL it sees isn't the one signed.
+export type NativeConfig = {
+    readonly listen: NativeListenAddress;
+    readonly origin: string;
+    // The 32-byte Ed25519 seed. Never generated at startup: its public half ships inside every
+    // signed release, so a key the server made up would sign leases no module accepts.
+    readonly leaseSigningSeed: Uint8Array;
+};
+
+export type NativeListenAddress =
+    | { readonly kind: "unix"; readonly path: string }
+    | { readonly kind: "tcp"; readonly hostname: string; readonly port: number };
 
 export type OpsConfig = {
     readonly databaseUrl: string;
@@ -43,6 +60,9 @@ export type Environment = {
     readonly LUCENT_WEBAUTHN_ORIGIN: string | undefined;
     readonly LUCENT_DEV_PASSWORD_ONLY: string | undefined;
     readonly LUCENT_PWNED_PASSWORDS_URL: string | undefined;
+    readonly LUCENT_NATIVE_LISTEN?: string | undefined;
+    readonly LUCENT_NATIVE_ORIGIN?: string | undefined;
+    readonly LUCENT_LEASE_SIGNING_KEY?: string | undefined;
 };
 
 const POSTGRES_URL = /^postgres(?:ql)?:\/\/./;
@@ -103,6 +123,59 @@ function parseListen(raw: string): ListenAddress | null {
     return { kind: "loopback", hostname: match[1] === "[::1]" ? "::1" : "127.0.0.1", port };
 }
 
+function parseNativeListen(raw: string): NativeListenAddress | null {
+    if (raw.startsWith("unix:")) {
+        const path = raw.slice("unix:".length);
+        return path.length > 0 ? { kind: "unix", path } : null;
+    }
+    const match = /^(\d{1,3}(?:\.\d{1,3}){3}|\[[0-9a-fA-F:]+\]):(\d{1,5})$/.exec(raw);
+    if (match === null) return null;
+    const port = Number(match[2]);
+    if (port < 1 || port > 65_535) return null;
+    const host = match[1] ?? "";
+    return { kind: "tcp", hostname: host.replace(/^\[|\]$/g, ""), port };
+}
+
+// An origin and nothing else, https unless it is this machine.
+function parseNativeOrigin(raw: string): string | null {
+    if (!URL.canParse(raw)) return null;
+    const url = new URL(raw);
+    if (url.origin !== raw) return null;
+    const secure =
+        url.protocol === "https:" || (url.protocol === "http:" && LOCAL_HOSTS.has(url.hostname));
+    return secure ? raw : null;
+}
+
+function parseLeaseSigningKey(raw: string): Uint8Array | null {
+    if (!/^[A-Za-z0-9_-]{43}$/.test(raw)) return null;
+    return Uint8Array.fromBase64(raw, { alphabet: "base64url" });
+}
+
+// All three variables or none: a server half-configured for loaders refuses to start rather
+// than guessing which half was meant.
+function readNativeConfig(env: Environment, problems: string[]): NativeConfig | null {
+    const raw = {
+        listen: env.LUCENT_NATIVE_LISTEN ?? "",
+        origin: env.LUCENT_NATIVE_ORIGIN ?? "",
+        key: env.LUCENT_LEASE_SIGNING_KEY ?? "",
+    };
+    if (raw.listen === "" && raw.origin === "" && raw.key === "") return null;
+    const listen = parseNativeListen(raw.listen);
+    if (listen === null) {
+        problems.push("LUCENT_NATIVE_LISTEN must be unix:<path> or <ip>:<port>");
+    }
+    const origin = parseNativeOrigin(raw.origin);
+    if (origin === null) {
+        problems.push("LUCENT_NATIVE_ORIGIN must be an https:// origin (or http://localhost)");
+    }
+    const leaseSigningSeed = parseLeaseSigningKey(raw.key);
+    if (leaseSigningSeed === null) {
+        problems.push("LUCENT_LEASE_SIGNING_KEY must be a 32-byte Ed25519 seed in base64url");
+    }
+    if (listen === null || origin === null || leaseSigningSeed === null) return null;
+    return { listen, origin, leaseSigningSeed };
+}
+
 function readDatabaseUrl(env: Environment, problems: string[]): string {
     const url = env.LUCENT_DATABASE_URL ?? "";
     if (!POSTGRES_URL.test(url)) {
@@ -145,6 +218,7 @@ export function readServerConfig(env: Environment): Result<ServerConfig, ConfigE
     if (!/^https?:\/\/[^/]+\/.*\/$/.test(pwnedPasswordsUrl) || !URL.canParse(pwnedPasswordsUrl)) {
         problems.push("LUCENT_PWNED_PASSWORDS_URL must be an http(s) URL ending in /");
     }
+    const native = readNativeConfig(env, problems);
     const relyingParty = parseRelyingParty(
         env.LUCENT_WEBAUTHN_RP_ID ?? "",
         env.LUCENT_WEBAUTHN_ORIGIN ?? "",
@@ -164,6 +238,9 @@ export function readServerConfig(env: Environment): Result<ServerConfig, ConfigE
         if (passwordOnly) {
             problems.push("LUCENT_DEV_PASSWORD_ONLY is for a localhost WebAuthn origin only");
         }
+        if (native?.leaseSigningSeed.every((byte) => byte === 0) === true) {
+            problems.push("LUCENT_LEASE_SIGNING_KEY is the published dev key (all zero bytes)");
+        }
     }
     if (
         problems.length > 0 ||
@@ -182,6 +259,7 @@ export function readServerConfig(env: Environment): Result<ServerConfig, ConfigE
         relyingParty,
         passwordOnly,
         pwnedPasswordsUrl,
+        native,
     });
 }
 
@@ -206,6 +284,9 @@ export function processEnvironment(): Environment {
         LUCENT_WEBAUTHN_ORIGIN,
         LUCENT_DEV_PASSWORD_ONLY,
         LUCENT_PWNED_PASSWORDS_URL,
+        LUCENT_NATIVE_LISTEN,
+        LUCENT_NATIVE_ORIGIN,
+        LUCENT_LEASE_SIGNING_KEY,
     } = process.env;
     return {
         LUCENT_DATABASE_URL,
@@ -217,5 +298,8 @@ export function processEnvironment(): Environment {
         LUCENT_WEBAUTHN_ORIGIN,
         LUCENT_DEV_PASSWORD_ONLY,
         LUCENT_PWNED_PASSWORDS_URL,
+        LUCENT_NATIVE_LISTEN,
+        LUCENT_NATIVE_ORIGIN,
+        LUCENT_LEASE_SIGNING_KEY,
     };
 }

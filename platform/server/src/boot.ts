@@ -1,6 +1,7 @@
 import { rmSync } from "node:fs";
 import { loadProductCatalog } from "@lucent/catalog/catalog";
-import { describeUnknownError, ignoreErrorsSync, trySync } from "@lucent/core/contain";
+import { systemClock } from "@lucent/core/clock";
+import { describeUnknownError, ignoreErrorsSync, invariant, trySync } from "@lucent/core/contain";
 import { err, ok, type Result } from "@lucent/core/result";
 import { systemCryptoRng } from "@lucent/core/rng";
 import { createPwnedPasswordsCheck } from "./auth/breach.ts";
@@ -8,7 +9,7 @@ import { createAuthDeps } from "./auth/deps.ts";
 import { expiredAuthJob } from "./auth/expiry.ts";
 import { createArgon2idHasher, type PasswordHasher } from "./auth/password.ts";
 import { createTotpKeyring } from "./auth/totp.ts";
-import type { ListenAddress, ServerConfig } from "./config.ts";
+import type { ListenAddress, NativeListenAddress, ServerConfig } from "./config.ts";
 import type { Logger } from "./core/log.ts";
 import { claimServiceEpoch, openEpochGuard } from "./db/epoch-guard.ts";
 import type { MigrationError, MigrationFile } from "./db/migrate.ts";
@@ -16,6 +17,10 @@ import { verifySchemaCurrent } from "./db/migrate.ts";
 import { openPool } from "./db/pool.ts";
 import { createInternalWebApp } from "./internal/app.ts";
 import { type Every, startJobs } from "./jobs/runner.ts";
+import { createNativeApp } from "./native/app.ts";
+import { nativeExpiryJob } from "./native/expiry.ts";
+import { refusalResponse } from "./native/http.ts";
+import { createLeaseSigner } from "./native/lease-key.ts";
 
 // How long a superseded instance keeps answering before it notices; the handover window.
 const EPOCH_POLL_INTERVAL_MS = 2_000;
@@ -29,6 +34,8 @@ export type BootFailure =
 export type RunningServer = {
     // Where the internal listener answers: an http:// URL, or `unix:<path>`.
     readonly internalAddress: string;
+    // Where the loaders' listener answers, likewise; null when the server runs without one.
+    readonly nativeAddress: string | null;
     // Stops accepting, lets in-flight requests finish, then releases the database.
     readonly stop: () => Promise<void>;
 };
@@ -52,10 +59,12 @@ function schemaFailure(error: MigrationError): BootFailure {
     }
 }
 
+type Listening = { readonly stop: () => Promise<void>; readonly address: string };
+
 function listen(
-    address: ListenAddress,
+    address: ListenAddress | NativeListenAddress,
     fetch: (req: Request) => Response | Promise<Response>,
-): Result<{ readonly stop: () => Promise<void>; readonly address: string }, BootFailure> {
+): Result<Listening, BootFailure> {
     return trySync(
         () => {
             if (address.kind === "unix") {
@@ -66,7 +75,9 @@ function listen(
                 return { stop: () => server.stop(), address: `unix:${address.path}` };
             }
             const server = Bun.serve({ hostname: address.hostname, port: address.port, fetch });
-            const host = address.hostname === "::1" ? "[::1]" : address.hostname;
+            const host = address.hostname.includes(":")
+                ? `[${address.hostname}]`
+                : address.hostname;
             return { stop: () => server.stop(), address: `http://${host}:${server.port}` };
         },
         (cause) => ({ code: "LISTEN_FAILED" as const, detail: describeUnknownError(cause) }),
@@ -87,7 +98,19 @@ export async function startServer(params: {
         statementTimeoutMs: 5_000,
         applicationName: "platform-server/internal",
     });
+    // Its own pool, without the browser pool's statement timeout: a loader's request is never
+    // queued behind web's, and a lease renewal never times out half-done.
+    const nativeDb =
+        config.native === null
+            ? null
+            : openPool({
+                  databaseUrl: config.databaseUrl,
+                  applicationName: "platform-server/native",
+              });
+    const listeners: Listening[] = [];
     const fail = async (failure: BootFailure): Promise<Result<RunningServer, BootFailure>> => {
+        for (const listener of listeners) await listener.stop();
+        await nativeDb?.close();
         await db.close();
         return err(failure);
     };
@@ -111,11 +134,19 @@ export async function startServer(params: {
             : serve(req),
     );
     if (!listening.ok) return await fail(listening.error);
-    const epoch = await claimServiceEpoch(db);
-    if (!epoch.ok) {
-        await listening.value.stop();
-        return await fail({ code: "DATABASE_UNAVAILABLE", detail: epoch.error.code });
+    listeners.push(listening.value);
+    let serveNative: ((req: Request) => Response | Promise<Response>) | null = null;
+    if (config.native !== null) {
+        const nativeListening = listen(config.native.listen, (req) =>
+            serveNative === null
+                ? refusalResponse({ code: "SERVICE_UNAVAILABLE" })
+                : serveNative(req),
+        );
+        if (!nativeListening.ok) return await fail(nativeListening.error);
+        listeners.push(nativeListening.value);
     }
+    const epoch = await claimServiceEpoch(db);
+    if (!epoch.ok) return await fail({ code: "DATABASE_UNAVAILABLE", detail: epoch.error.code });
     const epochGuard = openEpochGuard({
         db,
         ownEpoch: epoch.value,
@@ -158,24 +189,39 @@ export async function startServer(params: {
         webInternalKey: config.webInternalKey,
         logger,
     }).fetch;
+    if (config.native !== null && nativeDb !== null) {
+        serveNative = createNativeApp({
+            db: nativeDb,
+            rng: systemCryptoRng,
+            clock: systemClock,
+            catalog: catalog.value,
+            signer: await createLeaseSigner(config.native.leaseSigningSeed),
+            origin: config.native.origin,
+            isSuperseded: epochGuard.isSuperseded,
+            logger,
+        }).fetch;
+    }
     const jobs = startJobs({
-        jobs: [expiredAuthJob(db)],
+        jobs: [expiredAuthJob(db), ...(nativeDb === null ? [] : [nativeExpiryJob(nativeDb)])],
         logger,
         isSuperseded: epochGuard.isSuperseded,
         ...(params.every === undefined ? {} : { every: params.every }),
     });
-    const { address } = listening.value;
+    const [internal, native] = listeners;
+    invariant(internal !== undefined, "the internal listener is bound");
     logger.write("info", "listening", {
         origin: "boot",
-        detail: `${address} epoch ${epoch.value} schema ${schema.value}`,
+        detail: `${internal.address}${native === undefined ? "" : ` and ${native.address}`} epoch ${epoch.value} schema ${schema.value}`,
     });
 
     return ok({
-        internalAddress: address,
+        internalAddress: internal.address,
+        nativeAddress: native?.address ?? null,
         stop: async () => {
-            await listening.value.stop();
+            for (const listener of listeners) await listener.stop();
             await jobs.stop();
             epochGuard.close();
+            await nativeDb?.close();
             await db.close();
         },
     });

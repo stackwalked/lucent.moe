@@ -72,12 +72,16 @@
       "name": "@lucent/server",
       "dependencies": {
         "@hono/standard-validator": "0.4.1",
+        "@lucent/bundle": "workspace:*",
         "@lucent/catalog": "workspace:*",
         "@lucent/core": "workspace:*",
         "@lucent/policy": "workspace:*",
         "@lucent/rpc": "workspace:*",
+        "@lucent/wire": "workspace:*",
+        "@noble/ciphers": "2.4.0",
         "@simplewebauthn/server": "14.1.0",
         "hono": "4.13.19",
+        "jose": "6.2.17",
         "pg": "8.23.1",
         "zod": "4.6.7",
       },
@@ -433,6 +437,8 @@
     "isbot": ["isbot@5.2.3", "", {}, "sha512-e8gGz3VzAuImtTMnB5PqNRRWGAswObTc+X+X5a8PttKT78VSSFec98w9ZwUoy6jJdlvJkVdLiN+WMgA8TewoZg=="],
 
     "jiti": ["jiti@2.7.0", "", { "bin": { "jiti": "lib/jiti-cli.mjs" } }, "sha512-AC/7JofJvZGrrneWNaEnJeOLUx+JlGt7tNa0wZiRPT4MY1wmfKjt2+6O2p2uz2+skll8OZZmJMNqeke7kKbNgQ=="],
+
+    "jose": ["jose@6.2.17", "", {}, "sha512-wOuK9V1yujQFH5S0ZWmLcDZN7+IKh9bUCC2ZPCf2HDlol3WWHy+PPyNjEI75FXRLMp3vDKQcupP59xhVU95hcg=="],
 
     "js-tokens": ["js-tokens@4.0.0", "", {}, "sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ=="],
 

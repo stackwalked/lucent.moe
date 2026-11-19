@@ -130,3 +130,47 @@ test("the published dev keys and password-only sign-in are refused unless browse
     );
     expect(local.ok && local.value.passwordOnly).toBe(true);
 });
+
+test("the loaders' listener is configured by all three of its variables or none", () => {
+    const native = {
+        LUCENT_NATIVE_LISTEN: "0.0.0.0:4001",
+        LUCENT_NATIVE_ORIGIN: "https://api.lucent.moe",
+        LUCENT_LEASE_SIGNING_KEY: "C".repeat(43),
+    };
+    const without = readServerConfig(env({}));
+    expect(without.ok && without.value.native).toBeNull();
+    const configured = readServerConfig(env(native));
+    expect(configured.ok && configured.value.native?.listen).toEqual({
+        kind: "tcp",
+        hostname: "0.0.0.0",
+        port: 4001,
+    });
+    const half = readServerConfig(env({ LUCENT_NATIVE_LISTEN: native.LUCENT_NATIVE_LISTEN }));
+    expect(!half.ok && half.error.problems).toEqual([
+        "LUCENT_NATIVE_ORIGIN must be an https:// origin (or http://localhost)",
+        "LUCENT_LEASE_SIGNING_KEY must be a 32-byte Ed25519 seed in base64url",
+    ]);
+    expect(
+        readServerConfig(env({ ...native, LUCENT_NATIVE_ORIGIN: "http://api.lucent.moe" })).ok,
+    ).toBe(false);
+});
+
+test("the published dev lease key is refused unless browsers reach the server from this machine", () => {
+    const devLease = {
+        LUCENT_NATIVE_LISTEN: "127.0.0.1:4711",
+        LUCENT_NATIVE_ORIGIN: "http://127.0.0.1:4711",
+        LUCENT_LEASE_SIGNING_KEY: "A".repeat(43),
+    };
+    const released = readServerConfig(env(devLease));
+    expect(!released.ok && released.error.problems).toEqual([
+        "LUCENT_LEASE_SIGNING_KEY is the published dev key (all zero bytes)",
+    ]);
+    const local = readServerConfig(
+        env({
+            ...devLease,
+            LUCENT_WEBAUTHN_RP_ID: "localhost",
+            LUCENT_WEBAUTHN_ORIGIN: "http://localhost:4710",
+        }),
+    );
+    expect(local.ok).toBe(true);
+});

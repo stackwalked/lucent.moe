@@ -45,6 +45,13 @@ import {
     upsertRole,
 } from "../authority/writers.ts";
 import type { DbFailure } from "../db/pool.ts";
+import {
+    approveEnrollment,
+    denyEnrollment,
+    listDevices,
+    listPendingEnrollments,
+} from "../native/devices.ts";
+import { decideSignInRequest, readSignInRequest, SignInRequestId } from "../native/sign-in.ts";
 
 export type WebRpcContext = {
     readonly catalog: ProductCatalog;
@@ -233,6 +240,61 @@ const handlers: Handlers<WebRpcContext, WebContract> = {
         served(await beginStepUp(ctx.auth, { sessionToken: session })),
     "stepUp.finish": async (ctx, input, { session }) =>
         served(await finishStepUp(ctx.auth, { sessionToken: session, ...input })),
+
+    "devices.signIn.read": async (ctx, input, { session }) =>
+        served(
+            await readSignInRequest(ctx.auth.db, {
+                sessionToken: session,
+                requestId: SignInRequestId.parse(input.requestId),
+            }),
+        ),
+    "devices.signIn.approve": async (ctx, input, { session }) =>
+        served(
+            await decideSignInRequest(ctx.auth.db, {
+                rng: ctx.auth.rng,
+                sessionToken: session,
+                requestId: SignInRequestId.parse(input.requestId),
+                decision: "approve",
+            }),
+        ),
+    "devices.signIn.deny": async (ctx, input, { session }) =>
+        served(
+            await decideSignInRequest(ctx.auth.db, {
+                rng: ctx.auth.rng,
+                sessionToken: session,
+                requestId: SignInRequestId.parse(input.requestId),
+                decision: "deny",
+            }),
+        ),
+    "devices.enrollments.list": async (ctx, _input, { session }) =>
+        served(
+            mapOk(
+                await listPendingEnrollments(ctx.auth.db, { sessionToken: session }),
+                (enrollments) => ({
+                    enrollments,
+                }),
+            ),
+        ),
+    "devices.enrollments.approve": async (ctx, input, { session }) =>
+        served(
+            await approveEnrollment(ctx.auth.db, {
+                rng: ctx.auth.rng,
+                sessionToken: session,
+                operationId: input.operationId,
+                enrollmentId: Uint8Array.fromHex(input.enrollmentId),
+            }),
+        ),
+    "devices.enrollments.deny": async (ctx, input, { session }) =>
+        served(
+            done(
+                await denyEnrollment(ctx.auth.db, {
+                    sessionToken: session,
+                    enrollmentId: Uint8Array.fromHex(input.enrollmentId),
+                }),
+            ),
+        ),
+    "devices.list": async (ctx, _input, { session }) =>
+        served(await listDevices(ctx.auth.db, { sessionToken: session })),
 
     "admin.accounts.list": (ctx, input, call) =>
         asStaff(ctx, call, (caller) => listAccounts(ctx.auth.db, { caller, ...input })),
