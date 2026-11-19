@@ -57,6 +57,10 @@ export const REFUSALS: Readonly<Record<RefusalCode, string>> = {
     ROLE_NAME_TAKEN: "a role already has that name.",
     INVALID_CURSOR: "that page no longer exists. start from the first.",
     IDEMPOTENCY_CONFLICT: "this form changed since it was sent. reload and try again.",
+    DEVICE_CHANGE_TOO_SOON: "you changed a pc in the last 7 days. wait until the window opens.",
+    UNKNOWN_PRODUCT: "that product isn't in the catalog anymore. reload and try again.",
+    UNKNOWN_CHANNEL: "that channel isn't one this product has. reload and try again.",
+    INVALID_WINDOW: "the end has to come after the start.",
 };
 // The text for one refusal, a form's own wording first where it has one.
 export function refusalText(

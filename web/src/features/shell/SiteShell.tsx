@@ -64,6 +64,27 @@ export function SiteShell({
                 ) : (
                     <>
                         <Link
+                            to="/products"
+                            className={styles.place}
+                            activeProps={{ "aria-current": "page" }}
+                        >
+                            {SHELL_COPY.products}
+                        </Link>
+                        <Link
+                            to="/download"
+                            className={styles.place}
+                            activeProps={{ "aria-current": "page" }}
+                        >
+                            {SHELL_COPY.download}
+                        </Link>
+                        <Link
+                            to="/account/devices"
+                            className={styles.place}
+                            activeProps={{ "aria-current": "page" }}
+                        >
+                            {SHELL_COPY.devices}
+                        </Link>
+                        <Link
                             to="/account/security"
                             className={styles.place}
                             activeProps={{ "aria-current": "page" }}

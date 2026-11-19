@@ -1,4 +1,12 @@
-import { AccountId, EpochMs, OperationId, RoleId } from "@lucent/core/scalars";
+import {
+    AccountId,
+    ChannelId,
+    EpochMs,
+    FeatureTag,
+    OperationId,
+    ProductId,
+    RoleId,
+} from "@lucent/core/scalars";
 import { AccountStatus, type WebContract } from "@lucent/rpc/web";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
@@ -130,4 +138,38 @@ export const takeRole = createServerFn({ method: "POST" })
     .handler(async ({ data }) => {
         const reply = await callPlatform("admin.roles.unassign", data);
         return reply.ok ? done(null) : refuse(reply.error);
+    });
+
+// The products an entitlement can name, for the form that issues one. Public: the catalog is
+// no secret.
+export const fetchCatalog = createServerFn({ method: "GET" }).handler(async () => {
+    const reply = await callPlatform("catalog.list", {});
+    return reply.ok ? done([...reply.value]) : refuse(reply.error);
+});
+
+export const issueEntitlement = createServerFn({ method: "POST" })
+    .validator((data: unknown) =>
+        z
+            .strictObject({
+                operationId: OperationId,
+                accountId: AccountId,
+                validFrom: EpochMs,
+                validUntil: EpochMs.nullable(),
+                productId: ProductId,
+                features: z.union([z.literal("*"), z.array(FeatureTag).max(64)]),
+                channels: z.array(ChannelId).max(8),
+            })
+            .parse(data),
+    )
+    .handler(async ({ data }) => {
+        const reply = await callPlatform("admin.entitlements.issue", {
+            operationId: data.operationId,
+            accountId: data.accountId,
+            validFrom: data.validFrom,
+            validUntil: data.validUntil,
+            products: [
+                { productId: data.productId, features: data.features, channels: data.channels },
+            ],
+        });
+        return reply.ok ? done(reply.value) : refuse(reply.error);
     });

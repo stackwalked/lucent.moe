@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { SITE_COPY } from "../../copy/site.ts";
 import { AccountPage } from "../../features/admin/accounts/AccountPage.tsx";
 import { ACCOUNTS_COPY } from "../../features/admin/accounts/copy.ts";
-import { fetchAccount, fetchRoles } from "../../features/admin/accounts/server.ts";
+import { fetchAccount, fetchCatalog, fetchRoles } from "../../features/admin/accounts/server.ts";
 import { guardSection } from "../../features/admin/sections.ts";
 import { toNotFound } from "../../server/route-control.ts";
 
@@ -12,11 +12,12 @@ export const Route = createFileRoute("/_admin/admin/accounts/$accountId")({
     loader: async ({ params }) => {
         const accountId = AccountId.safeParse(params.accountId);
         if (!accountId.success) return toNotFound();
-        const [account, roles] = await Promise.all([
+        const [account, roles, catalog] = await Promise.all([
             fetchAccount({ data: { accountId: accountId.data } }),
             fetchRoles(),
+            fetchCatalog(),
         ]);
-        return { account, roles };
+        return { account, roles, catalog };
     },
     head: ({ loaderData }) => ({
         meta: [

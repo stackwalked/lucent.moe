@@ -44,7 +44,23 @@ const fn = {
     finishPasskey: "features.auth.sign-in-server--finishPasskey",
     createAccount: "features.admin.accounts.server--createAccount",
     fetchAccounts: "features.admin.accounts.server--fetchAccounts",
+    fetchAccount: "features.admin.accounts.server--fetchAccount",
+    issueEntitlement: "features.admin.accounts.server--issueEntitlement",
+    landing: "features.auth.session--landing",
+    fetchSignInRequest: "features.devices.server--fetchSignInRequest",
+    decideSignInRequest: "features.devices.server--decideSignInRequest",
+    fetchDevices: "features.devices.server--fetchDevices",
+    approveEnrollment: "features.devices.server--approveEnrollment",
+    renameDevice: "features.devices.server--renameDevice",
+    removeDevice: "features.devices.server--removeDevice",
+    fetchProducts: "features.products.server--fetchProducts",
 } as const;
+
+// A device key's thumbprint as the loader would push it: 32 bytes, here all zero, so its match
+// code is the first 40 bits of zero.
+const JKT = "A".repeat(43);
+const MATCH_CODE = "0000-0000";
+const LOOPBACK = "http://127.0.0.1:53682/callback";
 
 let platform: RunningPlatform;
 let web: ChildServer;
@@ -215,5 +231,145 @@ describe("web against a real platform", () => {
         );
         invariant(listed.items.length > 0, "bob was added");
         expect(listed.items.map((item) => item.email)).toEqual(["bob@lucent.test"]);
+    });
+
+    test("a loader's sign-in link opened signed out comes back after sign-in, then hands the answer to the loader", async () => {
+        const requestId = `lauth_${"r".repeat(22)}`;
+        const db = new SQL(platform.databaseUrl);
+        await db`insert into native_auth_request
+                     (id, jkt, redirect_uri, code_challenge, state, created_at, expires_at)
+                 values (${requestId}, ${JKT}, ${LOOPBACK}, ${"c".repeat(43)}, ${"s1"},
+                         now(), now() + interval '10 minutes')`;
+        await db.close();
+
+        const stranger = browser();
+        const sent = await stranger.get(`/auth/device/${requestId}`);
+        expect(sent.status).toBe(303);
+        expect(sent.headers.get("location")).toEndWith("/sign-in");
+        expect(await stranger.call(fn.landing)).toBe(`/auth/device/${requestId}`);
+
+        expect((await member.get(`/auth/device/${requestId}`)).status).toBe(200);
+        const shown = accepted(
+            z.object({ matchCode: z.string(), createdAt: z.number() }),
+            await member.read(fn.fetchSignInRequest, { requestId }),
+        );
+        expect(shown.matchCode).toBe(MATCH_CODE);
+        const to = new URL(
+            accepted(
+                z.string(),
+                await member.call(fn.decideSignInRequest, { requestId, decision: "approve" }),
+            ),
+        );
+        expect(`${to.origin}${to.pathname}`).toBe(LOOPBACK);
+        expect(to.searchParams.get("state")).toBe("s1");
+        expect(to.searchParams.get("code")).not.toBeNull();
+        // Answered: there's nothing left to decide.
+        expect(refusedCode(await member.read(fn.fetchSignInRequest, { requestId }))).toBe(
+            "NOT_FOUND",
+        );
+    });
+
+    test("a waiting pc is approved after a proof, then renamed and removed, which closes the window", async () => {
+        const page = member;
+        const db = new SQL(platform.databaseUrl);
+        const [root] = await db`select id from account where username = 'root'`;
+        const enrollmentId = "e".repeat(32);
+        await db`insert into device_enrollment
+                     (id, account_id, jkt, public_key, storage, created_at, expires_at)
+                 values (decode(${enrollmentId}, 'hex'), ${root.id}, ${JKT}, '{}'::jsonb,
+                         'software', now(), now() + interval '10 minutes')`;
+        // Proven long enough ago that approving asks again.
+        await db`update browser_session set authenticated_at = now() - interval '6 minutes',
+                     step_up_at = null`;
+        await db.close();
+
+        const Devices = z.object({
+            devices: z.array(z.object({ deviceId: z.string(), name: z.string().nullable() })),
+            enrollments: z.array(z.object({ enrollmentId: z.string(), matchCode: z.string() })),
+            replaceableFrom: z.number().nullable(),
+        });
+        const waiting = accepted(Devices, await page.read(fn.fetchDevices));
+        expect(waiting.enrollments).toEqual([{ enrollmentId, matchCode: MATCH_CODE }]);
+
+        const approve = { operationId: newOperationId(createSeededRng(7003)), enrollmentId };
+        expect(refusedCode(await page.call(fn.approveEnrollment, approve))).toBe("REAUTH_REQUIRED");
+        const proof = accepted(RequestOptions, await page.call(fn.beginStepUp));
+        accepted(
+            z.null(),
+            await page.call(fn.finishStepUp, { response: await authenticator.assert(proof) }),
+        );
+        expect(
+            accepted(
+                z.object({ replaced: z.boolean() }),
+                await page.call(fn.approveEnrollment, approve),
+            ).replaced,
+        ).toBe(false);
+
+        const [device] = accepted(Devices, await page.read(fn.fetchDevices)).devices;
+        invariant(device !== undefined, "the approved pc is listed");
+        accepted(
+            z.null(),
+            await page.call(fn.renameDevice, { deviceId: device.deviceId, name: " desk " }),
+        );
+        expect(accepted(Devices, await page.read(fn.fetchDevices)).devices[0]?.name).toBe("desk");
+
+        accepted(
+            z.null(),
+            await page.call(fn.removeDevice, {
+                operationId: newOperationId(createSeededRng(7004)),
+                deviceId: device.deviceId,
+            }),
+        );
+        const after = accepted(Devices, await page.read(fn.fetchDevices));
+        expect(after.devices).toEqual([]);
+        expect(after.replaceableFrom).not.toBeNull();
+    });
+
+    test("staff issue an entitlement and see it on the account; the member's own products are only theirs", async () => {
+        const page = member;
+        const listed = accepted(
+            z.object({ items: z.array(z.object({ accountId: z.string() })) }),
+            await page.read(fn.fetchAccounts, {
+                status: null,
+                roleId: null,
+                text: "bob",
+                sort: "newest",
+                cursor: null,
+            }),
+        );
+        const bob = listed.items[0]?.accountId;
+        invariant(bob !== undefined, "bob was added");
+        accepted(
+            z.object({ entitlementId: z.string() }),
+            await page.call(fn.issueEntitlement, {
+                operationId: newOperationId(createSeededRng(7005)),
+                accountId: bob,
+                validFrom: systemClock.now(),
+                validUntil: null,
+                productId: "cs2",
+                features: "*",
+                channels: ["alpha"],
+            }),
+        );
+        const account = z
+            .object({
+                entitlements: z.array(
+                    z.object({
+                        status: z.string(),
+                        products: z.array(
+                            z.object({ productId: z.string(), channels: z.array(z.string()) }),
+                        ),
+                    }),
+                ),
+            })
+            .parse(await page.read(fn.fetchAccount, { accountId: bob }));
+        expect(account.entitlements).toEqual([
+            { status: "active", products: [{ productId: "cs2", channels: ["alpha"] }] },
+        ]);
+        // Root holds no entitlement of its own.
+        expect(accepted(z.array(z.unknown()), await page.read(fn.fetchProducts))).toEqual([]);
+        expect((await page.get("/products")).status).toBe(200);
+        expect((await page.get("/download")).status).toBe(200);
+        expect((await page.get("/products/cs2")).status).toBe(404);
     });
 });

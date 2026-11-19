@@ -1,6 +1,6 @@
 import { systemClock } from "@lucent/core/clock";
 import { USERNAME_MAX_LENGTH, USERNAME_MIN_LENGTH, USERNAME_PATTERN } from "@lucent/core/rules";
-import { EpochMs, RoleId } from "@lucent/core/scalars";
+import { RoleId } from "@lucent/core/scalars";
 import { type Action, ActionSchema } from "@lucent/policy/actions";
 import { can } from "@lucent/policy/policy";
 import { getRouteApi, Link, useRouteContext, useRouter } from "@tanstack/react-router";
@@ -25,8 +25,10 @@ import { AUDIT_COPY } from "../audit/copy.ts";
 import { ADMIN_COPY, operationLabel } from "../copy.ts";
 import { useStaffAction } from "../staff.ts";
 import { AccountAction } from "./AccountAction.tsx";
+import { AccountDevices } from "./AccountDevices.tsx";
 import styles from "./AccountPage.module.css";
 import { ACCOUNTS_COPY } from "./copy.ts";
+import { Entitlements } from "./Entitlements.tsx";
 import { SetupLink } from "./SetupLink.tsx";
 import {
     giveRole,
@@ -38,6 +40,7 @@ import {
     takeRole,
 } from "./server.ts";
 import { AccountStatusBadge } from "./status.tsx";
+import { untilFrom } from "./until.ts";
 
 const route = getRouteApi("/_admin/admin/accounts/$accountId");
 
@@ -59,16 +62,6 @@ function signInSummary(signIn: Account["signIn"]): string {
         ...(signIn.totp ? [ACCOUNTS_COPY.app] : []),
     ];
     return parts.length === 0 ? ACCOUNTS_COPY.noWayIn : parts.join(" · ");
-}
-
-// The given date, as the start of that day in UTC: a role held "until" it.
-function untilFrom(raw: FormDataEntryValue | null): EpochMs | null {
-    const match = typeof raw === "string" ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw) : null;
-    if (match === null) return null;
-    const parsed = EpochMs.safeParse(
-        Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])),
-    );
-    return parsed.success ? parsed.data : null;
 }
 
 // A role held until a day that has begun would be expired as it's given.
@@ -136,7 +129,7 @@ function GiveRole({
 export function AccountPage() {
     const router = useRouter();
     const staff = useStaffAction();
-    const { account, roles: listedRoles } = route.useLoaderData();
+    const { account, roles: listedRoles, catalog } = route.useLoaderData();
     const roles = listedRoles.ok ? listedRoles.value : [];
     const { session } = useRouteContext({ from: "__root__" });
     const viewer = memberOf(session);
@@ -377,6 +370,12 @@ export function AccountPage() {
                     )
                 ) : null}
             </Section>
+            <Entitlements
+                account={account}
+                catalog={catalog}
+                canIssue={allowed("entitlements:issue")}
+            />
+            <AccountDevices account={account} />
             {account.recentAudit === null ? null : (
                 <Section
                     caption={ACCOUNTS_COPY.recent}

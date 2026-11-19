@@ -62,6 +62,33 @@ export const ACCOUNTS_COPY = {
     setupLink: "setup link",
     shownOnce: "shown once. recover to issue another.",
     replayNoLink: "added earlier. recover to issue a setup link.",
+    entitlements: "entitlements",
+    noEntitlements: "no entitlements.",
+    issue: "issue",
+    issueTitle: (name: string) => `issue an entitlement to ${name}`,
+    product: "product",
+    channels: "channels",
+    features: "features",
+    featuresHint: "empty for all, or tags separated by commas.",
+    allFeatures: "all",
+    from: "from",
+    entitlementState: "state",
+    noChannel: "tick at least one channel.",
+    badFeature: "a tag is letters, digits, dots, dashes or underscores, 64 at most.",
+    unknownProduct: "pick a product.",
+    catalogUnavailable: "the product list didn't load, so nothing can be issued now.",
+    devices: "devices",
+    noDevices: "no pcs.",
+    windowOpen: "can change a pc now.",
+    windowClosed: "next self-service change from",
+} as const;
+
+export const ENTITLEMENT_STATE_COPY = {
+    active: "active",
+    suspended: "suspended",
+    revoked: "revoked",
+    ended: "ended",
+    upcoming: "not started",
 } as const;
 
 export const STATUS_COPY = {

@@ -1,5 +1,8 @@
 export const SHELL_COPY = {
     account: "account",
+    products: "products",
+    devices: "devices",
+    download: "download",
     signIn: "sign in",
     signOut: "sign out",
     menu: (username: string) => `signed in as ${username}`,
