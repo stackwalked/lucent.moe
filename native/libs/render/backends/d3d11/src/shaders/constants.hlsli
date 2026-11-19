@@ -8,8 +8,8 @@
 
 // b0, set once a frame, read by the quad and path vertex shaders and the main pixel shader.
 struct frame_constants {
-    // The target's width and height in pixels; z is 1 when the target's view encodes sRGB, so the
-    // shader writes linear values; w is unused.
+    // The target's width and height in pixels; z is 1 when the target takes linear values (its
+    // view encodes sRGB, or it is scRGB); w is what white is worth there: 1, or scRGB's paper white.
     float4 target;
 };
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <chrono>
 #include <cstddef>
 #include <flat_map>
 #include <optional>
@@ -88,7 +89,7 @@ struct scratch_surface {
 };
 
 // Coverage waiting for the next render, rows tightly packed.
-struct atlas_patch {
+struct pending_patch {
     draw::atlas_page page{};
     draw::pixel_rect area;
     std::vector<std::byte> coverage;
@@ -99,7 +100,26 @@ struct light_readback {
     std::optional<draw::light_key> key;
     // The probe held linear values (an _SRGB target's), to be encoded again.
     bool is_linear = false;
+    // What the target's white was worth, divided out before encoding.
+    f32 white = 1.0F;
     i64 issued = 0;
+};
+
+// One frame's GPU timing in flight: timestamps around the frame inside a disjoint query, which
+// says whether the clock held steady between them and how fast it ran.
+struct timing_queries {
+    Microsoft::WRL::ComPtr<ID3D11Query> disjoint;
+    Microsoft::WRL::ComPtr<ID3D11Query> begin;
+    Microsoft::WRL::ComPtr<ID3D11Query> end;
+    bool is_pending = false;
+};
+
+inline constexpr isize timing_ring_size = 3;
+
+// What a frame did, counted as it is drawn.
+struct frame_counts {
+    isize draw_calls = 0;
+    isize passes = 0;
 };
 
 struct sampled_light {
@@ -119,7 +139,7 @@ struct gpu_state {
     image_slots images;
     // By slot; empty where no image lives.
     std::vector<Microsoft::WRL::ComPtr<ID3D11ShaderResourceView>> image_views;
-    std::vector<atlas_patch> atlas_patches;
+    std::vector<pending_patch> atlas_patches;
     scratch_pool pool;
     // In the pool's order.
     std::vector<scratch_surface> scratch;
@@ -128,6 +148,13 @@ struct gpu_state {
     isize light_cursor = 0;
     std::flat_map<draw::light_key, sampled_light> lights;
     i64 frame = 0;
+
+    // Empty until time_gpu().
+    std::vector<timing_queries> timing;
+    isize timing_cursor = 0;
+    std::optional<std::chrono::nanoseconds> gpu_time;
+    frame_counts counts;
+    i64 stale_image_misses = 0;
 };
 
 // Draws a checked frame into the target, the caller's pipeline state already saved.
@@ -136,5 +163,11 @@ auto draw_frame(gpu_state& gpu, const draw::frame_data& frame, const render_targ
 
 // Takes whatever light readbacks have landed, never waiting on one that hasn't.
 auto collect_light(gpu_state& gpu) -> void;
+
+// The same for GPU timings; a frame the clock was disjoint in is dropped.
+auto collect_timing(gpu_state& gpu) -> void;
+// Bracket a frame in the next ring entry's queries, when timing is on and that entry is free.
+auto begin_timing(gpu_state& gpu) -> void;
+auto end_timing(gpu_state& gpu) -> void;
 
 }

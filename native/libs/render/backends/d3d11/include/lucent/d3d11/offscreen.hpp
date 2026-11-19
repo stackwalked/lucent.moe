@@ -89,8 +89,8 @@ private:
 };
 
 // Resolves an MSAA target, copies it to staging and converts what it holds to 8-bit RGBA: BGRA is
-// swizzled, R10G10B10A2 taken to 8 bits. Stored values come back as they are: an _SRGB target's
-// bytes are already sRGB-encoded.
+// swizzled, R10G10B10A2 taken to 8 bits, scRGB's half floats encoded as sRGB with paper white at
+// 255. Stored values come back as they are: an _SRGB target's bytes are already sRGB-encoded.
 auto read_back(const warp_device& device, const test_target& target) -> result<image>;
 
 auto write_png(const std::filesystem::path& path, const image& pixels) -> result<void>;

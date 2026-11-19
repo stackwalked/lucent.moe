@@ -19,6 +19,7 @@
 #include <lucent/d3d11/offscreen.hpp>
 #include <lucent/d3d11/renderer.hpp>
 #include <lucent/draw/arc.hpp>
+#include <lucent/draw/atlas_patch.hpp>
 #include <lucent/draw/circle.hpp>
 #include <lucent/draw/color.hpp>
 #include <lucent/draw/draw_list.hpp>
@@ -60,7 +61,7 @@ auto target_case_of(std::string_view name, DXGI_FORMAT texture, DXGI_FORMAT view
     };
 }
 
-auto every_target() -> std::array<target_case, 6> {
+auto every_target() -> std::array<target_case, 7> {
     return {
         target_case_of("unorm", DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM, 1),
         target_case_of("srgb", DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, 1),
@@ -71,6 +72,8 @@ auto every_target() -> std::array<target_case, 6> {
         // No alpha to keep: a layer drawn aside still needs one.
         target_case_of("bgrx", DXGI_FORMAT_B8G8R8X8_UNORM, DXGI_FORMAT_B8G8R8X8_UNORM, 1),
         target_case_of("msaa", DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_FORMAT_R8G8B8A8_UNORM, 4),
+        // HDR's linear scRGB, read back as sRGB with paper white at 255: it should match srgb's.
+        target_case_of("scrgb", DXGI_FORMAT_R16G16B16A16_FLOAT, DXGI_FORMAT_R16G16B16A16_FLOAT, 1),
     };
 }
 
@@ -356,13 +359,13 @@ auto atlas_pages(draw::draw_list& list, renderer& drawer) -> void {
     const std::vector<std::byte> disc = disc_coverage();
     const std::vector<std::byte> checker = checker_coverage();
     const std::array uploads{
-        atlas_upload{
+        draw::atlas_patch{
             .page = draw::atlas_page{0},
             .area = {.left = 0, .top = 0, .right = cell, .bottom = cell},
             .coverage = disc,
             .row_pitch = cell,
         },
-        atlas_upload{
+        draw::atlas_patch{
             .page = draw::atlas_page{3},
             .area = {.left = 512, .top = 512, .right = 512 + cell, .bottom = 512 + cell},
             .coverage = checker,

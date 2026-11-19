@@ -43,6 +43,16 @@ constexpr isize first_path_capacity = 4096;
 
 constexpr shared::float4 zero{};
 
+// scRGB: linear values, white at scrgb_paper_white.
+auto is_scrgb(u32 format) -> bool {
+    return static_cast<DXGI_FORMAT>(format) == DXGI_FORMAT_R16G16B16A16_FLOAT;
+}
+
+// What a linear target's 1.0 is worth: scRGB's white sits above 1, an _SRGB target's at it.
+auto white_of(u32 format) -> f32 {
+    return is_scrgb(format) ? scrgb_paper_white : 1.0F;
+}
+
 auto is_srgb(u32 format) -> bool {
     const auto view = static_cast<DXGI_FORMAT>(format);
     return view == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB
@@ -313,8 +323,8 @@ private:
             .target = {
                 static_cast<f32>(m_target.size.width),
                 static_cast<f32>(m_target.size.height),
-                is_srgb(m_target.format) ? 1.0F : 0.0F,
-                0.0F,
+                is_srgb(m_target.format) || is_scrgb(m_target.format) ? 1.0F : 0.0F,
+                white_of(m_target.format),
             },
         };
         LUCENT_TRY(write_buffer(
@@ -419,6 +429,7 @@ private:
         m_context->PSSetShaderResources(2, 1, images.data());
         m_context->RSSetScissorRects(1, &*scissor);
         m_context->DrawInstanced(4, narrow<UINT>(run.count), 0, narrow<UINT>(run.first));
+        ++m_gpu->counts.draw_calls;
         return {};
     }
 
@@ -428,6 +439,7 @@ private:
         }
         const std::optional<isize> slot = m_gpu->images.slot_of(*image);
         if (!slot) {
+            ++m_gpu->stale_image_misses;
             return nullptr;
         }
         return m_gpu->image_views.at(narrow<usize>(*slot)).Get();
@@ -449,6 +461,7 @@ private:
         m_context->PSSetShader(m_objects->programs.main_pixel.Get(), nullptr, 0);
         m_context->RSSetScissorRects(1, &*scissor);
         m_context->Draw(narrow<UINT>(run.count), narrow<UINT>(run.first));
+        ++m_gpu->counts.draw_calls;
         return {};
     }
 
@@ -745,7 +758,8 @@ private:
         );
         m_gpu->light_ring.at(cursor) = {
             .key = key,
-            .is_linear = is_srgb(m_target.format),
+            .is_linear = is_srgb(m_target.format) || is_scrgb(m_target.format),
+            .white = white_of(m_target.format),
             .issued = m_gpu->frame,
         };
         m_gpu->light_cursor = (m_gpu->light_cursor + 1) % light_ring_size;
@@ -772,6 +786,8 @@ private:
         const std::array sources{pass.source};
         m_context->PSSetShaderResources(3, 1, sources.data());
         m_context->Draw(4, 0);
+        ++m_gpu->counts.draw_calls;
+        ++m_gpu->counts.passes;
         return {};
     }
 
@@ -916,7 +932,8 @@ auto average_light(const D3D11_MAPPED_SUBRESOURCE& mapped, const light_readback&
         }
     }
     const auto encode = [&readback](f64 total) {
-        const f64 mean = total / static_cast<f64>(light_probe_size * light_probe_size);
+        const f64 mean = total / static_cast<f64>(light_probe_size * light_probe_size)
+                         / static_cast<f64>(readback.white);
         f32 value = std::isfinite(mean) ? std::clamp(static_cast<f32>(mean), 0.0F, 1.0F) : 0.0F;
         value = readback.is_linear ? encoded_srgb(value) : value;
         return narrow<u8>(static_cast<i32>(std::lround(value * 255.0F)));
@@ -929,6 +946,7 @@ auto average_light(const D3D11_MAPPED_SUBRESOURCE& mapped, const light_readback&
 auto draw_frame(gpu_state& gpu, const draw::frame_data& frame, const render_target& target)
     -> result<void> {
     LUCENT_INVARIANT(gpu.objects.has_value());
+    gpu.counts = {};
     frame_pass pass{gpu, *gpu.objects, frame, target};
     return pass.run();
 }
@@ -962,6 +980,64 @@ auto collect_light(gpu_state& gpu) -> void {
             );
         }
     }
+}
+
+}
+
+namespace lucent::d3d11 {
+
+auto collect_timing(gpu_state& gpu) -> void {
+    for (timing_queries& queries : gpu.timing) {
+        if (!queries.is_pending) {
+            continue;
+        }
+        D3D11_QUERY_DATA_TIMESTAMP_DISJOINT clock{};
+        const auto no_flush = static_cast<UINT>(D3D11_ASYNC_GETDATA_DONOTFLUSH);
+        if (gpu.context->GetData(queries.disjoint.Get(), &clock, sizeof(clock), no_flush) != S_OK) {
+            continue;
+        }
+        u64 began = 0;
+        u64 ended = 0;
+        const bool has_times =
+            gpu.context->GetData(queries.begin.Get(), &began, sizeof(began), no_flush) == S_OK
+            && gpu.context->GetData(queries.end.Get(), &ended, sizeof(ended), no_flush) == S_OK;
+        if (!has_times) {
+            continue;
+        }
+        queries.is_pending = false;
+        if (clock.Disjoint != FALSE || clock.Frequency == 0 || ended < began) {
+            continue;
+        }
+        const f64 seconds = static_cast<f64>(ended - began) / static_cast<f64>(clock.Frequency);
+        gpu.gpu_time = std::chrono::nanoseconds{static_cast<i64>(seconds * 1e9)};
+    }
+}
+
+auto begin_timing(gpu_state& gpu) -> void {
+    if (gpu.timing.empty()) {
+        return;
+    }
+    const timing_queries& queries = gpu.timing.at(narrow<usize>(gpu.timing_cursor));
+    // Still in flight from a ring's worth of frames ago: this frame goes untimed.
+    if (queries.is_pending) {
+        return;
+    }
+    gpu.context->Begin(queries.disjoint.Get());
+    gpu.context->End(queries.begin.Get());
+}
+
+auto end_timing(gpu_state& gpu) -> void {
+    if (gpu.timing.empty()) {
+        return;
+    }
+    timing_queries& queries = gpu.timing.at(narrow<usize>(gpu.timing_cursor));
+    if (queries.is_pending) {
+        return;
+    }
+    gpu.context->End(queries.end.Get());
+    gpu.context->End(queries.disjoint.Get());
+    queries.is_pending = true;
+    gpu.timing_cursor = (gpu.timing_cursor + 1) % std::ssize(gpu.timing);
 }
 
 }

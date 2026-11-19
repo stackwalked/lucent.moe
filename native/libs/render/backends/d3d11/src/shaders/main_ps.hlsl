@@ -133,9 +133,10 @@ float4 main(pixel_input input) : SV_Target {
     float4 color = input.record == path_record ? premultiplied(input.color)
                                                : shade(records[input.record], input.pixel);
     color *= mask_of(input.pixel);
-    // An _SRGB target blends linear values and encodes them itself.
+    // An _SRGB target blends linear values and encodes them itself; an scRGB one blends linear
+    // values with white at its paper white.
     if (frame.target.z > 0.5f && color.a > 0.0f) {
-        color.rgb = linear_from_srgb(color.rgb / color.a) * color.a;
+        color.rgb = linear_from_srgb(color.rgb / color.a) * color.a * frame.target.w;
     }
     return color;
 }

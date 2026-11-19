@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstddef>
 #include <cstdlib>
 #include <optional>
@@ -20,6 +21,7 @@
 #include <lucent/draw/color.hpp>
 #include <lucent/draw/draw_list.hpp>
 #include <lucent/draw/frame_data.hpp>
+#include <lucent/draw/image_quad.hpp>
 #include <lucent/draw/layer.hpp>
 #include <lucent/draw/paint.hpp>
 #include <lucent/draw/rounded_rect.hpp>
@@ -122,8 +124,10 @@ TEST_CASE("a frame that fails its check is refused whole and draws nothing") {
     CHECK(is_filled_with(*pixels, backdrop));
 }
 
-TEST_CASE("an HDR target is refused as unsupported") {
-    result<bench> made = bench_on(DXGI_FORMAT_R16G16B16A16_FLOAT);
+// Whether a 10-bit swap chain is HDR10 or SDR is the game's colour space, which the renderer can't
+// see: drawing gamma values into PQ would come out wrong without failing.
+TEST_CASE("a 10-bit target, HDR10 or not, is refused as unsupported") {
+    result<bench> made = bench_on(DXGI_FORMAT_R10G10B10A2_UNORM);
     REQUIRE(made.has_value());
     const draw::draw_list list = filled_list();
 
@@ -198,6 +202,57 @@ TEST_CASE("a layer's sampled light is reported once a later frame finds its read
     REQUIRE(light.has_value());
     CHECK(is_near(light.value_or(draw::transparent), ink));
     CHECK(made->drawer.sampled_light(draw::light_key{4}) == std::nullopt);
+}
+
+// The dev build's frame stats judge the overlay's cost; counts that drifted from what was drawn
+// would mislead whoever tunes it.
+auto layered_list() -> draw::draw_list {
+    draw::draw_list list = filled_list();
+    list.push_layer({
+        .bounds = {.min = {.x = 4, .y = 4}, .max = {.x = 28, .y = 28}},
+        .radius = 0,
+        .opacity = 1,
+        .blur = 2,
+        .rim = 0,
+        .light = std::nullopt,
+    });
+    list.pop_layer();
+    list.draw(
+        draw::image_quad{
+            .image = draw::image_handle{12'345},
+            .bounds = {.min = {.x = 0, .y = 0}, .max = {.x = 8, .y = 8}},
+        }
+    );
+    return list;
+}
+
+auto rendered_frames(bench& made, const draw::draw_list& list, isize frames) -> bool {
+    for (isize frame = 0; frame < frames; ++frame) {
+        if (!made.drawer.render(list.frame(), made.target.as_render_target())) {
+            return false;
+        }
+        finish_gpu_work(made.device);
+    }
+    return true;
+}
+
+TEST_CASE("stats count a frame's draws and passes, and every stale image drawn") {
+    result<bench> made = bench_on(DXGI_FORMAT_R8G8B8A8_UNORM);
+    REQUIRE(made.has_value());
+    REQUIRE(rendered_frames(*made, layered_list(), 4));
+    const renderer_stats seen = made->drawer.stats();
+    CHECK(seen.passes > 0);
+    CHECK(seen.draw_calls > seen.passes);
+    CHECK(seen.stale_image_misses == 4);
+    CHECK_FALSE(seen.gpu_time.has_value());
+}
+
+TEST_CASE("a renderer timing the GPU reports a frame's time once its timestamps are back") {
+    result<bench> made = bench_on(DXGI_FORMAT_R8G8B8A8_UNORM);
+    REQUIRE(made.has_value());
+    REQUIRE(made->drawer.time_gpu().has_value());
+    REQUIRE(rendered_frames(*made, layered_list(), 4));
+    CHECK(made->drawer.stats().gpu_time.value_or(std::chrono::nanoseconds{0}).count() > 0);
 }
 
 }

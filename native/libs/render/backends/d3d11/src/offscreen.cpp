@@ -25,6 +25,7 @@
 #include <lucent/d3d11/renderer.hpp>
 #include <lucent/draw/color.hpp>
 #include <lucent/draw/frame_data.hpp>
+#include <lucent/draw/half.hpp>
 
 namespace lucent::d3d11::testing {
 namespace {
@@ -104,7 +105,14 @@ enum class texel_layout : u8 {
     // The X byte is undefined: the texel is opaque whatever it holds.
     bgrx8,
     rgb10a2,
+    // Half floats, linear scRGB: white at scrgb_paper_white.
+    rgba16f,
 };
+
+// The bytes one texel of layout takes.
+auto texel_bytes(texel_layout layout) -> isize {
+    return layout == texel_layout::rgba16f ? 8 : 4;
+}
 
 auto layout_of(u32 view_format) -> result<texel_layout> {
     const auto format = static_cast<DXGI_FORMAT>(view_format);
@@ -120,6 +128,9 @@ auto layout_of(u32 view_format) -> result<texel_layout> {
     if (format == DXGI_FORMAT_R10G10B10A2_UNORM) {
         return texel_layout::rgb10a2;
     }
+    if (format == DXGI_FORMAT_R16G16B16A16_FLOAT) {
+        return texel_layout::rgba16f;
+    }
     return std::unexpected(error{.code = error_code::unsupported});
 }
 
@@ -127,7 +138,43 @@ auto ten_bits_to_8(u32 value) -> std::byte {
     return static_cast<std::byte>((((value & 0x3ffU) * 255U) + 511U) / 1023U);
 }
 
-auto rgba_of(std::array<std::byte, 4> texel, texel_layout layout) -> std::array<std::byte, 4> {
+auto encoded_srgb(f32 linear) -> f32 {
+    if (linear <= 0.0031308F) {
+        return linear * 12.92F;
+    }
+    return (1.055F * std::pow(linear, 1.0F / 2.4F)) - 0.055F;
+}
+
+auto unorm_byte(f32 value) -> std::byte {
+    const f32 kept = std::isfinite(value) ? std::clamp(value, 0.0F, 1.0F) : 0.0F;
+    return static_cast<std::byte>(std::lround(kept * 255.0F));
+}
+
+// scRGB to 8-bit sRGB: paper white to 255, anything brighter clipped.
+auto rgba_of_scrgb(std::span<const std::byte> texel) -> std::array<std::byte, 4> {
+    std::array<f32, 4> channels{};
+    for (const auto [channel, half] : std::views::zip(channels, texel | std::views::chunk(2))) {
+        std::array<std::byte, 2> bits{};
+        std::ranges::copy(half, bits.begin());
+        channel = draw::from_half(std::bit_cast<u16>(bits));
+    }
+    const auto encoded = [](f32 premultiplied) {
+        return unorm_byte(encoded_srgb(std::max(premultiplied / scrgb_paper_white, 0.0F)));
+    };
+    return {
+        encoded(channels[0]),
+        encoded(channels[1]),
+        encoded(channels[2]),
+        unorm_byte(channels[3]),
+    };
+}
+
+auto rgba_of(std::span<const std::byte> bytes, texel_layout layout) -> std::array<std::byte, 4> {
+    if (layout == texel_layout::rgba16f) {
+        return rgba_of_scrgb(bytes);
+    }
+    std::array<std::byte, 4> texel{};
+    std::ranges::copy(bytes, texel.begin());
     switch (layout) {
     case texel_layout::rgba8:
         return {texel[0], texel[1], texel[2], texel[3]};
@@ -145,6 +192,8 @@ auto rgba_of(std::array<std::byte, 4> texel, texel_layout layout) -> std::array<
             static_cast<std::byte>((packed >> 30U) * 85U),
         };
     }
+    case texel_layout::rgba16f:
+        LUCENT_UNREACHABLE();
     }
     LUCENT_UNREACHABLE();
 }
@@ -194,12 +243,10 @@ auto converted(
     pixels.rgba.reserve(narrow<usize>(pixel_count(size) * bytes_per_pixel));
     for (const isize row : std::views::iota(isize{0}, isize{size.height})) {
         const std::span<const std::byte> texels = mapped.subspan(
-            narrow<usize>(row * row_pitch), narrow<usize>(size.width * bytes_per_pixel)
+            narrow<usize>(row * row_pitch), narrow<usize>(size.width * texel_bytes(layout))
         );
-        for (const auto chunk : texels | std::views::chunk(bytes_per_pixel)) {
-            std::array<std::byte, 4> texel{};
-            std::ranges::copy(chunk, texel.begin());
-            pixels.rgba.append_range(rgba_of(texel, layout));
+        for (const auto chunk : texels | std::views::chunk(texel_bytes(layout))) {
+            pixels.rgba.append_range(rgba_of(chunk, layout));
         }
     }
     return pixels;
@@ -345,8 +392,13 @@ auto test_target::as_render_target() const -> render_target {
 auto test_target::clear(draw::color straight_srgb) -> void {
     // An _SRGB view encodes what it is given, so it is given the colour decoded; a UNORM view
     // stores it as it is.
+    // An scRGB view is given it linear, white at paper white.
+    const bool is_scrgb = m_spec.view_format == static_cast<u32>(DXGI_FORMAT_R16G16B16A16_FLOAT);
     const bool is_encoding = is_srgb(m_spec.view_format);
-    const auto channel = [is_encoding](u8 value) {
+    const auto channel = [is_encoding, is_scrgb](u8 value) {
+        if (is_scrgb) {
+            return linear_from_srgb(value) * scrgb_paper_white;
+        }
         return is_encoding ? linear_from_srgb(value) : unorm(value);
     };
     const std::array<f32, 4> value{
@@ -367,7 +419,7 @@ auto read_back(const warp_device& device, const test_target& target) -> result<i
     LUCENT_TRY(succeeded(device.context()->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped)));
     const auto row_pitch = isize{mapped.RowPitch};
     const isize mapped_size =
-        (row_pitch * (held.size.height - 1)) + (isize{held.size.width} * bytes_per_pixel);
+        (row_pitch * (held.size.height - 1)) + (isize{held.size.width} * texel_bytes(layout));
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wunsafe-buffer-usage-in-container" // Map's rows, pitch apart
     const std::span<const std::byte> bytes{

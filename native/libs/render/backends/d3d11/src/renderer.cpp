@@ -24,6 +24,7 @@
 
 #include "gpu_state.hpp"
 #include "image_slots.hpp"
+#include "lucent/draw/atlas_patch.hpp"
 #include "pipeline_guard.hpp"
 
 namespace lucent::d3d11 {
@@ -70,7 +71,7 @@ auto premultiplied(const image_pixels& pixels) -> std::vector<std::byte> {
     return out;
 }
 
-auto is_valid(const atlas_upload& upload) -> bool {
+auto is_valid(const draw::atlas_patch& upload) -> bool {
     const draw::pixel_rect& area = upload.area;
     const isize width = area.right - area.left;
     const isize height = area.bottom - area.top;
@@ -84,10 +85,10 @@ auto is_valid(const atlas_upload& upload) -> bool {
            && is_covered(upload.coverage, upload.row_pitch, width, height);
 }
 
-auto packed(const atlas_upload& upload) -> atlas_patch {
+auto packed(const draw::atlas_patch& upload) -> pending_patch {
     const isize width = upload.area.right - upload.area.left;
     const isize height = upload.area.bottom - upload.area.top;
-    atlas_patch patch{.page = upload.page, .area = upload.area, .coverage = {}};
+    pending_patch patch{.page = upload.page, .area = upload.area, .coverage = {}};
     patch.coverage.reserve(narrow<usize>(width * height));
     for (const isize row : std::views::iota(isize{0}, height)) {
         patch.coverage.append_range(
@@ -99,7 +100,7 @@ auto packed(const atlas_upload& upload) -> atlas_patch {
 
 auto apply_atlas_patches(gpu_state& gpu) -> void {
     LUCENT_INVARIANT(gpu.objects.has_value());
-    for (const atlas_patch& patch : gpu.atlas_patches) {
+    for (const pending_patch& patch : gpu.atlas_patches) {
         const D3D11_BOX box{
             .left = narrow<UINT>(patch.area.left),
             .top = narrow<UINT>(patch.area.top),
@@ -121,8 +122,9 @@ auto apply_atlas_patches(gpu_state& gpu) -> void {
     gpu.atlas_patches.clear();
 }
 
-// The view formats a render may target: 8-bit SDR, gamma (UNORM) or encoding (_SRGB). HDR
-// targets (scRGB, HDR10) are refused until their paper-white path exists.
+// The view formats a render may target: 8-bit SDR, gamma (UNORM) or encoding (_SRGB), and scRGB.
+// A 10-bit target is HDR10 or SDR by the colour space the game gave its swap chain, which only the
+// game knows: refused until a game's glue says which.
 auto is_supported(u32 format) -> bool {
     const auto view = static_cast<DXGI_FORMAT>(format);
     return view == DXGI_FORMAT_R8G8B8A8_UNORM
@@ -130,7 +132,8 @@ auto is_supported(u32 format) -> bool {
            || view == DXGI_FORMAT_B8G8R8A8_UNORM
            || view == DXGI_FORMAT_B8G8R8A8_UNORM_SRGB
            || view == DXGI_FORMAT_B8G8R8X8_UNORM
-           || view == DXGI_FORMAT_B8G8R8X8_UNORM_SRGB;
+           || view == DXGI_FORMAT_B8G8R8X8_UNORM_SRGB
+           || view == DXGI_FORMAT_R16G16B16A16_FLOAT;
 }
 
 auto is_same_size(draw::pixel_size left, draw::pixel_size right) -> bool {
@@ -201,10 +204,14 @@ auto renderer::render(const draw::frame_data& frame, const render_target& target
     for (const isize evicted : gpu.pool.next_frame()) {
         gpu.scratch.erase(gpu.scratch.begin() + evicted);
     }
+    collect_timing(gpu);
     gpu.frame += 1;
     apply_atlas_patches(gpu);
     const pipeline_guard saved{gpu.context.Get()};
-    return draw_frame(gpu, frame, target);
+    begin_timing(gpu);
+    const result<void> drawn = draw_frame(gpu, frame, target);
+    end_timing(gpu);
+    return drawn;
 }
 
 auto renderer::create_image(const image_pixels& pixels) -> result<draw::image_handle> {
@@ -268,9 +275,9 @@ auto renderer::destroy_image(draw::image_handle image) -> void {
     gpu.images.release(image);
 }
 
-auto renderer::upload_atlas(std::span<const atlas_upload> uploads) -> void {
+auto renderer::upload_atlas(std::span<const draw::atlas_patch> patches) -> void {
     gpu_state& gpu = m_resources->gpu;
-    for (const atlas_upload& upload : uploads) {
+    for (const draw::atlas_patch& upload : patches) {
         LUCENT_INVARIANT(is_valid(upload));
         gpu.atlas_patches.push_back(packed(upload));
     }
@@ -283,6 +290,46 @@ auto renderer::sampled_light(draw::light_key key) const -> std::optional<draw::c
         return std::nullopt;
     }
     return found->second.light;
+}
+
+}
+
+namespace lucent::d3d11 {
+
+auto renderer::time_gpu() -> result<void> {
+    LUCENT_INVARIANT(state() == renderer_state::ready);
+    gpu_state& gpu = m_resources->gpu;
+    if (!gpu.timing.empty()) {
+        return {};
+    }
+    const auto query = [&gpu](D3D11_QUERY kind) -> result<ComPtr<ID3D11Query>> {
+        const D3D11_QUERY_DESC description{.Query = kind, .MiscFlags = 0};
+        ComPtr<ID3D11Query> made;
+        LUCENT_TRY(checked(gpu.device->CreateQuery(&description, made.GetAddressOf())));
+        return made;
+    };
+    std::vector<timing_queries> ring;
+    ring.reserve(narrow<usize>(timing_ring_size));
+    for (isize entry = 0; entry < timing_ring_size; ++entry) {
+        ring.push_back({
+            .disjoint = LUCENT_TRY(query(D3D11_QUERY_TIMESTAMP_DISJOINT)),
+            .begin = LUCENT_TRY(query(D3D11_QUERY_TIMESTAMP)),
+            .end = LUCENT_TRY(query(D3D11_QUERY_TIMESTAMP)),
+            .is_pending = false,
+        });
+    }
+    gpu.timing = std::move(ring);
+    return {};
+}
+
+auto renderer::stats() const -> renderer_stats {
+    const gpu_state& gpu = m_resources->gpu;
+    return {
+        .draw_calls = gpu.counts.draw_calls,
+        .passes = gpu.counts.passes,
+        .gpu_time = gpu.gpu_time,
+        .stale_image_misses = gpu.stale_image_misses,
+    };
 }
 
 }
