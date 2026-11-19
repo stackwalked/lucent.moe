@@ -7,6 +7,7 @@ lucent_module(cs2
         $<$<CONFIG:Debug>:src/dev_boot.cpp>
         $<$<CONFIG:Debug>:src/overlay/dev_demo.cpp>
         src/attach.cpp
+        src/features/all.cpp
         src/foreign/entities.cpp
         src/foreign/view.cpp
         src/overlay/dxgi_present.cpp
