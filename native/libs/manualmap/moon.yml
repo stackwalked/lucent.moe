@@ -4,4 +4,4 @@ project:
 language: "cpp"
 layer: "library"
 
-dependsOn: ["core", "os", "pe"]
+dependsOn: ["core", "os", "pe", "wire"]

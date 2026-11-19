@@ -24,6 +24,7 @@
 #include <lucent/pe/relocations.hpp>
 #include <lucent/pe/runtime_functions.hpp>
 #include <lucent/pe/tls.hpp>
+#include <lucent/wire/container.hpp>
 
 #include "image_bytes.hpp"
 #include "imports.hpp"
@@ -34,6 +35,9 @@ namespace {
 
 constexpr error malformed{.code = error_code::malformed};
 constexpr error unsupported{.code = error_code::unsupported};
+
+// RUNTIME_FUNCTION: begin, end and unwind info, three u32s.
+constexpr u32 runtime_function_size = 12;
 
 // DllMain returned FALSE. The Windows loader reports this to its caller as this system code.
 constexpr u32 error_dll_init_failed = 1114;
@@ -91,11 +95,10 @@ auto rtl_pc_slot_rvas(const pe::image_view& image) -> result<std::vector<u32>> {
 //         function returns null and type matching uses base 0)
 auto install_rtl_pc_trampoline(
     const os::process& target,
-    const pe::image_view& image,
+    std::span<const u32> slot_rvas,
     std::span<std::byte> local,
     uptr image_base
 ) -> result<std::optional<os::remote_region>> {
-    const std::vector<u32> slot_rvas = LUCENT_TRY(rtl_pc_slot_rvas(image));
     if (slot_rvas.empty()) {
         return std::nullopt;
     }
@@ -110,7 +113,7 @@ auto install_rtl_pc_trampoline(
     const std::span<const std::byte> bytes =
         std::as_bytes(std::span{detail::rtl_pc_trampoline_bytes});
     std::ranges::copy(bytes, trampoline.begin());
-    const u64 image_end = u64{image_base} + image.size_of_image();
+    const u64 image_end = u64{image_base} + local.size();
     const auto base_bytes = std::bit_cast<std::array<std::byte, 8>>(u64{image_base});
     const auto end_bytes = std::bit_cast<std::array<std::byte, 8>>(image_end);
     const auto original_bytes = std::bit_cast<std::array<std::byte, 8>>(real_address);
@@ -141,6 +144,72 @@ auto protect_sections(os::remote_region& region, const pe::image_view& image) ->
     return {};
 }
 
+auto page_access_of(wire::section_access access) -> os::page_access {
+    switch (access) {
+    case wire::section_access::read:
+        return os::page_access::read;
+    case wire::section_access::read_write:
+        return os::page_access::read_write;
+    case wire::section_access::read_execute:
+        return os::page_access::read_execute;
+    }
+    LUCENT_UNREACHABLE();
+}
+
+// Sections get their access; the pages between and around them, where a PE image keeps its
+// headers and discardable sections, get none.
+auto protect_container(os::remote_region& region, const wire::container& image) -> result<void> {
+    usize cursor = 0;
+    for (const wire::container_section& section : image.sections) {
+        if (section.rva > cursor) {
+            LUCENT_TRY(region.protect(
+                {.offset = cursor, .size = section.rva - cursor}, os::page_access::none
+            ));
+        }
+        LUCENT_TRY(region.protect(
+            {.offset = section.rva, .size = section.mapped_size}, page_access_of(section.access)
+        ));
+        cursor = usize{section.rva} + section.mapped_size;
+    }
+    if (image.image_size > cursor) {
+        LUCENT_TRY(region.protect(
+            {.offset = cursor, .size = image.image_size - cursor}, os::page_access::none
+        ));
+    }
+    return {};
+}
+
+// The container's sections at their RVAs, zeros elsewhere: the image before relocation.
+auto container_layout(const wire::container& image) -> std::vector<std::byte> {
+    std::vector<std::byte> local(image.image_size);
+    for (const wire::container_section& section : image.sections) {
+        std::ranges::copy(section.data, local.begin() + narrow<isize>(section.rva));
+    }
+    return local;
+}
+
+// Container slots hold offsets from the base; the image's addresses are those plus the base.
+auto apply_container_relocations(
+    const wire::container& image, std::span<std::byte> local, uptr base
+) -> result<void> {
+    for (const u32 slot : image.relocations) {
+        const u64 offset = LUCENT_TRY(detail::read_u64(local, slot));
+        LUCENT_TRY(detail::write_u64(local, slot, offset + base));
+    }
+    return {};
+}
+
+auto container_rtl_pc_slots(const wire::container& image) -> std::vector<u32> {
+    const u64 wanted = wire::import_hash(image.imports_key, "RtlPcToFileHeader");
+    std::vector<u32> slots;
+    for (const wire::container_import& entry : image.imports) {
+        if (entry.function_hash == wanted) {
+            slots.push_back(entry.slot_rva);
+        }
+    }
+    return slots;
+}
+
 // ntdll is at the same base in every process of a boot (ASLR picks it once per boot), just as
 // kernel32 is in os/src/remote_call.cpp: the address we read here is its address in the target too.
 auto ntdll_address(const char* name) -> result<uptr> {
@@ -165,8 +234,9 @@ auto map(const os::process& target, std::span<const std::byte> image_file) -> re
     std::vector<std::byte> local = LUCENT_TRY(pe::to_mapped_layout(image));
     LUCENT_TRY(apply_relocations(image, local, base));
     LUCENT_TRY(detail::bind_imports(target, image, local));
+    const std::vector<u32> rtl_pc_slots = LUCENT_TRY(rtl_pc_slot_rvas(image));
     std::optional<os::remote_region> trampolines =
-        LUCENT_TRY(install_rtl_pc_trampoline(target, image, local, base));
+        LUCENT_TRY(install_rtl_pc_trampoline(target, rtl_pc_slots, local, base));
     LUCENT_TRY(image_region.write(0, local));
     LUCENT_TRY(protect_sections(image_region, image));
 
@@ -181,6 +251,28 @@ auto map(const os::process& target, std::span<const std::byte> image_file) -> re
         .entry_point = entry_absolute,
         .exception_table = exception_absolute,
         .exception_count = exception_entries,
+    };
+}
+
+auto map_container(const os::process& target, const wire::container& image) -> result<mapped> {
+    LUCENT_INVARIANT(wire::is_canonical(image));
+    os::remote_region image_region = LUCENT_TRY(
+        os::remote_region::allocate(target, image.image_size, os::page_access::read_write)
+    );
+    const uptr base = image_region.base();
+    std::vector<std::byte> local = container_layout(image);
+    LUCENT_TRY(apply_container_relocations(image, local, base));
+    LUCENT_TRY(detail::bind_hashed_imports(target, image, local));
+    std::optional<os::remote_region> trampolines =
+        LUCENT_TRY(install_rtl_pc_trampoline(target, container_rtl_pc_slots(image), local, base));
+    LUCENT_TRY(image_region.write(0, local));
+    LUCENT_TRY(protect_container(image_region, image));
+    return mapped{
+        .image = std::move(image_region),
+        .trampolines = std::move(trampolines),
+        .entry_point = image.entry_rva == 0 ? 0 : base + image.entry_rva,
+        .exception_table = image.pdata_size == 0 ? 0 : base + image.pdata_rva,
+        .exception_count = image.pdata_size / runtime_function_size,
     };
 }
 

@@ -6,6 +6,7 @@
 
 #include <lucent/os/process.hpp>
 #include <lucent/os/remote_memory.hpp>
+#include <lucent/wire/container.hpp>
 
 namespace lucent::manualmap {
 
@@ -25,6 +26,13 @@ struct mapped {
 // applied, imports resolved (loading libraries the process lacks), section protections set. None
 // of the image's code runs. Fails with error_code::unsupported for an image with a TLS directory.
 auto map(const os::process& target, std::span<const std::byte> image_file) -> result<mapped>;
+
+// Maps a container (wire/container.hpp) the same way: sections at a fresh base with their access
+// and no access between them, relocation slots given the base, hashed imports resolved against
+// the target's modules or System32's (loading those it lacks). The relocation list and the
+// imports never reach the target. None of the image's code runs. The container's .pdata is in
+// the result for attach to register.
+auto map_container(const os::process& target, const wire::container& image) -> result<mapped>;
 
 // Runs the image's entry point for DLL_PROCESS_ATTACH, as the loader would: registers .pdata so x64
 // unwinding works, then calls the CRT's initializer and DllMain. `reserved` becomes DllMain's third
