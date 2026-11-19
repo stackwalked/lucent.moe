@@ -2,10 +2,12 @@
 # header is no part of any other configuration's header set, and refuses to compile there.
 lucent_library(kit
     HEADERS
+        include/lucent/kit/bind.hpp
         include/lucent/kit/boot_info.hpp
         include/lucent/kit/canvas.hpp
         include/lucent/kit/capability.hpp
         include/lucent/kit/clock.hpp
+        include/lucent/kit/config_store.hpp
         include/lucent/kit/context.hpp
         include/lucent/kit/core_capabilities.hpp
         include/lucent/kit/dev_build.hpp
@@ -21,6 +23,9 @@ lucent_library(kit
         include/lucent/kit/handoff.hpp
         include/lucent/kit/hook.hpp
         include/lucent/kit/lifecycle.hpp
+        include/lucent/kit/memory_storage.hpp
+        include/lucent/kit/profile.hpp
+        include/lucent/kit/profile_storage.hpp
         include/lucent/kit/published.hpp
         include/lucent/kit/raw.hpp
         include/lucent/kit/read_access.hpp
@@ -35,6 +40,7 @@ lucent_library(kit
     SOURCES
         src/capability_section.cpp
         src/clock.cpp
+        src/config_store.cpp
         src/core_capabilities.cpp
         $<$<CONFIG:Debug>:src/dev_channel.cpp>
         $<$<CONFIG:Debug>:src/dev_facts.cpp>
@@ -48,6 +54,7 @@ lucent_library(kit
         src/hook.cpp
         src/late_modules.cpp
         src/lifecycle.cpp
+        src/memory_storage.cpp
         src/raw.cpp
         src/registry.cpp
         src/release.cpp
@@ -66,6 +73,7 @@ lucent_test(kit
         tests/access_test.cpp
         tests/capability_test.cpp
         tests/clock_test.cpp
+        tests/config_store_test.cpp
         tests/context_test.cpp
         tests/core_capabilities_test.cpp
         tests/fact_apply_test.cpp

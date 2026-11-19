@@ -72,6 +72,8 @@ enum class feature_state : u8 {
     on,
     // It faulted, and stays stopped until a person resets it.
     failed,
+    // It was on when the lease lapsed: stopped until the lease resumes, then on again.
+    lapsed,
 };
 
 // What a domain hands features: a view (plain values for this tick) or a stage token, each naming

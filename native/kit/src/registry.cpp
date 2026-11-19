@@ -1,6 +1,7 @@
 #include <lucent/kit/registry.hpp>
 
 #include <algorithm>
+#include <array>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -11,6 +12,7 @@
 #include <lucent/core/contain.hpp>
 #include <lucent/core/match.hpp>
 #include <lucent/core/stdx/function_ref.hpp>
+#include <lucent/kit/bind.hpp>
 #include <lucent/kit/canvas.hpp>
 #include <lucent/kit/clock.hpp>
 #include <lucent/kit/dev_build.hpp>
@@ -54,8 +56,10 @@ auto registry::adopt(wiring wired) -> std::vector<wired_feature> {
                 .entry = std::move(entry),
                 .stats = feature_stats{.runs = 0, .skips = 0, .faults = 0, .busy = {}},
                 .is_enabled = false,
-                .is_failed = false,
                 .is_available = is_available,
+                .failure = std::nullopt,
+                .bind = bind_slot{.mode = bind_mode::always, .key = std::nullopt},
+                .is_toggled = false,
             }
         );
     }
@@ -105,6 +109,20 @@ auto registry::safe_point() -> void {
     }
 }
 
+auto registry::feed(const key_input& keys) -> void {
+    for (const key_change& changed : keys.changes) {
+        const bool was_down = is_held(changed.key);
+        m_held.at(std::to_underlying(changed.key)) = changed.is_down;
+        if (changed.is_down && !was_down) {
+            press(changed.key);
+        }
+        if (changed.is_down != was_down) {
+            // A hold bind's activity follows the key; the snapshot says so from the safe point.
+            m_is_stale = true;
+        }
+    }
+}
+
 auto registry::dispatch(const view_set& parts) -> void {
     run_each([&parts](detail::feature_entry& entry) { return entry.tick(parts); });
 }
@@ -117,7 +135,7 @@ auto registry::draw(const view_set& parts, canvas& onto) -> void {
 // twice a frame.
 auto registry::run_each(stdx::function_ref<tick_outcome(detail::feature_entry&)> run) -> void {
     for (wired_feature& wired : m_features) {
-        if (state_of(wired) != feature_state::on) {
+        if (!is_active(wired)) {
             continue;
         }
         const clock::time_point started = m_clock->now();
@@ -125,7 +143,7 @@ auto registry::run_each(stdx::function_ref<tick_outcome(detail::feature_entry&)>
         const contained<void> ran = contain([&] { outcome = run(*wired.entry); });
         wired.stats.busy += m_clock->now() - started;
         if (!ran) {
-            wired.is_failed = true;
+            wired.failure = feature_failure{.builds = m_builds};
             ++wired.stats.faults;
             m_is_stale = true;
             if constexpr (is_dev_build) {
@@ -181,10 +199,44 @@ auto registry::state_of(const wired_feature& wired) const -> feature_state {
     if (!is_entitled(m_entitled, wired.entry->id())) {
         return feature_state::unentitled;
     }
-    if (wired.is_failed) {
+    if (wired.failure) {
         return feature_state::failed;
     }
-    return wired.is_enabled ? feature_state::on : feature_state::off;
+    if (!wired.is_enabled) {
+        return feature_state::off;
+    }
+    return m_is_lapsed ? feature_state::lapsed : feature_state::on;
+}
+
+auto registry::is_active(const wired_feature& wired) const -> bool {
+    if (state_of(wired) != feature_state::on) {
+        return false;
+    }
+    switch (wired.bind.mode) {
+    case bind_mode::always:
+        return true;
+    case bind_mode::hold:
+        return wired.bind.key.has_value() && is_held(*wired.bind.key);
+    case bind_mode::toggle:
+        return wired.is_toggled;
+    }
+    LUCENT_UNREACHABLE();
+}
+
+auto registry::is_held(input_key key) const -> bool {
+    return m_held.at(std::to_underlying(key));
+}
+
+auto registry::press(input_key key) -> void {
+    for (wired_feature& wired : m_features) {
+        if (wired.bind.mode != bind_mode::toggle
+            || wired.bind.key != key
+            || state_of(wired) != feature_state::on) {
+            continue;
+        }
+        wired.is_toggled = !wired.is_toggled;
+        m_is_stale = true;
+    }
 }
 
 auto registry::is_applicable(const registry_change& change) const -> bool {
@@ -193,6 +245,7 @@ auto registry::is_applicable(const registry_change& change) const -> bool {
         [this](const enable_feature& enabled) { return find(enabled.feature) != nullptr; },
         [this](const disable_feature& disabled) { return find(disabled.feature) != nullptr; },
         [this](const reset_feature& reset) { return find(reset.feature) != nullptr; },
+        [this](const change_bind& changed) { return find(changed.feature) != nullptr; },
         [this](const change_setting& changed) {
             const wired_feature* const wired = find(changed.feature);
             if (wired == nullptr) {
@@ -203,7 +256,10 @@ auto registry::is_applicable(const registry_change& change) const -> bool {
                 std::ranges::find(described, changed.setting, &setting_description::id);
             return setting != described.end() && is_valid(*setting, changed.value);
         },
-        [](const replace_entitlements&) { return true; }
+        [](const replace_entitlements&) { return true; },
+        [](const lapse_lease&) { return true; },
+        [](const resume_lease&) { return true; },
+        [](const replace_module_builds&) { return true; }
     );
 }
 
@@ -211,20 +267,33 @@ auto registry::apply(const registry_change& change) -> void {
     match(
         change,
         [this](const enable_feature& enabled) { find(enabled.feature)->is_enabled = true; },
-        [this](const disable_feature& disabled) { find(disabled.feature)->is_enabled = false; },
+        [this](const disable_feature& disabled) {
+            wired_feature& wired = *find(disabled.feature);
+            wired.is_enabled = false;
+            wired.is_toggled = false;
+        },
         [this](const reset_feature& reset) {
             wired_feature& wired = *find(reset.feature);
-            if (!wired.is_failed) {
+            if (!wired.failure) {
                 return;
             }
-            wired.is_failed = false;
+            wired.failure.reset();
             wired.is_enabled = false;
+            wired.is_toggled = false;
             wired.entry->restart();
         },
         [this](const change_setting& changed) {
             find(changed.feature)->entry->set(changed.setting, changed.value);
         },
-        [this](const replace_entitlements& replaced) { m_entitled = replaced.entitled; }
+        [this](const replace_entitlements& replaced) { m_entitled = replaced.entitled; },
+        [this](const change_bind& changed) {
+            wired_feature& wired = *find(changed.feature);
+            wired.bind = changed.bind;
+            wired.is_toggled = false;
+        },
+        [this](const lapse_lease&) { m_is_lapsed = true; },
+        [this](const resume_lease&) { m_is_lapsed = false; },
+        [this](const replace_module_builds& replaced) { m_builds = replaced.builds; }
     );
 }
 
@@ -238,6 +307,9 @@ auto registry::snapshot(u64 revision) const -> registry_snapshot {
                 .state = state_of(wired),
                 .descriptions = wired.entry->descriptions(),
                 .settings = wired.entry->values(),
+                .bind = wired.bind,
+                .is_active = is_active(wired),
+                .failure = wired.failure,
             }
         );
     }

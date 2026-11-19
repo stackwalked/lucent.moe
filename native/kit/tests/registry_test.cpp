@@ -13,8 +13,10 @@
 #include <catch2/matchers/catch_matchers.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <lucent/bundle/fact_set.hpp>
 #include <lucent/core/narrow.hpp>
 #include <lucent/draw/draw_list.hpp>
+#include <lucent/kit/bind.hpp>
 #include <lucent/kit/canvas.hpp>
 #include <lucent/kit/clock.hpp>
 #include <lucent/kit/fact.hpp>
@@ -86,6 +88,38 @@ auto snapshot_of(registry& features, feature_id feature) -> feature_snapshot {
         return {};
     }
     return *found;
+}
+
+constexpr input_key aim_key{0x06};
+constexpr input_key other_key{0x41};
+
+auto down(input_key key) -> key_change {
+    return key_change{.key = key, .is_down = true};
+}
+
+auto up(input_key key) -> key_change {
+    return key_change{.key = key, .is_down = false};
+}
+
+// One tick of the overlay's order: keys, safe point, dispatch. Whether the tracker ran in it.
+auto ran_with(registry& features, std::vector<key_change> changes) -> bool {
+    std::vector<fixtures::sighting> log;
+    features.feed({.changes = std::move(changes)});
+    features.safe_point();
+    run_tick(features, tick_with(log, 1));
+    return !log.empty();
+}
+
+auto tracker_on_with(registry& features, bind_slot bind) -> void {
+    features.request({
+        enable_feature{.feature = tracker},
+        change_bind{.feature = tracker, .bind = bind},
+    });
+    features.safe_point();
+}
+
+auto module_build(u64 name, u32 stamp) -> bundle::module_key {
+    return bundle::module_key{.name_hash = name, .time_date_stamp = stamp, .size_of_image = 0x1000};
 }
 
 }
@@ -343,6 +377,195 @@ TEST_CASE("readers on another thread see each batch whole or not at all") {
 
     CHECK(torn.load(std::memory_order_relaxed) == 0);
     CHECK(seen.load(std::memory_order_relaxed) > 0);
+}
+
+TEST_CASE("an always bind runs an on feature whatever the keys do") {
+    resolve_capabilities(sound_fact::resolved);
+    const test_clock time;
+    registry features{both_features(), everything(), time};
+    tracker_on_with(features, {.mode = bind_mode::always, .key = aim_key});
+
+    CHECK(ran_with(features, {}));
+    CHECK(ran_with(features, {down(aim_key)}));
+    CHECK(ran_with(features, {up(aim_key)}));
+}
+
+TEST_CASE("a hold bind runs the feature only in ticks its key is down at") {
+    resolve_capabilities(sound_fact::resolved);
+    const test_clock time;
+    registry features{both_features(), everything(), time};
+    tracker_on_with(features, {.mode = bind_mode::hold, .key = aim_key});
+
+    CHECK_FALSE(ran_with(features, {}));
+    CHECK(ran_with(features, {down(aim_key)}));
+    // The keyboard's repeat changes nothing.
+    CHECK(ran_with(features, {down(aim_key), down(aim_key)}));
+    CHECK(ran_with(features, {down(other_key)}));
+    CHECK_FALSE(ran_with(features, {up(aim_key)}));
+    // Pressed and released between two ticks: down at neither.
+    CHECK_FALSE(ran_with(features, {down(aim_key), up(aim_key)}));
+    CHECK(snapshot_of(features, tracker).state == feature_state::on);
+}
+
+TEST_CASE("a toggle bind flips on each press, not on repeats or releases") {
+    resolve_capabilities(sound_fact::resolved);
+    const test_clock time;
+    registry features{both_features(), everything(), time};
+    tracker_on_with(features, {.mode = bind_mode::toggle, .key = aim_key});
+
+    CHECK_FALSE(ran_with(features, {}));
+    CHECK(ran_with(features, {down(aim_key)}));
+    CHECK(ran_with(features, {down(aim_key), up(aim_key)}));
+    CHECK(snapshot_of(features, tracker).is_active);
+    CHECK_FALSE(ran_with(features, {down(aim_key)}));
+    CHECK_FALSE(snapshot_of(features, tracker).is_active);
+    // Two presses between ticks cancel out.
+    CHECK_FALSE(ran_with(features, {up(aim_key), down(aim_key), up(aim_key), down(aim_key)}));
+}
+
+TEST_CASE("a hold or toggle bind without a key never runs the feature") {
+    resolve_capabilities(sound_fact::resolved);
+    const test_clock time;
+    registry features{both_features(), everything(), time};
+    tracker_on_with(features, {.mode = bind_mode::hold, .key = std::nullopt});
+    CHECK_FALSE(ran_with(features, {down(aim_key)}));
+    tracker_on_with(features, {.mode = bind_mode::toggle, .key = std::nullopt});
+    CHECK_FALSE(ran_with(features, {down(other_key)}));
+}
+
+TEST_CASE("a bind never turns a feature on, and presses while it is off are no toggles") {
+    resolve_capabilities(sound_fact::resolved);
+    const test_clock time;
+    registry features{both_features(), everything(), time};
+    features.request(
+        {change_bind{.feature = tracker, .bind = {.mode = bind_mode::toggle, .key = aim_key}}}
+    );
+    features.safe_point();
+
+    CHECK_FALSE(ran_with(features, {down(aim_key), up(aim_key)}));
+    CHECK(features.state(tracker) == feature_state::off);
+    CHECK_FALSE(snapshot_of(features, tracker).is_active);
+
+    features.request({enable_feature{.feature = tracker}});
+    CHECK_FALSE(ran_with(features, {}));
+    CHECK(ran_with(features, {down(aim_key)}));
+}
+
+TEST_CASE("turning a feature off or giving it a new bind leaves its toggle inactive") {
+    resolve_capabilities(sound_fact::resolved);
+    const test_clock time;
+    registry features{both_features(), everything(), time};
+    tracker_on_with(features, {.mode = bind_mode::toggle, .key = aim_key});
+    REQUIRE(ran_with(features, {down(aim_key), up(aim_key)}));
+
+    features.request({disable_feature{.feature = tracker}});
+    features.safe_point();
+    features.request({enable_feature{.feature = tracker}});
+    CHECK_FALSE(ran_with(features, {}));
+
+    REQUIRE(ran_with(features, {down(aim_key), up(aim_key)}));
+    features.request(
+        {change_bind{.feature = tracker, .bind = {.mode = bind_mode::toggle, .key = other_key}}}
+    );
+    CHECK_FALSE(ran_with(features, {}));
+}
+
+TEST_CASE("a lapse stops every on feature at the next safe point, and a resume runs it as it was") {
+    resolve_capabilities(sound_fact::resolved);
+    const test_clock time;
+    registry features{both_features(), everything(), time};
+    std::vector<fixtures::sighting> log;
+    features.request({enable_feature{.feature = tracker}});
+    features.safe_point();
+    run_tick(features, tick_with(log, 1));
+    REQUIRE(log.size() == 1);
+
+    features.request({lapse_lease{}});
+    run_tick(features, tick_with(log, 1));
+    CHECK(log.size() == 2);
+    features.safe_point();
+    CHECK(features.state(tracker) == feature_state::lapsed);
+    CHECK(features.state(listener) == feature_state::off);
+    CHECK(snapshot_of(features, tracker).state == feature_state::lapsed);
+    run_tick(features, tick_with(log, 1));
+    CHECK(log.size() == 2);
+
+    features.request({resume_lease{}});
+    features.safe_point();
+    run_tick(features, tick_with(log, 1));
+    CHECK(features.state(tracker) == feature_state::on);
+    REQUIRE(log.size() == 3);
+    // Its own state outlasted the lapse: no restart.
+    CHECK(log.back().ticks == 3);
+}
+
+TEST_CASE("during a lapse a person's choices stand and take effect on resume") {
+    resolve_capabilities(sound_fact::resolved);
+    const test_clock time;
+    registry features{both_features(), everything(), time};
+    features.request({enable_feature{.feature = tracker}});
+    features.request({lapse_lease{}});
+    features.safe_point();
+
+    features.request({enable_feature{.feature = listener}});
+    features.request({disable_feature{.feature = tracker}});
+    features.safe_point();
+    CHECK(features.state(listener) == feature_state::lapsed);
+    CHECK(features.state(tracker) == feature_state::off);
+
+    features.request({resume_lease{}});
+    features.safe_point();
+    CHECK(features.state(listener) == feature_state::on);
+    CHECK(features.state(tracker) == feature_state::off);
+}
+
+TEST_CASE("a failed feature stays failed through a lapse and a resume") {
+    resolve_capabilities(sound_fact::resolved);
+    const test_clock time;
+    registry features{both_features(), everything(), time};
+    std::vector<fixtures::sighting> log;
+    features.request({enable_feature{.feature = tracker}});
+    features.safe_point();
+    run_tick(features, tick_with(log, -1));
+    REQUIRE(features.state(tracker) == feature_state::failed);
+
+    features.request({lapse_lease{}});
+    features.safe_point();
+    CHECK(features.state(tracker) == feature_state::failed);
+    features.request({resume_lease{}});
+    features.safe_point();
+    CHECK(features.state(tracker) == feature_state::failed);
+}
+
+TEST_CASE("a failure records the module builds current at it, until a person resets it") {
+    resolve_capabilities(sound_fact::resolved);
+    const test_clock time;
+    registry features{both_features(), everything(), time};
+    std::vector<fixtures::sighting> log;
+    const std::vector<bundle::module_key> failed_on{module_build(7, 100), module_build(9, 200)};
+    features.request({enable_feature{.feature = tracker}});
+    features.request({replace_module_builds{.builds = failed_on}});
+    features.safe_point();
+    CHECK_FALSE(snapshot_of(features, tracker).failure.has_value());
+
+    run_tick(features, tick_with(log, -1));
+    // A game update after the failure doesn't rewrite what it failed on.
+    features.request({replace_module_builds{.builds = {module_build(7, 101)}}});
+    features.safe_point();
+    CHECK(snapshot_of(features, tracker).failure == feature_failure{.builds = failed_on});
+
+    features.request({reset_feature{.feature = tracker}});
+    features.safe_point();
+    CHECK(features.state(tracker) == feature_state::off);
+    CHECK_FALSE(snapshot_of(features, tracker).failure.has_value());
+
+    features.request({enable_feature{.feature = tracker}});
+    features.safe_point();
+    run_tick(features, tick_with(log, -1));
+    features.safe_point();
+    CHECK(
+        snapshot_of(features, tracker).failure == feature_failure{.builds = {module_build(7, 101)}}
+    );
 }
 
 }

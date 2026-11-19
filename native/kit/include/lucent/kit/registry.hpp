@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <chrono>
 #include <memory>
 #include <mutex>
@@ -8,7 +9,9 @@
 #include <variant>
 #include <vector>
 
+#include <lucent/bundle/fact_set.hpp>
 #include <lucent/core/stdx/function_ref.hpp>
+#include <lucent/kit/bind.hpp>
 #include <lucent/kit/canvas.hpp>
 #include <lucent/kit/clock.hpp>
 #include <lucent/kit/feature.hpp>
@@ -65,8 +68,51 @@ struct replace_entitlements {
     auto operator==(const replace_entitlements&) const -> bool = default;
 };
 
-using registry_change = std::
-    variant<enable_feature, disable_feature, reset_feature, change_setting, replace_entitlements>;
+// A new bind for the feature's switch. A toggle starts inactive under it.
+struct change_bind {
+    feature_id feature{};
+    bind_slot bind;
+
+    auto operator==(const change_bind&) const -> bool = default;
+};
+
+// The lease lapsed (the server is unreachable): every feature that is on stops, without losing
+// its own state, and the person's choices stand. Every feature alike, with no per-feature
+// exception: protection.md "Running" says nothing runs without a server.
+struct lapse_lease {
+    auto operator==(const lapse_lease&) const -> bool = default;
+};
+
+// A renewal landed after a lapse: the stopped features run again as they were.
+struct resume_lease {
+    auto operator==(const resume_lease&) const -> bool = default;
+};
+
+// The builds of the game modules loaded now, which a feature that fails from here on records.
+struct replace_module_builds {
+    std::vector<bundle::module_key> builds;
+
+    auto operator==(const replace_module_builds&) const -> bool = default;
+};
+
+using registry_change = std::variant<
+    enable_feature,
+    disable_feature,
+    reset_feature,
+    change_setting,
+    replace_entitlements,
+    change_bind,
+    lapse_lease,
+    resume_lease,
+    replace_module_builds>;
+
+// What a failed feature remembers of its failure until a person resets it, for health telemetry.
+struct feature_failure {
+    // The game module builds current when it failed, as the registry was last told them.
+    std::vector<bundle::module_key> builds;
+
+    auto operator==(const feature_failure&) const -> bool = default;
+};
 
 struct feature_stats {
     i64 runs = 0;
@@ -87,6 +133,11 @@ struct feature_snapshot {
     std::span<const setting_description> descriptions;
     // One per description, in the same order.
     std::vector<setting_value> settings;
+    bind_slot bind;
+    // On, and its bind lets it run now.
+    bool is_active = false;
+    // Present while it is failed.
+    std::optional<feature_failure> failure;
 };
 
 // The registry as one safe point left it, for readers on any thread.
@@ -97,12 +148,15 @@ struct registry_snapshot {
     std::vector<feature_snapshot> features;
 };
 
-// The wired features, their states and settings, and their dispatch.
+// The wired features, their states, settings and binds, and their dispatch.
 //
-// Threads: one thread ticks (a kit thread, or a hook kit controls): it calls safe_point() and
-// dispatch() and asks state() and stats(). Any thread may request() and read(). Every change a
+// Threads: one thread ticks (a kit thread, or a hook kit controls): it calls feed(), safe_point()
+// and dispatch() and asks state() and stats(). Any thread may request() and read(). Every change a
 // request carries is applied at the next safe point, between dispatches, so a tick sees one state
 // and one settings value throughout; snapshots for other threads are published there, whole.
+//
+// A feature runs while it is on and active: lifecycle (on, off, failed, lapsed) is the person's
+// choice and the world's verdict, activity is its bind's reading of the keys.
 class registry final {
 public:
     // Before the first tick: availability is read from the capabilities as resolved now, and the
@@ -124,13 +178,18 @@ public:
     // snapshot no free slot could take.
     auto safe_point() -> void;
 
-    // The tick thread. Ticks every feature that is on, in wiring order, each inside contain(). A
-    // fault turns that feature failed at once; readers see it from the next safe point.
+    // The tick thread, before the safe point: the keys since the last feed, which binds read.
+    // Presses count only for features on at the time.
+    auto feed(const key_input& keys) -> void;
+
+    // The tick thread. Ticks every feature that is on and active, in wiring order, each inside
+    // contain(). A fault turns that feature failed at once; readers see it from the next safe
+    // point.
     auto dispatch(const view_set& parts) -> void;
 
     // The tick thread, which draws: the render thread while the overlay's frames are the ticks.
-    // Draws every feature that is on and draws, in wiring order, each inside contain(), with
-    // dispatch's fault rule. The parts are render-thread snapshots, not the tick's.
+    // Draws every feature that is on, active and draws, in wiring order, each inside contain(),
+    // with dispatch's fault rule. The parts are render-thread snapshots, not the tick's.
     auto draw(const view_set& parts, canvas& onto) -> void;
 
     // The tick thread. Empty for a feature that isn't wired.
@@ -144,10 +203,15 @@ private:
     struct wired_feature {
         std::unique_ptr<detail::feature_entry> entry;
         feature_stats stats;
-        // A person's choice, which outlasts losing the entitlement or a capability.
+        // A person's choice, which outlasts losing the entitlement, a capability or the lease.
         bool is_enabled = false;
-        bool is_failed = false;
         bool is_available = false;
+        // Present while it is failed.
+        std::optional<feature_failure> failure;
+        bind_slot bind;
+        // A toggle bind's state: pressed an odd number of times since it was set or the feature
+        // was turned off.
+        bool is_toggled = false;
     };
 
     static auto adopt(wiring wired) -> std::vector<wired_feature>;
@@ -155,12 +219,19 @@ private:
     auto find(feature_id feature) -> wired_feature*;
     auto find(feature_id feature) const -> const wired_feature*;
     auto state_of(const wired_feature& wired) const -> feature_state;
+    auto is_active(const wired_feature& wired) const -> bool;
+    auto is_held(input_key key) const -> bool;
     auto is_applicable(const registry_change& change) const -> bool;
     auto apply(const registry_change& change) -> void;
+    auto press(input_key key) -> void;
     auto snapshot(u64 revision) const -> registry_snapshot;
 
     std::vector<wired_feature> m_features;
     entitlements m_entitled;
+    bool m_is_lapsed = false;
+    std::vector<bundle::module_key> m_builds;
+    // By input_key: down now, as the feeds left it.
+    std::array<bool, 256> m_held{};
     const clock* m_clock;
     std::mutex m_requests_lock;
     std::vector<std::vector<registry_change>> m_requests;
