@@ -3,7 +3,7 @@ import babel from "@rolldown/plugin-babel";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
-import { tokensPlugin } from "./dev/tokens-plugin.ts";
+import { layerOrderPlugin, tokensPlugin } from "./dev/tokens-plugin.ts";
 
 const EVERGREEN = ["chrome129", "edge129", "firefox147", "safari26"];
 
@@ -22,6 +22,7 @@ export default defineConfig({
     },
     plugins: [
         tokensPlugin(),
+        layerOrderPlugin(),
         tanstackStart(),
         react(),
         babel({

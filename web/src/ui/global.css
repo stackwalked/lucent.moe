@@ -1,7 +1,7 @@
 /* The one global stylesheet. Layer order decides what wins, so nothing needs !important or
    specificity: components and features are layers too, and overrides stays empty. The tokens
-   layer comes from src/ui/tokens.ts (virtual:lucent/tokens.css). */
-@layer reset, tokens, base, layout, components, features, overrides;
+   layer comes from src/ui/tokens.ts (virtual:lucent/tokens.css), and so does the layer order,
+   which dev/tokens-plugin.ts puts at the top of every stylesheet. */
 
 @import "./reset.css" layer(reset);
 @import "./base.css" layer(base);
