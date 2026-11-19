@@ -143,7 +143,9 @@ constinit const std::array<float, 64> fixture_other_rows{};
 
 // NOLINTEND(portability-no-assembler)
 
-auto fixture_sink(const char* text) -> int {
+// Kept out of line: inlined at /O2, fixture_describe folds to a constant with no call, string
+// reference or unwind data left to find.
+[[gnu::noinline]] auto fixture_sink(const char* text) -> int {
     return static_cast<int>(std::string_view{text}.size());
 }
 

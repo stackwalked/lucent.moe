@@ -17,8 +17,9 @@ namespace lucent::probe {
 namespace {
 
 // A leaf that only takes a string's address has no unwind data, so the index sees it only by
-// sweeping the gaps between listed functions.
-[[gnu::noinline]] auto marker() -> const char* {
+// sweeping the gaps between listed functions. optnone, not just noinline: at /O2 the constant it
+// returns propagates into marker_size, whose call and unwind data then vanish.
+[[gnu::noinline, clang::optnone]] auto marker() -> const char* {
     return "lucent probe code index marker";
 }
 
