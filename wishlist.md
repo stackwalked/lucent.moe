@@ -275,16 +275,23 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
   - `foreign_ptr32` owners for fields, when stable's foreign layer lands;
   - `raw` uses get promoted into proper APIs; the counter gates nothing yet.
 - Features never hold kit resources while touching foreign memory. This closes the `/EHs` destructor gap.
-- Feature registry (registry, states, wiring, dispatch, safe point and published views landed):
-  - a lapse policy per feature;
-  - a failed feature may also remember the game build it failed on.
+- Feature registry (registry, states, wiring, dispatch, safe point, published views, the lapse and
+  failed builds landed). A lease lapse stops every feature alike (decided: no per-feature
+  exception, as "no server, nothing runs" says). Module builds are captured at attach, so a late
+  module's build is missing from a failure record.
 - Features never depend on features (lint: no feature header includes another). Shared logic goes into domains or plain libraries.
 - Products strip features at compile time from the explicit feature list (`features/all.cpp`).
 - Settings (`describe()` and per-tick snapshots landed): generate `describe()` with C++26
   reflection if Clang ships it (unverified).
-- Config store: profiles, undo, scopes. Per-weapon scope may need to be a real dimension. In
-  memory only until phase 4's cloud-held configs fill the same seam: no file, so no format to fix.
-- Binds: `bind_slot`. Activity (a held key) is separate from lifecycle (on/off).
+- Config store (profiles, undo, scopes as a fallback chain keyed from outside, in memory behind
+  `profile_storage` until phase 4's cloud store) and binds (`bind_slot`: always, hold, toggle;
+  activity separate from on/off) landed. Still:
+  - a profile carries which features are on too, so a switch changes the whole setup (decided);
+  - menu UI for profiles, undo and choosing a scope; a weapon domain to feed `select_scopes`;
+  - per-team visual settings (a box draws both teams in one frame, so it's per-entity, not a
+    scope): a design call for phase 3's visuals;
+  - more than one bind slot per feature, for chains;
+  - profile ids minted by the cloud store in phase 4, not counted locally.
 - Overlay rendering is our own, not Dear ImGui: a highly custom look would mean patching its backend
   and rewriting its widgets. Libraries, in dependency order:
   - `libs/render/ui`: input snapshot, layout, widgets, interaction, animation, theme tokens. No GPU.
