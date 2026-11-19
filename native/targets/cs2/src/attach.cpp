@@ -1,11 +1,13 @@
 #include "attach.hpp"
 
-#include <array>
 #include <memory>
 #include <string>
 #include <tuple>
 #include <utility>
+#include <vector>
 
+#include <lucent/cs2-domains/command_domain.hpp>
+#include <lucent/cs2-domains/view_domain.hpp>
 #include <lucent/cs2-domains/world_domain.hpp>
 #include <lucent/cs2-features/all.hpp>
 #include <lucent/cs2-modules/game_modules.hpp>
@@ -21,6 +23,7 @@
 #include <lucent/kit/wiring.hpp>
 #include <lucent/kit/worker_set.hpp>
 
+#include "game_thread.hpp"
 #include "overlay/overlay.hpp"
 #include "overlay/present.hpp"
 
@@ -38,6 +41,9 @@ struct attached_parts {
     std::unique_ptr<kit::config_store> configs;
     // Updated by the present hook too (overlay::draw), for the same reason.
     std::unique_ptr<world_domain> world;
+    // Run by the CreateMove and FrameStageNotify hooks, on the game's main thread.
+    std::unique_ptr<command_domain> command;
+    std::unique_ptr<view_domain> view;
     std::unique_ptr<overlay::overlay> drawn;
     kit::hook_set hooks;
 };
@@ -69,6 +75,8 @@ private:
     // and the registry: they stay allocated, like the module that stays loaded.
     auto abandon() -> void {
         std::ignore = m_parts.drawn.release();
+        std::ignore = m_parts.view.release();
+        std::ignore = m_parts.command.release();
         std::ignore = m_parts.world.release();
         std::ignore = m_parts.configs.release();
         std::ignore = m_parts.kept.release();
@@ -112,7 +120,16 @@ auto attach(kit::worker_set& workers, const kit::domain_token& opens)
         .world = world.get(),
         .time = time.get(),
     });
-    const std::array requests{LUCENT_TRY(overlay::present_hook(*drawn))};
+    auto command =
+        std::make_unique<command_domain>(opens, lucent::foreign::memory_source::this_process());
+    auto view =
+        std::make_unique<view_domain>(opens, lucent::foreign::memory_source::this_process());
+    std::vector<kit::hook_request> requests = game_thread_hooks({
+        .features = features.get(),
+        .command = command.get(),
+        .view = view.get(),
+    });
+    requests.push_back(LUCENT_TRY(overlay::present_hook(*drawn)));
     kit::hook_set hooks = LUCENT_TRY(kit::hook_set::install(requests));
     return std::make_unique<attached>(attached_parts{
         .time = std::move(time),
@@ -120,6 +137,8 @@ auto attach(kit::worker_set& workers, const kit::domain_token& opens)
         .kept = std::move(kept),
         .configs = std::move(configs),
         .world = std::move(world),
+        .command = std::move(command),
+        .view = std::move(view),
         .drawn = std::move(drawn),
         .hooks = std::move(hooks),
     });

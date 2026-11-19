@@ -11,6 +11,7 @@ lucent_module(cs2
         $<$<CONFIG:Debug>:src/overlay/dev_demo.cpp>
         $<$<CONFIG:Debug>:src/overlay/dev_stats.cpp>
         src/attach.cpp
+        src/game_thread.cpp
         src/overlay/dxgi_present.cpp
         src/overlay/overlay.cpp
         src/overlay/present.cpp

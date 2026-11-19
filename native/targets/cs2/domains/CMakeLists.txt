@@ -1,15 +1,39 @@
 lucent_library(cs2-domains
     HEADERS
+        include/lucent/cs2-domains/command.hpp
+        include/lucent/cs2-domains/command_board.hpp
+        include/lucent/cs2-domains/command_domain.hpp
+        include/lucent/cs2-domains/command_input.hpp
+        include/lucent/cs2-domains/command_stages.hpp
         include/lucent/cs2-domains/foreign/entities.hpp
+        include/lucent/cs2-domains/foreign/input.hpp
+        include/lucent/cs2-domains/foreign/user_cmd.hpp
         include/lucent/cs2-domains/foreign/view.hpp
+        include/lucent/cs2-domains/mouse_model.hpp
         include/lucent/cs2-domains/view.hpp
+        include/lucent/cs2-domains/view_domain.hpp
+        include/lucent/cs2-domains/view_state.hpp
+        include/lucent/cs2-domains/view_turns.hpp
         include/lucent/cs2-domains/world.hpp
         include/lucent/cs2-domains/world_domain.hpp
     SOURCES
+        src/command.cpp
+        src/command_board.cpp
+        src/command_domain.cpp
+        src/command_stages.cpp
+        src/mouse_model.cpp
         src/view.cpp
+        src/view_domain.cpp
+        src/view_turns.cpp
         src/world.cpp
         src/world_domain.cpp
     DEPS lucent::cs2-modules lucent::draw lucent::foreign lucent::kit
 )
 
-lucent_test(cs2-domains SOURCES tests/world_test.cpp)
+lucent_test(cs2-domains
+    SOURCES
+        tests/command_domain_test.cpp
+        tests/command_test.cpp
+        tests/mouse_model_test.cpp
+        tests/world_test.cpp
+)
