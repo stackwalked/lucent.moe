@@ -1,0 +1,5 @@
+language: "cpp"
+layer: "library"
+
+# os is the tests' fixture reader only.
+dependsOn: ["core", "draw", { id: "os", scope: "development" }]

@@ -5,5 +5,8 @@
 contracts/**/*.bin binary
 native/**/tests/fixtures/**/*.png binary
 
+# Fixture fonts: bytes DirectWrite reads as they are.
+native/**/tests/fixtures/**/*.woff2 binary
+
 # Product assets: fonts web serves as they are.
 web/src/ui/fonts/*.woff2 binary
