@@ -1,0 +1,26 @@
+project:
+  description: "Renders the real settings menu to PNG, by theme and scale, on WARP without starting a game. It informs a look; nothing gates on it."
+
+language: "cpp"
+layer: "tool"
+
+dependsOn: ["core", "cs2-features", "cs2-overlay", "d3d11", "draw", "kit", "menu", "text", "ui"]
+
+# `menu-shot --help` prints its usage. What it draws is judged by eye; the renderer's pixels are
+# held by d3d11's goldens and the page's behavior by menu's tests.
+workspace:
+  inheritedTasks:
+    exclude: ["test"]
+
+tasks:
+  # The settings page in both themes at 1x and 2x, into .moon/cache/menu-shot.
+  settings:
+    script: >-
+      $workspaceRoot/.moon/cache/cmake/dev/tools/menu-shot/menu-shot.exe settings $workspaceRoot/.moon/cache/menu-shot/settings-dark-1x.png dark 1 &&
+      $workspaceRoot/.moon/cache/cmake/dev/tools/menu-shot/menu-shot.exe settings $workspaceRoot/.moon/cache/menu-shot/settings-dark-2x.png dark 2 &&
+      $workspaceRoot/.moon/cache/cmake/dev/tools/menu-shot/menu-shot.exe settings $workspaceRoot/.moon/cache/menu-shot/settings-light-1x.png light 1 &&
+      $workspaceRoot/.moon/cache/cmake/dev/tools/menu-shot/menu-shot.exe settings $workspaceRoot/.moon/cache/menu-shot/settings-light-2x.png light 2
+    deps: ["native:build"]
+    options:
+      cache: false
+      runInCI: false
