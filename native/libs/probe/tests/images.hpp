@@ -14,6 +14,9 @@ auto own_rva(uptr address) -> u32;
 // tests/fixtures/game.cpp, built with RTTI, read from disk.
 auto game_module() -> module_file;
 
+// Where the module's export of that name is; the test fails when it has none.
+auto export_rva(const module_file& module, std::string_view name) -> u32;
+
 // The same fixture loaded into this process, which is the ground truth the probe's reading of the
 // file is checked against.
 class loaded_game final {

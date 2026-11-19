@@ -3,8 +3,10 @@
 #include <algorithm>
 #include <optional>
 #include <ranges>
+#include <span>
 #include <vector>
 
+#include <lucent/pe/runtime_functions.hpp>
 #include <lucent/probe/code_index.hpp>
 #include <lucent/probe/module_file.hpp>
 
@@ -44,6 +46,42 @@ auto vtable_functions(const module_file& module, u32 vtable) -> std::vector<u32>
         functions.push_back(*function);
     }
     return functions;
+}
+
+namespace {
+
+// Those of kind, or of any kind.
+auto functions_of(
+    const module_file& module,
+    std::span<const reference> references,
+    std::optional<reference_kind> kind
+) -> std::vector<pe::runtime_function> {
+    std::vector<pe::runtime_function> functions;
+    for (const reference& found : references) {
+        if (kind && found.kind != *kind) {
+            continue;
+        }
+        if (const std::optional<pe::runtime_function> holder =
+                module.function_containing(found.source)) {
+            functions.push_back(*holder);
+        }
+    }
+    std::ranges::sort(functions, {}, &pe::runtime_function::begin);
+    const auto [first, last] = std::ranges::unique(functions);
+    functions.erase(first, last);
+    return functions;
+}
+
+}
+
+auto functions_referencing(const module_file& module, const code_index& index, u32 target)
+    -> std::vector<pe::runtime_function> {
+    return functions_of(module, index.references_to(target), std::nullopt);
+}
+
+auto callers_of(const module_file& module, const code_index& index, u32 function)
+    -> std::vector<pe::runtime_function> {
+    return functions_of(module, index.references_to(function), reference_kind::call);
 }
 
 }

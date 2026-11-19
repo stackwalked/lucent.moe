@@ -5,6 +5,7 @@
 #include <bit>
 #include <cstddef>
 #include <filesystem>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -15,8 +16,10 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <lucent/core/match.hpp>
 #include <lucent/core/narrow.hpp>
 #include <lucent/os/file.hpp>
+#include <lucent/pe/exports.hpp>
 #include <lucent/probe/module_file.hpp>
 
 namespace lucent::probe {
@@ -53,6 +56,20 @@ auto own_rva(uptr address) -> u32 {
 
 auto game_module() -> module_file {
     return module_at(game_path());
+}
+
+auto export_rva(const module_file& module, std::string_view name) -> u32 {
+    const result<pe::export_table> exports = pe::export_table::from_image(module.view());
+    REQUIRE(exports.has_value());
+    const result<pe::export_target> target = exports->find(name);
+    REQUIRE(target.has_value());
+    const std::optional<u32> rva = match(
+        target.value_or(pe::forwarder{}),
+        [](const pe::export_address& address) -> std::optional<u32> { return address.rva; },
+        [](const pe::forwarder&) -> std::optional<u32> { return std::nullopt; }
+    );
+    REQUIRE(rva.has_value());
+    return rva.value_or(0);
 }
 
 loaded_game::loaded_game() {

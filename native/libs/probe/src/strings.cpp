@@ -40,4 +40,26 @@ auto string_rvas(const module_file& module, std::string_view text) -> std::vecto
     return found;
 }
 
+auto strings_ending_with(const module_file& module, std::string_view tail) -> std::vector<u32> {
+    // Longer than any string a module's code names; bounds the walk back through a run of text.
+    constexpr u32 max_string_size = 4096;
+    std::vector<u32> starts;
+    for (const u32 found : string_rvas(module, tail)) {
+        u32 start = found;
+        while (start > 0 && found - start < max_string_size) {
+            const std::optional<std::span<const std::byte>> before =
+                module.bytes_at({.rva = start - 1, .size = 1});
+            if (!before || before->front() == std::byte{0}) {
+                break;
+            }
+            --start;
+        }
+        starts.push_back(start);
+    }
+    std::ranges::sort(starts);
+    const auto [first, last] = std::ranges::unique(starts);
+    starts.erase(first, last);
+    return starts;
+}
+
 }
