@@ -1,4 +1,4 @@
-import { USERNAME_PATTERN } from "@lucent/core/rules";
+import { USERNAME_MAX_LENGTH, USERNAME_MIN_LENGTH, USERNAME_PATTERN } from "@lucent/core/rules";
 import { useRouteContext, useRouter } from "@tanstack/react-router";
 import { useActionState, useEffect, useEffectEvent, useState } from "react";
 import type { Refused } from "../../server/outcome.ts";
@@ -85,8 +85,8 @@ function Username() {
                         hint={SETUP_COPY.usernameRules}
                         autoComplete="username"
                         required
-                        minLength={3}
-                        maxLength={24}
+                        minLength={USERNAME_MIN_LENGTH}
+                        maxLength={USERNAME_MAX_LENGTH}
                         pattern={USERNAME_PATTERN}
                     />
                     <RefusalNote refused={fieldError ?? refused} />

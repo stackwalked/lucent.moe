@@ -1,5 +1,5 @@
 import { systemClock } from "@lucent/core/clock";
-import { USERNAME_PATTERN } from "@lucent/core/rules";
+import { USERNAME_MAX_LENGTH, USERNAME_MIN_LENGTH, USERNAME_PATTERN } from "@lucent/core/rules";
 import { EpochMs, RoleId } from "@lucent/core/scalars";
 import { type Action, ActionSchema } from "@lucent/policy/actions";
 import { can } from "@lucent/policy/policy";
@@ -136,7 +136,8 @@ function GiveRole({
 export function AccountPage() {
     const router = useRouter();
     const staff = useStaffAction();
-    const { account, roles } = route.useLoaderData();
+    const { account, roles: listedRoles } = route.useLoaderData();
+    const roles = listedRoles.ok ? listedRoles.value : [];
     const { session } = useRouteContext({ from: "__root__" });
     const viewer = memberOf(session);
     const subject = viewer === null ? null : subjectOf(viewer);
@@ -237,8 +238,8 @@ export function AccountPage() {
                         label={ACCOUNTS_COPY.newUsername}
                         hint={ACCOUNTS_COPY.usernameRules}
                         required
-                        minLength={3}
-                        maxLength={24}
+                        minLength={USERNAME_MIN_LENGTH}
+                        maxLength={USERNAME_MAX_LENGTH}
                         pattern={USERNAME_PATTERN}
                     />
                 }
@@ -368,7 +369,13 @@ export function AccountPage() {
                     refused={takeRefused}
                     overrides={{ NO_PASSKEY: ADMIN_COPY.needsPasskey }}
                 />
-                {allowed("roles:assign") ? <GiveRole account={account} roles={assignable} /> : null}
+                {allowed("roles:assign") ? (
+                    listedRoles.ok ? (
+                        <GiveRole account={account} roles={assignable} />
+                    ) : (
+                        <RefusalNote refused={listedRoles.refused} />
+                    )
+                ) : null}
             </Section>
             {account.recentAudit === null ? null : (
                 <Section

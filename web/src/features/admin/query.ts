@@ -1,9 +1,11 @@
 // An admin list's one parameter, ?q=: `key:value` tokens beside free text, e.g.
 // "status:suspended role:role_mod ali". Each list names the keys it knows; anything else,
-// unknown keys included, is search text.
+// unknown keys included, is search text. A known key given twice, or with no value, filters
+// nothing and is said back as ignored, so the list never looks filtered when it isn't.
 export type ParsedQuery<K extends string> = {
     readonly tokens: Readonly<Partial<Record<K, string>>>;
     readonly text: string | null;
+    readonly ignored: readonly string[];
 };
 
 export function parseQuery<K extends string>(
@@ -12,6 +14,7 @@ export function parseQuery<K extends string>(
 ): ParsedQuery<K> {
     const tokens: Partial<Record<K, string>> = {};
     const words: string[] = [];
+    const ignored: string[] = [];
     for (const word of (q ?? "")
         .trim()
         .split(/\s+/)
@@ -19,20 +22,9 @@ export function parseQuery<K extends string>(
         const colon = word.indexOf(":");
         const key = keys.find((k) => k === word.slice(0, colon));
         const value = word.slice(colon + 1);
-        if (colon > 0 && key !== undefined && value.length > 0 && tokens[key] === undefined) {
-            tokens[key] = value;
-        } else {
-            words.push(word);
-        }
+        if (colon <= 0 || key === undefined) words.push(word);
+        else if (value.length > 0 && tokens[key] === undefined) tokens[key] = value;
+        else ignored.push(word);
     }
-    return { tokens, text: words.length === 0 ? null : words.join(" ") };
-}
-
-// The parsed form written back, tokens first in the order the list names them.
-export function formatQuery<K extends string>(query: ParsedQuery<K>, keys: readonly K[]): string {
-    const parts = keys.flatMap((key) => {
-        const value = query.tokens[key];
-        return value === undefined ? [] : [`${key}:${value}`];
-    });
-    return [...parts, ...(query.text === null ? [] : [query.text])].join(" ");
+    return { tokens, text: words.length === 0 ? null : words.join(" "), ignored };
 }

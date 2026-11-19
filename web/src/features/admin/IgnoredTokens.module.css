@@ -1,0 +1,7 @@
+@layer features {
+    .ignored {
+        color: var(--ink-2);
+        font-size: var(--size-13);
+        line-height: var(--lh-snug);
+    }
+}

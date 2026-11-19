@@ -9,11 +9,13 @@ import { TextField } from "../../../ui/TextField/TextField.tsx";
 import { Time } from "../../../ui/Time/Time.tsx";
 import { memberOf, viewerCan } from "../../../viewer.ts";
 import { ADMIN_COPY } from "../copy.ts";
+import { IgnoredTokens } from "../IgnoredTokens.tsx";
 import { ListRefusal } from "../ListRefusal.tsx";
 import { useListNavigation } from "../list.ts";
 import styles from "./AccountsPage.module.css";
 import { AddAccount } from "./AddAccount.tsx";
 import { ACCOUNTS_COPY } from "./copy.ts";
+import { readAccountQuery } from "./query.ts";
 import { AccountStatusBadge } from "./status.tsx";
 
 const route = getRouteApi("/_admin/admin/accounts/");
@@ -53,6 +55,7 @@ export function AccountsPage() {
                             defaultValue={q ?? ""}
                             maxLength={200}
                         />
+                        <IgnoredTokens tokens={readAccountQuery(q).ignored} />
                     </div>
                     <Stack direction="row" gap={1}>
                         <Button

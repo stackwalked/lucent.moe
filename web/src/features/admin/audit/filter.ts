@@ -35,16 +35,35 @@ function named(value: string | undefined): string | null {
 }
 
 // ?q= as platform's audit filter. Free text means nothing here, and a token whose value doesn't
-// fit its key is dropped rather than refused: the list shows what the rest of the query asks.
-export function auditFilter(q: string | undefined): AuditFilter {
-    const { tokens } = parseQuery(q, AUDIT_KEYS);
+// fit its key is left out rather than refused: the list shows what the rest of the query asks,
+// and the page says which tokens it ignored.
+export function readAuditQuery(q: string | undefined): {
+    readonly filter: AuditFilter;
+    readonly ignored: readonly string[];
+} {
+    const { tokens, ignored } = parseQuery(q, AUDIT_KEYS);
     const target = AccountId.safeParse(tokens.target);
-    return {
+    const filter: AuditFilter = {
         actorId: named(tokens.actor),
         targetAccountId: target.success ? target.data : null,
         operation: named(tokens.op),
         before: tokens.before === undefined ? null : startOfDayUtc(tokens.before),
     };
+    const used = {
+        actor: filter.actorId,
+        target: filter.targetAccountId,
+        op: filter.operation,
+        before: filter.before,
+    };
+    const unfit = AUDIT_KEYS.flatMap((key) => {
+        const value = tokens[key];
+        return value !== undefined && used[key] === null ? [`${key}:${value}`] : [];
+    });
+    return { filter, ignored: [...ignored, ...unfit] };
+}
+
+export function auditFilter(q: string | undefined): AuditFilter {
+    return readAuditQuery(q).filter;
 }
 
 export type AuditDetail =

@@ -1,3 +1,5 @@
+import { RULES_COPY } from "../../../copy/rules.ts";
+
 export const ACCOUNTS_COPY = {
     title: "accounts",
     search: "search",
@@ -50,7 +52,7 @@ export const ACCOUNTS_COPY = {
     rename: "rename",
     renameTitle: (name: string) => `rename ${name}`,
     newUsername: "new username",
-    usernameRules: "3 to 24 characters: a–z, 0–9 and _, starting with a letter.",
+    usernameRules: RULES_COPY.username,
     recover: "recover",
     recoverTitle: (name: string) => `recover ${name}`,
     recoverBody:

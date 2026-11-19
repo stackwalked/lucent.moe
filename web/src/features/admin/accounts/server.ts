@@ -2,7 +2,7 @@ import { AccountId, EpochMs, OperationId, RoleId } from "@lucent/core/scalars";
 import { AccountStatus, type WebContract } from "@lucent/rpc/web";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
-import { done, refuse } from "../../../server/outcome.ts";
+import { done, type Outcome, refuse } from "../../../server/outcome.ts";
 import { callPlatform, readPlatform, requestReference } from "../../../server/platform.ts";
 import { toUnavailable } from "../../../server/route-control.ts";
 import { auditDetail } from "../audit/filter.ts";
@@ -57,13 +57,15 @@ export const fetchAccount = createServerFn({ method: "GET" })
         };
     });
 
-// Roles to offer when giving one: empty for staff who can't read roles.
+// Roles to offer when giving one. Staff who can't read roles get none, which isn't a failure;
+// any other refusal is, and the page says so where the form would be.
 export type RoleSummary = z.output<WebContract["admin.roles.list"]["output"]>["roles"][number];
 
 export const fetchRoles = createServerFn({ method: "GET" }).handler(
-    async (): Promise<RoleSummary[]> => {
+    async (): Promise<Outcome<RoleSummary[]>> => {
         const reply = await callPlatform("admin.roles.list", {});
-        return reply.ok ? [...reply.value.roles] : [];
+        if (reply.ok) return done([...reply.value.roles]);
+        return reply.error.code === "FORBIDDEN" ? done([]) : refuse(reply.error);
     },
 );
 

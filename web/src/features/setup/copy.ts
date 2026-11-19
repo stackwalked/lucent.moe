@@ -1,3 +1,5 @@
+import { RULES_COPY } from "../../copy/rules.ts";
+
 export const SETUP_COPY = {
     pageTitle: "set up",
     title: "set up your lucent.moe account",
@@ -6,7 +8,7 @@ export const SETUP_COPY = {
     noLink: "this setup link has expired or was already used. ask staff for a new one.",
     usernameTitle: "choose a username",
     username: "username",
-    usernameRules: "3 to 24 characters: a–z, 0–9 and _, starting with a letter.",
+    usernameRules: RULES_COPY.username,
     chooseUsername: "continue",
     methodTitle: "how you'll sign in",
     passkey: "passkey (recommended)",

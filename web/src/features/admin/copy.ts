@@ -8,6 +8,7 @@ export const ADMIN_COPY = {
     pending: "—",
     needsPasskey: "staff actions need a passkey. add one in security.",
     firstPage: "first page",
+    ignored: (tokens: string) => `ignored ${tokens}: not a filter this list can use.`,
 } as const;
 
 // What each audit operation reads as. Typed against the platform's own list: an operation added

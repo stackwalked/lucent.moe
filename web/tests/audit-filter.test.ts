@@ -1,6 +1,11 @@
 import { expect, test } from "bun:test";
 import { AccountId, EpochMs } from "@lucent/core/scalars";
-import { auditDetail, auditFilter, startOfDayUtc } from "../src/features/admin/audit/filter.ts";
+import {
+    auditDetail,
+    auditFilter,
+    readAuditQuery,
+    startOfDayUtc,
+} from "../src/features/admin/audit/filter.ts";
 
 const ACCOUNT = AccountId.parse("acc_AAAAAAAAAAAAAAAAAAAAAA");
 
@@ -33,8 +38,11 @@ test("a value that does not fit its key is ignored, not refused", () => {
     expect(auditFilter(`op:${"a".repeat(65)}`).operation).toBeNull();
 });
 
-test("the first of a repeated key wins", () => {
-    expect(auditFilter("op:role.assign op:role.unassign").operation).toBe("role.assign");
+test("the first of a repeated key wins, and what's left out is said back", () => {
+    expect(readAuditQuery("op:role.assign op:role.unassign target:someone ali")).toEqual({
+        filter: { actorId: null, targetAccountId: null, operation: "role.assign", before: null },
+        ignored: ["op:role.unassign", "target:someone"],
+    });
 });
 
 test("before takes only real calendar days from 1970, as 00:00 UTC", () => {

@@ -11,10 +11,11 @@ import { Time } from "../../../ui/Time/Time.tsx";
 import { Who } from "../../../ui/Who/Who.tsx";
 
 import { ADMIN_COPY, operationLabel } from "../copy.ts";
+import { IgnoredTokens } from "../IgnoredTokens.tsx";
 import { ListRefusal } from "../ListRefusal.tsx";
 import { useListNavigation } from "../list.ts";
 import { AUDIT_COPY } from "./copy.ts";
-import type { AuditDetail } from "./filter.ts";
+import { type AuditDetail, readAuditQuery } from "./filter.ts";
 import type { listAudit } from "./server.ts";
 
 const route = getRouteApi("/_admin/admin/audit");
@@ -130,6 +131,7 @@ export function AuditPage() {
                             <Button type="submit">{AUDIT_COPY.search}</Button>
                         </Stack>
                     </form>
+                    <IgnoredTokens tokens={readAuditQuery(q).ignored} />
                 </search>
                 <Entries outcome={outcome} />
             </Stack>

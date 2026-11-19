@@ -1,6 +1,7 @@
 import type { TransportRefusal } from "@lucent/rpc/contract";
 import type { WebContract } from "@lucent/rpc/web";
 import type { z } from "zod";
+import { RULES_COPY } from "./rules.ts";
 
 // One message per refusal code, for every code any procedure in the web contract can return:
 // the type comes from the contract, so a code added there doesn't compile here until it has
@@ -40,11 +41,11 @@ export const REFUSALS: Readonly<Record<RefusalCode, string>> = {
     ACCOUNT_UNAVAILABLE: "this account is suspended.",
     NO_SECOND_FACTOR: "this account isn't fully set up. ask staff for a new setup link.",
     SETUP_INVALID: "this setup link has expired or was already used. ask staff for a new one.",
-    INVALID_USERNAME: "3 to 24 characters: a–z, 0–9 and _, starting with a letter.",
+    INVALID_USERNAME: RULES_COPY.username,
     USERNAME_ALREADY_SET: "this account already has a username.",
     USERNAME_TAKEN: "that name is taken or too close to an existing one.",
     USERNAME_REQUIRED: "choose a username first.",
-    PASSWORD_REJECTED: "use 12 to 128 characters.",
+    PASSWORD_REJECTED: RULES_COPY.password,
     PASSWORD_BREACHED: "that password is in a known data breach. choose another.",
     LAST_CREDENTIAL: "that's your only way to sign in. add another first.",
     TOTP_ALREADY_ENROLLED: "an authenticator app is already set up. remove it first.",
