@@ -1,7 +1,7 @@
 id = "cs2"
 name = "Counter-Strike 2"
 kind = "module"
-channels = ["stable", "beta", "alpha"]
+channels = ["stable", "alpha", "debug"]
 
 [defaults]
 concurrent_slots = 1

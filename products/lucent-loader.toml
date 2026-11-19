@@ -1,7 +1,7 @@
 id = "lucent-loader"
 name = "Lucent Loader"
 kind = "standalone"
-channels = ["stable", "beta", "alpha"]
+channels = ["stable", "alpha", "debug"]
 
 [defaults]
 concurrent_slots = 1

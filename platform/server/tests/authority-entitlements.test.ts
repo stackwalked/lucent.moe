@@ -136,7 +136,7 @@ describe("entitlements and effective product access", () => {
                     {
                         productId: cs2.id,
                         features: [FeatureTag.parse("visuals"), FeatureTag.parse("movement")],
-                        channels: [ChannelId.parse("beta")],
+                        channels: [ChannelId.parse("debug")],
                     },
                 ],
             });
@@ -153,7 +153,7 @@ describe("entitlements and effective product access", () => {
                 value: {
                     isEntitled: true,
                     features: ["aim", "movement", "visuals"].map((f) => FeatureTag.parse(f)),
-                    channels: ["stable", "beta", "alpha"].map((c) => ChannelId.parse(c)),
+                    channels: ["stable", "alpha", "debug"].map((c) => ChannelId.parse(c)),
                 },
             });
         });
