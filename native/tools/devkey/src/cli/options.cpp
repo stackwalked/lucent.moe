@@ -29,6 +29,9 @@ auto usage() -> error {
         stderr,
         "usage: devkey header <out.hpp>\n"
         "       devkey sign <module.dll> <game-module.dll> <out.bundle> <name>=<value>|@<file>...\n"
+        "       devkey check <module.dll>\n"
+        "check fails when the module holds this machine's dev public key (a release build runs "
+        "it).\n"
         "values are decimal, 0x-prefixed hex, or negative decimal; an address is its RVA.\n"
         "@<file> reads name=value lines from a file, as the facts tool writes them; # starts a "
         "comment"
@@ -134,6 +137,9 @@ auto parse_command(std::span<const wchar_t* const> arguments) -> result<command>
     }
     if (words.size() == 2 && words.front() == "header") {
         return header_command{.header = std::filesystem::absolute(to_wide(words.at(1)))};
+    }
+    if (words.size() == 2 && words.front() == "check") {
+        return check_command{.module = std::filesystem::absolute(to_wide(words.at(1)))};
     }
     if (!words.empty() && words.front() == "sign") {
         return parse_sign(words);

@@ -95,7 +95,8 @@ endfunction()
 # lucent_module(<name> SOURCES <sources>... [DEPS <targets>...])
 #
 # The loadable module lucent_<name>.dll: no import library, nothing links against it. Every module
-# is checked after linking for a TLS directory, which the mapper doesn't support (check_no_tls.cmake).
+# is checked after linking for a TLS directory, which the mapper doesn't support (check_no_tls.cmake);
+# a release module also for leaked fact names and the dev key.
 function(lucent_module name)
     cmake_parse_arguments(PARSE_ARGV 1 arg "" "" "SOURCES;DEPS")
     set(target lucent_${name})
@@ -110,6 +111,19 @@ function(lucent_module name)
             "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/check_no_tls.cmake"
         VERBATIM
     )
+    # The release gate, release builds only: the image may hold no declared fact name (facts
+    # check, which knows the names from the target's searches) and not this machine's dev public
+    # key (devkey check). A finding fails the link step. The module's name is its finder target's.
+    if(CMAKE_BUILD_TYPE STREQUAL "Release")
+        add_custom_command(
+            TARGET ${target}
+            POST_BUILD
+            COMMAND lucent_facts check --target ${name} "$<TARGET_FILE:${target}>"
+            COMMAND lucent_devkey check "$<TARGET_FILE:${target}>"
+            VERBATIM
+        )
+        add_dependencies(${target} lucent_facts lucent_devkey)
+    endif()
     set_property(GLOBAL APPEND PROPERTY lucent_modules ${target})
     get_property(is_layering_deferred GLOBAL PROPERTY lucent_layering_deferred)
     if(NOT is_layering_deferred)

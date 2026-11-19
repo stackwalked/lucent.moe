@@ -73,6 +73,11 @@ function(lucent_build_seed_hex out_hex out_label)
     # A new seed in the same file reconfigures, so the header never outlives its seed.
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${LUCENT_MASTER_SEED}")
     file(READ "${LUCENT_MASTER_SEED}" seed_hex HEX)
+    # The dev seed would give a release dev's public subkeys, and with them dev's fact keys.
+    string(REPEAT "00" 32 dev_seed)
+    if(seed_hex STREQUAL dev_seed)
+        message(FATAL_ERROR "LUCENT_MASTER_SEED holds the dev seed (32 zero bytes)")
+    endif()
     set(${out_hex} "${seed_hex}" PARENT_SCOPE)
     set(${out_label} "the master seed (LUCENT_MASTER_SEED)" PARENT_SCOPE)
 endfunction()

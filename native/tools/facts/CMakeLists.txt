@@ -2,6 +2,7 @@ lucent_executable(facts
     SOURCES
         src/main.cpp
         src/cache/binaries.cpp
+        src/check/names.cpp
         src/cli/options.cpp
         src/generate/generate.cpp
         src/generate/kind_check.cpp

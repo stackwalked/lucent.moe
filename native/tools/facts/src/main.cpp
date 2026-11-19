@@ -20,6 +20,7 @@
 #include <lucent/os/file.hpp>
 
 #include "cache/binaries.hpp"
+#include "check/names.hpp"
 #include "cli/options.hpp"
 #include "generate/generate.hpp"
 #include "generate/manifest.hpp"
@@ -130,6 +131,20 @@ auto run(const manifest_command& chosen) -> result<isize> {
     return 0;
 }
 
+auto run(const check_command& chosen) -> result<isize> {
+    const finder::target target = LUCENT_TRY(target_named(chosen.target));
+    const isize findings = LUCENT_TRY(count_named_leaks(chosen.module, target));
+    if (findings != 0) {
+        std::println(
+            stderr,
+            "facts: {} fails the release name check with {} finding(s)",
+            chosen.module.string(),
+            findings
+        );
+    }
+    return findings;
+}
+
 }
 }
 
@@ -149,7 +164,8 @@ auto wmain(int argc, wchar_t* argv[]) -> int {
         *chosen,
         [](const lucent::facts::ingest_command& command) { return lucent::facts::run(command); },
         [](const lucent::facts::generate_command& command) { return lucent::facts::run(command); },
-        [](const lucent::facts::manifest_command& command) { return lucent::facts::run(command); }
+        [](const lucent::facts::manifest_command& command) { return lucent::facts::run(command); },
+        [](const lucent::facts::check_command& command) { return lucent::facts::run(command); }
     );
     if (!ran) {
         std::println(

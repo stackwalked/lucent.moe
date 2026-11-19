@@ -1,4 +1,6 @@
 #include <cstdio>
+#include <expected>
+#include <optional>
 #include <print>
 #include <span>
 #include <utility>
@@ -10,6 +12,7 @@
 
 #include "cli/options.hpp"
 #include "key/header.hpp"
+#include "key/release_check.hpp"
 #include "key/seed.hpp"
 #include "sign/dev_bundle.hpp"
 
@@ -38,6 +41,23 @@ auto run(const sign_command& chosen) -> result<void> {
     return {};
 }
 
+auto run(const check_command& chosen) -> result<void> {
+    const crypto::signing_key signer = LUCENT_TRY(dev_signing_key());
+    const std::optional<isize> offset =
+        LUCENT_TRY(public_key_offset(chosen.module, signer.public_part()));
+    if (offset) {
+        std::println(
+            stderr,
+            "devkey: {} holds this machine's dev public key at file offset {:#x}; a release must "
+            "not trust it",
+            chosen.module.string(),
+            *offset
+        );
+        return std::unexpected(error{.code = error_code::malformed});
+    }
+    return {};
+}
+
 }
 }
 
@@ -56,7 +76,8 @@ auto wmain(int argc, wchar_t* argv[]) -> int {
     const lucent::result<void> ran = lucent::match(
         *chosen,
         [](const lucent::devkey::header_command& command) { return lucent::devkey::run(command); },
-        [](const lucent::devkey::sign_command& command) { return lucent::devkey::run(command); }
+        [](const lucent::devkey::sign_command& command) { return lucent::devkey::run(command); },
+        [](const lucent::devkey::check_command& command) { return lucent::devkey::run(command); }
     );
     if (!ran) {
         std::println(

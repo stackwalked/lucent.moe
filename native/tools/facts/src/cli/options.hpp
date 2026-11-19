@@ -27,7 +27,14 @@ struct manifest_command {
     std::filesystem::path out;
 };
 
-using command = std::variant<ingest_command, generate_command, manifest_command>;
+// `facts check --target <name> <module.dll>`: the release build's post-link step; fails when the
+// image holds a declared fact name.
+struct check_command {
+    std::string target;
+    std::filesystem::path module;
+};
+
+using command = std::variant<ingest_command, generate_command, manifest_command, check_command>;
 
 // Prints the usage to stderr when the arguments don't fit it.
 auto parse_command(std::span<const wchar_t* const> arguments) -> result<command>;
