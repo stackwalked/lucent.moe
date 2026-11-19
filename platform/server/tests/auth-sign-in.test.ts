@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createAuthDeps } from "../src/auth/deps.ts";
 import { createArgon2idHasher } from "../src/auth/password.ts";
-import { resolveSession } from "../src/auth/sessions.ts";
 import {
     beginPasskeySignIn,
     finishPasskeySignIn,
@@ -9,6 +8,7 @@ import {
     signInWithTotp,
 } from "../src/auth/sign-in.ts";
 import { createTotpKeyring } from "../src/auth/totp.ts";
+import { resolveViewer } from "../src/auth/viewer.ts";
 import { AuthenticationResponse } from "../src/contract/webauthn.ts";
 import { invariant } from "../src/core/contain.ts";
 import { err } from "../src/core/result.ts";
@@ -77,8 +77,9 @@ describe("password and TOTP", () => {
                 code: await codeAt(browserDb, alice.totpSecret, 1),
             });
             invariant(signedIn.ok, `the code is right: ${JSON.stringify(signedIn)}`);
-            const session = await resolveSession(browserDb, {
+            const session = await resolveViewer(browserDb, {
                 sessionToken: signedIn.value.sessionToken,
+                client: null,
             });
             expect(session.ok && session.value.purpose).toBe("member");
         });

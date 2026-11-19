@@ -8,10 +8,11 @@ import {
     removeCredential,
     setPassword,
 } from "../src/auth/credentials.ts";
-import { resolveSession, signOutOthers } from "../src/auth/sessions.ts";
+import { signOutOthers } from "../src/auth/sessions.ts";
 import { redeemSetupLink } from "../src/auth/setup.ts";
 import { signInWithPassword } from "../src/auth/sign-in.ts";
 import { hashToken } from "../src/auth/tokens.ts";
+import { resolveViewer } from "../src/auth/viewer.ts";
 import { STEP_UP_WINDOW_SECONDS } from "../src/authority/policy.ts";
 import { createAccount, recoverAccount } from "../src/authority/writers.ts";
 import { AuthenticationResponse, RegistrationResponse } from "../src/contract/webauthn.ts";
@@ -35,14 +36,20 @@ import { createTestAuthenticator } from "./harness/authenticator.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 
 describe("browser sessions", () => {
-    test("a member session lasts twelve hours from sign-in, however much it's used", async () => {
+    test("a member session ends when it expires, however much it's used", async () => {
         const cluster = await sharedTestCluster();
         await cluster.withTestDb(async ({ browserDb, nativeDb }) => {
             const rng = createSeededRng(301);
             const deps = await createTestAuthDeps(browserDb, rng);
             const alice = await newMember(deps, rng, { username: "alice", with: "passkey" });
-            const first = await resolveSession(browserDb, { sessionToken: alice.sessionToken });
-            const second = await resolveSession(browserDb, { sessionToken: alice.sessionToken });
+            const first = await resolveViewer(browserDb, {
+                sessionToken: alice.sessionToken,
+                client: null,
+            });
+            const second = await resolveViewer(browserDb, {
+                sessionToken: alice.sessionToken,
+                client: null,
+            });
             invariant(first.ok && second.ok, "a fresh session resolves");
             expect(second.value.expiresAt).toBe(first.value.expiresAt);
 
@@ -51,9 +58,9 @@ describe("browser sessions", () => {
                 nativeDb,
                 sql`update browser_session set expires_at = now() where token_hash = ${tokenHash}`,
             );
-            expect(await resolveSession(browserDb, { sessionToken: alice.sessionToken })).toEqual(
-                err({ code: "SESSION_INVALID" }),
-            );
+            expect(
+                await resolveViewer(browserDb, { sessionToken: alice.sessionToken, client: null }),
+            ).toEqual(err({ code: "SESSION_INVALID" }));
         });
     });
 
@@ -67,9 +74,9 @@ describe("browser sessions", () => {
                 nativeDb,
                 sql`update account set status = 'suspended' where id = ${alice.accountId}`,
             );
-            expect(await resolveSession(browserDb, { sessionToken: alice.sessionToken })).toEqual(
-                err({ code: "SESSION_INVALID" }),
-            );
+            expect(
+                await resolveViewer(browserDb, { sessionToken: alice.sessionToken, client: null }),
+            ).toEqual(err({ code: "SESSION_INVALID" }));
         });
     });
 
@@ -178,12 +185,15 @@ describe("credential changes", () => {
             const rootId = await seedRootOnce(browserDb, rng);
             const session = await memberSession(deps, rootId);
             const create = async () => {
-                const resolved = await resolveSession(browserDb, { sessionToken: session });
+                const resolved = await resolveViewer(browserDb, {
+                    sessionToken: session,
+                    client: null,
+                });
                 invariant(resolved.ok, "the root's session resolves");
                 return await createAccount({
                     db: browserDb,
                     rng,
-                    caller: { accountId: rootId, stepUpAt: resolved.value.stepUpAt },
+                    caller: { accountId: rootId, stepUpAt: resolved.value.stepUpAt, client: null },
                     operationId: newOperationId(rng),
                     email: `staff${rng.nextUint32()}@lucent.test`,
                 });
@@ -218,12 +228,13 @@ describe("credential changes", () => {
                 password: "an entirely new passphrase",
             });
             expect(changed).toEqual(ok(undefined));
-            expect(await resolveSession(browserDb, { sessionToken: elsewhere })).toEqual(
-                err({ code: "SESSION_INVALID" }),
-            );
-            expect((await resolveSession(browserDb, { sessionToken: alice.sessionToken })).ok).toBe(
-                true,
-            );
+            expect(
+                await resolveViewer(browserDb, { sessionToken: elsewhere, client: null }),
+            ).toEqual(err({ code: "SESSION_INVALID" }));
+            expect(
+                (await resolveViewer(browserDb, { sessionToken: alice.sessionToken, client: null }))
+                    .ok,
+            ).toBe(true);
         });
     });
 });
@@ -355,9 +366,9 @@ describe("setup links", () => {
                 targetAccountId: alice.accountId,
             });
             invariant(recovered.ok, `recovering alice failed: ${JSON.stringify(recovered)}`);
-            expect(await resolveSession(browserDb, { sessionToken: alice.sessionToken })).toEqual(
-                err({ code: "SESSION_INVALID" }),
-            );
+            expect(
+                await resolveViewer(browserDb, { sessionToken: alice.sessionToken, client: null }),
+            ).toEqual(err({ code: "SESSION_INVALID" }));
             expect(
                 await signInWithPassword(deps, { username: "alice", password: MEMBER_PASSWORD }),
             ).toEqual(err({ code: "INVALID_CREDENTIALS" }));

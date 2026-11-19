@@ -1,8 +1,9 @@
 import { ok, type Result } from "../core/result.ts";
-import type { EpochMs } from "../core/scalars.ts";
+import type { ClientInfo, EpochMs } from "../core/scalars.ts";
 import { type DbFailure, execute, sql, type Tx, toTimestamptz } from "./pool.ts";
 
 // Append-only and never locked, so it's written last in a transaction (platform/AGENTS.md).
+// `client` is null when the actor wasn't a browser (ops) or web didn't say.
 export async function appendAudit(
     tx: Tx,
     params: {
@@ -10,12 +11,15 @@ export async function appendAudit(
         readonly operation: string;
         readonly target: Record<string, unknown>;
         readonly at: EpochMs;
+        readonly client: ClientInfo | null;
     },
 ): Promise<Result<void, DbFailure>> {
     const res = await execute(
         tx,
-        sql`insert into audit (at, actor_id, operation, target)
-            values (${toTimestamptz(params.at)}::timestamptz, ${params.actorId}, ${params.operation}, ${JSON.stringify(params.target)}::jsonb)`,
+        sql`insert into audit (at, actor_id, operation, target, client_ip, user_agent)
+            values (${toTimestamptz(params.at)}::timestamptz, ${params.actorId}, ${params.operation},
+                    ${JSON.stringify(params.target)}::jsonb, ${params.client?.ip ?? null}::inet,
+                    ${params.client?.userAgent ?? null})`,
     );
     if (!res.ok) return res;
     return ok(undefined);

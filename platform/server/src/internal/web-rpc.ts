@@ -10,7 +10,7 @@ import {
     setPassword,
 } from "../auth/credentials.ts";
 import type { AuthDeps } from "../auth/deps.ts";
-import { resolveSession, signOut, signOutOthers } from "../auth/sessions.ts";
+import { listSessions, signOut, signOutOthers, signOutSession } from "../auth/sessions.ts";
 import { chooseUsername, redeemSetupLink } from "../auth/setup.ts";
 import {
     beginPasskeySignIn,
@@ -18,9 +18,11 @@ import {
     signInWithPassword,
     signInWithTotp,
 } from "../auth/sign-in.ts";
+import { resolveViewer } from "../auth/viewer.ts";
 import { type WebContract, webContract } from "../contract/web.ts";
 import { err, ok, type Result } from "../core/result.ts";
 import { type Handlers, implement } from "../core/rpc.ts";
+import type { ClientInfo } from "../core/scalars.ts";
 import type { DbFailure } from "../db/pool.ts";
 import type { ProductCatalog } from "../products/catalog.ts";
 
@@ -57,49 +59,91 @@ function done<E>(result: Result<void, E>): Result<Record<string, never>, E> {
     return result.ok ? ok({}) : result;
 }
 
+// Domain functions take the client as an optional field, absent when unknown.
+function from(call: { readonly client: ClientInfo | null }): { readonly client?: ClientInfo } {
+    return call.client === null ? {} : { client: call.client };
+}
+
 const handlers: Handlers<WebRpcContext, WebContract> = {
     "health.check": (ctx) => Promise.resolve(ok({ productsLoaded: ctx.catalog.size })),
     "catalog.list": (ctx) => Promise.resolve(ok([...ctx.catalog.values()])),
 
     "signIn.password": async (ctx, input) => served(await signInWithPassword(ctx.auth, input)),
-    "signIn.totp": async (ctx, input) => served(await signInWithTotp(ctx.auth, input)),
+    "signIn.totp": async (ctx, input, call) =>
+        served(await signInWithTotp(ctx.auth, { ...input, ...from(call) })),
     "signIn.passkey.begin": async (ctx, input) => served(await beginPasskeySignIn(ctx.auth, input)),
-    "signIn.passkey.finish": async (ctx, input) =>
-        served(await finishPasskeySignIn(ctx.auth, input)),
+    "signIn.passkey.finish": async (ctx, input, call) =>
+        served(await finishPasskeySignIn(ctx.auth, { ...input, ...from(call) })),
 
-    "session.resolve": async (ctx, _input, session) =>
-        served(await resolveSession(ctx.auth.db, { sessionToken: session })),
-    "session.end": async (ctx, _input, session) =>
-        served(done(await signOut(ctx.auth.db, { sessionToken: session }))),
-    "session.endOthers": async (ctx, _input, session) =>
-        served(done(await signOutOthers(ctx.auth.db, { sessionToken: session }))),
-
-    "setup.redeem": async (ctx, input) => served(await redeemSetupLink(ctx.auth, input)),
-    "setup.username.choose": async (ctx, input, session) =>
-        served(await chooseUsername(ctx.auth, { sessionToken: session, username: input.username })),
-
-    "credentials.list": async (ctx, _input, session) =>
-        served(await listCredentials(ctx.auth, { sessionToken: session })),
-    "credentials.password.set": async (ctx, input, session) =>
-        served(
-            done(await setPassword(ctx.auth, { sessionToken: session, password: input.password })),
-        ),
-    "credentials.totp.enroll": async (ctx, _input, session) =>
-        served(await beginTotpEnrollment(ctx.auth, { sessionToken: session })),
-    "credentials.totp.confirm": async (ctx, input, session) =>
+    "session.resolve": async (ctx, _input, { session, client }) =>
+        served(await resolveViewer(ctx.auth.db, { sessionToken: session, client })),
+    "session.list": async (ctx, _input, { session }) => {
+        const listed = await listSessions(ctx.auth.db, { sessionToken: session });
+        return served(listed.ok ? ok({ sessions: listed.value }) : listed);
+    },
+    "session.end": async (ctx, input, { session }) =>
         served(
             done(
-                await confirmTotpEnrollment(ctx.auth, { sessionToken: session, code: input.code }),
+                input.sessionId === null
+                    ? await signOut(ctx.auth.db, { sessionToken: session })
+                    : await signOutSession(ctx.auth.db, {
+                          sessionToken: session,
+                          sessionId: input.sessionId,
+                      }),
             ),
         ),
-    "credentials.passkey.register.begin": async (ctx, _input, session) =>
+    "session.endOthers": async (ctx, _input, { session }) =>
+        served(done(await signOutOthers(ctx.auth.db, { sessionToken: session }))),
+
+    "setup.redeem": async (ctx, input, call) =>
+        served(await redeemSetupLink(ctx.auth, { ...input, ...from(call) })),
+    "setup.username.choose": async (ctx, input, call) =>
+        served(
+            await chooseUsername(ctx.auth, {
+                sessionToken: call.session,
+                username: input.username,
+                ...from(call),
+            }),
+        ),
+
+    "credentials.list": async (ctx, _input, { session }) =>
+        served(await listCredentials(ctx.auth, { sessionToken: session })),
+    "credentials.password.set": async (ctx, input, call) =>
+        served(
+            done(
+                await setPassword(ctx.auth, {
+                    sessionToken: call.session,
+                    password: input.password,
+                    ...from(call),
+                }),
+            ),
+        ),
+    "credentials.totp.enroll": async (ctx, _input, { session }) =>
+        served(await beginTotpEnrollment(ctx.auth, { sessionToken: session })),
+    "credentials.totp.confirm": async (ctx, input, call) =>
+        served(
+            done(
+                await confirmTotpEnrollment(ctx.auth, {
+                    sessionToken: call.session,
+                    code: input.code,
+                    ...from(call),
+                }),
+            ),
+        ),
+    "credentials.passkey.register.begin": async (ctx, _input, { session }) =>
         served(await beginPasskeyRegistration(ctx.auth, { sessionToken: session })),
-    "credentials.passkey.register.finish": async (ctx, input, session) =>
-        served(await finishPasskeyRegistration(ctx.auth, { sessionToken: session, ...input })),
-    "credentials.remove": async (ctx, input, session) => {
+    "credentials.passkey.register.finish": async (ctx, input, call) =>
+        served(
+            await finishPasskeyRegistration(ctx.auth, {
+                sessionToken: call.session,
+                ...input,
+                ...from(call),
+            }),
+        ),
+    "credentials.remove": async (ctx, input, call) => {
         const credential = input.credential;
         const removed = await removeCredential(ctx.auth, {
-            sessionToken: session,
+            sessionToken: call.session,
             credential:
                 credential.kind === "passkey"
                     ? {
@@ -107,13 +151,14 @@ const handlers: Handlers<WebRpcContext, WebContract> = {
                           id: Uint8Array.fromBase64(credential.id, { alphabet: "base64url" }),
                       }
                     : credential,
+            ...from(call),
         });
         return served(done(removed));
     },
 
-    "stepUp.begin": async (ctx, _input, session) =>
+    "stepUp.begin": async (ctx, _input, { session }) =>
         served(await beginStepUp(ctx.auth, { sessionToken: session })),
-    "stepUp.finish": async (ctx, input, session) =>
+    "stepUp.finish": async (ctx, input, { session }) =>
         served(await finishStepUp(ctx.auth, { sessionToken: session, ...input })),
 };
 

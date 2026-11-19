@@ -2,7 +2,7 @@ import { type Context, Hono } from "hono";
 import { z } from "zod";
 import { containBoundary, invariant, tryAsync, trySync } from "./contain.ts";
 import { err, ok, type Result } from "./result.ts";
-import { BearerToken } from "./scalars.ts";
+import { BearerToken, ClientInfo, toBase64Url } from "./scalars.ts";
 
 export const DEFAULT_BODY_LIMIT_BYTES = 16 * 1024;
 
@@ -17,6 +17,7 @@ export function isStrongPeerKey(key: string): boolean {
 }
 
 const SESSION_HEADER = "lucent-session";
+const CLIENT_HEADER = "lucent-client";
 const REQUEST_HEADER = "lucent-request";
 
 // Names one browser request across web's and platform's logs; web shows it as the support
@@ -57,10 +58,17 @@ export function defineContract<const Contracts extends ContractMap>(
 
 type SessionFor<C extends ProcedureContract> = C["session"] extends "none" ? null : BearerToken;
 
+// What the request carried besides its input. `client` is trusted because only web holds the
+// peer key; it is null when the caller didn't send one (tests, tools).
+export type CallInfo<C extends ProcedureContract> = {
+    readonly session: SessionFor<C>;
+    readonly client: ClientInfo | null;
+};
+
 export type Handler<Ctx, C extends ProcedureContract> = (
     ctx: Ctx,
     input: z.output<C["input"]>,
-    session: SessionFor<C>,
+    call: CallInfo<C>,
 ) => Promise<Result<z.output<C["output"]>, z.output<C["error"]>>>;
 
 export type Handlers<Ctx, Contracts extends ContractMap> = {
@@ -70,7 +78,7 @@ export type Handlers<Ctx, Contracts extends ContractMap> = {
 type BoundProcedure<Ctx> = {
     readonly contract: ProcedureContract;
     // biome-ignore lint/suspicious/noExplicitAny: variance-erased handler; `implement` typed it against its contract
-    readonly run: (ctx: Ctx, input: any, session: any) => Promise<Result<unknown, unknown>>;
+    readonly run: (ctx: Ctx, input: any, call: any) => Promise<Result<unknown, unknown>>;
 };
 export type ProcedureMap<Ctx> = ReadonlyMap<string, BoundProcedure<Ctx>>;
 
@@ -187,6 +195,29 @@ function sessionFor(
     return err({ code: "INVALID_REQUEST", detail: "missing or malformed Lucent-Session" });
 }
 
+// base64url of `{ ip, userAgent }` as JSON: a user agent may hold characters a header can't.
+export function toClientHeader(client: ClientInfo): string {
+    return toBase64Url(new TextEncoder().encode(JSON.stringify(client)));
+}
+
+function clientFor(req: Request): Result<ClientInfo | null, TransportRefusal> {
+    const header = req.headers.get(CLIENT_HEADER);
+    if (header === null) return ok(null);
+    const malformed = { code: "INVALID_REQUEST" as const, detail: "malformed Lucent-Client" };
+    const decoded = trySync(
+        () =>
+            JSON.parse(
+                new TextDecoder("utf-8", { fatal: true }).decode(
+                    Uint8Array.fromBase64(header, { alphabet: "base64url" }),
+                ),
+            ) as unknown,
+        () => malformed,
+    );
+    if (!decoded.ok) return decoded;
+    const parsed = ClientInfo.safeParse(decoded.value);
+    return parsed.success ? ok(parsed.data) : err(malformed);
+}
+
 export function mountInternalRpc<Ctx>(params: {
     readonly path: string;
     readonly peerKey: string;
@@ -267,12 +298,17 @@ export function mountInternalRpc<Ctx>(params: {
         }
         const session = sessionFor(contract, c.req.raw);
         if (!session.ok) return c.json(session, 400);
+        const client = clientFor(c.req.raw);
+        if (!client.ok) return c.json(client, 400);
         const ctxRes = await params.createContext(c.req.raw);
         if (!ctxRes.ok) {
             const status = ctxRes.error.code === "SERVICE_UNAVAILABLE" ? 503 : 401;
             return c.json(ctxRes, status);
         }
-        const result = await target.run(ctxRes.value, parsedInput.data, session.value);
+        const result = await target.run(ctxRes.value, parsedInput.data, {
+            session: session.value,
+            client: client.value,
+        });
         // The reply leaves through the contract's own schemas: a field a handler added by accident
         // is dropped, and one that breaks the contract is a defect, not a reply.
         const reply = result.ok
@@ -290,6 +326,7 @@ export function mountInternalRpc<Ctx>(params: {
 type CallOptions = {
     readonly signal?: AbortSignal;
     readonly requestId?: RequestId;
+    readonly client?: ClientInfo;
 };
 
 type CallOptionsFor<C extends ProcedureContract> = C["session"] extends "none"
@@ -356,6 +393,8 @@ export function createRpcClient<Contracts extends ContractMap>(
         });
         if (session !== undefined) headers.set(SESSION_HEADER, session);
         if (options?.requestId !== undefined) headers.set(REQUEST_HEADER, options.requestId);
+        if (options?.client !== undefined)
+            headers.set(CLIENT_HEADER, toClientHeader(options.client));
         const req = new Request(config.endpointUrl, {
             method: "POST",
             headers,

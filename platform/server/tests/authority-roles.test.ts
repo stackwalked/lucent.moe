@@ -278,7 +278,7 @@ describe("role authoring and assignment", () => {
             const res = await upsertRole({
                 db: nativeDb,
                 catalog: catalog(),
-                caller: { accountId: callerId, stepUpAt: now },
+                caller: { accountId: callerId, stepUpAt: now, client: null },
                 operationId: newOperationId(rng),
                 roleId: RoleId.parse("role_mod"),
                 name: "Moderator",
@@ -305,7 +305,7 @@ describe("role authoring and assignment", () => {
             const res = await upsertRole({
                 db: nativeDb,
                 catalog: catalog(),
-                caller: { accountId: callerId, stepUpAt: null },
+                caller: { accountId: callerId, stepUpAt: null, client: null },
                 operationId: newOperationId(rng),
                 roleId: RoleId.parse("role_mod"),
                 name: "Moderator",
@@ -339,6 +339,7 @@ describe("role authoring and assignment", () => {
                 caller: {
                     accountId: callerId,
                     stepUpAt: EpochMs.parse(now - STEP_UP_WINDOW_SECONDS * 1_000 - 1),
+                    client: null,
                 },
                 operationId: newOperationId(rng),
                 roleId: RoleId.parse("role_mod"),

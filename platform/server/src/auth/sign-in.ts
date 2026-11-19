@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { AuthenticationResponse, RequestOptions } from "../contract/webauthn.ts";
 import { invariant } from "../core/contain.ts";
 import { err, ok, type Result } from "../core/result.ts";
-import { AccountId, type BearerToken, type EpochMs } from "../core/scalars.ts";
+import { AccountId, type BearerToken, type ClientInfo, type EpochMs } from "../core/scalars.ts";
 import { type DbFailure, execute, queryOne, sql, type Tx } from "../db/pool.ts";
 import { errCommit, withTx } from "../db/tx.ts";
 import { findPasskey, lockAccount, readPasskeys } from "./accounts.ts";
@@ -71,7 +71,11 @@ export function newChallenge(deps: AuthDeps): Uint8Array {
 async function finishSignIn(
     tx: Tx,
     deps: AuthDeps,
-    params: { readonly accountId: AccountId; readonly txNow: EpochMs },
+    params: {
+        readonly accountId: AccountId;
+        readonly txNow: EpochMs;
+        readonly client: ClientInfo | null;
+    },
 ): Promise<Result<SignedIn, SignInRefusal>> {
     const account = await lockAccount(tx, params.accountId);
     if (!account.ok) return account;
@@ -83,6 +87,7 @@ async function finishSignIn(
         accountId: params.accountId,
         purpose: "member",
         txNow: params.txNow,
+        client: params.client,
     });
     if (!session.ok) return session;
     return ok({ sessionToken: session.value.token, expiresAt: session.value.expiresAt });
@@ -146,7 +151,11 @@ export async function signInWithPassword(
 
 export async function signInWithTotp(
     deps: AuthDeps,
-    params: { readonly flowToken: BearerToken; readonly code: string },
+    params: {
+        readonly flowToken: BearerToken;
+        readonly code: string;
+        readonly client?: ClientInfo;
+    },
 ): Promise<Result<SignedIn, SignInRefusal>> {
     return await withTx(deps.db, async (tx, txNow) => {
         const seen = await readFlow(tx, { token: params.flowToken, kind: "sign_in", txNow });
@@ -199,7 +208,7 @@ export async function signInWithTotp(
         if (!used.ok) return used;
         const ended = await endFlow(tx, flow.value.tokenHash);
         if (!ended.ok) return ended;
-        return await finishSignIn(tx, deps, { accountId, txNow });
+        return await finishSignIn(tx, deps, { accountId, txNow, client: params.client ?? null });
     });
 }
 
@@ -265,6 +274,7 @@ export async function finishPasskeySignIn(
     params: {
         readonly flowToken: BearerToken;
         readonly response: AuthenticationResponse;
+        readonly client?: ClientInfo;
     },
 ): Promise<Result<SignedIn, SignInRefusal>> {
     const tokenHash = await hashToken(params.flowToken);
@@ -312,6 +322,6 @@ export async function finishPasskeySignIn(
         if (!used.ok) return used;
         const ended = await endFlow(tx, tokenHash);
         if (!ended.ok) return ended;
-        return await finishSignIn(tx, deps, { accountId, txNow });
+        return await finishSignIn(tx, deps, { accountId, txNow, client: params.client ?? null });
     });
 }

@@ -102,7 +102,7 @@ export async function seedStaff(
 }
 
 export async function steppedUp(db: Db, accountId: AccountId): Promise<Caller> {
-    return { accountId, stepUpAt: await dbNow(db) };
+    return { accountId, stepUpAt: await dbNow(db), client: null };
 }
 
 const CountRowSchema = z.object({ count: z.coerce.number() });

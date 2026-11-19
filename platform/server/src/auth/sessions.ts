@@ -1,12 +1,20 @@
 import { z } from "zod";
 import { err, ok, type Result } from "../core/result.ts";
 import type { CryptoRng } from "../core/rng.ts";
-import { AccountId, type BearerToken, EpochMs } from "../core/scalars.ts";
+import {
+    AccountId,
+    type BearerToken,
+    type ClientInfo,
+    EpochMs,
+    newSessionId,
+    SessionId,
+} from "../core/scalars.ts";
 import {
     type Db,
     type DbFailure,
     execute,
     type Queryable,
+    queryAll,
     queryOne,
     sql,
     type Tx,
@@ -15,12 +23,17 @@ import {
 import { withTx } from "../db/tx.ts";
 import { hashToken, issueToken } from "./tokens.ts";
 
-// Fixed lifetimes; a session never slides. A member signs in again after 12 hours whatever they
-// did meanwhile, so a stolen cookie is worth at most that.
+// Fixed lifetimes; a session never slides. A member signs in again after 7 days whatever they did
+// meanwhile; staff actions still need a passkey step-up within 30 minutes, so a stolen cookie
+// buys a week of reading, not of acting.
 const SESSION_TTL_MS = {
-    member: 12 * 60 * 60 * 1_000,
-    setup: 15 * 60 * 1_000,
+    member: 7 * 24 * 60 * 60 * 1_000,
+    setup: 30 * 60 * 1_000,
 } as const;
+
+// Resolving a session refreshes `last_seen_at` at most this often, so browsing isn't a database
+// write per request.
+const LAST_SEEN_GRANULARITY_MS = 5 * 60 * 1_000;
 
 export type SessionPurpose = keyof typeof SESSION_TTL_MS;
 
@@ -29,6 +42,7 @@ export const CREDENTIAL_FRESHNESS_MS = 5 * 60 * 1_000;
 
 export type BrowserSession = {
     readonly tokenHash: Uint8Array;
+    readonly sessionId: SessionId;
     readonly accountId: AccountId;
     readonly purpose: SessionPurpose;
     readonly expiresAt: EpochMs;
@@ -47,23 +61,29 @@ export async function mintSession(
         readonly accountId: AccountId;
         readonly purpose: SessionPurpose;
         readonly txNow: EpochMs;
+        readonly client: ClientInfo | null;
     },
 ): Promise<Result<{ readonly token: BearerToken; readonly expiresAt: EpochMs }, DbFailure>> {
     const issued = await issueToken(params.rng);
+    const sessionId = newSessionId(params.rng);
     const expiresAt = EpochMs.parse(params.txNow + SESSION_TTL_MS[params.purpose]);
     const now = toTimestamptz(params.txNow);
     const inserted = await execute(
         tx,
         sql`insert into browser_session
-                (token_hash, account_id, purpose, created_at, expires_at, authenticated_at)
-            values (${issued.hash}, ${params.accountId}, ${params.purpose}, ${now}::timestamptz,
-                    ${toTimestamptz(expiresAt)}::timestamptz, ${now}::timestamptz)`,
+                (token_hash, public_id, account_id, purpose, created_at, expires_at,
+                 authenticated_at, last_seen_at, client_ip, user_agent)
+            values (${issued.hash}, ${sessionId}, ${params.accountId}, ${params.purpose},
+                    ${now}::timestamptz, ${toTimestamptz(expiresAt)}::timestamptz,
+                    ${now}::timestamptz, ${now}::timestamptz, ${params.client?.ip ?? null}::inet,
+                    ${params.client?.userAgent ?? null})`,
     );
     if (!inserted.ok) return inserted;
     return ok({ token: issued.token, expiresAt });
 }
 
 const SessionRowSchema = z.object({
+    public_id: SessionId,
     account_id: AccountId,
     purpose: z.enum(["member", "setup"]),
     expires_at: EpochMs,
@@ -85,7 +105,7 @@ async function findSession(
     const row = await queryOne(
         q,
         SessionRowSchema,
-        sql`select s.account_id, s.purpose, s.expires_at, s.authenticated_at, s.step_up_at
+        sql`select s.public_id, s.account_id, s.purpose, s.expires_at, s.authenticated_at, s.step_up_at
             from browser_session s
             join account a on a.id = s.account_id
             where s.token_hash = ${tokenHash}
@@ -100,6 +120,7 @@ async function findSession(
     }
     return ok({
         tokenHash,
+        sessionId: found.public_id,
         accountId: found.account_id,
         purpose: found.purpose,
         expiresAt: found.expires_at,
@@ -172,30 +193,6 @@ export async function endOtherSessions(
     return ok(undefined);
 }
 
-export type ResolvedSession = {
-    readonly accountId: AccountId;
-    readonly purpose: SessionPurpose;
-    readonly expiresAt: EpochMs;
-    readonly stepUpAt: EpochMs | null;
-};
-
-// What web asks on every request carrying the session cookie.
-export async function resolveSession(
-    db: Db,
-    params: { readonly sessionToken: BearerToken },
-): Promise<Result<ResolvedSession, SessionRefusal | DbFailure>> {
-    return await withTx(db, async (tx, txNow) => {
-        const session = await readSession(tx, {
-            token: params.sessionToken,
-            txNow,
-            purposes: ["member", "setup"],
-        });
-        if (!session.ok) return session;
-        const { accountId, purpose, expiresAt, stepUpAt } = session.value;
-        return ok({ accountId, purpose, expiresAt, stepUpAt });
-    });
-}
-
 // Sign-out never fails for a token that's already gone.
 export async function signOut(
     db: Db,
@@ -221,4 +218,110 @@ export async function signOutOthers(
             keep: session.value.tokenHash,
         });
     });
+}
+
+const ListedSessionRowSchema = z.object({
+    public_id: SessionId,
+    purpose: z.enum(["member", "setup"]),
+    created_at: EpochMs,
+    last_seen_at: EpochMs,
+    expires_at: EpochMs,
+    client_ip: z.string().nullable(),
+    user_agent: z.string().nullable(),
+});
+
+export type ListedSession = {
+    readonly sessionId: SessionId;
+    readonly purpose: SessionPurpose;
+    readonly createdAt: EpochMs;
+    readonly lastSeenAt: EpochMs;
+    readonly expiresAt: EpochMs;
+    readonly client: { readonly ip: string | null; readonly userAgent: string | null };
+    readonly current: boolean;
+};
+
+// The holder's own live sessions, most recently seen first. The client info is shown only here,
+// to the account it belongs to.
+export async function listSessions(
+    db: Db,
+    params: { readonly sessionToken: BearerToken },
+): Promise<Result<readonly ListedSession[], SessionRefusal | DbFailure>> {
+    return await withTx(db, async (tx, txNow) => {
+        const session = await readSession(tx, {
+            token: params.sessionToken,
+            txNow,
+            purposes: ["member"],
+        });
+        if (!session.ok) return session;
+        const rows = await queryAll(
+            tx,
+            ListedSessionRowSchema,
+            sql`select public_id, purpose, created_at, last_seen_at, expires_at,
+                       host(client_ip) as client_ip, user_agent
+                from browser_session
+                where account_id = ${session.value.accountId}
+                  and expires_at > ${toTimestamptz(txNow)}::timestamptz
+                order by last_seen_at desc, public_id`,
+        );
+        if (!rows.ok) return rows;
+        return ok(
+            rows.value.map((row) => ({
+                sessionId: row.public_id,
+                purpose: row.purpose,
+                createdAt: row.created_at,
+                lastSeenAt: row.last_seen_at,
+                expiresAt: row.expires_at,
+                client: { ip: row.client_ip, userAgent: row.user_agent },
+                current: row.public_id === session.value.sessionId,
+            })),
+        );
+    });
+}
+
+// Ends one of the holder's sessions by its listed id. One already gone is already ended.
+export async function signOutSession(
+    db: Db,
+    params: { readonly sessionToken: BearerToken; readonly sessionId: SessionId },
+): Promise<Result<void, SessionRefusal | DbFailure>> {
+    return await withTx(db, async (tx, txNow) => {
+        const session = await lockSession(tx, {
+            token: params.sessionToken,
+            txNow,
+            purposes: ["member"],
+        });
+        if (!session.ok) return session;
+        const res = await execute(
+            tx,
+            sql`delete from browser_session
+                where account_id = ${session.value.accountId}
+                  and public_id = ${params.sessionId}`,
+        );
+        if (!res.ok) return res;
+        return ok(undefined);
+    });
+}
+
+// Refreshes when the session was last seen and from where, at most once per granularity window.
+// Only the session row is locked, and nothing else is waited on while holding it, so this can't
+// deadlock against a writer that locked the account first and is ending the session.
+export async function touchSession(
+    tx: Tx,
+    params: {
+        readonly tokenHash: Uint8Array;
+        readonly txNow: EpochMs;
+        readonly client: ClientInfo | null;
+    },
+): Promise<Result<void, DbFailure>> {
+    const staleBefore = EpochMs.parse(Math.max(0, params.txNow - LAST_SEEN_GRANULARITY_MS));
+    const res = await execute(
+        tx,
+        sql`update browser_session
+            set last_seen_at = ${toTimestamptz(params.txNow)}::timestamptz,
+                client_ip = coalesce(${params.client?.ip ?? null}::inet, client_ip),
+                user_agent = coalesce(${params.client?.userAgent ?? null}, user_agent)
+            where token_hash = ${params.tokenHash}
+              and last_seen_at <= ${toTimestamptz(staleBefore)}::timestamptz`,
+    );
+    if (!res.ok) return res;
+    return ok(undefined);
 }

@@ -14,7 +14,12 @@ import { createAccount } from "../src/authority/writers.ts";
 import { RegistrationResponse } from "../src/contract/webauthn.ts";
 import { invariant } from "../src/core/contain.ts";
 import type { SeededRng } from "../src/core/rng.ts";
-import { type AccountId, type BearerToken, newOperationId } from "../src/core/scalars.ts";
+import {
+    type AccountId,
+    type BearerToken,
+    type ClientInfo,
+    newOperationId,
+} from "../src/core/scalars.ts";
 import type { Db } from "../src/db/pool.ts";
 import { withTx } from "../src/db/tx.ts";
 import { dbNow, seedRoot, steppedUp } from "./authority-fixtures.ts";
@@ -81,9 +86,13 @@ export function seedRootOnce(db: Db, rng: SeededRng): Promise<AccountId> {
     return root;
 }
 
-export async function memberSession(deps: AuthDeps, accountId: AccountId): Promise<BearerToken> {
+export async function memberSession(
+    deps: AuthDeps,
+    accountId: AccountId,
+    client: ClientInfo | null = null,
+): Promise<BearerToken> {
     const minted = await withTx(deps.db, (tx, txNow) =>
-        mintSession(tx, { rng: deps.rng, accountId, purpose: "member", txNow }),
+        mintSession(tx, { rng: deps.rng, accountId, purpose: "member", txNow, client }),
     );
     invariant(minted.ok, "minting a member session failed");
     return minted.value.token;

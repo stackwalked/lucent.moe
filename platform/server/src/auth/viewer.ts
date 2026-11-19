@@ -1,0 +1,70 @@
+import { z } from "zod";
+import type { Action } from "../authority/actions.ts";
+import { readStanding } from "../authority/standing.ts";
+import { invariant } from "../core/contain.ts";
+import { ok, type Result } from "../core/result.ts";
+import type { AccountId, BearerToken, ClientInfo, EpochMs, SessionId } from "../core/scalars.ts";
+import { type Db, type DbFailure, queryOne, sql } from "../db/pool.ts";
+import { withTx } from "../db/tx.ts";
+import { readSession, type SessionPurpose, type SessionRefusal, touchSession } from "./sessions.ts";
+
+// Who holds a session, with the standing `can()` needs. Web uses it to decide what to show;
+// every procedure decides again for itself.
+export type Viewer = {
+    readonly sessionId: SessionId;
+    readonly accountId: AccountId;
+    readonly username: string | null;
+    readonly purpose: SessionPurpose;
+    readonly expiresAt: EpochMs;
+    readonly stepUpAt: EpochMs | null;
+    readonly standing: {
+        readonly isRoot: boolean;
+        readonly maxRank: number;
+        readonly permissions: readonly Action[];
+    };
+};
+
+// What web asks on every request carrying the session cookie.
+export async function resolveViewer(
+    db: Db,
+    params: { readonly sessionToken: BearerToken; readonly client: ClientInfo | null },
+): Promise<Result<Viewer, SessionRefusal | DbFailure>> {
+    return await withTx(db, async (tx, txNow) => {
+        const session = await readSession(tx, {
+            token: params.sessionToken,
+            txNow,
+            purposes: ["member", "setup"],
+        });
+        if (!session.ok) return session;
+        const { accountId } = session.value;
+        const account = await queryOne(
+            tx,
+            z.object({ username: z.string().nullable() }),
+            sql`select username from account where id = ${accountId}`,
+        );
+        if (!account.ok) return account;
+        invariant(account.value !== null, "a live session's account exists");
+        const standing = await readStanding(tx, accountId, txNow);
+        if (!standing.ok) return standing;
+        invariant(standing.value !== null, "a live session's account has a standing");
+        const touched = await touchSession(tx, {
+            tokenHash: session.value.tokenHash,
+            txNow,
+            client: params.client,
+        });
+        if (!touched.ok) return touched;
+        return ok({
+            sessionId: session.value.sessionId,
+            accountId,
+            username: account.value.username,
+            purpose: session.value.purpose,
+            expiresAt: session.value.expiresAt,
+            stepUpAt: session.value.stepUpAt,
+            standing: {
+                isRoot: standing.value.isRoot,
+                maxRank: standing.value.maxRank,
+                permissions: [...standing.value.permissions].sort(),
+            },
+        });
+    });
+}

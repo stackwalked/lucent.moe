@@ -22,6 +22,7 @@ type SinglePurpose = {
 // An input each procedure accepts, so the call gets as far as its session check. The type makes
 // a procedure added with a single purpose fail to compile until it is listed here.
 const inputs: SinglePurpose = {
+    "session.list": {},
     "session.endOthers": {},
     "setup.username.choose": { username: "unclaimed" },
     "stepUp.begin": {},

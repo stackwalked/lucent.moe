@@ -10,7 +10,7 @@ import {
     RequestId,
     type UnhandledFailure,
 } from "../src/core/rpc.ts";
-import { BearerToken } from "../src/core/scalars.ts";
+import { BearerToken, ClientInfo } from "../src/core/scalars.ts";
 
 const PEER_KEY = "test-peer-key-0123456789abcdefghijklmnopqrstuvwxyz";
 const ENDPOINT = "http://localhost/internal/web/rpc";
@@ -27,6 +27,12 @@ const contract = defineContract({
         session: "member",
         input: z.strictObject({}),
         output: z.object({ session: z.string() }),
+        error: z.never(),
+    },
+    "client.echo": {
+        session: "none",
+        input: z.strictObject({}),
+        output: z.object({ ip: z.string().nullable() }),
         error: z.never(),
     },
     "leak.extra": {
@@ -54,7 +60,8 @@ const procedures = implement<unknown, typeof contract>(contract, {
         if (n < 0) return Promise.resolve(err({ code: "NEGATIVE_INPUT" as const }));
         return Promise.resolve(ok({ doubled: n * 2 }));
     },
-    "session.echo": (_ctx, _input, session) => Promise.resolve(ok({ session })),
+    "session.echo": (_ctx, _input, { session }) => Promise.resolve(ok({ session })),
+    "client.echo": (_ctx, _input, { client }) => Promise.resolve(ok({ ip: client?.ip ?? null })),
     "leak.extra": () => {
         const row = { shown: "yes", tokenHash: "never on the wire" };
         return Promise.resolve(ok(row));
@@ -115,6 +122,25 @@ test("a procedure that needs a session is refused without Lucent-Session before 
 test("the client sends the session in Lucent-Session and the handler receives it", async () => {
     const reply = await clientFor(mount()).call("session.echo", {}, { session: SESSION });
     expect(reply).toEqual(ok({ session: SESSION }));
+});
+
+test("the client web reports in Lucent-Client reaches the handler", async () => {
+    const client = ClientInfo.parse({ ip: "198.51.100.4", userAgent: "Lynx é" });
+    const reply = await clientFor(mount()).call("client.echo", {}, { client });
+    expect(reply).toEqual(ok({ ip: "198.51.100.4" }));
+    expect(await clientFor(mount()).call("client.echo", {})).toEqual(ok({ ip: null }));
+});
+
+test("a malformed Lucent-Client is refused with 400", async () => {
+    for (const header of ["not base64url!", "e30", btoa('{"ip":"999.1.1.1","userAgent":""}')]) {
+        const res = await mount().fetch(
+            rpcRequest({
+                body: JSON.stringify({ procedure: "client.echo", input: {} }),
+                headers: { "lucent-client": header },
+            }),
+        );
+        expect({ header, status: res.status }).toEqual({ header, status: 400 });
+    }
 });
 
 test("a field a handler returns outside its contract never reaches the wire", async () => {

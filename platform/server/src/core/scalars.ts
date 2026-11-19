@@ -53,6 +53,20 @@ export const BearerToken = z
     .brand<"BearerToken">();
 export type BearerToken = z.output<typeof BearerToken>;
 
+// A browser session as its owner sees it in the session list; never the token or its hash.
+export const SessionId = z
+    .string()
+    .regex(/^ses_[A-Za-z0-9_-]{22}$/)
+    .brand<"SessionId">();
+export type SessionId = z.infer<typeof SessionId>;
+
+// Who is at the other end of a browser request, as web saw it from Caddy's forwarded headers.
+export const ClientInfo = z.strictObject({
+    ip: z.union([z.ipv4(), z.ipv6()]),
+    userAgent: z.string().max(512),
+});
+export type ClientInfo = z.output<typeof ClientInfo>;
+
 export const FeatureTag = z
     .string()
     .regex(/^[a-z0-9][a-z0-9._-]{0,63}$/)
@@ -126,5 +140,7 @@ export const newAccountId = (rng: CryptoRng): AccountId =>
     AccountId.parse(randomPrefixed("acc", rng));
 export const newEntitlementId = (rng: CryptoRng): EntitlementId =>
     EntitlementId.parse(randomPrefixed("ent", rng));
+export const newSessionId = (rng: CryptoRng): SessionId =>
+    SessionId.parse(randomPrefixed("ses", rng));
 export const newOperationId = (rng: CryptoRng): OperationId =>
     OperationId.parse(randomPrefixed("op", rng));

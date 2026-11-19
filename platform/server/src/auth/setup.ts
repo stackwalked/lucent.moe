@@ -2,7 +2,7 @@ import { z } from "zod";
 import { parseUsername, type UsernameInvalid } from "../authority/usernames.ts";
 import { err, ok, type Result } from "../core/result.ts";
 import type { CryptoRng } from "../core/rng.ts";
-import { AccountId, type BearerToken, EpochMs } from "../core/scalars.ts";
+import { AccountId, type BearerToken, type ClientInfo, EpochMs } from "../core/scalars.ts";
 import { appendAudit } from "../db/audit.ts";
 import { type DbFailure, execute, queryOne, sql, type Tx, toTimestamptz } from "../db/pool.ts";
 import { withTx } from "../db/tx.ts";
@@ -74,11 +74,11 @@ export type SetupRefusal =
     | { readonly code: "USERNAME_ALREADY_SET" }
     | { readonly code: "USERNAME_TAKEN" };
 
-// A setup link works once: redeeming it starts a 15-minute setup session, which can choose the
+// A setup link works once: redeeming it starts a 30-minute setup session, which can choose the
 // username and enroll credentials, nothing else. The holder signs in normally afterwards.
 export async function redeemSetupLink(
     deps: AuthDeps,
-    params: { readonly setupToken: BearerToken },
+    params: { readonly setupToken: BearerToken; readonly client?: ClientInfo },
 ): Promise<
     Result<
         {
@@ -117,6 +117,7 @@ export async function redeemSetupLink(
             accountId,
             purpose: "setup",
             txNow,
+            client: params.client ?? null,
         });
         if (!session.ok) return session;
         return ok({
@@ -129,7 +130,11 @@ export async function redeemSetupLink(
 
 export async function chooseUsername(
     deps: AuthDeps,
-    params: { readonly sessionToken: BearerToken; readonly username: string },
+    params: {
+        readonly sessionToken: BearerToken;
+        readonly username: string;
+        readonly client?: ClientInfo;
+    },
 ): Promise<Result<{ readonly username: string }, SetupRefusal>> {
     const parsed = parseUsername(params.username);
     if (!parsed.ok) return parsed;
@@ -168,6 +173,7 @@ export async function chooseUsername(
             operation: "account.username_chosen",
             target: { accountId, username: parsed.value.username },
             at: txNow,
+            client: params.client ?? null,
         });
         if (!audited.ok) return audited;
         return ok({ username: parsed.value.username });

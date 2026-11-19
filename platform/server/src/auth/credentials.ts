@@ -7,7 +7,13 @@ import type {
 } from "../contract/webauthn.ts";
 import { invariant } from "../core/contain.ts";
 import { err, ok, type Result } from "../core/result.ts";
-import { type AccountId, type BearerToken, EpochMs, toBase64Url } from "../core/scalars.ts";
+import {
+    type AccountId,
+    type BearerToken,
+    type ClientInfo,
+    EpochMs,
+    toBase64Url,
+} from "../core/scalars.ts";
 import { appendAudit } from "../db/audit.ts";
 import { type DbFailure, execute, queryAll, queryOne, sql, type Tx } from "../db/pool.ts";
 import { errCommit, withTx } from "../db/tx.ts";
@@ -85,6 +91,7 @@ async function finishCredentialChange(
         readonly operation: string;
         readonly detail: Record<string, unknown>;
         readonly txNow: EpochMs;
+        readonly client: ClientInfo | undefined;
     },
 ): Promise<Result<void, DbFailure>> {
     const { accountId, tokenHash } = params.change.session;
@@ -95,6 +102,7 @@ async function finishCredentialChange(
         operation: params.operation,
         target: { accountId, ...params.detail },
         at: params.txNow,
+        client: params.client ?? null,
     });
 }
 
@@ -197,7 +205,11 @@ export async function listCredentials(
 
 export async function setPassword(
     deps: AuthDeps,
-    params: { readonly sessionToken: BearerToken; readonly password: string },
+    params: {
+        readonly sessionToken: BearerToken;
+        readonly password: string;
+        readonly client?: ClientInfo;
+    },
 ): Promise<Result<void, CredentialRefusal>> {
     const parsed = parseNewPassword(params.password);
     if (!parsed.ok) return parsed;
@@ -221,6 +233,7 @@ export async function setPassword(
             operation: "credential.password_set",
             detail: {},
             txNow,
+            client: params.client,
         });
     });
 }
@@ -272,7 +285,11 @@ export async function beginTotpEnrollment(
 
 export async function confirmTotpEnrollment(
     deps: AuthDeps,
-    params: { readonly sessionToken: BearerToken; readonly code: string },
+    params: {
+        readonly sessionToken: BearerToken;
+        readonly code: string;
+        readonly client?: ClientInfo;
+    },
 ): Promise<Result<void, CredentialRefusal>> {
     return await withTx(deps.db, async (tx, txNow) => {
         const change = await beginCredentialChange(tx, {
@@ -313,6 +330,7 @@ export async function confirmTotpEnrollment(
             operation: "credential.totp_enrolled",
             detail: {},
             txNow,
+            client: params.client,
         });
     });
 }
@@ -369,6 +387,7 @@ export async function finishPasskeyRegistration(
         readonly flowToken: BearerToken;
         readonly label: string;
         readonly response: RegistrationResponse;
+        readonly client?: ClientInfo;
     },
 ): Promise<Result<{ readonly id: string }, CredentialRefusal>> {
     const flowHash = await hashToken(params.flowToken);
@@ -414,6 +433,7 @@ export async function finishPasskeyRegistration(
             operation: "credential.passkey_added",
             detail: { passkeyId: id },
             txNow,
+            client: params.client,
         });
         if (!finished.ok) return finished;
         return ok({ id });
@@ -429,7 +449,11 @@ export type CredentialRef =
 // removals that would each be fine alone can't together strand it.
 export async function removeCredential(
     deps: AuthDeps,
-    params: { readonly sessionToken: BearerToken; readonly credential: CredentialRef },
+    params: {
+        readonly sessionToken: BearerToken;
+        readonly credential: CredentialRef;
+        readonly client?: ClientInfo;
+    },
 ): Promise<Result<void, CredentialRefusal>> {
     return await withTx(deps.db, async (tx, txNow) => {
         const change = await beginCredentialChange(tx, {
@@ -463,6 +487,7 @@ export async function removeCredential(
             operation: `credential.${credential.kind}_removed`,
             detail: credential.kind === "passkey" ? { passkeyId: toBase64Url(credential.id) } : {},
             txNow,
+            client: params.client,
         });
     });
 }

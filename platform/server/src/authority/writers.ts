@@ -127,6 +127,7 @@ export async function bootstrapRootAccount(params: {
 
         const auditRes = await appendAudit(tx, {
             actorId: "cli:bootstrap",
+            client: null,
             operation: "account.bootstrap_root",
             target: { accountId },
             at: txNow,
@@ -202,6 +203,7 @@ export async function createAccount(params: {
         if (!setupToken.ok) return setupToken;
         const audited = await appendAudit(tx, {
             actorId: params.caller.accountId,
+            client: params.caller.client,
             operation: "account.create",
             target: { accountId },
             at: txNow,
@@ -249,6 +251,7 @@ export async function recoverAccount(params: {
         if (!setupToken.ok) return setupToken;
         const audited = await appendAudit(tx, {
             actorId: params.caller.accountId,
+            client: params.caller.client,
             operation: "account.recover",
             target: { accountId: params.targetAccountId },
             at: txNow,
@@ -286,6 +289,7 @@ export async function recoverRootAccount(params: {
         if (!setupToken.ok) return setupToken;
         const audited = await appendAudit(tx, {
             actorId: "cli:recover-root",
+            client: null,
             operation: "account.recover",
             target: { accountId },
             at: txNow,
@@ -433,6 +437,7 @@ export async function upsertRole(params: {
 
         const auditRes = await appendAudit(tx, {
             actorId: params.caller.accountId,
+            client: params.caller.client,
             operation: "role.upsert",
             target: {
                 roleId: params.roleId,
@@ -497,6 +502,7 @@ export async function assignAccountRole(params: {
 
         return await appendAudit(tx, {
             actorId: params.caller.accountId,
+            client: params.caller.client,
             operation: "role.assign",
             target: {
                 accountId: params.targetAccountId,
@@ -614,6 +620,7 @@ export async function issueEntitlement(params: {
 
         const auditRes = await appendAudit(tx, {
             actorId: params.caller.accountId,
+            client: params.caller.client,
             operation: "entitlement.issue",
             target: {
                 accountId: params.targetAccountId,
@@ -684,6 +691,7 @@ export async function suspendAccount(params: {
 
         const auditRes = await appendAudit(tx, {
             actorId: params.caller.accountId,
+            client: params.caller.client,
             operation: "account.suspend",
             target: { accountId: params.targetAccountId, reason: params.reason },
             at: txNow,

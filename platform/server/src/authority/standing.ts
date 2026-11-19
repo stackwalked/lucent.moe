@@ -43,6 +43,42 @@ const HeldRoleRowSchema = z.object({
     permissions: z.array(z.string()),
 });
 
+async function standingOf(
+    q: Queryable,
+    params: {
+        readonly accountId: AccountId;
+        readonly account: z.output<typeof AccountLockRowSchema>;
+        readonly txNow: EpochMs;
+    },
+): Promise<Result<AccountStanding, DbFailure>> {
+    const rolesRes = await queryAll(
+        q,
+        HeldRoleRowSchema,
+        sql`select r.rank, r.permissions
+            from account_role ar
+            join role r on r.id = ar.role_id
+            where ar.account_id = ${params.accountId}
+              and (ar.expires_at is null or ar.expires_at > ${toTimestamptz(params.txNow)}::timestamptz)`,
+    );
+    if (!rolesRes.ok) return rolesRes;
+
+    let maxRank = 0;
+    const permissions = new Set<Action>();
+    for (const role of rolesRes.value) {
+        maxRank = Math.max(maxRank, role.rank);
+        for (const permission of splitPermissions(role.permissions).known) {
+            permissions.add(permission);
+        }
+    }
+    return ok({
+        accountId: params.accountId,
+        isRoot: params.account.is_root,
+        isActive: params.account.status === "active" && !params.account.is_locked,
+        maxRank,
+        permissions,
+    });
+}
+
 // Locks each account `for update` in ascending id order, so writers locking an overlapping set
 // never deadlock; every multi-account lock goes through here so the order stays the same one.
 // Roles are read after the account lock: role grants change only under that lock.
@@ -61,38 +97,28 @@ async function lockAccountStandings(
         );
         if (!accountRes.ok) return accountRes;
         if (accountRes.value === null) continue;
-
-        const rolesRes = await queryAll(
-            tx,
-            HeldRoleRowSchema,
-            sql`select r.rank, r.permissions
-                from account_role ar
-                join role r on r.id = ar.role_id
-                where ar.account_id = ${accountId}
-                  and (ar.expires_at is null or ar.expires_at > ${toTimestamptz(txNow)}::timestamptz)`,
-        );
-        if (!rolesRes.ok) return rolesRes;
-
-        let maxRank = 0;
-        const permissions = new Set<Action>();
-        for (const role of rolesRes.value) {
-            maxRank = Math.max(maxRank, role.rank);
-            for (const permission of splitPermissions(role.permissions).known) {
-                permissions.add(permission);
-            }
-        }
-        const account = accountRes.value;
-        standings.set(accountId, {
-            accountId,
-            isRoot: account.is_root,
-            isActive: account.status === "active" && !account.is_locked,
-            maxRank,
-            permissions,
-        });
+        const standing = await standingOf(tx, { accountId, account: accountRes.value, txNow });
+        if (!standing.ok) return standing;
+        standings.set(accountId, standing.value);
     }
     return ok(standings);
 }
 
+// Without a lock: what the UI may offer. Whatever a writer then does is decided again under lock.
+export async function readStanding(
+    q: Queryable,
+    accountId: AccountId,
+    txNow: EpochMs,
+): Promise<Result<AccountStanding | null, DbFailure>> {
+    const accountRes = await queryOne(
+        q,
+        AccountLockRowSchema,
+        sql`select status, is_root, is_locked from account where id = ${accountId}`,
+    );
+    if (!accountRes.ok) return accountRes;
+    if (accountRes.value === null) return ok(null);
+    return await standingOf(q, { accountId, account: accountRes.value, txNow });
+}
 export type LockedParties = {
     readonly subject: Subject;
     readonly accounts: ReadonlyMap<AccountId, AccountStanding>;

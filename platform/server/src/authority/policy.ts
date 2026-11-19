@@ -1,14 +1,16 @@
 import { err, ok, type Result } from "../core/result.ts";
-import { type AccountId, type EpochMs, Seconds } from "../core/scalars.ts";
+import { type AccountId, type ClientInfo, type EpochMs, Seconds } from "../core/scalars.ts";
 import { ACTION_POLICY, type Action } from "./actions.ts";
 
 export const STEP_UP_WINDOW_SECONDS = Seconds.parse(1_800);
 const STEP_UP_WINDOW_MS = STEP_UP_WINDOW_SECONDS * 1_000;
 
-// What a session knows about its holder. Everything else about the caller is re-read under lock.
+// What a session knows about its holder, and where the request came from (for audit).
+// Everything else about the caller is re-read under lock.
 export type Caller = {
     readonly accountId: AccountId;
     readonly stepUpAt: EpochMs | null;
+    readonly client: ClientInfo | null;
 };
 
 export type AccountStanding = {

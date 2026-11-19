@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { defineContract } from "../core/rpc.ts";
-import { AccountId, BearerToken, EpochMs } from "../core/scalars.ts";
+import { AccountId, BearerToken, EpochMs, SessionId } from "../core/scalars.ts";
 import { ProductDefinition } from "../products/catalog.ts";
 import {
     AuthenticationResponse,
@@ -60,6 +60,7 @@ const CredentialRefusal = z.discriminatedUnion("code", [
 ]);
 
 const Done = z.object({});
+const SessionPurpose = z.enum(["member", "setup"]);
 const Password = z.string().min(1).max(1_024);
 const TotpCode = z.string().max(16);
 const Username = z.string().max(64);
@@ -117,16 +118,50 @@ export const webContract = defineContract({
         session: "either",
         input: z.strictObject({}),
         output: z.object({
+            sessionId: SessionId,
             accountId: AccountId,
-            purpose: z.enum(["member", "setup"]),
+            username: z.string().nullable(),
+            purpose: SessionPurpose,
             expiresAt: EpochMs,
             stepUpAt: EpochMs.nullable(),
+            // Strings, not the Action enum: a permission added a deploy ahead of web must not make
+            // every page fail to parse the viewer. Web keeps the ones it knows.
+            standing: z.object({
+                isRoot: z.boolean(),
+                maxRank: z.number().int().nonnegative(),
+                permissions: z.array(z.string()).readonly(),
+            }),
         }),
         error: SessionRefusal,
     },
+    "session.list": {
+        session: "member",
+        input: z.strictObject({}),
+        output: z.object({
+            sessions: z
+                .array(
+                    z.object({
+                        sessionId: SessionId,
+                        purpose: SessionPurpose,
+                        createdAt: EpochMs,
+                        lastSeenAt: EpochMs,
+                        expiresAt: EpochMs,
+                        client: z.object({
+                            ip: z.string().nullable(),
+                            userAgent: z.string().nullable(),
+                        }),
+                        current: z.boolean(),
+                    }),
+                )
+                .readonly(),
+        }),
+        error: SessionRefusal,
+    },
+    // Without a `sessionId`, the session making the call; with one, another of the holder's own,
+    // which takes a member session.
     "session.end": {
         session: "either",
-        input: z.strictObject({}),
+        input: z.strictObject({ sessionId: SessionId.nullable() }),
         output: Done,
         error: SessionRefusal,
     },
