@@ -10,6 +10,7 @@
 #include <lucent/kit/context.hpp>
 #include <lucent/kit/draw_context.hpp>
 #include <lucent/kit/feature.hpp>
+#include <lucent/kit/feature_section.hpp>
 #include <lucent/kit/settings.hpp>
 #include <lucent/kit/view_set.hpp>
 
@@ -152,6 +153,8 @@ public:
             "every setting path distinct, every default one its setting accepts"
         );
         LUCENT_INVARIANT(!std::ranges::contains(m_entries, F::id, &detail::feature_entry::id));
+        // Naming the record is what places it in the feature section.
+        [[maybe_unused]] const feature_record* const record = &feature_record_of<F>;
         m_entries.push_back(std::make_unique<detail::entry_of<F>>());
     }
 

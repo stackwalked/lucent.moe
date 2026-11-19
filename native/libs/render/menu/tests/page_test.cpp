@@ -57,6 +57,7 @@ struct box_settings {
 class box_feature {
 public:
     static constexpr kit::feature_id id = kit::feature_id_of<"box">;
+    static constexpr kit::feature_tag tag{"visuals"};
     using needs = kit::needs<>;
     using wants = kit::wants<>;
     using settings = box_settings;

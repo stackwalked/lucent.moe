@@ -15,6 +15,7 @@ lucent_library(kit
         include/lucent/kit/fact_apply.hpp
         include/lucent/kit/fact_resolve.hpp
         include/lucent/kit/feature.hpp
+        include/lucent/kit/feature_section.hpp
         include/lucent/kit/game_module.hpp
         include/lucent/kit/handoff.hpp
         include/lucent/kit/hook.hpp
@@ -40,6 +41,7 @@ lucent_library(kit
         src/fact_apply.cpp
         src/fact_resolve.cpp
         src/fact_section.cpp
+        src/feature_section.cpp
         src/game_module.cpp
         src/hook.cpp
         src/late_modules.cpp
@@ -66,6 +68,7 @@ lucent_test(kit
         tests/fact_resolve_test.cpp
         tests/fact_section_other.cpp
         tests/fact_section_test.cpp
+        tests/feature_section_test.cpp
         tests/handoff_test.cpp
         tests/hook_test.cpp
         tests/late_modules_test.cpp

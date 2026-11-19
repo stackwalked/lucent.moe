@@ -79,6 +79,7 @@ struct tracker_settings {
 class tracker {
 public:
     static constexpr feature_id id = feature_id_of<"tracker">;
+    static constexpr feature_tag tag{"radar"};
     using needs = kit::needs<radar_view>;
     using wants = kit::wants<sound_view>;
     using settings = tracker_settings;
@@ -106,6 +107,7 @@ private:
 class painter {
 public:
     static constexpr feature_id id = feature_id_of<"painter">;
+    static constexpr feature_tag tag{"visuals"};
     using needs = kit::needs<radar_view>;
     using wants = kit::wants<>;
     using settings = no_settings;
@@ -133,6 +135,7 @@ private:
 class listener {
 public:
     static constexpr feature_id id = feature_id_of<"listener">;
+    static constexpr feature_tag tag{"sound.v2"};
     using needs = kit::needs<sound_view>;
     using wants = kit::wants<>;
     using settings = no_settings;

@@ -51,6 +51,7 @@ struct player_mark {
 class player_box final {
 public:
     static constexpr kit::feature_id id = kit::feature_id_of<"player_box">;
+    static constexpr kit::feature_tag tag{"visuals"};
     using needs = kit::needs<world, view>;
     using wants = kit::wants<>;
     using settings = player_box_settings;
