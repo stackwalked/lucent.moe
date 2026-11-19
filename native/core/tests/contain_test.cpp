@@ -3,6 +3,7 @@
 #include <bit>
 #include <source_location>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <tuple>
 
@@ -81,8 +82,36 @@ TEST_CASE("a failed ensure inside contain comes back as a fault located at the c
 
     REQUIRE_FALSE(ran.has_value());
     CHECK(ran.error().kind == fault_kind::ensure_failed);
-    CHECK(ran.error().where.line() == check_line);
+    if constexpr (has_readable_checks) {
+        CHECK(ran.error().where.line() == check_line);
+    }
     CHECK_FALSE(should_hold);
+}
+
+// A check inside a function this test can bound: the recorded RVA must fall inside its code.
+[[gnu::noinline]] auto ensure_positive(i32 value) -> void {
+    LUCENT_ENSURE(value > 0);
+}
+
+TEST_CASE("a failed ensure records the RVA of the check it failed in this image") {
+    const auto base = std::bit_cast<uptr>(GetModuleHandleW(nullptr));
+    const auto checking = std::bit_cast<uptr>(&ensure_positive) - base;
+
+    const contained<void> ran = contain([] { ensure_positive(-1); });
+
+    REQUIRE_FALSE(ran.has_value());
+    CHECK(ran.error().check > checking);
+    // Functions are laid out apart; the check is within a page of its function's start.
+    CHECK(ran.error().check < checking + 4096);
+}
+
+// A release image must hold no function name: one templated on a feature or a fact spells it.
+TEST_CASE("a failed check names its file and function in dev builds only") {
+    const contained<void> ran = contain([] { ensure_positive(-1); });
+
+    REQUIRE_FALSE(ran.has_value());
+    CHECK(std::string_view{ran.error().where.file_name()}.empty() != has_readable_checks);
+    CHECK(std::string_view{ran.error().where.function_name()}.empty() != has_readable_checks);
 }
 
 TEST_CASE("an inner contain keeps its fault from reaching the outer one") {

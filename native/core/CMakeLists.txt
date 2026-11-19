@@ -14,11 +14,15 @@ lucent_library(core
         include/lucent/core/text.hpp
     SOURCES
         src/contain.cpp
+        src/fault.cpp
         src/invariant.cpp
         src/result.cpp
         src/text.cpp
         src/toolchain_probe.cpp
 )
+# Read by <lucent/core/invariant.hpp>: 1 in dev builds, whose failed checks carry their source
+# location as text; 0 in every other, whose images may hold no file or function name.
+target_compile_definitions(lucent_core PUBLIC "LUCENT_READABLE_CHECKS=$<CONFIG:Debug>")
 
 lucent_test(core
     SOURCES

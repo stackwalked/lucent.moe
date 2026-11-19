@@ -47,6 +47,7 @@ auto filter(const EXCEPTION_POINTERS& pointers, fault& caught) -> i32 {
     const bool has_address = *kind != fault_kind::misaligned && record.NumberParameters >= 2;
     caught = fault{
         .kind = *kind,
+        .check = 0,
         .where = {},
         .instruction = std::bit_cast<uptr>(record.ExceptionAddress),
         .address = has_address ? record.ExceptionInformation[1] : 0,
