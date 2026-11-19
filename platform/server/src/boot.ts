@@ -3,6 +3,7 @@ import { loadProductCatalog } from "@lucent/catalog/catalog";
 import { describeUnknownError, ignoreErrorsSync, trySync } from "@lucent/core/contain";
 import { err, ok, type Result } from "@lucent/core/result";
 import { systemCryptoRng } from "@lucent/core/rng";
+import { createPwnedPasswordsCheck } from "./auth/breach.ts";
 import { createAuthDeps } from "./auth/deps.ts";
 import { expiredAuthJob } from "./auth/expiry.ts";
 import { createArgon2idHasher, type PasswordHasher } from "./auth/password.ts";
@@ -134,6 +135,15 @@ export async function startServer(params: {
         totpKeys: await createTotpKeyring(config.totpKeys),
         passwords: params.passwords ?? createArgon2idHasher(),
         passwordOnly: config.passwordOnly,
+        breachCheck: createPwnedPasswordsCheck({
+            baseUrl: config.pwnedPasswordsUrl,
+            onUnavailable: (detail) => {
+                logger.write("warn", "breach check unavailable", {
+                    origin: "breach-check",
+                    detail,
+                });
+            },
+        }),
     });
     if (config.passwordOnly) {
         logger.write("warn", "password-only sign-in", {

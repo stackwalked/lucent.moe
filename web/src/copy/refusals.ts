@@ -45,6 +45,7 @@ export const REFUSALS: Readonly<Record<RefusalCode, string>> = {
     USERNAME_TAKEN: "that name is taken or too close to an existing one.",
     USERNAME_REQUIRED: "choose a username first.",
     PASSWORD_REJECTED: "use 12 to 128 characters.",
+    PASSWORD_BREACHED: "that password is in a known data breach. choose another.",
     LAST_CREDENTIAL: "that's your only way to sign in. add another first.",
     TOTP_ALREADY_ENROLLED: "an authenticator app is already set up. remove it first.",
     TOTP_NOT_PENDING: "start adding the authenticator app again.",

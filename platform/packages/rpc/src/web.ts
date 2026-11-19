@@ -58,6 +58,7 @@ const CredentialRefusal = z.discriminatedUnion("code", [
     refusal("FLOW_INVALID"),
     refusal("PASSKEY_REJECTED"),
     z.object({ code: z.literal("PASSWORD_REJECTED"), reason: z.enum(["too_short", "too_long"]) }),
+    refusal("PASSWORD_BREACHED"),
     refusal("NOT_FOUND"),
     refusal("LAST_CREDENTIAL"),
     refusal("USERNAME_REQUIRED"),

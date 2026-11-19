@@ -1,5 +1,6 @@
 import { err, ok, type Result } from "@lucent/core/result";
 import { isStrongPeerKey, MIN_PEER_KEY_LENGTH } from "@lucent/rpc/contract";
+import { PWNED_PASSWORDS_URL } from "./auth/breach.ts";
 import type { RelyingParty } from "./auth/passkeys.ts";
 
 // Only loopback or a Unix socket: the internal listener carries web's and connectors' calls, and
@@ -17,6 +18,9 @@ export type ServerConfig = {
     readonly relyingParty: RelyingParty;
     // Dev only: a password signs in alone, and staff actions need no step-up.
     readonly passwordOnly: boolean;
+    // Where new passwords are checked against known breaches: Have I Been Pwned's range API, or a
+    // stand-in for it in tests.
+    readonly pwnedPasswordsUrl: string;
 };
 
 export type OpsConfig = {
@@ -38,6 +42,7 @@ export type Environment = {
     readonly LUCENT_WEBAUTHN_RP_ID: string | undefined;
     readonly LUCENT_WEBAUTHN_ORIGIN: string | undefined;
     readonly LUCENT_DEV_PASSWORD_ONLY: string | undefined;
+    readonly LUCENT_PWNED_PASSWORDS_URL: string | undefined;
 };
 
 const POSTGRES_URL = /^postgres(?:ql)?:\/\/./;
@@ -136,6 +141,10 @@ export function readServerConfig(env: Environment): Result<ServerConfig, ConfigE
         problems.push("LUCENT_DEV_PASSWORD_ONLY must be 1 or unset");
     }
     const passwordOnly = passwordOnlyRaw === "1";
+    const pwnedPasswordsUrl = env.LUCENT_PWNED_PASSWORDS_URL ?? PWNED_PASSWORDS_URL;
+    if (!/^https?:\/\/[^/]+\/.*\/$/.test(pwnedPasswordsUrl) || !URL.canParse(pwnedPasswordsUrl)) {
+        problems.push("LUCENT_PWNED_PASSWORDS_URL must be an http(s) URL ending in /");
+    }
     const relyingParty = parseRelyingParty(
         env.LUCENT_WEBAUTHN_RP_ID ?? "",
         env.LUCENT_WEBAUTHN_ORIGIN ?? "",
@@ -172,6 +181,7 @@ export function readServerConfig(env: Environment): Result<ServerConfig, ConfigE
         totpKeys,
         relyingParty,
         passwordOnly,
+        pwnedPasswordsUrl,
     });
 }
 
@@ -195,6 +205,7 @@ export function processEnvironment(): Environment {
         LUCENT_WEBAUTHN_RP_ID,
         LUCENT_WEBAUTHN_ORIGIN,
         LUCENT_DEV_PASSWORD_ONLY,
+        LUCENT_PWNED_PASSWORDS_URL,
     } = process.env;
     return {
         LUCENT_DATABASE_URL,
@@ -205,5 +216,6 @@ export function processEnvironment(): Environment {
         LUCENT_WEBAUTHN_RP_ID,
         LUCENT_WEBAUTHN_ORIGIN,
         LUCENT_DEV_PASSWORD_ONLY,
+        LUCENT_PWNED_PASSWORDS_URL,
     };
 }

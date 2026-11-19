@@ -50,6 +50,8 @@ export type CredentialRefusal =
     | FlowRefusal
     | PasskeyRefusal
     | PasswordRejected
+    // In a known data breach (auth/breach.ts).
+    | { readonly code: "PASSWORD_BREACHED" }
     | { readonly code: "NOT_FOUND" }
     // Removing it would leave the account with no way to sign in.
     | { readonly code: "LAST_CREDENTIAL" }
@@ -214,6 +216,9 @@ export async function setPassword(
 ): Promise<Result<void, CredentialRefusal>> {
     const parsed = parseNewPassword(params.password);
     if (!parsed.ok) return parsed;
+    if ((await deps.breachCheck(parsed.value)) === "breached") {
+        return err({ code: "PASSWORD_BREACHED" });
+    }
     // Hashed before the transaction: argon2id would hold the account lock meanwhile.
     const hash = await deps.passwords.hash(parsed.value);
     return await withTx(deps.db, async (tx, txNow) => {

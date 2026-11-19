@@ -13,6 +13,7 @@ function env(overrides: Partial<Environment>): Environment {
         LUCENT_WEBAUTHN_RP_ID: "lucent.moe",
         LUCENT_WEBAUTHN_ORIGIN: "https://lucent.moe",
         LUCENT_DEV_PASSWORD_ONLY: undefined,
+        LUCENT_PWNED_PASSWORDS_URL: undefined,
         ...overrides,
     };
 }
@@ -58,6 +59,7 @@ test("every missing variable is named at once", () => {
         LUCENT_WEBAUTHN_RP_ID: undefined,
         LUCENT_WEBAUTHN_ORIGIN: undefined,
         LUCENT_DEV_PASSWORD_ONLY: undefined,
+        LUCENT_PWNED_PASSWORDS_URL: undefined,
     });
     expect(config.ok).toBe(false);
     const problems = config.ok ? [] : config.error.problems;

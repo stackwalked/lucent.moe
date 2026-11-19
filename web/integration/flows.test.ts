@@ -24,6 +24,7 @@ import { accepted, createTestBrowser, refusedCode, type TestBrowser } from "./br
 
 const WEB_DIR = join(import.meta.dir, "..");
 const PASSWORD = "integration passphrase 2026";
+const BREACHED = "correct horse battery staple";
 const SESSION_COOKIE = "__Host-lucent";
 
 const fn = {
@@ -67,6 +68,7 @@ beforeAll(async () => {
         cluster: await sharedEphemeralCluster(),
         database: "web_flows",
         webOrigin: origin,
+        breached: [BREACHED],
     });
     web = spawnServer({
         command: [process.execPath, "src/main.ts"],
@@ -101,6 +103,9 @@ describe("web against a real platform", () => {
         accepted(z.null(), await page.call(fn.redeemSetup));
         expect(page.hasCookie(SESSION_COOKIE)).toBe(true);
 
+        expect(refusedCode(await page.call(fn.setPassword, { password: BREACHED }))).toBe(
+            "PASSWORD_BREACHED",
+        );
         accepted(z.null(), await page.call(fn.setPassword, { password: PASSWORD }));
         totpSecret = accepted(
             z.object({ secret: z.string() }),

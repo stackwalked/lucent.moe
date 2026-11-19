@@ -22,6 +22,8 @@ function configFor(databaseUrl: string): ServerConfig {
         totpKeys: [{ kid: "test", raw: new Uint8Array(32) }],
         relyingParty: TEST_RELYING_PARTY,
         passwordOnly: false,
+        // Nothing in these tests sets a password.
+        pwnedPasswordsUrl: "http://127.0.0.1:9/range/",
     };
 }
 
