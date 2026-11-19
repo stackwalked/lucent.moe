@@ -1,0 +1,20 @@
+{
+  "product": "cs2",
+  "channel": "alpha",
+  "number": 7,
+  "release": "33333333333333333333333333333333",
+  "boot_info_version": 3,
+  "artifacts": [
+    {
+      "kind": "container",
+      "digest": "c460e033fb5b1d30e2b07ef3710fb82cff544f9acc9dd23c8e586ee31209db5b"
+    },
+    {
+      "kind": "release_manifest",
+      "digest": "2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d"
+    }
+  ],
+  "signature": "781f944a6af59e85180b86c194c5b9ad638ff3c4c0d6f39e3d1795d451c6eece231d3b228a023d6fb6eb10bfaa6d1b07c70c0dee9ec506cfcde4f49989bed700",
+  "code_public_key": "fc51cd8e6218a1a38da47ed00230f0580816ed13ba3303ac5deb911548908025",
+  "signed_bytes": "6c7563656e742072656c65617365207365616c207631000000000000000000000363733201070000000000000033333333333333333333333333333333030000000201c460e033fb5b1d30e2b07ef3710fb82cff544f9acc9dd23c8e586ee31209db5b022d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d"
+}

@@ -1,0 +1,13 @@
+{
+  "key": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "plain_size": 65636,
+  "plain": "byte i is i mod 251",
+  "nonces": [
+    "a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0",
+    "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+  ],
+  "associated_data": [
+    "6c7563656e7420636f6e7461696e6572206368756e6b207631000000000000000000000000",
+    "6c7563656e7420636f6e7461696e6572206368756e6b207631000000000000000100000001"
+  ]
+}

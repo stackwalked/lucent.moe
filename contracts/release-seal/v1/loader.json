@@ -1,0 +1,20 @@
+{
+  "product": "lucent-loader",
+  "channel": "stable",
+  "number": 12,
+  "release": "44444444444444444444444444444444",
+  "boot_info_version": 3,
+  "artifacts": [
+    {
+      "kind": "loader",
+      "digest": "3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d"
+    },
+    {
+      "kind": "host",
+      "digest": "4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d"
+    }
+  ],
+  "signature": "c90a97a57bca26c418bb85fc4ccfa2d5672fb83274c83e43a7d3e2f55d6441d6dfea1fd40cee65eb206d77ca9458638d58fe59723433bcf2fb9d916142f1a203",
+  "code_public_key": "fc51cd8e6218a1a38da47ed00230f0580816ed13ba3303ac5deb911548908025",
+  "signed_bytes": "6c7563656e742072656c65617365207365616c207631000000000000000000000d6c7563656e742d6c6f61646572000c00000000000000444444444444444444444444444444440300000002033d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d044d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d"
+}

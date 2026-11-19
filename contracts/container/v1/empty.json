@@ -1,0 +1,14 @@
+{
+  "release": "33333333333333333333333333333333",
+  "image_size": 4096,
+  "entry_rva": 0,
+  "boot_rva": 0,
+  "boot_info_version": 3,
+  "pdata_rva": 0,
+  "pdata_size": 0,
+  "imports_key": "5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a",
+  "sections": [],
+  "relocations": [],
+  "imports": [],
+  "body": "333333333333333333333333333333330010000000000000000000000300000000000000000000005a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a000000000000000000000000"
+}
