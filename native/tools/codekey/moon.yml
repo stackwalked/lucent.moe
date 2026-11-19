@@ -1,0 +1,15 @@
+project:
+  description: "The offline code key: creates its passphrase-encrypted file and signs release seals with it."
+
+language: "cpp"
+layer: "tool"
+
+dependsOn: ["bundle", "crypto", "os", "wire"]
+
+# Run by hand on the owner's computer, from the release build tree
+# (.moon/cache/cmake/release/tools/codekey/codekey.exe), with no arguments for its usage. Its own
+# tool rather than a devkey verb: devkey runs on every build with a key it makes up itself; this
+# key is made once, on purpose, and opened only under a passphrase.
+workspace:
+  inheritedTasks:
+    exclude: ["test"]
