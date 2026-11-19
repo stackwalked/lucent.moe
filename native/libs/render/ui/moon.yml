@@ -1,0 +1,8 @@
+project:
+  description: "The overlay's UI without a GPU: input snapshot, layout, widgets, interaction, motion and theme tokens, recorded into draw lists."
+
+language: "cpp"
+layer: "library"
+
+# os is the tests' fixture reader only.
+dependsOn: ["core", "draw", "text", { id: "os", scope: "development" }]
