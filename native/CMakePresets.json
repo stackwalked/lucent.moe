@@ -24,6 +24,12 @@
       "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
     },
     {
+      "name": "release-check",
+      "inherits": "release",
+      "$comment": "The test suite as release builds it, with a throwaway seed (cmake/release_check.cmake).",
+      "cacheVariables": { "LUCENT_MASTER_SEED": "${sourceDir}/../.moon/cache/release-check.seed" }
+    },
+    {
       "name": "fuzz",
       "inherits": "base",
       "$comment": [
@@ -43,12 +49,19 @@
       "targets": ["all", "all_verify_interface_header_sets"]
     },
     { "name": "release", "configurePreset": "release" },
+    { "name": "release-check", "configurePreset": "release-check" },
     { "name": "fuzz", "configurePreset": "fuzz", "targets": ["fuzzers"] }
   ],
   "testPresets": [
     {
       "name": "dev",
       "configurePreset": "dev",
+      "output": { "outputOnFailure": true },
+      "execution": { "noTestsAction": "error" }
+    },
+    {
+      "name": "release-check",
+      "configurePreset": "release-check",
       "output": { "outputOnFailure": true },
       "execution": { "noTestsAction": "error" }
     }

@@ -49,8 +49,18 @@ tasks:
     options:
       cache: false
       runInCI: false
-  check:
+  # Every test again, built as release builds are (cmake/release_check.cmake says why). After the dev
+  # build, not beside it: two trees compiling at once ran the machine out of memory.
+  release-check:
+    command: "cmake -P cmake/release_check.cmake"
     deps: ["~:build"]
+    inputs:
+      - "**/*"
+      - "/.prototools"
+    options:
+      cache: false
+  check:
+    deps: ["~:build", "~:release-check"]
     inputs:
       - "**/*"
       - "/.prototools"
