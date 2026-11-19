@@ -4,6 +4,8 @@ import { chooseTheme } from "../../theme.ts";
 import { Dropdown } from "../../ui/Dropdown/Dropdown.tsx";
 import { Shell } from "../../ui/Shell/Shell.tsx";
 import { forgetSession, memberOf, type Viewer } from "../../viewer.ts";
+import { ADMIN_COPY } from "../admin/copy.ts";
+import { isStaff } from "../admin/sections.ts";
 import { signOut } from "../auth/session.ts";
 import { SHELL_COPY } from "./copy.ts";
 import styles from "./SiteShell.module.css";
@@ -60,13 +62,24 @@ export function SiteShell({
                         {SHELL_COPY.signIn}
                     </Link>
                 ) : (
-                    <Link
-                        to="/account/security"
-                        className={styles.place}
-                        activeProps={{ "aria-current": "page" }}
-                    >
-                        {SHELL_COPY.account}
-                    </Link>
+                    <>
+                        <Link
+                            to="/account/security"
+                            className={styles.place}
+                            activeProps={{ "aria-current": "page" }}
+                        >
+                            {SHELL_COPY.account}
+                        </Link>
+                        {isStaff(viewer) ? (
+                            <Link
+                                to="/admin"
+                                className={styles.place}
+                                activeProps={{ "aria-current": "page" }}
+                            >
+                                {ADMIN_COPY.admin}
+                            </Link>
+                        ) : null}
+                    </>
                 )
             }
             {...(viewer === null ? {} : { account: <AccountMenu viewer={viewer} /> })}

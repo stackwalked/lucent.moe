@@ -13,6 +13,17 @@ export function getRouter() {
         scrollRestoration: true,
         defaultPreload: "intent",
         defaultPreloadStaleTime: 10_000,
+        // Plain URLSearchParams instead of the router's JSON: the one parameter anything takes is
+        // admin lists' ?q=, readable as typed, and an empty one leaves no "?q=" behind.
+        parseSearch: (search: string) => Object.fromEntries(new URLSearchParams(search)),
+        stringifySearch: (search: Record<string, unknown>) => {
+            const params = new URLSearchParams();
+            for (const [key, value] of Object.entries(search)) {
+                if (typeof value === "string" && value !== "") params.set(key, value);
+            }
+            const text = params.toString();
+            return text === "" ? "" : `?${text}`;
+        },
         ...(nonce === undefined ? {} : { ssr: { nonce } }),
     });
 }
@@ -21,6 +32,16 @@ declare module "@tanstack/react-router" {
     // biome-ignore lint/style/useConsistentTypeDefinitions: module augmentation merges only into an interface
     interface Register {
         router: ReturnType<typeof getRouter>;
+    }
+}
+
+// An admin list's sort and page live in history.state, not the URL: Back and Forward restore
+// exactly where you were, and a shared link opens the first page.
+declare module "@tanstack/react-router" {
+    // biome-ignore lint/style/useConsistentTypeDefinitions: module augmentation merges only into an interface
+    interface HistoryState {
+        sort?: string;
+        cursor?: string;
     }
 }
 

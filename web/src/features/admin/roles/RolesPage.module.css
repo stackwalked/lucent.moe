@@ -1,0 +1,8 @@
+@layer features {
+    .unknown {
+        display: block;
+        color: var(--ink-2);
+        font-size: var(--size-12);
+        line-height: var(--lh-snug);
+    }
+}

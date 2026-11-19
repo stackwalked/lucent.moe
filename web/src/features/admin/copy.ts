@@ -1,0 +1,38 @@
+import type { AuditOperation } from "@lucent/policy/operations";
+
+export const ADMIN_COPY = {
+    admin: "admin",
+    accounts: "accounts",
+    roles: "roles",
+    audit: "audit",
+    pending: "—",
+    needsPasskey: "staff actions need a passkey. add one in security.",
+    firstPage: "first page",
+} as const;
+
+// What each audit operation reads as. Typed against the platform's own list: an operation added
+// there doesn't compile here until it has a label. Rows older than the list show their raw name.
+export const OPERATION_LABELS: Readonly<Record<AuditOperation, string>> = {
+    "account.bootstrap_root": "root created",
+    "account.create": "account added",
+    "account.recover": "account recovered",
+    "account.suspend": "account suspended",
+    "account.reinstate": "account reinstated",
+    "account.rename": "account renamed",
+    "account.username_chosen": "username chosen",
+    "credential.password_set": "password set",
+    "credential.totp_enrolled": "authenticator app added",
+    "credential.passkey_added": "passkey added",
+    "credential.passkey_removed": "passkey removed",
+    "credential.password_removed": "password removed",
+    "credential.totp_removed": "authenticator app removed",
+    "role.upsert": "role saved",
+    "role.assign": "role given",
+    "role.unassign": "role taken away",
+    "entitlement.issue": "entitlement issued",
+};
+
+export function operationLabel(operation: string): string {
+    const known = Object.entries(OPERATION_LABELS).find(([name]) => name === operation);
+    return known === undefined ? operation : known[1];
+}

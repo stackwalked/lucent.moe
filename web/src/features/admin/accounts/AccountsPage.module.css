@@ -1,0 +1,14 @@
+@layer features {
+    .filters {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: end;
+        justify-content: space-between;
+        gap: var(--s-3);
+    }
+
+    .search {
+        flex: 1;
+        max-inline-size: var(--form);
+    }
+}

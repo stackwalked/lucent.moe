@@ -1,4 +1,6 @@
+import { systemClock } from "@lucent/core/clock";
 import { invariant } from "@lucent/core/contain";
+import type { EpochMs } from "@lucent/core/scalars";
 import { createContext, type ReactNode, useCallback, useContext, useRef, useState } from "react";
 import type { Outcome, Refused } from "../../server/outcome.ts";
 import { Button } from "../../ui/Button/Button.tsx";
@@ -17,9 +19,18 @@ import { STEP_UP_COPY } from "./copy.ts";
 // the member to sign in again).
 
 type Guard = <T>(run: () => Promise<Outcome<T>>) => Promise<Outcome<T>>;
+type Ask = () => Promise<Refused | "confirmed" | "cancelled">;
 type Asked = { readonly resolve: (confirmed: Refused | "confirmed" | "cancelled") => void };
 
-const StepUpContext = createContext<Guard | null>(null);
+type StepUp = {
+    readonly guard: Guard;
+    readonly ask: Ask;
+    // When this page last proved a passkey. The session the router holds says so only once it's
+    // resolved again, and an action refused for another reason after a proof would ask twice.
+    readonly provenAt: () => EpochMs | null;
+};
+
+const StepUpContext = createContext<StepUp | null>(null);
 
 const NEEDS_PROOF = new Set(["STEP_UP_REQUIRED", "REAUTH_REQUIRED"]);
 
@@ -28,6 +39,8 @@ export function StepUpProvider({ children }: { readonly children: ReactNode }) {
     const [pending, setPending] = useState(false);
     const [refused, setRefused] = useState<Refused | null>(null);
     const latest = useRef<Asked | null>(null);
+    const proven = useRef<EpochMs | null>(null);
+    const provenAt = useCallback(() => proven.current, []);
 
     const ask = useCallback(
         () =>
@@ -65,6 +78,7 @@ export function StepUpProvider({ children }: { readonly children: ReactNode }) {
         setPending(false);
         if (!finished.ok) return setRefused(finished.refused);
         forgetSession();
+        proven.current = systemClock.now();
         answer("confirmed");
     };
 
@@ -84,7 +98,7 @@ export function StepUpProvider({ children }: { readonly children: ReactNode }) {
     );
 
     return (
-        <StepUpContext value={guard}>
+        <StepUpContext value={{ guard, ask, provenAt }}>
             {children}
             <Dialog
                 open={asked !== null}
@@ -116,7 +130,14 @@ export function StepUpProvider({ children }: { readonly children: ReactNode }) {
 }
 
 export function useStepUp(): Guard {
-    const guard = useContext(StepUpContext);
-    invariant(guard !== null, "useStepUp needs a StepUpProvider above it");
-    return guard;
+    const context = useContext(StepUpContext);
+    invariant(context !== null, "useStepUp needs a StepUpProvider above it");
+    return context.guard;
+}
+
+// Asking before anything is sent, for an action known to need a recent step-up.
+export function useStepUpPrompt(): Pick<StepUp, "ask" | "provenAt"> {
+    const context = useContext(StepUpContext);
+    invariant(context !== null, "useStepUpPrompt needs a StepUpProvider above it");
+    return context;
 }

@@ -1,0 +1,33 @@
+@layer features {
+    .give {
+        padding-block-start: var(--s-2);
+    }
+
+    .select {
+        display: flex;
+        flex-direction: column;
+        gap: var(--s-1);
+    }
+
+    .label {
+        color: var(--ink-2);
+        font-size: var(--size-13);
+    }
+
+    .control {
+        block-size: var(--control-h);
+        padding-inline: var(--s-2);
+        border: 1px solid var(--line-2);
+        border-radius: var(--r);
+        background: var(--sunken);
+        color: var(--ink);
+        font-size: var(--size-13);
+    }
+
+    .more {
+        color: var(--ink-2);
+        font-size: var(--size-13);
+        text-decoration: underline;
+        text-underline-offset: 2px;
+    }
+}

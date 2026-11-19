@@ -14,6 +14,8 @@ export function Button({
     icon,
     pending = false,
     disabled = false,
+    pressed,
+    label,
     onClick,
     popoverTarget,
     form,
@@ -28,6 +30,11 @@ export function Button({
     // Working on it: the label stays, a spinner joins it, and the button takes no more presses.
     readonly pending?: boolean;
     readonly disabled?: boolean;
+    // A toggle, or the chosen one of a set (a sort): said to screen readers as well as shown.
+    readonly pressed?: boolean;
+    // The name a screen reader says, when the visible text needs its context: "take away" in a row
+    // of roles is "take away support".
+    readonly label?: string;
     readonly onClick?: () => void;
     readonly popoverTarget?: string;
     readonly form?: string;
@@ -43,6 +50,8 @@ export function Button({
             type={type}
             disabled={disabled || pending}
             aria-busy={pending}
+            {...(pressed === undefined ? {} : { "aria-pressed": pressed })}
+            {...(label === undefined ? {} : { "aria-label": label })}
             {...(onClick === undefined ? {} : { onClick })}
             {...(popoverTarget === undefined ? {} : { popoverTarget })}
             {...(form === undefined ? {} : { form })}

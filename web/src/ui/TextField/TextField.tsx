@@ -11,6 +11,8 @@ type TextFieldProps = {
     readonly minLength?: number;
     readonly maxLength?: number;
     readonly pattern?: string;
+    // A rule the attributes can't state; returns the message while the value breaks it.
+    readonly customCheck?: (value: string) => string | undefined;
     readonly autoComplete?: string;
     readonly inputMode?: "text" | "email" | "search" | "numeric";
     readonly defaultValue?: string;
@@ -26,6 +28,7 @@ export function TextField({
     minLength,
     maxLength,
     pattern,
+    customCheck,
     autoComplete,
     inputMode,
     defaultValue,
@@ -35,6 +38,7 @@ export function TextField({
             label={label}
             {...(hint === undefined ? {} : { hint })}
             {...(error === undefined ? {} : { error })}
+            {...(customCheck === undefined ? {} : { customCheck })}
         >
             {(control) => (
                 <input
