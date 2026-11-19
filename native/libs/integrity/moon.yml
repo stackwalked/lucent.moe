@@ -1,0 +1,7 @@
+project:
+  description: "Measures our own code and the machine it runs on for the server to score: hash challenges, code page state, environment probes."
+
+language: "cpp"
+layer: "library"
+
+dependsOn: ["core", "crypto", "os", "pe"]
