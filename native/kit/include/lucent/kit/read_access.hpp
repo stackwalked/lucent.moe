@@ -22,6 +22,22 @@ struct foreign_of_type<T*> {
 
 }
 
+namespace detail {
+
+// A precondition of access built on a capability, checked outside the template: a failed
+// invariant records the function it is in, and a function templated on a capability is named by
+// its facts' names, which a release image must not hold (facts check). The recorded location is
+// require_access's.
+struct access_precondition {
+    bool is_met = false;
+};
+
+inline auto require_access(access_precondition checked) -> void {
+    LUCENT_INVARIANT(checked.is_met);
+}
+
+}
+
 // A T the target holds, as held here: a pointer as a foreign_ptr, anything else as itself. Fact
 // declarations keep the target's own types (`global<game_entity_system*>`).
 template <typename T>
@@ -67,7 +83,7 @@ public:
     // Only for an available capability: a builder runs only once its capability resolved.
     explicit read_access(foreign::memory_source source)
         : m_source{source} {
-        LUCENT_INVARIANT(is_available(Capability{}));
+        detail::require_access({.is_met = is_available(Capability{})});
     }
 
     template <const auto& Global>
@@ -106,7 +122,7 @@ public:
     template <const auto& Stride, foreign::addressable T>
         requires(is_value_fact<fact_type<Stride>> && is_part_of<Stride, Capability>)
     auto element(foreign::foreign_ptr<T> first, isize index) const -> foreign::foreign_ptr<T> {
-        LUCENT_INVARIANT(index >= 0 && Stride.get() > 0);
+        detail::require_access({.is_met = index >= 0 && Stride.get() > 0});
         if (foreign::is_null(first)) {
             return {};
         }

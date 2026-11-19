@@ -18,7 +18,7 @@ public:
     // Only for an available capability.
     explicit write_access(foreign::memory_source source)
         : m_source{source} {
-        LUCENT_INVARIANT(is_available(Capability{}));
+        detail::require_access({.is_met = is_available(Capability{})});
     }
 
     template <const auto& Global>
