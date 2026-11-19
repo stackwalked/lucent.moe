@@ -1,0 +1,8 @@
+project:
+  description: "The overlay's menu pages, generated from the feature registry's snapshot and its settings' describe(), drawn with ui, with text from a catalog keyed by hashed ids."
+
+language: "cpp"
+layer: "library"
+
+# os is the tests' fixture reader only.
+dependsOn: ["core", "draw", "kit", "text", "ui", { id: "os", scope: "development" }]
