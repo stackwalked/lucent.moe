@@ -1,11 +1,12 @@
+#pragma once
+
 #include <array>
 
 #include <lucent/cs2-modules/game_modules.hpp>
 #include <lucent/kit/capability.hpp>
 #include <lucent/kit/fact.hpp>
 
-// The camera as client.dll keeps it. Nothing reads it yet, hence `used` on its capability record
-// (see entities.cpp).
+// The camera as client.dll keeps it. Its finder is in targets/cs2/finders/src/view.cpp.
 namespace lucent::cs2::foreign {
 
 // A row-major 4x4 matrix of floats.

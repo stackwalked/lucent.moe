@@ -1,0 +1,9 @@
+id: "cs2-domains"
+
+project:
+  description: "cs2's game layer: the foreign layer's facts and capabilities, and the domains that build what features see from them. Its own library so the domains are tested against laid-out bytes, without the module."
+
+language: "cpp"
+layer: "library"
+
+dependsOn: ["core", "cs2-modules", "draw", "foreign", "kit"]

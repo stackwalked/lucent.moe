@@ -1,0 +1,9 @@
+id: "cs2-features"
+
+project:
+  description: "cs2's features and the explicit list the module wires them from. Views, settings and their own state in, drawing or intents out: tested without the game."
+
+language: "cpp"
+layer: "library"
+
+dependsOn: ["core", "cs2-domains", "draw", "kit"]

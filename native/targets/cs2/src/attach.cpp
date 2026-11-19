@@ -5,6 +5,9 @@
 #include <tuple>
 #include <utility>
 
+#include <lucent/cs2-domains/world_domain.hpp>
+#include <lucent/cs2-features/all.hpp>
+#include <lucent/foreign/memory_source.hpp>
 #include <lucent/kit/clock.hpp>
 #include <lucent/kit/hook.hpp>
 #include <lucent/kit/lifecycle.hpp>
@@ -12,7 +15,6 @@
 #include <lucent/kit/wiring.hpp>
 #include <lucent/kit/worker_set.hpp>
 
-#include "features/all.hpp"
 #include "overlay/overlay.hpp"
 #include "overlay/present.hpp"
 
@@ -22,8 +24,10 @@ namespace {
 // Each part at an address the next one borrows: the registry the clock's, the overlay both.
 struct attached_parts {
     std::unique_ptr<kit::monotonic_clock> time;
-    // Ticked by the present hook for now (overlay::draw); the world domain's hook takes it over.
+    // Ticked by the present hook for now (overlay::draw), until a hook at the game's frame stage.
     std::unique_ptr<kit::registry> features;
+    // Updated by the present hook too (overlay::draw), for the same reason.
+    std::unique_ptr<world_domain> world;
     std::unique_ptr<overlay::overlay> drawn;
     kit::hook_set hooks;
 };
@@ -55,6 +59,7 @@ private:
     // and the registry: they stay allocated, like the module that stays loaded.
     auto abandon() -> void {
         std::ignore = m_parts.drawn.release();
+        std::ignore = m_parts.world.release();
         std::ignore = m_parts.features.release();
         std::ignore = m_parts.time.release();
     }
@@ -70,12 +75,19 @@ auto attach(kit::worker_set& workers) -> result<std::unique_ptr<kit::attachment>
     auto time = std::make_unique<kit::monotonic_clock>();
     auto features =
         std::make_unique<kit::registry>(std::move(wired), kit::default_entitlements(), *time);
-    auto drawn = std::make_unique<overlay::overlay>(workers, *features, *time);
+    auto world = std::make_unique<world_domain>(lucent::foreign::memory_source::this_process());
+    auto drawn = std::make_unique<overlay::overlay>(overlay::overlay_parts{
+        .workers = &workers,
+        .features = features.get(),
+        .world = world.get(),
+        .time = time.get(),
+    });
     const std::array requests{LUCENT_TRY(overlay::present_hook(*drawn))};
     kit::hook_set hooks = LUCENT_TRY(kit::hook_set::install(requests));
     return std::make_unique<attached>(attached_parts{
         .time = std::move(time),
         .features = std::move(features),
+        .world = std::move(world),
         .drawn = std::move(drawn),
         .hooks = std::move(hooks),
     });

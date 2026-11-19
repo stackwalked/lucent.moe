@@ -7,6 +7,7 @@
 #include <d3d11.h>
 #include <dxgi.h>
 
+#include <lucent/cs2-domains/world_domain.hpp>
 #include <lucent/cs2-overlay/overlay_state.hpp>
 #include <lucent/cs2-overlay/window_input.hpp>
 #include <lucent/d3d11/renderer.hpp>
@@ -22,16 +23,23 @@
 
 namespace lucent::cs2::overlay {
 
+// What the overlay borrows: each outlives it, and none is null.
+struct overlay_parts {
+    kit::worker_set* workers = nullptr;
+    kit::registry* features = nullptr;
+    world_domain* world = nullptr;
+    const kit::clock* time = nullptr;
+};
+
 // What the module draws over the game's frames, and everything it draws them with.
 //
 // Threads: made and dropped on the lifecycle thread while the present hook is not installed; in
 // between, draw() runs on whatever thread presents, and past the choice of swap chain only on the
-// one presenting the game's window, which is the registry's tick thread for now. The game window's
-// thread runs its subclassed procedure. The worker set, the registry and the clock outlive the
-// overlay.
+// one presenting the game's window, which is the registry's tick thread and the world domain's
+// update thread for now. The game window's thread runs its subclassed procedure.
 class overlay final {
 public:
-    overlay(kit::worker_set& workers, kit::registry& features, const kit::clock& time);
+    explicit overlay(overlay_parts parts);
     overlay(const overlay&) = delete ("the present hook holds its address");
     auto operator=(const overlay&) -> overlay& = delete ("the present hook holds its address");
     overlay(overlay&&) = delete ("the present hook holds its address");
@@ -58,6 +66,8 @@ private:
     auto start_over(ID3D11Device& device) -> void;
     auto start_build() -> void;
     auto render(const game_frame& frame) -> void;
+    // A frame of every drawing feature, into the draw list, with their labels set in text.
+    auto draw_features(draw::vec2 viewport) -> void;
     // A frame of the menu, when it is open, into the draw list.
     auto draw_menu(HWND window, draw::vec2 viewport) -> result<void>;
     // Tells the window's procedure the menu takes nothing this frame, so the game gets its input
@@ -66,6 +76,7 @@ private:
 
     kit::worker_set* m_workers;
     kit::registry* m_features;
+    world_domain* m_world;
     const kit::clock* m_clock;
     window_input m_input;
     // The feed's serial the last snapshot took everything up to.
@@ -73,6 +84,8 @@ private:
     bool m_has_taken_input = false;
     overlay_state m_state;
     std::optional<text::text_system> m_text;
+    // The face features' labels are set in; set with the text system.
+    std::optional<text::face_id> m_face;
     // Held here while ready or between builds; a build in flight has it instead.
     std::optional<d3d11::renderer> m_renderer;
     std::unique_ptr<renderer_build> m_build;

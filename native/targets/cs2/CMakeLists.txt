@@ -1,5 +1,8 @@
-# The overlay's states are a library of their own, so their tests link without the module.
+# The overlay's states, the domains and the features are libraries of their own, so their tests
+# link without the module.
 add_subdirectory(overlay)
+add_subdirectory(domains)
+add_subdirectory(features)
 
 # The dev entry point, the dev demo and the dev catalog are compiled into dev builds only.
 lucent_module(cs2
@@ -8,9 +11,6 @@ lucent_module(cs2
         $<$<CONFIG:Debug>:src/overlay/dev_catalog.cpp>
         $<$<CONFIG:Debug>:src/overlay/dev_demo.cpp>
         src/attach.cpp
-        src/features/all.cpp
-        src/foreign/entities.cpp
-        src/foreign/view.cpp
         src/overlay/dxgi_present.cpp
         src/overlay/overlay.cpp
         src/overlay/present.cpp
@@ -18,10 +18,13 @@ lucent_module(cs2
         src/overlay/settings_menu.cpp
         src/overlay/system_font.cpp
     DEPS
+        lucent::cs2-domains
+        lucent::cs2-features
         lucent::cs2-modules
         lucent::cs2-overlay
         lucent::d3d11
         lucent::draw
+        lucent::foreign
         lucent::kit
         lucent::menu
         lucent::text

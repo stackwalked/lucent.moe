@@ -6,18 +6,21 @@ layer: "application"
 
 dependsOn: [
   "crypto",
+  "cs2-domains",
+  "cs2-features",
   "cs2-modules",
   "cs2-overlay",
   "d3d11",
   "devkey",
   "draw",
+  "foreign",
   "kit",
   "menu",
   "text",
   "ui",
 ]
 
-# What is testable off-target lives in cs2-overlay; behavior in the game gets manual test lists.
+# What is testable off-target lives in cs2-overlay, cs2-domains and cs2-features; behavior in the game gets manual test lists.
 workspace:
   inheritedTasks:
     exclude: ["test"]

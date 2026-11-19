@@ -21,17 +21,19 @@
 
 #include <lucent/core/contain.hpp>
 #include <lucent/core/narrow.hpp>
+#include <lucent/cs2-domains/world_domain.hpp>
 #include <lucent/cs2-overlay/input_feed.hpp>
 #include <lucent/cs2-overlay/overlay_state.hpp>
 #include <lucent/cs2-overlay/window_input.hpp>
 #include <lucent/d3d11/renderer.hpp>
 #include <lucent/draw/draw_list.hpp>
 #include <lucent/draw/vec2.hpp>
+#include <lucent/kit/canvas.hpp>
 #include <lucent/kit/clock.hpp>
 #include <lucent/kit/dev_build.hpp>
 #include <lucent/kit/published.hpp>
 #include <lucent/kit/registry.hpp>
-#include <lucent/kit/worker_set.hpp>
+#include <lucent/kit/view_set.hpp>
 #include <lucent/text/glyph_atlas.hpp>
 #include <lucent/text/text_layout.hpp>
 #include <lucent/text/text_system.hpp>
@@ -158,10 +160,15 @@ auto client_size_of(HWND window) -> draw::vec2 {
 
 }
 
-overlay::overlay(kit::worker_set& workers, kit::registry& features, const kit::clock& time)
-    : m_workers{&workers}
-    , m_features{&features}
-    , m_clock{&time} {}
+overlay::overlay(overlay_parts parts)
+    : m_workers{parts.workers}
+    , m_features{parts.features}
+    , m_world{parts.world}
+    , m_clock{parts.time} {
+    LUCENT_INVARIANT(
+        m_workers != nullptr && m_features != nullptr && m_world != nullptr && m_clock != nullptr
+    );
+}
 
 overlay::~overlay() = default;
 
@@ -188,10 +195,13 @@ auto overlay::unsubclass(std::chrono::milliseconds patience) -> result<void> {
 
 auto overlay::draw_contained(const game_frame& frame) -> void {
     m_input.subclass(std::bit_cast<window_id>(frame.window));
-    // The world domain's tick will own the safe point once it lands. Until then the game window's
-    // frames are the registry's ticks, and this one, before the menu reads the snapshot, publishes
-    // what the menu asked for last frame.
+    // The game's frame stage will own the safe point and the world's update once a hook there
+    // exists (it needs a method fact for the frame stage call, which no finder derives yet). Until
+    // then the game window's frames are the registry's ticks and the world's frames: this one,
+    // before the menu reads the snapshot, publishes what the menu asked for last frame, then reads
+    // the players the features draw.
     m_features->safe_point();
+    m_world->update();
     m_has_taken_input = false;
     collect_build();
     switch (m_state.frame(id_of(*frame.device))) {
@@ -245,6 +255,7 @@ auto overlay::start_over(ID3D11Device& device) -> void {
             m_state.turn_off();
             return;
         }
+        m_face = *face;
         m_menu.emplace(*m_text, *face, *m_features);
         if constexpr (kit::is_dev_build) {
             m_demo.emplace(*face);
@@ -324,6 +335,8 @@ auto overlay::render(const game_frame& frame) -> void {
         .x = static_cast<f32>(stored.Width),
         .y = static_cast<f32>(stored.Height),
     };
+    // Under the menu, so the menu stays readable over a box.
+    draw_features(viewport);
     if (!draw_menu(frame.window, viewport)) {
         m_state.turn_off();
         return;
@@ -334,6 +347,41 @@ auto overlay::render(const game_frame& frame) -> void {
     // Unsupported is a target the renderer refuses as designed (HDR): nothing is drawn on it.
     if (!rendered && rendered.error().code != error_code::unsupported) {
         m_state.turn_off();
+    }
+}
+
+auto overlay::draw_features(draw::vec2 viewport) -> void {
+    LUCENT_INVARIANT(m_text.has_value() && m_face.has_value());
+    kit::canvas onto{m_list, viewport};
+    {
+        // Held only while features draw: the published frame isn't kept past it.
+        const kit::published<world_frame>::reading seen = m_world->read();
+        kit::view_set parts;
+        if (seen->players) {
+            parts.put(*seen->players);
+        }
+        if (seen->camera) {
+            parts.put(*seen->camera);
+        }
+        m_features->draw(parts, onto);
+    }
+    for (const kit::label& line : onto.labels()) {
+        const result<const text::text_layout*> laid = m_text->layout({
+            .utf8 = line.text,
+            .style = {.face = *m_face, .size = line.size},
+            .max_width = 0.0F,
+            .wrap = text::text_wrap::none,
+            .overflow = text::text_overflow::visible,
+            .max_lines = std::nullopt,
+            .pixels_per_unit = 1.0F,
+        });
+        // A name the text system can't lay out (not UTF-8, say) is left off; its box stays.
+        if (!laid) {
+            continue;
+        }
+        const draw::vec2 origin =
+            line.anchor - draw::vec2{.x = (*laid)->size.x / 2.0F, .y = (*laid)->size.y};
+        std::ignore = m_text->draw(m_list, **laid, origin, line.tint);
     }
 }
 
