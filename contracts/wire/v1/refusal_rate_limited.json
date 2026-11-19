@@ -1,0 +1,5 @@
+{
+  "code": "RATE_LIMITED",
+  "raw_code": 22,
+  "retry_after_ms": 30000
+}

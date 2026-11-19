@@ -1,0 +1,18 @@
+{
+  "session": "11111111111111111111111111111111",
+  "device": "22222222222222222222222222222222",
+  "release": "33333333333333333333333333333333",
+  "sequence": 1,
+  "nonce": "77777777777777777777777777777777",
+  "duration_ms": 60000,
+  "bundle_revision": 7,
+  "challenge": {
+    "nonce": "99999999999999999999999999999999",
+    "offset": 4096,
+    "size": 512
+  },
+  "product": "cs2",
+  "everything": true,
+  "features": [],
+  "signature": "828a6a1c5361366f7969da333f5268f7a1fb8d29685328cbe66240e385b1e3e26d8430b5dcf1079b43a0173a291209047912ae33d8ca6dfa59e8738c00a03e0d"
+}
