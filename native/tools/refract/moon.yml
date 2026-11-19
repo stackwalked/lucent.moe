@@ -1,0 +1,8 @@
+project:
+  description: "The cooperative bin2bin rewriter. Lifts x86-64 to its own IR and interprets it; rewriting PE images comes in later phases."
+
+language: "cpp"
+layer: "tool"
+
+# A library and its tests for now: an executable arrives with something real for it to do, such as
+# lifting a function out of a PE.
