@@ -1,3 +1,3 @@
 [test]
-# Stops the shared Postgres test cluster once every test file has run.
-preload = ["./tests/harness/teardown.ts"]
+# Starts the shared Postgres test cluster before the first test file and stops it after the last.
+preload = ["./tests/harness/preload.ts"]
