@@ -220,15 +220,25 @@ auto level_name(bundle::capability_level level) -> std::string_view {
 auto run(const manifest_command& chosen) -> result<isize> {
     const finder::target target = LUCENT_TRY(target_named(chosen.target));
     const module_manifest linked = LUCENT_TRY(manifest_of(chosen.module));
-    const bundle::release_manifest made = LUCENT_TRY(release_manifest_of(linked, game_of(target)));
-    LUCENT_TRY(os::write_file(chosen.out, bundle::encode_release_manifest(made)));
+    const bundle::release_manifest_v2 made =
+        LUCENT_TRY(release_manifest_of(linked, product_of(target)));
+    LUCENT_TRY(os::write_file(chosen.out, bundle::encode_release_manifest_v2(made)));
     const std::vector<std::byte> written = LUCENT_TRY(os::read_file(chosen.out));
-    const bundle::release_manifest stored = LUCENT_TRY(bundle::decode_release_manifest(written));
+    const bundle::release_manifest_v2 stored =
+        LUCENT_TRY(bundle::decode_release_manifest_v2(written));
     std::println("{}: {} bytes", chosen.out.string(), written.size());
     std::println(
-        "  game {}, manifest digest {}", stored.game, hex_of(bundle::manifest_digest(stored))
+        "  product {}, manifest digest {}", stored.product, hex_of(bundle::manifest_digest(stored))
     );
-    std::println("  {} fact(s), {} capabilities", stored.facts.size(), stored.capabilities.size());
+    std::println(
+        "  {} fact(s), {} capabilities, {} feature(s)",
+        stored.facts.size(),
+        stored.capabilities.size(),
+        stored.features.size()
+    );
+    for (const bundle::manifest_feature& feature : stored.features) {
+        std::println("  feature {:#018x} {}", feature.key, feature.tag);
+    }
     for (const bundle::manifest_capability& capability : stored.capabilities) {
         std::string members;
         for (const u64 member : capability.members) {

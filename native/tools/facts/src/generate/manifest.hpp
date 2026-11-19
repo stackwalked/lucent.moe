@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <lucent/bundle/release_manifest.hpp>
@@ -11,6 +12,7 @@
 #include <lucent/finder/target.hpp>
 #include <lucent/kit/capability.hpp>
 #include <lucent/kit/fact.hpp>
+#include <lucent/kit/feature_section.hpp>
 
 namespace lucent::facts {
 
@@ -21,19 +23,21 @@ struct module_manifest {
     std::vector<kit::fact_record> facts;
     // Its capability section, in section order.
     std::vector<kit::declared_capability> capabilities;
+    // Its feature section, in section order: every feature the module wires.
+    std::vector<kit::declared_feature> features;
 };
 
 auto manifest_of(const std::filesystem::path& module) -> result<module_manifest>;
 
-// The release manifest the server is given for this module: its facts and capabilities sorted,
-// for the game the target names. Malformed, with an error printed, when two facts or two
-// capabilities share a key, or a capability names a fact the module doesn't link.
-auto release_manifest_of(const module_manifest& linked, u32 game)
-    -> result<bundle::release_manifest>;
+// The release manifest the server is given for this module: its facts, capabilities and features
+// sorted, for the product named. Malformed, with an error printed, when two facts, capabilities
+// or features share a key, or a capability names a fact the module doesn't link.
+auto release_manifest_of(const module_manifest& linked, std::string_view product)
+    -> result<bundle::release_manifest_v2>;
 
-// The game a target's release manifest names: its Steam app, the one numeric identity every target
-// has today.
-auto game_of(const finder::target& target) -> u32;
+// The product a target's release manifest names: its id in products/*.toml, which is the target's
+// name (the cs2 target builds the cs2 product).
+auto product_of(const finder::target& target) -> std::string_view;
 
 // The fact a key names, as the target's searches spell it; the key itself for a fact none searches.
 auto fact_name(u64 key, std::span<const finder::fact_search> searches) -> std::string;

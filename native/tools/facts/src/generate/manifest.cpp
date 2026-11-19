@@ -22,6 +22,7 @@
 #include <lucent/finder/target.hpp>
 #include <lucent/kit/capability.hpp>
 #include <lucent/kit/fact.hpp>
+#include <lucent/kit/feature_section.hpp>
 #include <lucent/os/file.hpp>
 #include <lucent/pe/image_view.hpp>
 
@@ -84,6 +85,22 @@ auto facts_of(std::span<const kit::fact_record> records)
     return facts;
 }
 
+auto features_of(std::span<const kit::declared_feature> declared)
+    -> result<std::vector<bundle::manifest_feature>> {
+    std::vector<bundle::manifest_feature> features;
+    features.reserve(declared.size());
+    for (const kit::declared_feature& feature : declared) {
+        features.push_back(bundle::manifest_feature{.key = feature.key, .tag = feature.tag});
+    }
+    std::ranges::sort(features, {}, &bundle::manifest_feature::key);
+    const auto repeated = std::ranges::adjacent_find(features, {}, &bundle::manifest_feature::key);
+    if (repeated != features.end()) {
+        std::println(stderr, "facts: two wired features share the key {:#018x}", repeated->key);
+        return std::unexpected(malformed);
+    }
+    return features;
+}
+
 auto capability_of(
     const kit::declared_capability& declared, std::span<const bundle::manifest_entry> facts
 ) -> result<bundle::manifest_capability> {
@@ -118,18 +135,21 @@ auto manifest_of(const std::filesystem::path& module) -> result<module_manifest>
     const pe::image_view image = LUCENT_TRY(pe::image_view::parse(file, pe::layout::file));
     const std::span<const std::byte> facts = LUCENT_TRY(section_bytes(image, ".lfact"));
     const std::span<const std::byte> capabilities = LUCENT_TRY(section_bytes(image, ".lcap"));
+    const std::span<const std::byte> features = LUCENT_TRY(section_bytes(image, ".lfeat"));
     return module_manifest{
         .facts = fact_records_in(facts),
         .capabilities = LUCENT_TRY(kit::declared_capabilities(capabilities)),
+        .features = LUCENT_TRY(kit::declared_features(features)),
     };
 }
 
-auto release_manifest_of(const module_manifest& linked, u32 game)
-    -> result<bundle::release_manifest> {
-    bundle::release_manifest manifest{
-        .game = game,
+auto release_manifest_of(const module_manifest& linked, std::string_view product)
+    -> result<bundle::release_manifest_v2> {
+    bundle::release_manifest_v2 manifest{
+        .product = std::string{product},
         .facts = LUCENT_TRY(facts_of(linked.facts)),
         .capabilities = {},
+        .features = LUCENT_TRY(features_of(linked.features)),
     };
     for (const kit::declared_capability& declared : linked.capabilities) {
         manifest.capabilities.push_back(LUCENT_TRY(capability_of(declared, manifest.facts)));
@@ -144,8 +164,8 @@ auto release_manifest_of(const module_manifest& linked, u32 game)
     return manifest;
 }
 
-auto game_of(const finder::target& target) -> u32 {
-    return target.steam_app;
+auto product_of(const finder::target& target) -> std::string_view {
+    return target.name;
 }
 
 auto fact_name(u64 key, std::span<const finder::fact_search> searches) -> std::string {

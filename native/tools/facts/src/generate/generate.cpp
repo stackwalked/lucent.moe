@@ -403,7 +403,7 @@ auto add_to(generation& tally, const result<module_values>& made) -> void {
 
 // A core capability any of whose facts didn't resolve would refuse every session on this build.
 auto report_core_coverage(
-    const bundle::release_manifest& release,
+    const bundle::release_manifest_v2& release,
     std::span<const finder::fact_search> searches,
     generation& tally
 ) -> void {
@@ -438,8 +438,8 @@ auto generate(
 ) -> result<generation> {
     const module_manifest linked = LUCENT_TRY(manifest_of(source.module));
     const std::span<const kit::fact_record> manifest = linked.facts;
-    const bundle::release_manifest release =
-        LUCENT_TRY(release_manifest_of(linked, game_of(target)));
+    const bundle::release_manifest_v2 release =
+        LUCENT_TRY(release_manifest_of(linked, product_of(target)));
     std::println(
         "{} links {} fact(s) in {} capabilities, manifest digest {}; {} searched for {}",
         source.module.filename().string(),
