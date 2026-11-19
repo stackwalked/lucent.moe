@@ -18,6 +18,8 @@ struct options {
     std::optional<std::filesystem::path> bundle;
 };
 
+auto is_container(const options& chosen) -> bool;
+
 // Prints the usage line to stderr when the arguments don't fit it.
 auto parse_options(std::span<const wchar_t* const> arguments) -> result<options>;
 

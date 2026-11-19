@@ -2,11 +2,13 @@
 
 #include <cstddef>
 #include <expected>
+#include <optional>
 #include <vector>
 
 #include <lucent/kit/boot_info.hpp>
 #include <lucent/os/file.hpp>
 #include <lucent/os/process.hpp>
+#include <lucent/wire/container.hpp>
 
 #include "cli/options.hpp"
 #include "inject/boot.hpp"
@@ -30,6 +32,20 @@ auto map_from(const os::process& target, const options& chosen) -> result<loaded
     };
 }
 
+// The container's header names its boot entry; a container without one (a release module, until
+// kit's release boot path lands) is mapped and attached, and nothing more.
+auto map_container_from(const os::process& target, const options& chosen) -> result<loaded_module> {
+    const std::vector<std::byte> packed = LUCENT_TRY(os::read_file(chosen.module));
+    const wire::container image = LUCENT_TRY(wire::unpack_container(packed));
+    const mapped_module mapped = LUCENT_TRY(map_container_module(target, image));
+    return loaded_module{
+        .base = mapped.base,
+        .boot_offset = image.boot_rva == 0 ? std::nullopt : std::optional<u32>{image.boot_rva},
+        .kind = kit::image_kind::mapped,
+        .trampolines = mapped.trampolines,
+    };
+}
+
 auto load_with_os_loader(const os::process& target, const options& chosen)
     -> result<loaded_module> {
     const staged_module staged = LUCENT_TRY(stage_module(chosen.module));
@@ -48,7 +64,7 @@ auto load_with_os_loader(const os::process& target, const options& chosen)
 auto load_module(const os::process& target, const options& chosen) -> result<loaded_module> {
     switch (chosen.loading) {
     case kit::image_kind::mapped:
-        return map_from(target, chosen);
+        return is_container(chosen) ? map_container_from(target, chosen) : map_from(target, chosen);
     case kit::image_kind::loaded:
         return load_with_os_loader(target, chosen);
     }

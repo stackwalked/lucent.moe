@@ -9,5 +9,5 @@ lucent_executable(loader-dev
         src/inject/os_loader.cpp
         src/session/channel.cpp
         src/session/relay.cpp
-    DEPS lucent::kit lucent::manualmap lucent::os lucent::pe
+    DEPS lucent::kit lucent::manualmap lucent::os lucent::pe lucent::wire
 )

@@ -19,11 +19,16 @@ auto usage() -> error {
     std::println(
         stderr,
         "usage: loader-dev <module.dll> [process name, default cs2.exe] [--os-loader] "
-        "[--bundle <file>]"
+        "[--bundle <file>]\n"
+        "       loader-dev <module.container> [process name] [--bundle <file>]"
     );
     return error{.code = error_code::malformed};
 }
 
+}
+
+auto is_container(const options& chosen) -> bool {
+    return chosen.module.extension() == L".container";
 }
 
 auto parse_options(std::span<const wchar_t* const> arguments) -> result<options> {
@@ -40,6 +45,7 @@ auto parse_options(std::span<const wchar_t* const> arguments) -> result<options>
             }
             ++at;
             chosen.bundle = std::filesystem::absolute(std::wstring_view{*at});
+
         } else {
             positional.push_back(argument);
         }
@@ -50,6 +56,9 @@ auto parse_options(std::span<const wchar_t* const> arguments) -> result<options>
     chosen.module = std::filesystem::absolute(positional.front());
     if (positional.size() == 2) {
         chosen.process = to_utf8(positional.back());
+    }
+    if (is_container(chosen) && chosen.loading == kit::image_kind::loaded) {
+        return std::unexpected(usage());
     }
     return chosen;
 }

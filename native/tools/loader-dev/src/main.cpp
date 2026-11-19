@@ -31,13 +31,24 @@ auto run(const options& chosen) -> result<void> {
     const std::vector<std::byte> bundle =
         chosen.bundle ? LUCENT_TRY(os::read_file(*chosen.bundle)) : std::vector<std::byte>{};
     const loaded_module module = LUCENT_TRY(load_module(target, chosen));
+    if (!module.boot_offset) {
+        std::println(
+            "mapped {} into {} ({}) at {:#x} and ran its entry point; its container names no boot "
+            "entry (a release module has none yet), so it stays there, inert",
+            chosen.module.filename().string(),
+            chosen.process,
+            target.id(),
+            module.base
+        );
+        return {};
+    }
     host_channel channel = LUCENT_TRY(open_channel(target));
     channel.boot.kind = module.kind;
     channel.boot.trampolines = module.trampolines;
     LUCENT_TRY(start_module(
         target,
         boot_request{
-            .entry = module.base + module.boot_offset,
+            .entry = module.base + *module.boot_offset,
             .info = channel.boot,
             .bundle = bundle,
         }
