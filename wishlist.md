@@ -828,6 +828,9 @@ live in `wishlist/protection.md`.
   - Native loader sign-in uses pushed auth requests (`POST /v1/auth/requests` → clean
     `lucent.moe/auth/device/lauth_...` URL) + loopback `127.0.0.1:<port>/callback` PKCE + DPoP →
     30-day rotating refresh token (30s retry grace) + 5m DPoP-bound access token.
+    - The DPoP key is the device key (TPM or CNG software P-256), so every native request also
+      proves its PC, and enrollment and sign-in share one key.
+    - A refresh token presented again after its 30s grace revokes its whole rotation family.
   - Entity model and `can()` access control (hybrid config, multi-product from day one):
     - Closed union of `Action` permissions in code (`"tickets:reply"`, `"accounts:suspend"`, ...),
       with per-action `{ stepUp, audit }` metadata; zero `if (role === ...)` checks anywhere.
@@ -866,7 +869,17 @@ live in `wishlist/protection.md`.
   - Key split: **Ed25519** over raw canonical bytes for server and offline authorities
     (the offline code and facts keys, `LEASE_SIGNING_KEY`, `OVERRIDE_SIGNING_KEY`), including a
     fixed-layout binary Ed25519 runtime lease (dropping `lucent-lease+jwt` so the mapped module needs no JSON or
-    JWS parser); **ECDSA P-256** for client Windows TPM 2.0 / CNG installation and session keys.
+    JWS parser); **ECDSA P-256** only for the device key, because the TPM forces it; **X25519**
+    for the module's per-boot session key exchange and **XChaCha20-Poly1305** for its frames, both
+    from Monocypher, so the module needs no OS crypto import and no second curve library.
+  - Every signed document starts with its own context string and version (e.g. `lucent lease v1`),
+    so a signature over one kind is never accepted as another; one key signing two kinds (the lease
+    key: leases and the session key exchange) stays safe.
+  - Ed25519 verification is strict on both sides (non-canonical encodings and small-order points
+    refused), pinned by vectors in `contracts/` that Monocypher and Bun's WebCrypto must both pass.
+  - Encoding: every native-facing message is canonical little-endian binary in `contracts/` with
+    golden vectors, like the bundle, except the OAuth endpoints (PAR, token), which stay standard
+    (form requests, JSON replies); the loader carries a minimal parser for the token reply only.
   - Separate `/v1` channels: `POST /v1/sessions/:id/lease` (15s cadence / 60s TTL, carries
     `bundle_revision_tag` + a hash challenge, never game data) and
     `POST /v1/sessions/:id/bundles` (lazy per-feature and per-module AEAD-encrypted session bundles
