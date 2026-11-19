@@ -22,6 +22,7 @@ auto cs2_target() -> target {
     std::vector<fact_search> searches;
     searches.append_range(entity_searches());
     searches.append_range(view_searches());
+    searches.append_range(schema_searches());
     return target{
         .name = "cs2",
         .steam_app = cs2_app,

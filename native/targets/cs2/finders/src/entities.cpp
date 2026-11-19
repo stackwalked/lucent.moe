@@ -196,6 +196,109 @@ constexpr std::array entity_identity_size_finders{
     },
 };
 
+// The entity system holds its chunk pointers at a fixed place: lookups that load the system's
+// global index them by chunk straight off it, `[system + chunk*8 + offset]`.
+// found: 12 such lookups (load, one move, shift, index) on 1.41.9.7, all at 0x10 off the entity
+// system's global. Most of client.dll instead goes through a global copy of system+0x10, with
+// no displacement; a gap between the load and the shift lets those in, so the steps are tight
+// breaks: another layout of the list: none; a lookup through the copy in the same four steps:
+// ambiguous (0 beside 0x10)
+constexpr probe::instruction_pattern indexes_chunks{
+    "mov %system, [rip+?]; mov ?, ?; shr %index, 9; mov ?, [%system+%index*8+$chunks]"
+};
+
+auto chunks_by_lookups(const probe::module_file& module, const probe::code_index& /*index*/)
+    -> probe::finding {
+    return probe::one(
+        probe::captured(
+            probe::matches_in_code(module, indexes_chunks), indexes_chunks.capture("chunks")
+        )
+    );
+}
+
+// The code that stores the entity system's global also stores that copy, system+offset, beside
+// it, or null when the system is: `lea list, [system+0x10]; ...; mov [rip+...], system; test
+// system, system; cmovz list, zero; mov [rip+...], list`.
+// found: client+0x15b1d5f on 1.41.9.7, the only such pair
+// breaks: shape only; the copy dropped or computed apart from the store: none
+constexpr probe::instruction_pattern stores_list_copy{
+    "lea %list, [%system+$chunks]; ...; mov [rip+?], %system; test %system, %system; "
+    "cmovz %list, ?; mov [rip+?], %list"
+};
+
+auto chunks_by_copy(const probe::module_file& module, const probe::code_index& /*index*/)
+    -> probe::finding {
+    return probe::one(
+        probe::captured(
+            probe::matches_in_code(module, stores_list_copy), stores_list_copy.capture("chunks")
+        )
+    );
+}
+
+constexpr std::array entity_list_chunks_finders{
+    probe::finder{
+        .name = "every chunk lookup straight off the entity system",
+        .rests_on = probe::basis::semantic,
+        .reason = "",
+        .run = &chunks_by_lookups,
+    },
+    probe::finder{
+        .name = "the list's copy stored beside the entity system",
+        .rests_on = probe::basis::shape,
+        .reason = "",
+        .run = &chunks_by_copy,
+    },
+};
+
+// A handle lookup checks the identity still holds the handle (its serial), then reads the entity
+// the identity points at: `imul identity, slot, size; add identity, chunk; jz; cmp [identity +
+// handle], h; jnz; mov entity, [identity + entity]`.
+// found: 142 such lookups on 1.41.9.7, every one comparing at 0x10 and reading at 0
+// breaks: the check or the read moved apart from the scale: none; another field read first:
+// ambiguous
+constexpr probe::instruction_pattern checks_identity{
+    "imul %identity, ?, ?; add %identity, ?; jz ?; cmp [%identity+$handle], ?; jnz ?; "
+    "mov ?, [%identity+$entity]"
+};
+
+auto identity_handle_by_lookups(
+    const probe::module_file& module, const probe::code_index& /*index*/
+) -> probe::finding {
+    return probe::one(
+        probe::captured(
+            probe::matches_in_code(module, checks_identity), checks_identity.capture("handle")
+        )
+    );
+}
+
+auto identity_entity_by_lookups(
+    const probe::module_file& module, const probe::code_index& /*index*/
+) -> probe::finding {
+    return probe::one(
+        probe::captured(
+            probe::matches_in_code(module, checks_identity), checks_identity.capture("entity")
+        )
+    );
+}
+
+constexpr std::array identity_handle_finders{
+    probe::finder{
+        .name = "every handle lookup's serial check",
+        .rests_on = probe::basis::semantic,
+        .reason = "",
+        .run = &identity_handle_by_lookups,
+    },
+};
+
+constexpr std::array identity_entity_finders{
+    probe::finder{
+        .name = "every handle lookup's read past its serial check",
+        .rests_on = probe::basis::semantic,
+        .reason = "",
+        .run = &identity_entity_by_lookups,
+    },
+};
+
 constexpr std::array searches{
     fact_search{
         .fact = "entity_system",
@@ -214,6 +317,24 @@ constexpr std::array searches{
         .kind = kit::fact_kind::value,
         .module = cs2::client_module,
         .finders = entity_identity_size_finders,
+    },
+    fact_search{
+        .fact = "entity_list_chunks",
+        .kind = kit::fact_kind::field,
+        .module = cs2::client_module,
+        .finders = entity_list_chunks_finders,
+    },
+    fact_search{
+        .fact = "identity_handle",
+        .kind = kit::fact_kind::field,
+        .module = cs2::client_module,
+        .finders = identity_handle_finders,
+    },
+    fact_search{
+        .fact = "identity_entity",
+        .kind = kit::fact_kind::field,
+        .module = cs2::client_module,
+        .finders = identity_entity_finders,
     },
 };
 
