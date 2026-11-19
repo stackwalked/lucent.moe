@@ -37,7 +37,11 @@
     }
   ],
   "buildPresets": [
-    { "name": "dev", "configurePreset": "dev" },
+    {
+      "name": "dev",
+      "configurePreset": "dev",
+      "targets": ["all", "all_verify_interface_header_sets"]
+    },
     { "name": "release", "configurePreset": "release" },
     { "name": "fuzz", "configurePreset": "fuzz", "targets": ["fuzzers"] }
   ],
