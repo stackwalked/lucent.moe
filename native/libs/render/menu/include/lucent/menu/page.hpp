@@ -1,10 +1,13 @@
 #pragma once
 
+#include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
 
+#include <lucent/kit/bind.hpp>
 #include <lucent/kit/feature.hpp>
 #include <lucent/kit/registry.hpp>
 #include <lucent/kit/settings.hpp>
@@ -23,14 +26,21 @@ struct page_input {
     const catalog* text = nullptr;
     // The search field's text: rows whose label holds it (ignoring ASCII case) are shown.
     std::string_view query;
+    // The feature whose bind waits for a key: the next key pressed is its key, Escape keeps the
+    // old one.
+    std::optional<kit::feature_id> binding;
+    // This frame's keys and mouse buttons, the same the registry's binds are fed.
+    std::span<const kit::key_change> keys;
 };
 
 struct page_outcome {
-    // One batch for registry::request(), empty when nothing was edited. The page goes on showing
-    // the snapshot it was given until the registry publishes the edit.
+    // One batch for config_store::edit() (or registry::request()), empty when nothing was edited.
+    // The page goes on showing the snapshot it was given until the registry publishes the edit.
     std::vector<kit::registry_change> changes;
     // The search field's text after this frame's typing.
     std::string query;
+    // The feature whose bind waits for a key after this frame.
+    std::optional<kit::feature_id> binding;
 };
 
 // The generated settings page: a search field, then each feature the snapshot lists, in wiring
@@ -60,6 +70,20 @@ constexpr auto feature_status_id(ui::element_id page, kit::feature_id feature) -
 // A failed feature's reset button.
 constexpr auto reset_button_id(ui::element_id page, kit::feature_id feature) -> ui::element_id {
     return ui::child_id(feature_status_id(page, feature), ui::key<"reset">());
+}
+
+// The bind row under an on or off feature's switch: its mode's dropdown, and the button that
+// waits for its key.
+constexpr auto bind_row_id(ui::element_id page, kit::feature_id feature) -> ui::element_id {
+    return ui::child_id(feature_id_in(page, feature), ui::key<"bind">());
+}
+
+constexpr auto bind_mode_id(ui::element_id page, kit::feature_id feature) -> ui::element_id {
+    return ui::child_id(bind_row_id(page, feature), ui::key<"mode">());
+}
+
+constexpr auto bind_key_id(ui::element_id page, kit::feature_id feature) -> ui::element_id {
+    return ui::child_id(bind_row_id(page, feature), ui::key<"key">());
 }
 
 struct setting_place {

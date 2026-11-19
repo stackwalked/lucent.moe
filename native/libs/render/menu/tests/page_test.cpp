@@ -2,6 +2,7 @@
 
 #include <array>
 #include <optional>
+#include <span>
 #include <string>
 #include <utility>
 #include <vector>
@@ -10,9 +11,12 @@
 
 #include <lucent/draw/rect.hpp>
 #include <lucent/draw/vec2.hpp>
+#include <lucent/kit/bind.hpp>
 #include <lucent/kit/clock.hpp>
+#include <lucent/kit/config_store.hpp>
 #include <lucent/kit/context.hpp>
 #include <lucent/kit/feature.hpp>
+#include <lucent/kit/memory_storage.hpp>
 #include <lucent/kit/published.hpp>
 #include <lucent/kit/registry.hpp>
 #include <lucent/kit/settings.hpp>
@@ -74,6 +78,12 @@ constexpr kit::setting_id thickness = kit::setting_key("box/thickness");
 constexpr kit::setting_id shape = kit::setting_key("box/marker");
 constexpr kit::setting_id tint = kit::setting_key("box/tint");
 
+constexpr kit::bind_slot always_bind{.mode = kit::bind_mode::always, .key = std::nullopt};
+
+// VK_XBUTTON1 and 'F'.
+constexpr kit::input_key side_button{0x05};
+constexpr kit::input_key f_key{0x46};
+
 constexpr ui::element_id page = ui::child_id(ui::root_id(ui::key<"menu">()), ui::key<"page">());
 
 constexpr auto control_of(kit::setting_id setting) -> ui::element_id {
@@ -89,7 +99,20 @@ auto initial_values() -> std::vector<kit::setting_value> {
     return values;
 }
 
-auto snapshot_with(kit::feature_state box_state) -> kit::registry_snapshot {
+auto locked(kit::feature_id feature, kit::feature_state state) -> kit::feature_snapshot {
+    return {
+        .id = feature,
+        .state = state,
+        .descriptions = {},
+        .settings = {},
+        .bind = always_bind,
+        .is_active = false,
+        .failure = std::nullopt,
+    };
+}
+
+auto snapshot_with(kit::feature_state box_state, kit::bind_slot box_bind)
+    -> kit::registry_snapshot {
     return {
         .revision = 1,
         .features = {
@@ -98,20 +121,13 @@ auto snapshot_with(kit::feature_state box_state) -> kit::registry_snapshot {
                 .state = box_state,
                 .descriptions = kit::descriptions_of<box_settings>,
                 .settings = initial_values(),
+                .bind = box_bind,
+                .is_active = false,
+                .failure = std::nullopt,
             },
-            {
-                .id = radar,
-                .state = kit::feature_state::unavailable,
-                .descriptions = {},
-                .settings = {},
-            },
-            {
-                .id = aimbot,
-                .state = kit::feature_state::unentitled,
-                .descriptions = {},
-                .settings = {},
-            },
-            {.id = chams, .state = kit::feature_state::failed, .descriptions = {}, .settings = {}},
+            locked(radar, kit::feature_state::unavailable),
+            locked(aimbot, kit::feature_state::unentitled),
+            locked(chams, kit::feature_state::failed),
         },
     };
 }
@@ -137,6 +153,14 @@ auto add_english(table_catalog& text) -> void {
     text.add(phrase_text{phrases::unentitled}, "Not in your plan");
     text.add(phrase_text{phrases::failed}, "Failed");
     text.add(phrase_text{phrases::reset}, "Reset");
+    text.add(phrase_text{phrases::lapsed}, "Offline");
+    text.add(phrase_text{phrases::bind}, "Bind");
+    text.add(phrase_text{phrases::always}, "Always");
+    text.add(phrase_text{phrases::hold}, "Hold");
+    text.add(phrase_text{phrases::toggle}, "Toggle");
+    text.add(phrase_text{phrases::no_key}, "None");
+    text.add(phrase_text{phrases::press_key}, "Press a key");
+    text.add(key_text{side_button}, "Mouse 4");
 }
 
 // The page in a window, frame by frame, keeping the query between frames as the glue would.
@@ -164,6 +188,16 @@ public:
     }
 
     auto step(ui::input_snapshot input) -> void {
+        step_with(std::move(input), {});
+    }
+
+    // A frame with no other input than these keys.
+    auto press(const std::vector<kit::key_change>& keys) -> void {
+        ui::input_snapshot nothing;
+        step_with(std::move(nothing), keys);
+    }
+
+    auto step_with(ui::input_snapshot input, std::span<const kit::key_change> keys) -> void {
         page_outcome outcome;
         ui::context& declared = m_run.ui();
         m_run.step(std::move(input), [&] {
@@ -189,6 +223,8 @@ public:
                             .snapshot = &m_shown,
                             .text = m_words,
                             .query = m_query,
+                            .binding = m_binding,
+                            .keys = keys,
                         }
                     );
                 }
@@ -196,6 +232,11 @@ public:
         });
         m_query = std::move(outcome.query);
         m_changes = std::move(outcome.changes);
+        m_binding = outcome.binding;
+    }
+
+    auto binding() const -> std::optional<kit::feature_id> {
+        return m_binding;
     }
 
     auto idle() -> void {
@@ -237,6 +278,7 @@ private:
     kit::registry_snapshot m_shown;
     std::string m_query;
     std::vector<kit::registry_change> m_changes;
+    std::optional<kit::feature_id> m_binding;
 };
 
 auto is_shown(const ui::context& frame, ui::element_id id) -> bool {
@@ -258,7 +300,7 @@ TEST_CASE("a toggle setting is a switch row whose click sends the flipped value"
     ui::testing::fixture_text fixture = ui::testing::plex_text();
     table_catalog words;
     add_english(words);
-    menu_run run{fixture, words, snapshot_with(kit::feature_state::off)};
+    menu_run run{fixture, words, snapshot_with(kit::feature_state::off, always_bind)};
     run.idle();
 
     run.click(control_of(outline));
@@ -269,7 +311,7 @@ TEST_CASE("a number setting is a slider over its range, stepped") {
     ui::testing::fixture_text fixture = ui::testing::plex_text();
     table_catalog words;
     add_english(words);
-    menu_run run{fixture, words, snapshot_with(kit::feature_state::off)};
+    menu_run run{fixture, words, snapshot_with(kit::feature_state::off, always_bind)};
     run.idle();
 
     run.press_track_end(control_of(thickness));
@@ -280,7 +322,7 @@ TEST_CASE("a choice setting is a dropdown of its options' catalog text, sending 
     ui::testing::fixture_text fixture = ui::testing::plex_text();
     table_catalog words;
     add_english(words);
-    menu_run run{fixture, words, snapshot_with(kit::feature_state::off)};
+    menu_run run{fixture, words, snapshot_with(kit::feature_state::off, always_bind)};
     run.idle();
 
     run.click(control_of(shape));
@@ -293,7 +335,7 @@ TEST_CASE("a colour setting is a swatch whose popup sets each channel") {
     ui::testing::fixture_text fixture = ui::testing::plex_text();
     table_catalog words;
     add_english(words);
-    menu_run run{fixture, words, snapshot_with(kit::feature_state::off)};
+    menu_run run{fixture, words, snapshot_with(kit::feature_state::off, always_bind)};
     run.idle();
 
     run.click(control_of(tint));
@@ -310,12 +352,12 @@ TEST_CASE("a feature's switch requests enabling it when off and disabling it whe
     ui::testing::fixture_text fixture = ui::testing::plex_text();
     table_catalog words;
     add_english(words);
-    menu_run run{fixture, words, snapshot_with(kit::feature_state::off)};
+    menu_run run{fixture, words, snapshot_with(kit::feature_state::off, always_bind)};
     run.idle();
 
     run.click(feature_switch_id(page, box));
     CHECK(run.changes() == std::vector<kit::registry_change>{kit::enable_feature{.feature = box}});
-    run.show(snapshot_with(kit::feature_state::on));
+    run.show(snapshot_with(kit::feature_state::on, always_bind));
     run.idle();
     run.click(feature_switch_id(page, box));
     CHECK(run.changes() == std::vector<kit::registry_change>{kit::disable_feature{.feature = box}});
@@ -325,7 +367,7 @@ TEST_CASE("unavailable and unentitled features show their state with no switch t
     ui::testing::fixture_text fixture = ui::testing::plex_text();
     table_catalog words;
     add_english(words);
-    menu_run run{fixture, words, snapshot_with(kit::feature_state::off)};
+    menu_run run{fixture, words, snapshot_with(kit::feature_state::off, always_bind)};
     run.idle();
 
     for (const kit::feature_id locked : {radar, aimbot}) {
@@ -340,7 +382,7 @@ TEST_CASE("a failed feature can't be switched, and its reset requests the reset"
     ui::testing::fixture_text fixture = ui::testing::plex_text();
     table_catalog words;
     add_english(words);
-    menu_run run{fixture, words, snapshot_with(kit::feature_state::failed)};
+    menu_run run{fixture, words, snapshot_with(kit::feature_state::failed, always_bind)};
     run.idle();
 
     CHECK_FALSE(is_shown(run.frame(), feature_switch_id(page, box)));
@@ -354,7 +396,7 @@ TEST_CASE("search keeps the rows whose label holds the query, ignoring case") {
     ui::testing::fixture_text fixture = ui::testing::plex_text();
     table_catalog words;
     add_english(words);
-    menu_run run{fixture, words, snapshot_with(kit::feature_state::off)};
+    menu_run run{fixture, words, snapshot_with(kit::feature_state::off, always_bind)};
     const ui::context& frame = run.frame();
     run.idle();
     run.click(search_field_id(page));
@@ -372,7 +414,7 @@ TEST_CASE("backspace erases the query, and a feature's name as the query shows a
     ui::testing::fixture_text fixture = ui::testing::plex_text();
     table_catalog words;
     add_english(words);
-    menu_run run{fixture, words, snapshot_with(kit::feature_state::off)};
+    menu_run run{fixture, words, snapshot_with(kit::feature_state::off, always_bind)};
     const ui::context& frame = run.frame();
     run.idle();
     run.click(search_field_id(page));
@@ -394,7 +436,7 @@ TEST_CASE("backspace erases the query, and a feature's name as the query shows a
 TEST_CASE("text the catalog lacks renders as each key's placeholder, which search finds") {
     ui::testing::fixture_text fixture = ui::testing::plex_text();
     const table_catalog empty;
-    menu_run run{fixture, empty, snapshot_with(kit::feature_state::off)};
+    menu_run run{fixture, empty, snapshot_with(kit::feature_state::off, always_bind)};
     run.idle();
     for (const kit::setting_id setting : {outline, thickness, shape, tint}) {
         CHECK(is_shown(run.frame(), control_of(setting)));
@@ -431,6 +473,102 @@ TEST_CASE("a switch clicked in the menu turns the feature on at the registry's n
     run.idle();
     run.click(feature_switch_id(page, box));
     CHECK(run.changes() == std::vector<kit::registry_change>{kit::disable_feature{.feature = box}});
+}
+
+auto bound(kit::bind_slot bind) -> std::vector<kit::registry_change> {
+    return {kit::change_bind{.feature = box, .bind = bind}};
+}
+
+auto pressed_key(kit::input_key key) -> std::vector<kit::key_change> {
+    return {kit::key_change{.key = key, .is_down = true}};
+}
+
+TEST_CASE("a bind's mode dropdown sends the chosen mode with the key kept") {
+    ui::testing::fixture_text fixture = ui::testing::plex_text();
+    table_catalog words;
+    add_english(words);
+    menu_run run{
+        fixture,
+        words,
+        snapshot_with(kit::feature_state::on, {.mode = kit::bind_mode::hold, .key = side_button}),
+    };
+    run.idle();
+
+    run.click(bind_mode_id(page, box));
+    REQUIRE(run.frame().is_popup_open(bind_mode_id(page, box)));
+    run.click(ui::child_id(ui::popup_id(bind_mode_id(page, box)), ui::key_from_index(2)));
+    CHECK(run.changes() == bound({.mode = kit::bind_mode::toggle, .key = side_button}));
+}
+
+TEST_CASE("a bind's key button waits for the next press, which becomes the key") {
+    ui::testing::fixture_text fixture = ui::testing::plex_text();
+    table_catalog words;
+    add_english(words);
+    menu_run run{fixture, words, snapshot_with(kit::feature_state::off, always_bind)};
+    run.idle();
+
+    run.click(bind_key_id(page, box));
+    CHECK(run.binding() == box);
+    CHECK(run.changes().empty());
+    run.press(pressed_key(f_key));
+    // An always bind would ignore the key, so setting one makes it hold.
+    CHECK(run.changes() == bound({.mode = kit::bind_mode::hold, .key = f_key}));
+    CHECK_FALSE(run.binding().has_value());
+}
+
+TEST_CASE("Escape stops a bind waiting for its key and keeps the old one") {
+    ui::testing::fixture_text fixture = ui::testing::plex_text();
+    table_catalog words;
+    add_english(words);
+    const kit::bind_slot toggled{.mode = kit::bind_mode::toggle, .key = side_button};
+    menu_run run{fixture, words, snapshot_with(kit::feature_state::on, toggled)};
+    run.idle();
+
+    run.click(bind_key_id(page, box));
+    REQUIRE(run.binding() == box);
+    run.idle();
+    CHECK(run.binding() == box);
+    run.press(pressed_key(kit::escape_key));
+    CHECK(run.changes().empty());
+    CHECK_FALSE(run.binding().has_value());
+}
+
+TEST_CASE("a lapsed feature shows its state with no switch and no bind") {
+    ui::testing::fixture_text fixture = ui::testing::plex_text();
+    table_catalog words;
+    add_english(words);
+    menu_run run{fixture, words, snapshot_with(kit::feature_state::lapsed, always_bind)};
+    run.idle();
+
+    CHECK(is_shown(run.frame(), feature_status_id(page, box)));
+    CHECK_FALSE(is_shown(run.frame(), feature_switch_id(page, box)));
+    CHECK_FALSE(is_shown(run.frame(), bind_row_id(page, box)));
+    CHECK_FALSE(is_shown(run.frame(), reset_button_id(page, box)));
+}
+
+TEST_CASE("an edit through the config store reaches the registry and the profile's undo") {
+    ui::testing::fixture_text fixture = ui::testing::plex_text();
+    table_catalog words;
+    add_english(words);
+    const kit::test_clock time;
+    kit::wiring wired;
+    wired.add<box_feature>();
+    kit::registry features{std::move(wired), {.is_everything = true, .features = {}}, time};
+    kit::memory_storage kept;
+    kit::config_store configs{features, kept, "only"};
+    const auto published = [&features] {
+        features.safe_point();
+        const kit::published<kit::registry_snapshot>::reading seen = features.read();
+        return *seen;
+    };
+    menu_run run{fixture, words, published()};
+    run.idle();
+
+    run.click(control_of(outline));
+    configs.edit(run.changes());
+    CHECK(published().features.front().settings.front() == kit::setting_value{true});
+    configs.undo();
+    CHECK(published().features.front().settings.front() == kit::setting_value{false});
 }
 
 }

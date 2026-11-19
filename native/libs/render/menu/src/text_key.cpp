@@ -14,7 +14,9 @@ auto hash_of(const text_key& key) -> u64 {
         [](const feature_text& named) { return std::to_underlying(named.feature); },
         [](const setting_text& named) { return std::to_underlying(named.setting); },
         [](const option_text& named) { return std::to_underlying(named.option); },
-        [](const phrase_text& named) { return std::to_underlying(named.phrase); }
+        [](const phrase_text& named) { return std::to_underlying(named.phrase); },
+        // In the top byte, which the placeholder shows: "#41000000" for the A key.
+        [](const key_text& named) { return u64{std::to_underlying(named.key)} << 56U; }
     );
 }
 

@@ -4,6 +4,7 @@
 #include <string_view>
 #include <variant>
 
+#include <lucent/kit/bind.hpp>
 #include <lucent/kit/fact.hpp>
 #include <lucent/kit/feature.hpp>
 #include <lucent/kit/settings.hpp>
@@ -30,6 +31,13 @@ inline constexpr phrase_id red = phrase_key("red");
 inline constexpr phrase_id green = phrase_key("green");
 inline constexpr phrase_id blue = phrase_key("blue");
 inline constexpr phrase_id alpha = phrase_key("alpha");
+inline constexpr phrase_id lapsed = phrase_key("lapsed");
+inline constexpr phrase_id bind = phrase_key("bind");
+inline constexpr phrase_id always = phrase_key("always");
+inline constexpr phrase_id hold = phrase_key("hold");
+inline constexpr phrase_id toggle = phrase_key("toggle");
+inline constexpr phrase_id no_key = phrase_key("no_key");
+inline constexpr phrase_id press_key = phrase_key("press_key");
 
 }
 
@@ -63,8 +71,16 @@ struct phrase_text {
     auto operator<=>(const phrase_text&) const = default;
 };
 
-// What a piece of menu text is looked up by: only hashes, never a name.
-using text_key = std::variant<feature_text, setting_text, option_text, phrase_text>;
+// A key's or mouse button's name, as a bind shows it. Names come from the catalog like every other
+// word, so none is in the binary.
+struct key_text {
+    kit::input_key key{};
+
+    auto operator<=>(const key_text&) const = default;
+};
+
+// What a piece of menu text is looked up by: only hashes and key codes, never a name.
+using text_key = std::variant<feature_text, setting_text, option_text, phrase_text, key_text>;
 
 // Neutral text for a key the catalog lacks: a hash mark and the key's own hash in hex, so a missing
 // entry is visible, stable across frames, and still searchable.

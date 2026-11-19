@@ -7,6 +7,8 @@
 #include <lucent/draw/draw_list.hpp>
 #include <lucent/draw/paint.hpp>
 #include <lucent/draw/vec2.hpp>
+#include <lucent/kit/bind.hpp>
+#include <lucent/kit/config_store.hpp>
 #include <lucent/kit/published.hpp>
 #include <lucent/kit/registry.hpp>
 #include <lucent/menu/page.hpp>
@@ -67,6 +69,17 @@ settings_menu::settings_menu(
     LUCENT_INVARIANT(m_text != nullptr);
 }
 
+settings_menu::settings_menu(
+    text::text_system& text, menu_appearance appearance, kit::config_store& configs
+)
+    : settings_menu{text, appearance, configs.features()} {
+    m_configs = &configs;
+}
+
+auto settings_menu::take_keys(kit::key_input keys) -> void {
+    m_keys = std::move(keys);
+}
+
 auto settings_menu::draw(menu_frame frame, draw::draw_list& list) -> result<ui::frame_report> {
     m_ui.begin_frame({
         .input = std::move(frame.input),
@@ -78,7 +91,14 @@ auto settings_menu::draw(menu_frame frame, draw::draw_list& list) -> result<ui::
     const ui::frame_report report = LUCENT_TRY(m_ui.end_frame());
     LUCENT_TRY(m_ui.record(list));
     m_query = std::move(outcome.query);
-    if (!outcome.changes.empty()) {
+    m_binding = outcome.binding;
+    m_keys.changes.clear();
+    if (outcome.changes.empty()) {
+        return report;
+    }
+    if (m_configs != nullptr) {
+        m_configs->edit(outcome.changes);
+    } else {
         m_features->request(std::move(outcome.changes));
     }
     return report;
@@ -86,7 +106,13 @@ auto settings_menu::draw(menu_frame frame, draw::draw_list& list) -> result<ui::
 
 auto settings_menu::declare(draw::vec2 viewport) -> page_outcome {
     const kit::published<kit::registry_snapshot>::reading shown = m_features->read();
-    const page_input input{.snapshot = &*shown, .text = m_text, .query = m_query};
+    const page_input input{
+        .snapshot = &*shown,
+        .text = m_text,
+        .query = m_query,
+        .binding = m_binding,
+        .keys = m_keys.changes,
+    };
     const ui::box_style window{
         .flow = ui::direction::column,
         .width = ui::fixed(window_width),

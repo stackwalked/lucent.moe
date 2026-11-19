@@ -13,6 +13,7 @@
 
 #include <lucent/core/narrow.hpp>
 #include <lucent/draw/color.hpp>
+#include <lucent/kit/bind.hpp>
 #include <lucent/kit/feature.hpp>
 #include <lucent/kit/registry.hpp>
 #include <lucent/kit/settings.hpp>
@@ -70,6 +71,7 @@ struct page_build {
     // it filter by what was just typed.
     std::string query;
     std::vector<kit::registry_change> changes;
+    std::optional<kit::feature_id> binding;
 };
 
 auto line_text(ui::context& frame, std::string_view utf8, draw::color ink) -> void {
@@ -91,6 +93,8 @@ auto status_phrase(kit::feature_state state) -> phrase_id {
         return phrases::unentitled;
     case kit::feature_state::failed:
         return phrases::failed;
+    case kit::feature_state::lapsed:
+        return phrases::lapsed;
     case kit::feature_state::off:
     case kit::feature_state::on:
         // A switch shows these.
@@ -128,6 +132,93 @@ auto status_row(ui::context& frame, page_build& build, const shown_feature& feat
     });
 }
 
+// The first key pressed this frame, which a waiting bind takes.
+auto first_press(std::span<const kit::key_change> keys) -> std::optional<kit::input_key> {
+    const auto found = std::ranges::find(keys, true, &kit::key_change::is_down);
+    return found == keys.end() ? std::nullopt : std::optional{found->key};
+}
+
+// A waiting bind takes this frame's first press: Escape keeps the old key, any other is the new
+// one. A key set on an always bind makes it hold, since an always bind would ignore it.
+auto take_key(page_build& build, const kit::feature_snapshot& shown) -> void {
+    if (build.input->binding != shown.id) {
+        return;
+    }
+    const std::optional<kit::input_key> pressed = first_press(build.input->keys);
+    if (!pressed) {
+        return;
+    }
+    build.binding.reset();
+    if (*pressed == kit::escape_key) {
+        return;
+    }
+    const kit::bind_mode mode =
+        shown.bind.mode == kit::bind_mode::always ? kit::bind_mode::hold : shown.bind.mode;
+    build.changes.emplace_back(
+        kit::change_bind{.feature = shown.id, .bind = {.mode = mode, .key = pressed}}
+    );
+}
+
+auto key_label(const page_build& build, const kit::feature_snapshot& shown) -> std::string {
+    const catalog& text = *build.input->text;
+    if (build.binding == shown.id) {
+        return text_of(text, phrase_text{phrases::press_key});
+    }
+    if (!shown.bind.key) {
+        return text_of(text, phrase_text{phrases::no_key});
+    }
+    return text_of(text, key_text{*shown.bind.key});
+}
+
+auto bind_mode_control(ui::context& frame, page_build& build, const kit::feature_snapshot& shown)
+    -> void {
+    const catalog& text = *build.input->text;
+    const std::array<std::string, 3> modes{
+        text_of(text, phrase_text{phrases::always}),
+        text_of(text, phrase_text{phrases::hold}),
+        text_of(text, phrase_text{phrases::toggle}),
+    };
+    const std::array<std::string_view, 3> options{modes[0], modes[1], modes[2]};
+    const std::optional<isize> chosen = ui::dropdown(
+        frame,
+        ui::key<"mode">(),
+        {.options = options, .selected = isize{std::to_underlying(shown.bind.mode)}}
+    );
+    if (!chosen) {
+        return;
+    }
+    const kit::bind_slot bind{
+        .mode = static_cast<kit::bind_mode>(narrow<u8>(*chosen)),
+        .key = shown.bind.key,
+    };
+    build.changes.emplace_back(kit::change_bind{.feature = shown.id, .bind = bind});
+}
+
+// The feature's bind: a dropdown of its mode, and a button showing its key that waits for a new
+// one when clicked.
+auto bind_row(ui::context& frame, page_build& build, const kit::feature_snapshot& shown) -> void {
+    take_key(build, shown);
+    const ui::theme& tokens = frame.tokens();
+    const catalog& text = *build.input->text;
+    const ui::box_style row{
+        .flow = ui::direction::row,
+        .width = ui::grow(),
+        .height = ui::fit(),
+        .padding = ui::symmetric(tokens.spacing.m, 0.0F),
+        .gap = tokens.spacing.m,
+        .main = ui::main_align::start,
+        .cross = ui::cross_align::center,
+    };
+    frame.box(ui::key<"bind">(), row, [&] {
+        line_text(frame, text_of(text, phrase_text{phrases::bind}), tokens.colors.ink);
+        bind_mode_control(frame, build, shown);
+        const bool is_binding = build.binding == shown.id;
+        if (ui::button(frame, ui::key<"key">(), key_label(build, shown)).is_activated) {
+            build.binding = is_binding ? std::nullopt : std::optional{shown.id};
+        }
+    });
+}
+
 auto feature_header(ui::context& frame, page_build& build, const shown_feature& feature) -> void {
     const kit::feature_snapshot& shown = *feature.snapshot;
     switch (shown.state) {
@@ -142,11 +233,13 @@ auto feature_header(ui::context& frame, page_build& build, const shown_feature& 
         if (flipped == false) {
             build.changes.emplace_back(kit::disable_feature{.feature = shown.id});
         }
+        bind_row(frame, build, shown);
         return;
     }
     case kit::feature_state::unavailable:
     case kit::feature_state::unentitled:
     case kit::feature_state::failed:
+    case kit::feature_state::lapsed:
         status_row(frame, build, feature);
         return;
     }
@@ -340,7 +433,7 @@ auto feature_section(ui::context& frame, page_build& build, const kit::feature_s
 auto settings_page(ui::context& frame, ui::local_key key, const page_input& input) -> page_outcome {
     LUCENT_INVARIANT(input.snapshot != nullptr && input.text != nullptr);
     const ui::theme& tokens = frame.tokens();
-    page_build build{.input = &input, .query = {}, .changes = {}};
+    page_build build{.input = &input, .query = {}, .changes = {}, .binding = input.binding};
     const ui::box_style page{
         .flow = ui::direction::column,
         .width = ui::grow(),
@@ -357,7 +450,11 @@ auto settings_page(ui::context& frame, ui::local_key key, const page_input& inpu
             feature_section(frame, build, shown);
         }
     });
-    return {.changes = std::move(build.changes), .query = std::move(build.query)};
+    return {
+        .changes = std::move(build.changes),
+        .query = std::move(build.query),
+        .binding = build.binding,
+    };
 }
 
 }
