@@ -12,7 +12,15 @@ set(LUCENT_MASTER_SEED "" CACHE FILEPATH "The release's 256-bit master seed: 32 
 
 # One subkey per purpose; a purpose's label is part of every derivation, so the names here never
 # change once a release ships.
-set(lucent_build_purposes fact event api link_order)
+set(lucent_build_purposes
+    fact
+    event
+    api
+    link_order
+    capability
+    feature
+    setting
+)
 
 # Derivation: subkey = SHA3-256(hex(seed) || "lucent::build::" || purpose), at configure time.
 # SHA-3 is a sponge, so unlike SHA-2 a secret prefix is a sound keyed function (no length

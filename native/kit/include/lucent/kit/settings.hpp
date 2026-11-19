@@ -21,12 +21,9 @@ namespace lucent::kit {
 // binary: the menu's text arrives keyed by these ids.
 enum class setting_id : u64 {};
 
-// Setting paths hash with their own seed. The keyed identifier hash replaces this through
-// setting_key alone.
-inline constexpr u64 dev_setting_seed = 0x6c75'6365'6e74'7365;
-
+// A setting's id: the identifier hash of its path under this build's setting subkey, as features'.
 consteval auto setting_key(std::string_view path) noexcept -> setting_id {
-    return setting_id{fact_name_hash(dev_setting_seed, path)};
+    return setting_id{identifier_hash(build::setting_subkey, path)};
 }
 
 // A colour as draw::color holds it, so the two convert field for field.

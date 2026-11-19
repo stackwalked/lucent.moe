@@ -14,12 +14,10 @@ namespace lucent::kit {
 // A feature, by the hash of its name. The name never reaches the binary.
 enum class feature_id : u64 {};
 
-// Feature names hash with their own seed. The keyed identifier hash replaces this through
-// feature_key alone.
-inline constexpr u64 dev_feature_seed = 0x6c75'6365'6e74'6665;
-
+// A feature's id: the identifier hash of its name under this build's feature subkey, so ids differ
+// per release and a shipped id gives back neither the name nor the subkey.
 consteval auto feature_key(std::string_view name) noexcept -> feature_id {
-    return feature_id{fact_name_hash(dev_feature_seed, name)};
+    return feature_id{identifier_hash(build::feature_subkey, name)};
 }
 
 // What a feature declares itself by: `static constexpr kit::feature_id id =

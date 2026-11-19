@@ -59,13 +59,10 @@ enum class capability_level : u8 {
     core = 1,
 };
 
-// Capability names hash with their own seed, so a capability's key never equals a fact's or a
-// module's. Release builds will take theirs from the generated build header, as facts will.
-inline constexpr u64 dev_capability_seed = 0x6c75'6365'6e74'6361;
-
-// A capability's key. The name exists only at compile time.
+// A capability's key: the identifier hash of its name under this build's capability subkey, its own
+// purpose so a capability's key never equals a fact's. The name exists only at compile time.
 consteval auto capability_key(std::string_view name) noexcept -> u64 {
-    return fact_name_hash(dev_capability_seed, name);
+    return identifier_hash(build::capability_subkey, name);
 }
 
 // What a capability's record in the capability section starts with; its members' fact keys follow

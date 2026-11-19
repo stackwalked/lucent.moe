@@ -44,9 +44,10 @@ struct fact_record {
 static_assert(sizeof(fact_record) == 32, "fact records tile the section with no padding");
 static_assert(alignof(fact_record) == 8, "fact records tile the section with no padding");
 
-// FNV-1a over the seed's bytes, then the name's: the capability and game module name hashes, whose
-// seeds are fixed and public. Fact keys don't use it: it is invertible, so a guessed name and its
-// hash give back the seed.
+// FNV-1a over the seed's bytes, then the name's: the game module name hash, whose seed is fixed and
+// public because module names are, and the server hashes them too. Identifiers (facts,
+// capabilities, features, settings) don't use it: it is invertible, so a guessed name and its hash
+// give back the seed.
 constexpr auto fact_name_hash(u64 seed, std::string_view name) noexcept -> u64 {
     constexpr u64 offset_basis = 0xcbf2'9ce4'8422'2325;
     constexpr u64 prime = 0x0000'0100'0000'01b3;
