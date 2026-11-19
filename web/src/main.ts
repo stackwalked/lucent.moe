@@ -86,7 +86,11 @@ const server = Bun.serve({
         : { hostname: listen.hostname, port: listen.port }),
     fetch: (req, srv) => entry(req, srv.requestIP(req)?.address ?? null),
 });
-writeLine(`${JSON.stringify({ level: "info", msg: "listening", detail: String(server.url) })}\n`);
+// The bind address answers only requests for the public origin's host (421 otherwise), so the
+// line names the URL to open, not the socket.
+writeLine(
+    `${JSON.stringify({ level: "info", msg: "listening", detail: `${String(server.url)} serving ${config.value.publicOrigin}` })}\n`,
+);
 
 // Stop taking connections, give requests in flight up to ten seconds, then exit.
 let stopping = false;
