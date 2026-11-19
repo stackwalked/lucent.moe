@@ -1,38 +1,36 @@
-import { join } from "node:path";
 import { startServer } from "../src/boot.ts";
+import { processEnvironment, readServerConfig } from "../src/config.ts";
 import { systemClock } from "../src/core/clock.ts";
 import { invariant } from "../src/core/contain.ts";
 import { createJsonlLogger, writeToStdout } from "../src/core/log.ts";
 import { migrateDatabase } from "../src/db/migrate.ts";
 import { openPool } from "../src/db/pool.ts";
-import { openDevCluster, WORKSPACE_ROOT } from "./postgres.ts";
+import { openDevCluster } from "./postgres.ts";
 
-// The server against the dev cluster, migrated on start. Config is built here rather than read
-// from the environment: dev values are fixed so web's dev server can name the same ones.
+// The server against the dev cluster, migrated on start. Config comes from the environment as in
+// production; moon loads it from .config/dev.env, which web's dev server reads too.
 
-// Public on purpose: it only ever guards a loopback listener on a developer's machine.
-const DEV_INTERNAL_KEY = "lucent-dev-internal-key-public-not-a-secret-0000";
+const logger = createJsonlLogger({ clock: systemClock, sink: writeToStdout });
+const config = readServerConfig(processEnvironment());
+if (!config.ok) {
+    for (const problem of config.error.problems) {
+        logger.write("error", "config invalid", { origin: "boot", detail: problem });
+    }
+    process.exit(1);
+}
 
 const cluster = await openDevCluster();
+invariant(
+    config.value.databaseUrl === cluster.databaseUrl,
+    "LUCENT_DATABASE_URL must name the dev cluster (.config/dev.env)",
+);
 
 const migrator = openPool({ databaseUrl: cluster.databaseUrl, maxConnections: 1 });
 const migrated = await migrateDatabase(migrator);
 await migrator.close();
 invariant(migrated.ok, `migrating the dev database failed: ${JSON.stringify(migrated)}`);
 
-const logger = createJsonlLogger({ clock: systemClock, sink: writeToStdout });
-const started = await startServer({
-    config: {
-        databaseUrl: cluster.databaseUrl,
-        internalListen: { kind: "loopback", hostname: "127.0.0.1", port: 4712 },
-        webInternalKey: DEV_INTERNAL_KEY,
-        productsDir: join(WORKSPACE_ROOT, "products"),
-        // Public like the peer key: it seals only dev accounts' TOTP secrets.
-        totpKeys: [{ kid: "dev", raw: new Uint8Array(32) }],
-        relyingParty: { rpId: "localhost", rpName: "lucent.moe", origin: "http://localhost:3000" },
-    },
-    logger,
-});
+const started = await startServer({ config: config.value, logger });
 if (!started.ok) {
     logger.write("error", started.error.code, { origin: "boot", detail: started.error.detail });
     cluster.release();

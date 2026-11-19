@@ -9,6 +9,8 @@ tasks:
   dev:
     command: "bun dev/dev.ts"
     preset: "server"
+    options:
+      envFile: "/.config/dev.env"
   # Migrates the dev database and writes its root account (root@lucent.localhost).
   seed:
     command: "bun dev/seed.ts"

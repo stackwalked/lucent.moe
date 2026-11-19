@@ -9,7 +9,7 @@ function env(overrides: Partial<Environment>): Environment {
         LUCENT_INTERNAL_LISTEN: "127.0.0.1:4712",
         LUCENT_WEB_INTERNAL_KEY: KEY,
         LUCENT_PRODUCTS_DIR: "/srv/lucent/products",
-        LUCENT_TOTP_KEYS: `k1:${"A".repeat(43)}`,
+        LUCENT_TOTP_KEYS: `k1:${"B".repeat(43)}`,
         LUCENT_WEBAUTHN_RP_ID: "lucent.moe",
         LUCENT_WEBAUTHN_ORIGIN: "https://lucent.moe",
         ...overrides,
@@ -97,10 +97,30 @@ test("passkeys are refused an origin a browser wouldn't allow them on", () => {
 
 test("TOTP keys keep their order and refuse a repeated kid", () => {
     const key = (fill: string) => fill.repeat(43);
-    const config = readServerConfig(env({ LUCENT_TOTP_KEYS: `b:${key("B")},a:${key("A")}` }));
+    const config = readServerConfig(env({ LUCENT_TOTP_KEYS: `b:${key("B")},a:${key("C")}` }));
     expect(config.ok && config.value.totpKeys.map((entry) => entry.kid)).toEqual(["b", "a"]);
-    expect(readServerConfig(env({ LUCENT_TOTP_KEYS: `a:${key("A")},a:${key("B")}` })).ok).toBe(
+    expect(readServerConfig(env({ LUCENT_TOTP_KEYS: `a:${key("C")},a:${key("B")}` })).ok).toBe(
         false,
     );
-    expect(readServerConfig(env({ LUCENT_TOTP_KEYS: `a:${key("A").slice(1)}` })).ok).toBe(false);
+    expect(readServerConfig(env({ LUCENT_TOTP_KEYS: `a:${key("C").slice(1)}` })).ok).toBe(false);
+});
+
+test("the published dev keys are refused unless browsers reach the server from this machine", () => {
+    const devKeys = {
+        LUCENT_WEB_INTERNAL_KEY: "lucent-dev-internal-key-public-not-a-secret-0000",
+        LUCENT_TOTP_KEYS: `k1:${"B".repeat(43)},dev:${"A".repeat(43)}`,
+    };
+    const released = readServerConfig(env(devKeys));
+    expect(!released.ok && released.error.problems).toEqual([
+        "LUCENT_WEB_INTERNAL_KEY is the published dev key",
+        "LUCENT_TOTP_KEYS holds the published dev key (all zero bytes)",
+    ]);
+    const local = readServerConfig(
+        env({
+            ...devKeys,
+            LUCENT_WEBAUTHN_RP_ID: "localhost",
+            LUCENT_WEBAUTHN_ORIGIN: "http://localhost:4710",
+        }),
+    );
+    expect(local.ok).toBe(true);
 });

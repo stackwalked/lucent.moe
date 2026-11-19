@@ -60,6 +60,15 @@ function parseTotpKeys(raw: string): readonly TotpKeyMaterial[] | null {
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
+// The published values in .config/dev.env. They're accepted only when browsers can reach the
+// server solely from this machine (a localhost WebAuthn origin), so a release configured with one
+// by mistake refuses to start instead of running on a key anyone can read.
+const DEV_PEER_KEY = "lucent-dev-internal-key-public-not-a-secret-0000";
+
+function isDevTotpKey(key: TotpKeyMaterial): boolean {
+    return key.raw.every((byte) => byte === 0);
+}
+
 // Browsers only allow WebAuthn on https, or http on localhost; the RP ID must be the origin's
 // host or a registrable suffix of it.
 function parseRelyingParty(rpId: string, origin: string): RelyingParty | null {
@@ -126,6 +135,14 @@ export function readServerConfig(env: Environment): Result<ServerConfig, ConfigE
         problems.push(
             "LUCENT_WEBAUTHN_ORIGIN must be an https:// origin (or http://localhost) whose host is LUCENT_WEBAUTHN_RP_ID or under it",
         );
+    }
+    if (relyingParty !== null && !LOCAL_HOSTS.has(new URL(relyingParty.origin).hostname)) {
+        if (webInternalKey === DEV_PEER_KEY) {
+            problems.push("LUCENT_WEB_INTERNAL_KEY is the published dev key");
+        }
+        if (totpKeys?.some(isDevTotpKey) === true) {
+            problems.push("LUCENT_TOTP_KEYS holds the published dev key (all zero bytes)");
+        }
     }
     if (
         problems.length > 0 ||
