@@ -1,4 +1,4 @@
-#include "dev_catalog.hpp"
+#include <lucent/cs2-overlay/dev_catalog.hpp>
 
 #include <string>
 #include <string_view>

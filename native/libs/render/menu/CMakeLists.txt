@@ -2,6 +2,7 @@ lucent_library(menu
     HEADERS
         include/lucent/menu/catalog.hpp
         include/lucent/menu/page.hpp
+        include/lucent/menu/settings_menu.hpp
         include/lucent/menu/table_catalog.hpp
         include/lucent/menu/text_key.hpp
     SOURCES
@@ -9,6 +10,7 @@ lucent_library(menu
         src/color_swatch.cpp
         src/page.cpp
         src/search_field.cpp
+        src/settings_menu.cpp
         src/table_catalog.cpp
         src/text_key.cpp
     DEPS lucent::draw lucent::kit lucent::text lucent::ui

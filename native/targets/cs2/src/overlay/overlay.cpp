@@ -22,6 +22,7 @@
 #include <lucent/core/contain.hpp>
 #include <lucent/core/narrow.hpp>
 #include <lucent/cs2-domains/world_domain.hpp>
+#include <lucent/cs2-overlay/dev_catalog.hpp>
 #include <lucent/cs2-overlay/input_feed.hpp>
 #include <lucent/cs2-overlay/overlay_state.hpp>
 #include <lucent/cs2-overlay/window_input.hpp>
@@ -34,15 +35,16 @@
 #include <lucent/kit/published.hpp>
 #include <lucent/kit/registry.hpp>
 #include <lucent/kit/view_set.hpp>
+#include <lucent/menu/settings_menu.hpp>
 #include <lucent/text/glyph_atlas.hpp>
+#include <lucent/text/system_font.hpp>
 #include <lucent/text/text_layout.hpp>
 #include <lucent/text/text_system.hpp>
 #include <lucent/ui/context.hpp>
+#include <lucent/ui/theme.hpp>
 
 #include "dev_demo.hpp"
 #include "renderer_build.hpp"
-#include "settings_menu.hpp"
-#include "system_font.hpp"
 
 namespace lucent::cs2::overlay {
 namespace {
@@ -250,14 +252,22 @@ auto overlay::start_over(ID3D11Device& device) -> void {
             return;
         }
         m_text = std::move(*made);
-        const result<text::face_id> face = add_message_font(*m_text);
+        const result<text::face_id> face = text::add_message_font(*m_text);
         if (!face) {
             m_state.turn_off();
             return;
         }
         m_face = *face;
-        m_menu.emplace(*m_text, *face, *m_features);
+        m_menu.emplace(
+            *m_text,
+            menu::menu_appearance{
+                .tokens = menu::menu_theme(*face, ui::theme_preset::dark),
+                .text = &m_menu_text,
+            },
+            *m_features
+        );
         if constexpr (kit::is_dev_build) {
+            add_dev_text(m_menu_text);
             m_demo.emplace(*face);
         }
     }
@@ -400,8 +410,9 @@ auto overlay::draw_menu(HWND window, draw::vec2 viewport) -> result<void> {
         );
     }
     m_consumed = taken.consumed;
-    const ui::frame_report wanted =
-        LUCENT_TRY(m_menu->draw({.input = std::move(taken.input), .viewport = viewport}, m_list));
+    const ui::frame_report wanted = LUCENT_TRY(m_menu->draw(
+        {.input = std::move(taken.input), .viewport = viewport, .pixels_per_unit = 1.0F}, m_list
+    ));
     m_input.report({
         .consumed = m_consumed,
         .wants_mouse = wanted.wants_mouse,

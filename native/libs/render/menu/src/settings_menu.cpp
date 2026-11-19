@@ -1,4 +1,4 @@
-#include "settings_menu.hpp"
+#include <lucent/menu/settings_menu.hpp>
 
 #include <algorithm>
 #include <utility>
@@ -7,7 +7,6 @@
 #include <lucent/draw/draw_list.hpp>
 #include <lucent/draw/paint.hpp>
 #include <lucent/draw/vec2.hpp>
-#include <lucent/kit/dev_build.hpp>
 #include <lucent/kit/published.hpp>
 #include <lucent/kit/registry.hpp>
 #include <lucent/menu/page.hpp>
@@ -18,9 +17,7 @@
 #include <lucent/ui/element_id.hpp>
 #include <lucent/ui/theme.hpp>
 
-#include "dev_catalog.hpp"
-
-namespace lucent::cs2::overlay {
+namespace lucent::menu {
 namespace {
 
 constexpr draw::color accent{.r = 255, .g = 0, .b = 153, .a = 255};
@@ -41,17 +38,6 @@ auto plate_look(const ui::theme& tokens) -> ui::decoration {
     };
 }
 
-auto menu_theme(text::face_id face) -> ui::theme {
-    return ui::derive_theme({
-        .accent = accent,
-        .preset = ui::theme_preset::dark,
-        .scale = 1.0F,
-        .is_reduced_motion = false,
-        .text_face = face,
-        .numeric_face = face,
-    });
-}
-
 // As tall as the page wants up to tallest_window, and never past the viewport's bottom margin.
 auto window_height(draw::vec2 viewport) -> f32 {
     const f32 room = viewport.y - window_origin.y - window_origin.x;
@@ -60,14 +46,25 @@ auto window_height(draw::vec2 viewport) -> f32 {
 
 }
 
-settings_menu::settings_menu(text::text_system& text, text::face_id face, kit::registry& features)
-    : m_ui{text}
-    , m_tokens{menu_theme(face)}
+auto menu_theme(text::face_id face, ui::theme_preset preset) -> ui::theme {
+    return ui::derive_theme({
+        .accent = accent,
+        .preset = preset,
+        .scale = 1.0F,
+        .is_reduced_motion = false,
+        .text_face = face,
+        .numeric_face = face,
+    });
+}
 
+settings_menu::settings_menu(
+    text::text_system& text, menu_appearance appearance, kit::registry& features
+)
+    : m_ui{text}
+    , m_tokens{appearance.tokens}
+    , m_text{appearance.text}
     , m_features{&features} {
-    if constexpr (kit::is_dev_build) {
-        add_dev_text(m_text);
-    }
+    LUCENT_INVARIANT(m_text != nullptr);
 }
 
 auto settings_menu::draw(menu_frame frame, draw::draw_list& list) -> result<ui::frame_report> {
@@ -75,9 +72,9 @@ auto settings_menu::draw(menu_frame frame, draw::draw_list& list) -> result<ui::
         .input = std::move(frame.input),
         .tokens = m_tokens,
         .viewport = frame.viewport,
-        .pixels_per_unit = 1.0F,
+        .pixels_per_unit = frame.pixels_per_unit,
     });
-    menu::page_outcome outcome = declare(frame.viewport);
+    page_outcome outcome = declare(frame.viewport);
     const ui::frame_report report = LUCENT_TRY(m_ui.end_frame());
     LUCENT_TRY(m_ui.record(list));
     m_query = std::move(outcome.query);
@@ -87,9 +84,9 @@ auto settings_menu::draw(menu_frame frame, draw::draw_list& list) -> result<ui::
     return report;
 }
 
-auto settings_menu::declare(draw::vec2 viewport) -> menu::page_outcome {
+auto settings_menu::declare(draw::vec2 viewport) -> page_outcome {
     const kit::published<kit::registry_snapshot>::reading shown = m_features->read();
-    const menu::page_input input{.snapshot = &*shown, .text = &m_text, .query = m_query};
+    const page_input input{.snapshot = &*shown, .text = m_text, .query = m_query};
     const ui::box_style window{
         .flow = ui::direction::column,
         .width = ui::fixed(window_width),
@@ -108,10 +105,10 @@ auto settings_menu::declare(draw::vec2 viewport) -> menu::page_outcome {
         .main = ui::main_align::start,
         .cross = ui::cross_align::stretch,
     };
-    menu::page_outcome outcome;
+    page_outcome outcome;
     m_ui.window({.key = ui::key<"menu">(), .position = window_origin, .style = window}, [&] {
         m_ui.scroll(ui::key<"scroll">(), scrolled, [&] {
-            outcome = menu::settings_page(m_ui, ui::key<"page">(), input);
+            outcome = settings_page(m_ui, ui::key<"page">(), input);
         });
     });
     return outcome;

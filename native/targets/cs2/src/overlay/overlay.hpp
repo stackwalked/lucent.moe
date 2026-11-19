@@ -15,11 +15,12 @@
 #include <lucent/kit/clock.hpp>
 #include <lucent/kit/registry.hpp>
 #include <lucent/kit/worker_set.hpp>
+#include <lucent/menu/settings_menu.hpp>
+#include <lucent/menu/table_catalog.hpp>
 #include <lucent/text/text_system.hpp>
 
 #include "dev_demo.hpp"
 #include "renderer_build.hpp"
-#include "settings_menu.hpp"
 
 namespace lucent::cs2::overlay {
 
@@ -90,8 +91,11 @@ private:
     std::optional<d3d11::renderer> m_renderer;
     std::unique_ptr<renderer_build> m_build;
     draw::draw_list m_list;
-    // Borrows the text system, so it is dropped first.
-    std::optional<settings_menu> m_menu;
+    // The dev names in a dev build; empty in a release until the server delivers the session's
+    // catalog, so every label is its placeholder. The menu borrows it.
+    menu::table_catalog m_menu_text;
+    // Borrows the text system and the menu text, so it is dropped first.
+    std::optional<menu::settings_menu> m_menu;
     // Dev builds only.
     std::optional<dev_demo> m_demo;
 };

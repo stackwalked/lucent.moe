@@ -1,4 +1,4 @@
-#include "system_font.hpp"
+#include <lucent/text/system_font.hpp>
 
 #include <cstddef>
 #include <expected>
@@ -14,9 +14,9 @@
 #include <lucent/text/text_layout.hpp>
 #include <lucent/text/text_system.hpp>
 
-#include "hresult.hpp"
+#include "direct_write.hpp"
 
-namespace lucent::cs2::overlay {
+namespace lucent::text {
 namespace {
 
 using Microsoft::WRL::ComPtr;
@@ -78,7 +78,7 @@ auto file_bytes(IDWriteFontFace& face) -> result<std::vector<std::byte>> {
 
 }
 
-auto add_message_font(text::text_system& text) -> result<text::face_id> {
+auto add_message_font(text_system& text) -> result<face_id> {
     const LOGFONTW described = LUCENT_TRY(system_message_font());
     const ComPtr<IDWriteFontFace> face = LUCENT_TRY(face_of(described));
     const std::vector<std::byte> bytes = LUCENT_TRY(file_bytes(*face.Get()));

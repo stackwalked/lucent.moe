@@ -1,6 +1,7 @@
 lucent_library(text
     HEADERS
         include/lucent/text/glyph_atlas.hpp
+        include/lucent/text/system_font.hpp
         include/lucent/text/text_layout.hpp
         include/lucent/text/text_system.hpp
     SOURCES
@@ -10,6 +11,7 @@ lucent_library(text
         src/latin_shaping.cpp
         src/raster.cpp
         src/shaped_layout.cpp
+        src/system_font.cpp
         src/text_engine.cpp
         src/text_system.cpp
     DEPS lucent::draw
