@@ -19,35 +19,21 @@ checked piece of work. Old lucent's features and platform are the floor, not the
 - Entries marked (proposed) have not been discussed; they are this roadmap's own suggestions.
 
 Where it stands (2026-11-19, four days in): slice 1 (authority, credentials, sessions, the web
-shell and admin) and the fact pipeline (kit facts and capabilities, the bundle format, probe, the
-generator, four cs2 facts) are built, with the render stack (`draw`, `text`, `d3d11`) built and not
-yet linked into cs2. Not started: slices 2 to 5, any `/v1` route, the release loader, the cs2 game
-layer, `ui` and `menu`, the feature registry, all of protection. No CI, and none planned soon:
-the commit hook's `:check` is the gate.
+shell and admin), the fact pipeline (kit facts and capabilities, the bundle format in C++ and TS,
+probe, the generator, four cs2 facts, late-loaded modules), the render stack drawing in cs2, `ui`,
+`menu`, kit's registry, settings and safe point, keyed identifier hashes with the release guard
+and post-link name check, `refract`'s phase 1 and `integrity` are built. `:check` runs every native
+test in Debug and Release. Not started: slices 2 to 5, any `/v1` route, the release loader, the cs2
+game layer. No CI, and none planned soon: the commit hook's `:check` is the gate.
 
 ### Phase 0: rails
 
-What is owed before more weight lands on it.
+Built; what's left needs a person at a running game.
 
-- `contracts:test` in `bun test` over the committed vectors (only `ctest` reads them today).
-- `products/*.toml` on `stable`, `alpha`, `debug`.
-- Generated code's marker and freshness check; core's `flags<E>`, `fixed_string` and the generated
-  `lucent::build` header with the per-release subkeys (fixed in dev).
-- Kit: the dev channel, the injectable clock, named workers.
-- cs2 draws through `draw`, `text` and `d3d11` instead of the proof-of-life rectangle.
-- The facts leftovers: the four facts confirmed in a running game; a late-loaded module; the facts
-  log line out of release strings; the layering check against `<target>-finders`.
-- `native/tools/refract`, the bin2bin rewriter (a VM backend, then mutation): set up as a dev-only
-  tool, banned from release presets like `libs/probe`, with its first code (protection's phase 1:
-  decode, lift, interpret in-process, CPU differential tests).
-- `native/libs/integrity`, linked by the module and the loader: the seeded range hash for hash
-  challenges, the code-page writability check, and the environment probes (debugger, hardware
-  breakpoints, kernel debugging, test signing, VM vendor, module signer classes) as bits and small
-  enums. Tested without a server or a game.
+- The four cs2 facts confirmed in a running game, and a late module's facts resolving when it loads.
 
 Gate: `loader-dev` maps cs2 with a dev-signed bundle and the module draws shaped text over the game
-through our renderer; `refract` interprets lifted functions in-process and agrees with the CPU on
-its differential tests; `integrity` answers a hash challenge over a fixture image.
+through our renderer.
 
 ### Phase 1: the licensed vertical slice
 
@@ -64,17 +50,15 @@ product, one feature. Built end to end, native and server together.
 - Native: the release loader at its smallest (sign-in, device key, self-update, verify, map,
   relay); the module container; the release boot path; kit's lease client and session key;
   `boot_info` with the lease and build ids.
-- Kit, at its smallest: the feature registry with entitlement states, settings `describe()`, the
-  safe point, `contain()` around dispatch, `core` capabilities refusing the start.
-- Render: enough of `ui` and `menu` to show one generated page; the Present glue as designed.
-  Menu text arrives as the per-session catalog keyed by hashed ids, so the string gate holds from
-  the first release.
+- Render: the Present glue as designed, showing `menu`'s generated page in the game. Menu text
+  arrives as the per-session catalog keyed by hashed ids, so the string gate holds from the first
+  release.
 - cs2: `engines/source2/probe`'s offline schema reader, for the fields one feature needs; `world`
   (snapshot, triple buffer) and `draw_context`; the feature, a player box with name, extending
   the `entities` and `view` capabilities.
 - Release tooling: the offline code and facts keys with their signing tools and ceremony, the
-  release's signed artifact list, the master seed, keyed identifier hashes, the release guard and
-  the post-link name check.
+  release's signed artifact list, the master seed's generation and archiving, and the production
+  facts key list the release guard compares against (today it only refuses the dev key).
 - The download page tells members what SmartScreen and antivirus will say.
 - `infra/`: compose, Caddy, backups with an off-machine copy, the uptime ping from a second
   machine. Old lucent left the last two unchosen.
@@ -257,7 +241,6 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
 `native/core/src/toolchain_probe.cpp`, `tools/lint/ast-grep/`, `tools/lint/suppressions.py`, and
 `native/AGENTS.md` for what no tool checks. Still to land, each with the first code it applies to:
 
-- core: `flags<E>`, `fixed_string`, and the generated `lucent::build::*` header.
 - `provenance.py` (a uv script, with the first `foreign/`).
 - `-Wunsafe-buffer-usage` off by path in the foreign-memory layer; `misc-no-recursion` off by path in
   tools and tests once something there recurses.
@@ -303,20 +286,13 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
   - `LUCENT_INVARIANT` → die (`__fastfail`);
   - foreign faults (access violations) are caught at the boundary.
 - Features never hold kit resources while touching foreign memory. This closes the `/EHs` destructor gap.
-- Feature registry:
-  - `feature_id`, hashed at compile time;
-  - states: unavailable, unentitled, off, on, failed;
+- Feature registry (registry, states, wiring, dispatch, safe point and published views landed):
   - a lapse policy per feature;
-  - `wiring` records registrations;
-  - `slot` dispatch: state check, `contain()`, stats;
-  - changes applied at safe points, with immutable published views.
-- A failed feature stays off until a human resets it. Maybe also remember the game build it failed on.
+  - a failed feature may also remember the game build it failed on.
 - Features never depend on features (lint: no feature header includes another). Shared logic goes into domains or plain libraries.
-- An explicit feature list (`features/all.cpp`), no static self-registration. Products can strip features at compile time.
-- Settings:
-  - `describe()` drives config, menu and scripts;
-  - per-tick snapshots;
-  - generate `describe()` with C++26 reflection if Clang ships it (unverified).
+- Products strip features at compile time from the explicit feature list (`features/all.cpp`).
+- Settings (`describe()` and per-tick snapshots landed): generate `describe()` with C++26
+  reflection if Clang ships it (unverified).
 - Config store: profiles, undo, scopes. Per-weapon scope may need to be a real dimension.
 - Binds: `bind_slot`. Activity (a held key) is separate from lifecycle (on/off).
 - Overlay rendering is our own, not Dear ImGui: a highly custom look would mean patching its backend
@@ -402,9 +378,9 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
     git too, where they're first used.
 - Rendering is decided in full.
 - Lease client: verify, renew, lapse, and feed entitlements to the registry.
-- Dev channel, stats and incident sink, compiled out of release (enforced in CMake).
-- An injectable clock.
-- Named kit worker threads, joined on unload, run inside `contain()`.
+- Dev stats over the dev channel (the channel, text and incidents landed).
+- A patience limit on worker shutdown: `worker_set::stop()` waits forever on a body that ignores
+  its token, leaving the module loaded.
 
 ## cs2 game layer
 
@@ -465,18 +441,17 @@ delivery: `tools/devkey`, kit's `fact_apply.hpp` and `boot_info` v3, `loader-dev
 Still to land, in order:
 
 - left over from delivery and the first generator (`tools/facts`, `targets/cs2/finders`, four
-  cs2 facts): a late-loaded module resolving when it appears; the facts log line kept out of
-  release strings; TimeDateStamp read by `pe::image_view`, not kit; one fact-section reader for
-  devkey and the facts tool; finders naming their fact by symbol once the foreign layer is a library
-  they may include; a layering check that no module links a `<target>-finders` project; the four facts
-  confirmed in a running game;
+  cs2 facts): TimeDateStamp read by `pe::image_view`, not kit; one fact-section reader for devkey
+  and the facts tool; finders naming their fact by symbol once the foreign layer is a library they
+  may include; the four facts confirmed in a running game; facts of a module the game unloads
+  invalidated (they point into the freed image until safe points can retire them);
 - the rest of the finder language: operand alternation, steps in either order, sequences across
   `.pdata` chunk splits, facts depending on facts (ordered, cycles an error), the cached per-build
   index, changes against the last published set;
-- the read-only section between safe points, the per-release key seed, `core` capabilities
-  refusing the start;
-- release key handling: a release guard that refuses a build whose trusted keys differ from the
-  production list, and a post-link check that no release image holds the dev public key.
+- the read-only section between safe points; what a `core` capability in a late-loaded module
+  means at start (today it counts as unavailable and refuses);
+- release key handling: the production facts key list the release guard compares against (it
+  refuses only the dev key today).
 
 - Declarations are C++ in the target's foreign layer, by subsystem, and ship. A `consteval`
   constructor hashes the name, which never reaches the binary; ast-grep checks it matches the
