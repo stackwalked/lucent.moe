@@ -19,7 +19,15 @@ struct generate_command {
     std::filesystem::path module;
 };
 
-using command = std::variant<ingest_command, generate_command>;
+// `facts manifest --target <name> <module.dll> <out>`: write the release manifest of that module
+// for the target's game.
+struct manifest_command {
+    std::string target;
+    std::filesystem::path module;
+    std::filesystem::path out;
+};
+
+using command = std::variant<ingest_command, generate_command, manifest_command>;
 
 // Prints the usage to stderr when the arguments don't fit it.
 auto parse_command(std::span<const wchar_t* const> arguments) -> result<command>;

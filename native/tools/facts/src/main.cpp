@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cstddef>
 #include <cstdio>
 #include <expected>
 #include <filesystem>
@@ -10,15 +11,18 @@
 #include <utility>
 #include <vector>
 
+#include <lucent/bundle/release_manifest.hpp>
 #include <lucent/core/match.hpp>
 #include <lucent/core/narrow.hpp>
 #include <lucent/finder/fact_search.hpp>
 #include <lucent/finder/target.hpp>
 #include <lucent/kit/game_module.hpp>
+#include <lucent/os/file.hpp>
 
 #include "cache/binaries.hpp"
 #include "cli/options.hpp"
 #include "generate/generate.hpp"
+#include "generate/manifest.hpp"
 #include "install/steam.hpp"
 #include "targets/linked.hpp"
 
@@ -81,8 +85,49 @@ auto run(const ingest_command& chosen) -> result<isize> {
 auto run(const generate_command& chosen) -> result<isize> {
     const finder::target target = LUCENT_TRY(target_named(chosen.target));
     const generation made = LUCENT_TRY(generate(chosen.module, target));
-    std::println("{} fact(s) resolved, {} failed", made.resolved, made.failed);
-    return made.failed;
+    std::println(
+        "{} fact(s) resolved, {} failed; {} core capabilities uncovered",
+        made.resolved,
+        made.failed,
+        made.uncovered_core
+    );
+    return made.failed + made.uncovered_core;
+}
+
+auto level_name(bundle::capability_level level) -> std::string_view {
+    switch (level) {
+    case bundle::capability_level::optional:
+        return "optional";
+    case bundle::capability_level::core:
+        return "core";
+    }
+    LUCENT_UNREACHABLE();
+}
+
+// Writes the manifest, then reads back what was written, so what it prints is what the file says.
+auto run(const manifest_command& chosen) -> result<isize> {
+    const finder::target target = LUCENT_TRY(target_named(chosen.target));
+    const module_manifest linked = LUCENT_TRY(manifest_of(chosen.module));
+    const bundle::release_manifest made = LUCENT_TRY(release_manifest_of(linked, game_of(target)));
+    LUCENT_TRY(os::write_file(chosen.out, bundle::encode_release_manifest(made)));
+    const std::vector<std::byte> written = LUCENT_TRY(os::read_file(chosen.out));
+    const bundle::release_manifest stored = LUCENT_TRY(bundle::decode_release_manifest(written));
+    std::println("{}: {} bytes", chosen.out.string(), written.size());
+    std::println(
+        "  game {}, manifest digest {}", stored.game, hex_of(bundle::manifest_digest(stored))
+    );
+    std::println("  {} fact(s), {} capabilities", stored.facts.size(), stored.capabilities.size());
+    for (const bundle::manifest_capability& capability : stored.capabilities) {
+        std::string members;
+        for (const u64 member : capability.members) {
+            members += members.empty() ? "" : ", ";
+            members += fact_name(member, target.searches);
+        }
+        std::println(
+            "  capability {:#018x} {:<8} {}", capability.key, level_name(capability.level), members
+        );
+    }
+    return 0;
 }
 
 }
@@ -103,7 +148,8 @@ auto wmain(int argc, wchar_t* argv[]) -> int {
     const lucent::result<lucent::isize> ran = lucent::match(
         *chosen,
         [](const lucent::facts::ingest_command& command) { return lucent::facts::run(command); },
-        [](const lucent::facts::generate_command& command) { return lucent::facts::run(command); }
+        [](const lucent::facts::generate_command& command) { return lucent::facts::run(command); },
+        [](const lucent::facts::manifest_command& command) { return lucent::facts::run(command); }
     );
     if (!ran) {
         std::println(

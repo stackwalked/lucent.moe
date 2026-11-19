@@ -8,5 +8,5 @@ lucent_executable(facts
         src/generate/manifest.cpp
         src/install/steam.cpp
         src/targets/linked.cpp
-    DEPS lucent::bundle lucent::cs2-finders lucent::finder lucent::kit lucent::os lucent::pe lucent::probe bcrypt
+    DEPS lucent::bundle lucent::crypto lucent::cs2-finders lucent::finder lucent::kit lucent::os lucent::pe lucent::probe bcrypt
 )

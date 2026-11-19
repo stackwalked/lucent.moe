@@ -13,10 +13,12 @@
 #include <string_view>
 #include <vector>
 
+#include <lucent/bundle/release_manifest.hpp>
 #include <lucent/core/narrow.hpp>
 #include <lucent/finder/fact_search.hpp>
 #include <lucent/finder/target.hpp>
 #include <lucent/kit/fact.hpp>
+#include <lucent/kit/fact_apply.hpp>
 #include <lucent/kit/game_module.hpp>
 #include <lucent/os/file.hpp>
 #include <lucent/probe/code_index.hpp>
@@ -251,6 +253,7 @@ auto generate_module(
         if (const std::optional<u64> value = resolve_one(fact, module, index)) {
             values += std::format("{}={:#x}\n", fact.search.fact, *value);
             ++tally.resolved;
+            tally.resolved_keys.push_back(fact.record.key);
         } else {
             ++tally.failed;
         }
@@ -266,15 +269,48 @@ auto generate_module(
     return {};
 }
 
+// A core capability any of whose facts didn't resolve would refuse every session on this build.
+auto report_core_coverage(
+    const bundle::release_manifest& release,
+    std::span<const finder::fact_search> searches,
+    generation& tally
+) -> void {
+    for (const bundle::manifest_capability& capability : release.capabilities) {
+        if (capability.level != bundle::capability_level::core) {
+            continue;
+        }
+        std::string missing;
+        for (const u64 member : capability.members) {
+            if (!std::ranges::contains(tally.resolved_keys, member)) {
+                missing += missing.empty() ? "" : ", ";
+                missing += fact_name(member, searches);
+            }
+        }
+        if (!missing.empty()) {
+            std::println(
+                "  error: core capability {:#018x} is uncovered: {} didn't resolve",
+                capability.key,
+                missing
+            );
+            ++tally.uncovered_core;
+        }
+    }
+}
+
 }
 
 auto generate(const std::filesystem::path& module, const finder::target& target)
     -> result<generation> {
-    const std::vector<kit::fact_record> manifest = LUCENT_TRY(manifest_of(module));
+    const module_manifest linked = LUCENT_TRY(manifest_of(module));
+    const std::span<const kit::fact_record> manifest = linked.facts;
+    const bundle::release_manifest release =
+        LUCENT_TRY(release_manifest_of(linked, game_of(target)));
     std::println(
-        "{} links {} fact(s); {} searched for {}",
+        "{} links {} fact(s) in {} capabilities, manifest digest {}; {} searched for {}",
         module.filename().string(),
         manifest.size(),
+        release.capabilities.size(),
+        hex_of(kit::manifest_of(manifest)),
         target.searches.size(),
         target.name
     );
@@ -298,6 +334,7 @@ auto generate(const std::filesystem::path& module, const finder::target& target)
             ++tally.failed;
         }
     }
+    report_core_coverage(release, target.searches, tally);
     return tally;
 }
 

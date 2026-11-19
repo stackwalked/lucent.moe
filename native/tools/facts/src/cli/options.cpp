@@ -18,9 +18,12 @@ auto usage() -> error {
         stderr,
         "usage: facts ingest --target <name>\n"
         "       facts generate --target <name> <module.dll>\n"
+        "       facts manifest --target <name> <module.dll> <out>\n"
         "ingest snapshots the installed game's modules into the binaries cache\n"
         "(%LOCALAPPDATA%\\lucent\\binaries); generate runs the target's finders against the\n"
-        "latest snapshots and writes the values devkey signs. LUCENT_<NAME> overrides where the\n"
+        "latest snapshots and writes the values devkey signs; manifest writes the module's "
+        "release\n"
+        "manifest, its facts and capabilities, for the server. LUCENT_<NAME> overrides where the\n"
         "game is installed"
     );
     return error{.code = error_code::malformed};
@@ -41,6 +44,13 @@ auto parse_command(std::span<const wchar_t* const> arguments) -> result<command>
         return generate_command{
             .target = words.at(2),
             .module = std::filesystem::absolute(to_wide(words.at(3))),
+        };
+    }
+    if (has_target && words.size() == 5 && words.front() == "manifest") {
+        return manifest_command{
+            .target = words.at(2),
+            .module = std::filesystem::absolute(to_wide(words.at(3))),
+            .out = std::filesystem::absolute(to_wide(words.at(4))),
         };
     }
     return std::unexpected(usage());
