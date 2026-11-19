@@ -683,8 +683,26 @@ live in `wishlist/protection.md`.
     and `resources` serves admin-curated files.
 - Vertical slices (directories appear only with their slice):
   1. authority, credentials, sessions and `web/` shell + admin people/audit;
-  2. PC enrollment, native `/v1` reservations/grants/leases and module/loader releases. The
-     architecture is still under discussion; decided so far:
+  2. PC enrollment, native `/v1` starts, sessions, leases and module/loader releases. Decided:
+     - the `/v1` flow (old lucent's reserve, handoff and redeem, its bootstrap grant and the
+       module's own WinHTTP are gone; its operation-id receipts, rate limits, slot generations,
+       sequence and deadline arithmetic, and 503-for-the-unexpected stay):
+       - `POST /v1/enrollments`: proven by the candidate device key; approved in the browser
+         after a recent sign-in, with a match code from the key's thumbprint; the loader polls;
+       - `POST /v1/starts` (loader): product, channel, loader release id, module builds; every
+         start check in one transaction; returns a start id, the release's offline-signed
+         artifact list and a fresh per-start key that opens the module container; the start
+         expires unused after 60 s;
+       - `POST /v1/starts/:id/session`: the module's X25519 hello, relayed opaquely by the
+         loader; binds the key, consumes the start, takes the slot; returns the server's half
+         and the first lease, signed by the lease key;
+       - `POST /v1/sessions/:id/lease` every 15 s, `/bundles`, `/close`: the loader's DPoP
+         around the module's AEAD frame. Close frees the slot at once; a crash drains it when
+         the last lease expires;
+       - DPoP freshness by clock window as old (`iat` at most 5 s ahead, 300 s behind, the
+         client's offset from `Date`, one retry, a `jti` replay table); no server nonces;
+       - each loader artifact list carries a number, and the loader refuses any not above the
+         highest it has seen signed;
      - one slice built end to end, native and server together, not split like slice 1;
      - without a usable TPM 2.0 the device key falls back to a non-exportable CNG software key,
        recorded on the device as software-backed for risk scoring and staff to see, so no PC is
