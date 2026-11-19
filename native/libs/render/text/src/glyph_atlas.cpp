@@ -12,6 +12,8 @@
 #include <lucent/draw/frame_data.hpp>
 #include <lucent/draw/glyph_run.hpp>
 
+#include "lucent/draw/atlas_patch.hpp"
+
 namespace lucent::text {
 namespace {
 
@@ -135,8 +137,8 @@ auto glyph_atlas::write(
     target.dirty = united(target.dirty, padded);
 }
 
-auto glyph_atlas::take_patches() -> std::vector<atlas_patch> {
-    std::vector<atlas_patch> patches;
+auto glyph_atlas::take_patches() -> std::vector<draw::atlas_patch> {
+    std::vector<draw::atlas_patch> patches;
     for (const auto [index, candidate] : std::views::enumerate(m_pages)) {
         if (candidate.dirty) {
             patches.push_back(patch_of(index, *candidate.dirty));
@@ -146,8 +148,8 @@ auto glyph_atlas::take_patches() -> std::vector<atlas_patch> {
     return patches;
 }
 
-auto glyph_atlas::every_page() const -> std::vector<atlas_patch> {
-    std::vector<atlas_patch> patches;
+auto glyph_atlas::every_page() const -> std::vector<draw::atlas_patch> {
+    std::vector<draw::atlas_patch> patches;
     for (const auto [index, candidate] : std::views::enumerate(m_pages)) {
         if (candidate.use != page_use::empty) {
             patches.push_back(
@@ -219,7 +221,7 @@ auto glyph_atlas::clear(isize index) -> void {
     ++m_evictions;
 }
 
-auto glyph_atlas::patch_of(isize index, const draw::pixel_rect& area) const -> atlas_patch {
+auto glyph_atlas::patch_of(isize index, const draw::pixel_rect& area) const -> draw::atlas_patch {
     const page& source = m_pages.at(narrow<usize>(index));
     const isize first = (isize{area.top} * m_page_size) + area.left;
     return {

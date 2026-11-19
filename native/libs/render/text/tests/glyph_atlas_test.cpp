@@ -13,6 +13,8 @@
 #include <lucent/core/narrow.hpp>
 #include <lucent/draw/frame_data.hpp>
 
+#include "lucent/draw/atlas_patch.hpp"
+
 namespace lucent::text {
 namespace {
 
@@ -156,7 +158,7 @@ TEST_CASE("an entry larger than a page is refused") {
 }
 
 // The patch's texels, row by row.
-auto texels_of(const atlas_patch& patch) -> std::vector<std::byte> {
+auto texels_of(const draw::atlas_patch& patch) -> std::vector<std::byte> {
     std::vector<std::byte> texels;
     const isize width = patch.area.right - patch.area.left;
     for (const isize row : std::views::iota(isize{0}, isize{patch.area.bottom - patch.area.top})) {
@@ -180,7 +182,7 @@ TEST_CASE("a patch carries what was written, once, and a reused page's borders c
         allocated(atlas, {.width = 2, .height = 2}, atlas_lifetime::evictable);
     const std::vector<std::byte> ink{std::byte{1}, std::byte{2}, std::byte{3}, std::byte{4}};
     atlas.write(reused, ink, 2);
-    const std::vector<atlas_patch> patches = atlas.take_patches();
+    const std::vector<draw::atlas_patch> patches = atlas.take_patches();
 
     REQUIRE(patches.size() == 1);
     CHECK(patches.front().page == reused.page);

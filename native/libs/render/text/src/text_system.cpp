@@ -12,6 +12,7 @@
 #include <lucent/text/glyph_atlas.hpp>
 #include <lucent/text/text_layout.hpp>
 
+#include "lucent/draw/atlas_patch.hpp"
 #include "text_engine.hpp"
 
 namespace lucent::text {
@@ -68,11 +69,11 @@ auto text_system::draw(
     m_state->engine->draw(list, drawn, origin, tint);
 }
 
-auto text_system::take_patches() -> std::vector<atlas_patch> {
+auto text_system::take_patches() -> std::vector<draw::atlas_patch> {
     return m_state->engine->atlas().take_patches();
 }
 
-auto text_system::every_page() const -> std::vector<atlas_patch> {
+auto text_system::every_page() const -> std::vector<draw::atlas_patch> {
     return m_state->engine->atlas().every_page();
 }
 

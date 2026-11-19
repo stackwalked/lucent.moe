@@ -1,3 +1,4 @@
+#include <bit>
 #include <cmath>
 #include <expected>
 #include <optional>
@@ -62,6 +63,12 @@ auto layer_tint(std::optional<draw::color> layer, draw::color tint) -> draw::col
 auto text_engine::draw(
     draw::draw_list& list, const text_layout& laid_out, draw::vec2 origin, draw::color tint
 ) -> result<void> {
+    // Glyphs are rasterized at the layout's scale; on a list of another they would land the wrong
+    // size, so the draw is refused rather than quietly off.
+    if (std::bit_cast<u32>(laid_out.pixels_per_unit)
+        != std::bit_cast<u32>(list.pixels_per_unit())) {
+        return std::unexpected(error{.code = error_code::malformed});
+    }
     m_quads.clear();
     for (const placed_glyph& glyph : laid_out.glyphs) {
         const pen_position pen = split(glyph.pen.x);

@@ -62,7 +62,8 @@ public:
     auto begin_frame() -> void;
 
     auto layout(const layout_request& request) -> result<const text_layout*>;
-    // Glyphs over this frame's raster budget are left out and drawn once rasterized.
+    // Glyphs over this frame's raster budget are left out and drawn once rasterized. Refused as
+    // malformed on a list whose pixels_per_unit isn't the layout's.
     auto draw(
         draw::draw_list& list, const text_layout& laid_out, draw::vec2 origin, draw::color tint
     ) -> result<void>;
@@ -75,9 +76,9 @@ public:
         -> void;
 
     // The atlas changes since the last call, for the renderer's upload_atlas.
-    auto take_patches() -> std::vector<atlas_patch>;
+    auto take_patches() -> std::vector<draw::atlas_patch>;
     // Every page in use, for a new device.
-    auto every_page() const -> std::vector<atlas_patch>;
+    auto every_page() const -> std::vector<draw::atlas_patch>;
     auto evictions() const -> i64;
 
 private:

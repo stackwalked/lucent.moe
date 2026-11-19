@@ -17,6 +17,7 @@
 
 #include "../src/text_engine.hpp"
 #include "fixture.hpp"
+#include "lucent/draw/atlas_patch.hpp"
 
 namespace lucent::text {
 namespace {
@@ -50,9 +51,9 @@ TEST_CASE("every inked glyph draws as one atlas quad once rasterized, spaces as 
     const testing::fixture_engine fixture = testing::plex_engine();
 
     CHECK(drawn(*fixture.engine, "ab cd", fixture.plex) == 4);
-    const std::vector<atlas_patch> patches = fixture.engine->atlas().take_patches();
+    const std::vector<draw::atlas_patch> patches = fixture.engine->atlas().take_patches();
     REQUIRE_FALSE(patches.empty());
-    CHECK(std::ranges::all_of(patches, [](const atlas_patch& patch) {
+    CHECK(std::ranges::all_of(patches, [](const draw::atlas_patch& patch) {
         return std::ranges::any_of(patch.coverage, [](std::byte texel) {
             return texel != std::byte{0};
         });
@@ -104,6 +105,19 @@ TEST_CASE("a glyph whose page was cleared is rasterized again rather than drawn 
     CHECK(drawn(*fixture.engine, "M", fixture.plex) == 1);
     CHECK(fixture.engine->atlas().evictions() == 2);
     CHECK_FALSE(fixture.engine->atlas().take_patches().empty());
+}
+
+TEST_CASE("a layout made at one scale is refused on a list of another") {
+    const testing::fixture_engine fixture = testing::plex_engine();
+    draw::draw_list list;
+    list.reset({.size = {.width = 400, .height = 100}, .pixels_per_unit = 2.0F});
+    const result<const text_layout*> made = fixture.engine->layout(request("scaled", fixture.plex));
+    REQUIRE(made.has_value());
+    const result<void> drawn_here =
+        fixture.engine->draw(list, **made, {.x = 0.0F, .y = 0.0F}, draw::white);
+    REQUIRE_FALSE(drawn_here.has_value());
+    CHECK(drawn_here.error().code == error_code::malformed);
+    CHECK(list.frame().records.empty());
 }
 
 }

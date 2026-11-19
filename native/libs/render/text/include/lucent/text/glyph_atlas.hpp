@@ -5,6 +5,7 @@
 #include <span>
 #include <vector>
 
+#include <lucent/draw/atlas_patch.hpp>
 #include <lucent/draw/frame_data.hpp>
 #include <lucent/draw/glyph_run.hpp>
 
@@ -26,15 +27,6 @@ struct atlas_slot {
     draw::pixel_rect area;
 
     auto operator==(const atlas_slot&) const -> bool = default;
-};
-
-// Coverage changed in part of a page: one byte a texel, rows row_pitch bytes apart, starting at
-// the area's first texel. The shape d3d11::renderer::upload_atlas takes.
-struct atlas_patch {
-    draw::atlas_page page{};
-    draw::pixel_rect area;
-    std::span<const std::byte> coverage;
-    isize row_pitch = 0;
 };
 
 struct atlas_limits {
@@ -66,9 +58,9 @@ public:
 
     // What changed since the last call, one patch per page. The coverage is borrowed from the
     // atlas until it next allocates or writes.
-    auto take_patches() -> std::vector<atlas_patch>;
+    auto take_patches() -> std::vector<draw::atlas_patch>;
     // Every page in use, whole: what a new device needs. Borrowed like take_patches().
-    auto every_page() const -> std::vector<atlas_patch>;
+    auto every_page() const -> std::vector<draw::atlas_patch>;
 
     // Pages cleared to make room, since construction.
     auto evictions() const -> i64;
@@ -99,7 +91,7 @@ private:
     auto place(isize index, draw::pixel_size padded) -> std::optional<atlas_slot>;
     auto victim() const -> std::optional<isize>;
     auto clear(isize index) -> void;
-    auto patch_of(isize index, const draw::pixel_rect& area) const -> atlas_patch;
+    auto patch_of(isize index, const draw::pixel_rect& area) const -> draw::atlas_patch;
 
     i32 m_page_size = 0;
     std::vector<page> m_pages;
