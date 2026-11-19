@@ -14,12 +14,9 @@ namespace lucent::menu {
 // reaches the binary no more than a feature's name does.
 enum class phrase_id : u64 {};
 
-// Phrase names hash with their own seed. The keyed identifier hash replaces this through
-// phrase_key alone.
-inline constexpr u64 dev_phrase_seed = 0x6c75'6365'6e74'7068;
-
+// A phrase's id: the identifier hash of its name under this build's phrase subkey, as settings'.
 consteval auto phrase_key(std::string_view name) noexcept -> phrase_id {
-    return phrase_id{kit::fact_name_hash(dev_phrase_seed, name)};
+    return phrase_id{identifier_hash(build::phrase_subkey, name)};
 }
 
 namespace phrases {

@@ -20,6 +20,7 @@ set(lucent_build_purposes
     capability
     feature
     setting
+    phrase
 )
 
 # Derivation: subkey = SHA3-256(hex(seed) || "lucent::build::" || purpose), at configure time.
