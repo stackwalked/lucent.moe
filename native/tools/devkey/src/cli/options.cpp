@@ -2,12 +2,14 @@
 
 #include <charconv>
 #include <concepts>
+#include <cstddef>
 #include <cstdio>
 #include <expected>
 #include <filesystem>
 #include <memory>
 #include <optional>
 #include <print>
+#include <ranges>
 #include <span>
 #include <string>
 #include <string_view>
@@ -15,6 +17,7 @@
 #include <vector>
 
 #include <lucent/core/text.hpp>
+#include <lucent/os/file.hpp>
 
 #include "sign/dev_bundle.hpp"
 
@@ -25,8 +28,9 @@ auto usage() -> error {
     std::println(
         stderr,
         "usage: devkey header <out.hpp>\n"
-        "       devkey sign <module.dll> <game-module.dll> <out.bundle> <name>=<value>...\n"
-        "values are decimal, 0x-prefixed hex, or negative decimal; an address is its RVA"
+        "       devkey sign <module.dll> <game-module.dll> <out.bundle> <name>=<value>|@<file>...\n"
+        "values are decimal, 0x-prefixed hex, or negative decimal; an address is its RVA.\n"
+        "@<file> reads name=value lines from a file, as factgen writes them; # starts a comment"
     );
     return error{.code = error_code::malformed};
 }
@@ -68,6 +72,31 @@ auto parse_named_value(std::string_view text) -> std::optional<named_value> {
     return named_value{.name = std::string{text.substr(0, equals)}, .value = *value};
 }
 
+// One name=value per line; blank lines and lines starting with # are skipped.
+auto read_named_values(std::string_view path) -> result<std::vector<named_value>> {
+    const std::vector<std::byte> bytes = LUCENT_TRY(os::read_file(to_wide(path)));
+    std::string text;
+    for (const std::byte part : bytes) {
+        text.push_back(static_cast<char>(part));
+    }
+    std::vector<named_value> values;
+    for (const auto line : text | std::views::split('\n')) {
+        std::string_view entry{line};
+        if (entry.ends_with('\r')) {
+            entry.remove_suffix(1);
+        }
+        if (entry.empty() || entry.starts_with('#')) {
+            continue;
+        }
+        const std::optional<named_value> given = parse_named_value(entry);
+        if (!given) {
+            return std::unexpected(usage());
+        }
+        values.push_back(*given);
+    }
+    return values;
+}
+
 auto parse_sign(const std::vector<std::string>& words) -> result<command> {
     if (words.size() < 4) {
         return std::unexpected(usage());
@@ -82,6 +111,10 @@ auto parse_sign(const std::vector<std::string>& words) -> result<command> {
         .bundle = std::filesystem::absolute(to_wide(words.at(3))),
     };
     for (const std::string& word : std::span{words}.subspan(4)) {
+        if (word.starts_with('@')) {
+            sign.request.values.append_range(LUCENT_TRY(read_named_values(word.substr(1))));
+            continue;
+        }
         const std::optional<named_value> given = parse_named_value(word);
         if (!given) {
             return std::unexpected(usage());

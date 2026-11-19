@@ -13,7 +13,8 @@ struct header_command {
     std::filesystem::path header;
 };
 
-// `devkey sign <module.dll> <game-module.dll> <out.bundle> <name>=<value>...`
+// `devkey sign <module.dll> <game-module.dll> <out.bundle> <name>=<value>|@<file>...`; a file is
+// factgen's values, one name=value per line.
 struct sign_command {
     dev_bundle_request request;
     std::filesystem::path bundle;
