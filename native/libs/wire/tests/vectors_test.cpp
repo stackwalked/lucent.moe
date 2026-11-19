@@ -28,6 +28,7 @@
 #include <lucent/wire/start.hpp>
 
 #include "fixtures.hpp"
+#include "json.hpp"
 
 // The /v1 messages' golden vectors in contracts/wire/v1: each is a .bin and a .json stating its
 // contents, which every implementation (this one, the TS server) must agree on. The session reply
@@ -37,66 +38,6 @@
 
 namespace lucent::wire {
 namespace {
-
-auto hex(std::span<const std::byte> bytes) -> std::string {
-    std::string out;
-    for (const std::byte value : bytes) {
-        out += std::format("{:02x}", static_cast<u8>(value));
-    }
-    return out;
-}
-
-auto json_string(std::string_view text) -> std::string {
-    return std::format("\"{}\"", text);
-}
-
-auto hex_field(std::span<const std::byte> bytes) -> std::string {
-    return json_string(hex(bytes));
-}
-
-auto u64_field(u64 value) -> std::string {
-    return json_string(std::format("{:016x}", value));
-}
-
-struct field {
-    std::string_view name;
-    std::string value;
-};
-
-auto spaces(usize count) -> std::string {
-    std::string padding;
-    padding.resize(count, ' ');
-    return padding;
-}
-
-// Fully expanded, one member or item per line: the layout the repo's JSON formatter keeps.
-auto object(const std::vector<field>& fields, usize indent) -> std::string {
-    std::string out = "{\n";
-    for (usize index = 0; const field& each : fields) {
-        out += std::format(
-            "{}\"{}\": {}{}\n",
-            spaces(indent + 2),
-            each.name,
-            each.value,
-            index + 1 < fields.size() ? "," : ""
-        );
-        ++index;
-    }
-    return out + spaces(indent) + "}";
-}
-
-auto array(const std::vector<std::string>& items, usize indent) -> std::string {
-    if (items.empty()) {
-        return "[]";
-    }
-    std::string out = "[\n";
-    for (usize index = 0; const std::string& item : items) {
-        out +=
-            std::format("{}{}{}\n", spaces(indent + 2), item, index + 1 < items.size() ? "," : "");
-        ++index;
-    }
-    return out + spaces(indent) + "]";
-}
 
 auto image_kind_name(image_kind kind) -> std::string_view {
     switch (kind) {

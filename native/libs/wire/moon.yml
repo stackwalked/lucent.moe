@@ -1,5 +1,5 @@
 project:
-  description: "The native /v1 messages: session hello and key exchange, frames, leases and renewals, starts, enrollments and refusals."
+  description: "The native /v1 messages: session hello and key exchange, frames, leases and renewals, starts, enrollments and refusals; the module container, its download stream and the release seal."
 
 language: "cpp"
 layer: "library"
@@ -7,8 +7,9 @@ layer: "library"
 dependsOn: ["core", "bundle", "crypto", "os"]
 
 tasks:
-  # Rewrites the golden vectors in contracts/wire from the encoders. Review the diff before
-  # committing: a changed vector is a changed wire format.
+  # Rewrites the golden vectors in contracts/wire, contracts/container, contracts/container-stream
+  # and contracts/release-seal from the encoders. Review the diff before committing: a changed
+  # vector is a changed wire format.
   vectors:
     command: "ctest --test-dir $workspaceRoot/.moon/cache/cmake/dev -L ^wire$ -R golden --output-on-failure"
     deps: ["native:build"]
