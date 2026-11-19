@@ -1,9 +1,9 @@
 id: "cs2-overlay"
 
 project:
-  description: "When the cs2 overlay draws: its build, rebuild and off states, apart from the module so they are tested without a GPU."
+  description: "What of the cs2 overlay is tested without a GPU or the game: its build, rebuild and off states, and the menu's input from the game window's subclassed procedure to one ui snapshot a frame, with what is kept from the game."
 
 language: "cpp"
 layer: "library"
 
-dependsOn: ["core"]
+dependsOn: ["core", "draw", "kit", "ui"]
