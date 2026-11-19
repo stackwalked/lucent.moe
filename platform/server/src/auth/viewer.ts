@@ -28,7 +28,12 @@ export type Viewer = {
 // What web asks on every request carrying the session cookie.
 export async function resolveViewer(
     db: Db,
-    params: { readonly sessionToken: BearerToken; readonly client: ClientInfo | null },
+    params: {
+        readonly sessionToken: BearerToken;
+        readonly client: ClientInfo | null;
+        // A dev server's passwordOnly: every step-up counts as just made.
+        readonly stepUpWaived?: boolean;
+    },
 ): Promise<Result<Viewer, SessionInvalid | DbFailure>> {
     return await withTx(db, async (tx, txNow) => {
         const session = await readSession(tx, {
@@ -60,7 +65,7 @@ export async function resolveViewer(
             username: account.value.username,
             purpose: session.value.purpose,
             expiresAt: session.value.expiresAt,
-            stepUpAt: session.value.stepUpAt,
+            stepUpAt: params.stepUpWaived === true ? txNow : session.value.stepUpAt,
             standing: {
                 isRoot: standing.value.isRoot,
                 maxRank: standing.value.maxRank,
@@ -75,7 +80,12 @@ export async function resolveViewer(
 // and when they last stepped up. A session ended in between can finish the one call in flight.
 export async function resolveCaller(
     db: Db,
-    params: { readonly sessionToken: BearerToken; readonly client: ClientInfo | null },
+    params: {
+        readonly sessionToken: BearerToken;
+        readonly client: ClientInfo | null;
+        // A dev server's passwordOnly: every step-up counts as just made.
+        readonly stepUpWaived?: boolean;
+    },
 ): Promise<Result<Caller, SessionInvalid | DbFailure>> {
     return await withTx(db, async (tx, txNow) => {
         const session = await readSession(tx, {
@@ -86,7 +96,7 @@ export async function resolveCaller(
         if (!session.ok) return session;
         return ok({
             accountId: session.value.accountId,
-            stepUpAt: session.value.stepUpAt,
+            stepUpAt: params.stepUpWaived === true ? txNow : session.value.stepUpAt,
             client: params.client,
         });
     });

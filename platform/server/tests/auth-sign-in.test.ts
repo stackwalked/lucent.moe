@@ -12,7 +12,7 @@ import {
     signInWithTotp,
 } from "../src/auth/sign-in.ts";
 import { createTotpKeyring } from "../src/auth/totp.ts";
-import { resolveViewer } from "../src/auth/viewer.ts";
+import { resolveCaller, resolveViewer } from "../src/auth/viewer.ts";
 import { execute, sql } from "../src/db/pool.ts";
 import { codeAt, MEMBER_PASSWORD, newMember } from "./auth-fixtures.ts";
 import { createTestAuthDeps, TEST_TOTP_KEYS } from "./harness/auth.ts";
@@ -70,7 +70,7 @@ describe("password and TOTP", () => {
                 username: "ALICE ",
                 password: MEMBER_PASSWORD,
             });
-            invariant(flow.ok, "the password is right");
+            invariant(flow.ok && flow.value.next === "secondFactor", "the password is right");
             expect(flow.value.secondFactors).toEqual(["totp"]);
             const signedIn = await signInWithTotp(deps, {
                 flowToken: flow.value.flowToken,
@@ -97,7 +97,7 @@ describe("password and TOTP", () => {
                     username: "alice",
                     password: MEMBER_PASSWORD,
                 });
-                invariant(flow.ok, "the password is right");
+                invariant(flow.ok && flow.value.next === "secondFactor", "the password is right");
                 return await signInWithTotp(deps, { flowToken: flow.value.flowToken, code });
             };
 
@@ -123,7 +123,7 @@ describe("password and TOTP", () => {
                 username: "alice",
                 password: MEMBER_PASSWORD,
             });
-            invariant(flow.ok, "the password is right");
+            invariant(flow.ok && flow.value.next === "secondFactor", "the password is right");
             const right = await codeAt(browserDb, alice.totpSecret, 1);
             const wrong = right === "000000" ? "000001" : "000000";
             for (let i = 0; i < 5; i++) {
@@ -152,7 +152,7 @@ describe("password and TOTP", () => {
                 username: "alice",
                 password: MEMBER_PASSWORD,
             });
-            invariant(flow.ok, "the password is right");
+            invariant(flow.ok && flow.value.next === "secondFactor", "the password is right");
             expect(
                 await signInWithTotp(deps, {
                     flowToken: flow.value.flowToken,
@@ -244,7 +244,7 @@ describe("passkeys", () => {
                 username: "alice",
                 password: MEMBER_PASSWORD,
             });
-            invariant(flow.ok, "alice's password is right");
+            invariant(flow.ok && flow.value.next === "secondFactor", "alice's password is right");
             expect(flow.value.secondFactors).toEqual(["totp", "passkey"]);
             const begun = await beginPasskeySignIn(deps, { flowToken: flow.value.flowToken });
             invariant(begun.ok, "alice has a passkey to finish with");
@@ -255,6 +255,31 @@ describe("passkeys", () => {
                     response: AuthenticationResponse.parse(response),
                 }),
             ).toEqual(err({ code: "PASSKEY_REJECTED" }));
+        });
+    });
+});
+
+describe("a dev server with passwordOnly", () => {
+    test("signs in on the password alone and counts every step-up as just made", async () => {
+        const cluster = await sharedTestCluster();
+        await cluster.withTestDb(async ({ browserDb }) => {
+            const rng = createSeededRng(220);
+            const deps = { ...(await createTestAuthDeps(browserDb, rng)), passwordOnly: true };
+            await newMember(deps, rng, { username: "alice", with: "password+totp" });
+
+            const signedIn = await signInWithPassword(deps, {
+                username: "alice",
+                password: MEMBER_PASSWORD,
+            });
+            invariant(signedIn.ok && signedIn.value.next === "signedIn", "no second step");
+            const params = { sessionToken: signedIn.value.sessionToken, client: null };
+            const caller = await resolveCaller(browserDb, { ...params, stepUpWaived: true });
+            expect(caller.ok && caller.value.stepUpAt !== null).toBe(true);
+            const plain = await resolveCaller(browserDb, params);
+            expect(plain.ok && plain.value.stepUpAt).toBeNull();
+            expect(
+                await signInWithPassword(deps, { username: "alice", password: "not it at all" }),
+            ).toEqual(err({ code: "INVALID_CREDENTIALS" }));
         });
     });
 });

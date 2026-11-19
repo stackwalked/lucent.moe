@@ -109,7 +109,7 @@ describe("browser sessions", () => {
                 username: "alice",
                 password: MEMBER_PASSWORD,
             });
-            invariant(flow.ok, "the password is right");
+            invariant(flow.ok && flow.value.next === "secondFactor", "the password is right");
 
             const rows = await queryAll(
                 nativeDb,

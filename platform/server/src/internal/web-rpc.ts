@@ -99,6 +99,7 @@ async function asStaff<T, E extends { readonly code: string }>(
     const caller = await resolveCaller(ctx.auth.db, {
         sessionToken: call.session,
         client: call.client,
+        stepUpWaived: ctx.auth.passwordOnly === true,
     });
     if (!caller.ok) return served(caller);
     return served(await act(caller.value));
@@ -133,7 +134,8 @@ const handlers: Handlers<WebRpcContext, WebContract> = {
     "health.check": (ctx) => Promise.resolve(ok({ productsLoaded: ctx.catalog.size })),
     "catalog.list": (ctx) => Promise.resolve(ok([...ctx.catalog.values()])),
 
-    "signIn.password": async (ctx, input) => served(await signInWithPassword(ctx.auth, input)),
+    "signIn.password": async (ctx, input, call) =>
+        served(await signInWithPassword(ctx.auth, { ...input, ...from(call) })),
     "signIn.totp": async (ctx, input, call) =>
         served(await signInWithTotp(ctx.auth, { ...input, ...from(call) })),
     "signIn.passkey.begin": async (ctx, input) => served(await beginPasskeySignIn(ctx.auth, input)),
@@ -141,7 +143,13 @@ const handlers: Handlers<WebRpcContext, WebContract> = {
         served(await finishPasskeySignIn(ctx.auth, { ...input, ...from(call) })),
 
     "session.resolve": async (ctx, _input, { session, client }) =>
-        served(await resolveViewer(ctx.auth.db, { sessionToken: session, client })),
+        served(
+            await resolveViewer(ctx.auth.db, {
+                sessionToken: session,
+                client,
+                stepUpWaived: ctx.auth.passwordOnly === true,
+            }),
+        ),
     "session.list": async (ctx, _input, { session }) => {
         const listed = await listSessions(ctx.auth.db, { sessionToken: session });
         return served(listed.ok ? ok({ sessions: listed.value }) : listed);

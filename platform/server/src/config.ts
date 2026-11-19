@@ -15,6 +15,8 @@ export type ServerConfig = {
     readonly productsDir: string;
     readonly totpKeys: readonly TotpKeyMaterial[];
     readonly relyingParty: RelyingParty;
+    // Dev only: a password signs in alone, and staff actions need no step-up.
+    readonly passwordOnly: boolean;
 };
 
 export type OpsConfig = {
@@ -35,6 +37,7 @@ export type Environment = {
     readonly LUCENT_TOTP_KEYS: string | undefined;
     readonly LUCENT_WEBAUTHN_RP_ID: string | undefined;
     readonly LUCENT_WEBAUTHN_ORIGIN: string | undefined;
+    readonly LUCENT_DEV_PASSWORD_ONLY: string | undefined;
 };
 
 const POSTGRES_URL = /^postgres(?:ql)?:\/\/./;
@@ -60,9 +63,10 @@ function parseTotpKeys(raw: string): readonly TotpKeyMaterial[] | null {
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 
-// The published values in .config/dev.env. They're accepted only when browsers can reach the
-// server solely from this machine (a localhost WebAuthn origin), so a release configured with one
-// by mistake refuses to start instead of running on a key anyone can read.
+// The published values in .config/dev.env, and LUCENT_DEV_PASSWORD_ONLY. They're accepted only
+// when browsers can reach the server solely from this machine (a localhost WebAuthn origin), so a
+// release configured with one by mistake refuses to start instead of running on a key anyone can
+// read, or without second factors.
 const DEV_PEER_KEY = "lucent-dev-internal-key-public-not-a-secret-0000";
 
 function isDevTotpKey(key: TotpKeyMaterial): boolean {
@@ -127,6 +131,11 @@ export function readServerConfig(env: Environment): Result<ServerConfig, ConfigE
             "LUCENT_TOTP_KEYS must be kid:key pairs, comma-separated, newest first; each key 32 bytes in base64url",
         );
     }
+    const passwordOnlyRaw = env.LUCENT_DEV_PASSWORD_ONLY ?? "";
+    if (passwordOnlyRaw !== "" && passwordOnlyRaw !== "1") {
+        problems.push("LUCENT_DEV_PASSWORD_ONLY must be 1 or unset");
+    }
+    const passwordOnly = passwordOnlyRaw === "1";
     const relyingParty = parseRelyingParty(
         env.LUCENT_WEBAUTHN_RP_ID ?? "",
         env.LUCENT_WEBAUTHN_ORIGIN ?? "",
@@ -142,6 +151,9 @@ export function readServerConfig(env: Environment): Result<ServerConfig, ConfigE
         }
         if (totpKeys?.some(isDevTotpKey) === true) {
             problems.push("LUCENT_TOTP_KEYS holds the published dev key (all zero bytes)");
+        }
+        if (passwordOnly) {
+            problems.push("LUCENT_DEV_PASSWORD_ONLY is for a localhost WebAuthn origin only");
         }
     }
     if (
@@ -159,6 +171,7 @@ export function readServerConfig(env: Environment): Result<ServerConfig, ConfigE
         productsDir,
         totpKeys,
         relyingParty,
+        passwordOnly,
     });
 }
 
@@ -181,6 +194,7 @@ export function processEnvironment(): Environment {
         LUCENT_TOTP_KEYS,
         LUCENT_WEBAUTHN_RP_ID,
         LUCENT_WEBAUTHN_ORIGIN,
+        LUCENT_DEV_PASSWORD_ONLY,
     } = process.env;
     return {
         LUCENT_DATABASE_URL,
@@ -190,5 +204,6 @@ export function processEnvironment(): Environment {
         LUCENT_TOTP_KEYS,
         LUCENT_WEBAUTHN_RP_ID,
         LUCENT_WEBAUTHN_ORIGIN,
+        LUCENT_DEV_PASSWORD_ONLY,
     };
 }

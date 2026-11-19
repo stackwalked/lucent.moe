@@ -12,6 +12,7 @@ function env(overrides: Partial<Environment>): Environment {
         LUCENT_TOTP_KEYS: `k1:${"B".repeat(43)}`,
         LUCENT_WEBAUTHN_RP_ID: "lucent.moe",
         LUCENT_WEBAUTHN_ORIGIN: "https://lucent.moe",
+        LUCENT_DEV_PASSWORD_ONLY: undefined,
         ...overrides,
     };
 }
@@ -56,6 +57,7 @@ test("every missing variable is named at once", () => {
         LUCENT_TOTP_KEYS: undefined,
         LUCENT_WEBAUTHN_RP_ID: undefined,
         LUCENT_WEBAUTHN_ORIGIN: undefined,
+        LUCENT_DEV_PASSWORD_ONLY: undefined,
     });
     expect(config.ok).toBe(false);
     const problems = config.ok ? [] : config.error.problems;
@@ -105,15 +107,17 @@ test("TOTP keys keep their order and refuse a repeated kid", () => {
     expect(readServerConfig(env({ LUCENT_TOTP_KEYS: `a:${key("C").slice(1)}` })).ok).toBe(false);
 });
 
-test("the published dev keys are refused unless browsers reach the server from this machine", () => {
+test("the published dev keys and password-only sign-in are refused unless browsers reach the server from this machine", () => {
     const devKeys = {
         LUCENT_WEB_INTERNAL_KEY: "lucent-dev-internal-key-public-not-a-secret-0000",
         LUCENT_TOTP_KEYS: `k1:${"B".repeat(43)},dev:${"A".repeat(43)}`,
+        LUCENT_DEV_PASSWORD_ONLY: "1",
     };
     const released = readServerConfig(env(devKeys));
     expect(!released.ok && released.error.problems).toEqual([
         "LUCENT_WEB_INTERNAL_KEY is the published dev key",
         "LUCENT_TOTP_KEYS holds the published dev key (all zero bytes)",
+        "LUCENT_DEV_PASSWORD_ONLY is for a localhost WebAuthn origin only",
     ]);
     const local = readServerConfig(
         env({
@@ -122,5 +126,5 @@ test("the published dev keys are refused unless browsers reach the server from t
             LUCENT_WEBAUTHN_ORIGIN: "http://localhost:4710",
         }),
     );
-    expect(local.ok).toBe(true);
+    expect(local.ok && local.value.passwordOnly).toBe(true);
 });

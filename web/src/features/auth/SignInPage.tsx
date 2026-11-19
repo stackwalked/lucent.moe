@@ -75,6 +75,10 @@ export function SignInPage() {
             setStep({ step: "password", username, refused: reply.refused });
             return null;
         }
+        if (reply.value.next === "arrive") {
+            await arrive(reply.value.to);
+            return null;
+        }
         const factors = reply.value.secondFactors;
         setPasskeyRefused(null);
         setStep({

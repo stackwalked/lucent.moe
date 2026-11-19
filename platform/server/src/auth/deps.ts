@@ -11,6 +11,9 @@ export type AuthDeps = {
     readonly totpKeys: TotpKeyring;
     readonly passwords: PasswordHasher;
     readonly verifyPassword: (password: string, hash: string | null) => Promise<boolean>;
+    // Dev only (config refuses it off localhost): a password signs in alone, and a caller's
+    // step-up is always fresh. Absent is off.
+    readonly passwordOnly?: boolean;
 };
 
 export function createAuthDeps(params: Omit<AuthDeps, "verifyPassword">): AuthDeps {

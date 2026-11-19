@@ -158,10 +158,15 @@ export const webContract = defineContract({
         session: "none",
         effect: "write",
         input: z.strictObject({ username: Username, password: Password }),
-        output: z.object({
-            flowToken: BearerToken,
-            secondFactors: z.array(z.enum(["totp", "passkey"])).readonly(),
-        }),
+        // "signedIn" only from a dev server with LUCENT_DEV_PASSWORD_ONLY.
+        output: z.discriminatedUnion("next", [
+            z.object({
+                next: z.literal("secondFactor"),
+                flowToken: BearerToken,
+                secondFactors: z.array(z.enum(["totp", "passkey"])).readonly(),
+            }),
+            SignedIn.extend({ next: z.literal("signedIn") }),
+        ]),
         error: SignInRefusal,
     },
     "signIn.totp": {

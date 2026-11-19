@@ -36,12 +36,25 @@ export const signInWithPassword = createServerFn({ method: "POST" })
     .handler(
         async ({
             data,
-        }): Promise<Outcome<{ readonly secondFactors: readonly ("totp" | "passkey")[] }>> => {
+        }): Promise<
+            Outcome<
+                | {
+                      readonly next: "secondFactor";
+                      readonly secondFactors: readonly ("totp" | "passkey")[];
+                  }
+                | { readonly next: "arrive"; readonly to: string }
+            >
+        > => {
             patchFlow({ username: data.username });
             const reply = await callPlatform("signIn.password", data);
             if (!reply.ok) return refuse(reply.error);
+            // A dev server with LUCENT_DEV_PASSWORD_ONLY signs in on the password alone.
+            if (reply.value.next === "signedIn") {
+                const arrived = signedIn(reply.value);
+                return arrived.ok ? done({ next: "arrive", to: arrived.value }) : arrived;
+            }
             patchFlow({ signIn: reply.value.flowToken });
-            return done({ secondFactors: reply.value.secondFactors });
+            return done({ next: "secondFactor", secondFactors: reply.value.secondFactors });
         },
     );
 

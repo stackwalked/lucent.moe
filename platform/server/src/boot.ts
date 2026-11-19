@@ -118,7 +118,14 @@ export async function startServer(params: {
         rp: config.relyingParty,
         totpKeys: await createTotpKeyring(config.totpKeys),
         passwords: params.passwords ?? createArgon2idHasher(),
+        passwordOnly: config.passwordOnly,
     });
+    if (config.passwordOnly) {
+        logger.write("warn", "password-only sign-in", {
+            origin: "boot",
+            detail: "LUCENT_DEV_PASSWORD_ONLY: no second factor, no step-up",
+        });
+    }
     const app = createInternalWebApp({
         auth,
         catalog: catalog.value,

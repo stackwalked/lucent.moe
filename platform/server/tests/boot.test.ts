@@ -21,6 +21,7 @@ function configFor(databaseUrl: string): ServerConfig {
         productsDir: join(WORKSPACE_ROOT, "products"),
         totpKeys: [{ kid: "test", raw: new Uint8Array(32) }],
         relyingParty: TEST_RELYING_PARTY,
+        passwordOnly: false,
     };
 }
 

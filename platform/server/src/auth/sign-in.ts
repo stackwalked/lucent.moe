@@ -93,16 +93,20 @@ async function finishSignIn(
     return ok({ sessionToken: session.value.token, expiresAt: session.value.expiresAt });
 }
 
+export type PasswordAccepted =
+    | {
+          readonly next: "secondFactor";
+          readonly flowToken: BearerToken;
+          readonly secondFactors: readonly SecondFactor[];
+      }
+    | ({ readonly next: "signedIn" } & SignedIn);
+
 // A password is a first factor only: it opens a flow that a TOTP code or a passkey finishes.
+// Except on a dev server with passwordOnly, where it signs in by itself.
 export async function signInWithPassword(
     deps: AuthDeps,
-    params: { readonly username: string; readonly password: string },
-): Promise<
-    Result<
-        { readonly flowToken: BearerToken; readonly secondFactors: readonly SecondFactor[] },
-        SignInRefusal
-    >
-> {
+    params: { readonly username: string; readonly password: string; readonly client?: ClientInfo },
+): Promise<Result<PasswordAccepted, SignInRefusal>> {
     const username = params.username.trim().toLowerCase();
     // Read and verified outside any transaction: argon2id would hold a connection meanwhile.
     const row = await queryOne(
@@ -120,33 +124,44 @@ export async function signInWithPassword(
     const found = row.value;
     if (!verified || found === null) return err({ code: "INVALID_CREDENTIALS" });
 
-    return await withTx(deps.db, async (tx, txNow) => {
-        const factors = await queryOne(
-            tx,
-            FactorRowSchema,
-            sql`select
+    return await withTx(
+        deps.db,
+        async (tx, txNow): Promise<Result<PasswordAccepted, SignInRefusal>> => {
+            if (deps.passwordOnly === true) {
+                const signedIn = await finishSignIn(tx, deps, {
+                    accountId: found.id,
+                    txNow,
+                    client: params.client ?? null,
+                });
+                return signedIn.ok ? ok({ next: "signedIn", ...signedIn.value }) : signedIn;
+            }
+            const factors = await queryOne(
+                tx,
+                FactorRowSchema,
+                sql`select
                     exists (select 1 from totp_credential
                             where account_id = ${found.id} and confirmed) as totp,
                     exists (select 1 from passkey where account_id = ${found.id}) as passkeys`,
-        );
-        if (!factors.ok) return factors;
-        const secondFactors: SecondFactor[] = [];
-        if (factors.value?.totp === true) secondFactors.push("totp");
-        if (factors.value?.passkeys === true) secondFactors.push("passkey");
-        if (secondFactors.length === 0) return err({ code: "NO_SECOND_FACTOR" as const });
+            );
+            if (!factors.ok) return factors;
+            const secondFactors: SecondFactor[] = [];
+            if (factors.value?.totp === true) secondFactors.push("totp");
+            if (factors.value?.passkeys === true) secondFactors.push("passkey");
+            if (secondFactors.length === 0) return err({ code: "NO_SECOND_FACTOR" as const });
 
-        const flowToken = await startFlow(tx, {
-            rng: deps.rng,
-            kind: "sign_in",
-            accountId: found.id,
-            sessionHash: null,
-            passwordOk: "password verified",
-            challenge: null,
-            txNow,
-        });
-        if (!flowToken.ok) return flowToken;
-        return ok({ flowToken: flowToken.value, secondFactors });
-    });
+            const flowToken = await startFlow(tx, {
+                rng: deps.rng,
+                kind: "sign_in",
+                accountId: found.id,
+                sessionHash: null,
+                passwordOk: "password verified",
+                challenge: null,
+                txNow,
+            });
+            if (!flowToken.ok) return flowToken;
+            return ok({ next: "secondFactor", flowToken: flowToken.value, secondFactors });
+        },
+    );
 }
 
 export async function signInWithTotp(
