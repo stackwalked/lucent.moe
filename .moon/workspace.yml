@@ -14,10 +14,12 @@ projects:
     - "native/tools/*/moon.yml"
 
 # Repo-wide tasks take /**/* as input; the native build tree under .moon/cache is output, and
-# vcpkg holds locks in it while configuring.
+# vcpkg holds locks in it while configuring. Agent worktrees are whole checkouts with build trees
+# of their own, changing under a running hash.
 hasher:
   ignorePatterns:
     - ".moon/cache/**"
+    - ".claude/worktrees/**"
 
 vcs:
   client: "git"
