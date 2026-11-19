@@ -27,36 +27,48 @@ constexpr u64 fixture_base = 0x1000;
 constexpr u64 unmapped_address = 0x10;
 
 TEST_CASE("laid-out bytes read back at their base address") {
-    const std::array<u32, 2> words{0x1111'1111, 0x2222'2222};
+    std::array<u32, 2> words{0x1111'1111, 0x2222'2222};
     const memory_source source =
-        memory_source::from_bytes(fixture_base, std::as_bytes(std::span{words}));
+        memory_source::from_bytes(fixture_base, std::as_writable_bytes(std::span{words}));
     const result<u32> second = read(source, element(foreign_ptr<u32>{.address = fixture_base}, 1));
     REQUIRE(second.has_value());
     CHECK(*second == 0x2222'2222);
 }
 
 TEST_CASE("a read reaching past the laid-out bytes fails instead of reading the rest") {
-    const std::array<u32, 2> words{};
+    std::array<u32, 2> words{};
     const memory_source source =
-        memory_source::from_bytes(fixture_base, std::as_bytes(std::span{words}));
+        memory_source::from_bytes(fixture_base, std::as_writable_bytes(std::span{words}));
     CHECK_FALSE(read(source, foreign_ptr<u64>{.address = fixture_base + 4}).has_value());
     CHECK_FALSE(read(source, foreign_ptr<u32>{.address = fixture_base - 4}).has_value());
     CHECK_FALSE(read(source, foreign_ptr<u32>{.address = ~u64{0} - 1}).has_value());
 }
 
+TEST_CASE("a write lands in the laid-out bytes and one reaching past them changes nothing") {
+    std::array<u32, 2> words{};
+    const memory_source source =
+        memory_source::from_bytes(fixture_base, std::as_writable_bytes(std::span{words}));
+    const foreign_ptr<u32> second = element(foreign_ptr<u32>{.address = fixture_base}, 1);
+    CHECK(write(source, second, u32{0x3333'3333}).has_value());
+    CHECK_FALSE(write(source, foreign_ptr<u64>{.address = fixture_base + 4}, u64{1}).has_value());
+    CHECK(words[0] == 0);
+    CHECK(words[1] == 0x3333'3333);
+}
+
 TEST_CASE("a null foreign pointer reads as a failure") {
-    const std::array<u32, 1> words{};
-    const memory_source source = memory_source::from_bytes(0, std::as_bytes(std::span{words}));
+    std::array<u32, 1> words{};
+    const memory_source source =
+        memory_source::from_bytes(0, std::as_writable_bytes(std::span{words}));
     CHECK_FALSE(read(source, foreign_ptr<u32>{}).has_value());
 }
 
 TEST_CASE("a 32-bit target's structure is followed through its 32-bit pointers") {
-    const std::array<node32, 2> nodes{
+    std::array<node32, 2> nodes{
         node32{.value = 7, .next = {.address = fixture_base + sizeof(node32)}},
         node32{.value = 9, .next = {}},
     };
     const memory_source source =
-        memory_source::from_bytes(fixture_base, std::as_bytes(std::span{nodes}));
+        memory_source::from_bytes(fixture_base, std::as_writable_bytes(std::span{nodes}));
     const result<node32> first = read(source, foreign_ptr32<node32>{.address = fixture_base});
     REQUIRE(first.has_value());
     const result<node32> second = read(source, first->next);

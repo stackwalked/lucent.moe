@@ -122,8 +122,8 @@ inline auto read(const fact_record& record) -> u64 {
 }
 
 // The typed kinds. Each holds one fact_record and nothing else, so a typed fact in the section is
-// a record. What a kind means to the code that reads it (a typed call, a typed read) arrives with
-// the foreign access boundary; here they expose their resolved values.
+// a record. Foreign memory is reached through them by read_access and write_access; here they
+// expose their resolved values.
 namespace fact {
 
 template <typename Signature>
@@ -152,6 +152,8 @@ private:
 template <typename T>
 class global final {
 public:
+    using value_type = T;
+
     consteval global(std::string_view name, u8 module) noexcept
         : m_record{
               detail::make_record(
@@ -230,6 +232,9 @@ private:
 template <typename Owner, typename T>
 class field final {
 public:
+    using owner_type = Owner;
+    using value_type = T;
+
     consteval field(std::string_view name, u8 module) noexcept
         : m_record{
               detail::make_record(
@@ -273,6 +278,8 @@ private:
 template <typename T>
 class value final {
 public:
+    using value_type = T;
+
     consteval value(std::string_view name, u8 module, value_range range) noexcept
         : m_record{
               detail::make_record(
@@ -299,6 +306,24 @@ private:
 };
 
 }
+
+template <typename T>
+inline constexpr bool is_global_fact = false;
+
+template <typename T>
+inline constexpr bool is_global_fact<fact::global<T>> = true;
+
+template <typename T>
+inline constexpr bool is_field_fact = false;
+
+template <typename Owner, typename T>
+inline constexpr bool is_field_fact<fact::field<Owner, T>> = true;
+
+template <typename T>
+inline constexpr bool is_value_fact = false;
+
+template <typename T>
+inline constexpr bool is_value_fact<fact::value<T>> = true;
 
 }
 

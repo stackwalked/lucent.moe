@@ -1,14 +1,17 @@
 lucent_library(kit
     HEADERS
         include/lucent/kit/boot_info.hpp
+        include/lucent/kit/capability.hpp
         include/lucent/kit/fact.hpp
         include/lucent/kit/fact_apply.hpp
         include/lucent/kit/fact_resolve.hpp
         include/lucent/kit/game_module.hpp
         include/lucent/kit/hook.hpp
         include/lucent/kit/lifecycle.hpp
+        include/lucent/kit/read_access.hpp
         include/lucent/kit/session.hpp
         include/lucent/kit/session_message.hpp
+        include/lucent/kit/write_access.hpp
     SOURCES
         src/fact_apply.cpp
         src/fact_resolve.cpp
@@ -25,6 +28,7 @@ lucent_library(kit
 
 lucent_test(kit
     SOURCES
+        tests/access_test.cpp
         tests/fact_apply_test.cpp
         tests/fact_resolve_test.cpp
         tests/fact_section_other.cpp

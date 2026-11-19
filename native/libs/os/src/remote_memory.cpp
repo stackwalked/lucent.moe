@@ -108,4 +108,13 @@ auto read_remote(const process& owner, uptr address, std::span<std::byte> into) 
     return {};
 }
 
+auto write_remote(const process& owner, uptr address, std::span<const std::byte> bytes)
+    -> result<void> {
+    void* const into = std::bit_cast<void*>(address);
+    if (WriteProcessMemory(owner.native(), into, bytes.data(), bytes.size(), nullptr) == 0) {
+        return std::unexpected(last_system_error());
+    }
+    return {};
+}
+
 }

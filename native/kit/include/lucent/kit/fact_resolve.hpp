@@ -1,7 +1,5 @@
 #pragma once
 
-#include <algorithm>
-#include <array>
 #include <span>
 #include <vector>
 
@@ -61,27 +59,5 @@ auto resolve(
     std::span<const fact_value> values,
     std::span<const module_image> modules
 ) -> resolve_report;
-
-// Facts a feature can require together. Available when every one of them resolved.
-template <usize Count>
-class capability final {
-public:
-    template <typename... Facts>
-        requires(sizeof...(Facts) == Count)
-    consteval explicit capability(const Facts&... facts) noexcept
-        : m_facts{&facts.record()...} {}
-
-    auto is_available() const -> bool {
-        return std::ranges::all_of(m_facts, [](const fact_record* member) {
-            return member->status == fact_status::resolved;
-        });
-    }
-
-private:
-    std::array<const fact_record*, Count> m_facts;
-};
-
-template <typename... Facts>
-capability(const Facts&...) -> capability<sizeof...(Facts)>;
 
 }

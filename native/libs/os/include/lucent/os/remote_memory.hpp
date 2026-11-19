@@ -58,4 +58,7 @@ auto read_remote(const process& owner, remote_range range) -> result<std::vector
 // target run at the input domain's rate.
 auto read_remote(const process& owner, uptr address, std::span<std::byte> into) -> result<void>;
 
+auto write_remote(const process& owner, uptr address, std::span<const std::byte> bytes)
+    -> result<void>;
+
 }

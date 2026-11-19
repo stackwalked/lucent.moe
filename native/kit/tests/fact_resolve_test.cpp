@@ -11,6 +11,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <lucent/kit/capability.hpp>
 #include <lucent/kit/fact.hpp>
 
 // Resolves this test binary's own linked facts against this test binary's own image, standing in
@@ -250,12 +251,12 @@ TEST_CASE("a value for a fact this image doesn't link is counted, and changes no
 
 TEST_CASE("a capability is available only while every fact in it resolved") {
     const module_image image = self();
-    constexpr capability sizing{probe_owner_size, probe_large};
+    using sizing = capability<probe_owner_size, probe_large>;
 
     std::ignore = resolve_with(image, good_values(image));
-    const bool is_available_with_all = sizing.is_available();
+    const bool is_available_with_all = is_available(sizing{});
     std::ignore = resolve_with(image, with(good_values(image), probe_large, 16));
-    const bool is_available_with_one_rejected = sizing.is_available();
+    const bool is_available_with_one_rejected = is_available(sizing{});
 
     CHECK(is_available_with_all);
     CHECK_FALSE(is_available_with_one_rejected);

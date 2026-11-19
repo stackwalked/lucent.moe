@@ -82,10 +82,11 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
   - hook requests from facts, with the slot's signature checked against the fact's, and install
     checking `vtable[slot] == method` when both are facts;
   - `hook_access` created per call.
-- Access boundary:
-  - `read_access`/`write_access` tokens and `field`, over `libs/foreign`'s memory source and
-    foreign pointers;
-  - a feature touching foreign memory directly is a compile error.
+- Access boundary (`read_access`/`write_access` over a type-level `capability` have landed):
+  - a feature touching foreign memory directly is a compile error: features get views and stage
+    tokens, never an access token;
+  - typed calls through method facts, and slot reads through vtable facts;
+  - `foreign_ptr32` owners for fields, when stable's foreign layer lands.
 - A `raw` escape hatch: explicit, findable with grep, counted in `:check`. Uses get promoted into proper APIs.
 - Error model:
   - `result<T>` for expected failures;
@@ -735,7 +736,8 @@ live in `wishlist/protection.md`.
 
 Tamaki (github.com/gorelace/tamaki: a standalone exe reading osu! from outside, SendInput, its own
 DX11 overlay window; lazer and stable) is rewritten here as a second product, the osu project.
-`libs/foreign` (memory source, `foreign_ptr`, `foreign_ptr32`) has landed.
+`libs/foreign` (memory source, `foreign_ptr`, `foreign_ptr32`) and kit's `read_access` and
+`write_access` have landed.
 
 - Decided:
   - one product format (a module plus fact bundles) with two placements: mapped into the game
@@ -766,8 +768,7 @@ DX11 overlay window; lazer and stable) is rewritten here as a second product, th
 - A live probe in dev (Tamaki's `ChainCheck`) walks every chain in a running game with the
   candidate facts before sign-off.
 - Out of scope: anything around osu!'s own client authentication.
-- Order: the access tokens (`read_access`, `write_access`, `field`), shared with cs2; the kit
-  split; `lucent-host` and its attach loop; the .NET harvest; `engines/dotnet` and lazer's
+- Order: the kit split; `lucent-host` and its attach loop; the .NET harvest; `engines/dotnet` and lazer's
   foreign layer; the osu domains (play state, input, overlay window); features (relax, tap assist, aim assist, autobot and replay, with
   `humanize` as a library); stable; the `products/` entry.
 
