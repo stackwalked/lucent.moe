@@ -221,8 +221,10 @@ emulate in bulk, and the decrypted strings then label the functions that use the
   build. Fact names are checked today; feature and setting names are not, and they leak: an
   invariant records its enclosing function's name, which for templates over a feature (`entry_of`)
   spells the feature's type. Decided: release faults record only the failing check's RVA (PDBs
-  archived per release symbolize them), and the post-link check also refuses feature and setting
-  names.
+  archived per release symbolize them). Landed: a release cs2 image went from 21 source paths and
+  86 `lucent::` names to none. Feature and setting names can't be refused by name today (they exist
+  only as hashed template arguments, which no tool can list), so the printable-run gate below is
+  what catches them.
 
 ## Virtualizer
 

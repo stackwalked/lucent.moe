@@ -79,8 +79,7 @@ fact set is promoted, and the time that took is on record.
 
 Every layer the features need, each proven by one feature, before any family is ported.
 
-- Kit: the rest of Kit below (lifecycle resolve stage, `hook_object`, hooks from facts, the access
-  boundary, the error model, the registry's lapse policy and failed state, config store, binds).
+- Kit: the rest of Kit below (the registry's lapse policy and failed state, config store, binds).
 - Render: `ui`, `menu`, theme and animation in full; HUD windows on plate; `tools/menu-shot`; the
   text and D3D11 leftovers (one atlas patch type, HDR targets, device rebuild, dev stats, the
   `frame_data` fuzz target).
@@ -267,30 +266,14 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
   `thread_local`/`__declspec(thread)`, and our code bans function-local statics. A dependency that
   needs TLS is a decision: build it with `/Zc:threadSafeInit-`, keep it out of the module, or implement
   TLS through ntdll internals with a check per Windows build.
-- Lifecycle: a resolve stage between boot and attach (boot → attach → run → detach → unload exists).
-  - Safe points.
-  - In-flight hook counting.
-  - Unhooking only once no hook call is in progress.
-- Hook manager (inline hooks, all-or-nothing install, in-flight counts, and removal proven idle
-  with every other thread frozen landed):
-  - kit worker threads join before hook removal; until then removal counts them as busy;
-  - `hook_object`: shadow vtables, only on objects that live as long as the module; removal restores
-    the vtable pointer only if it's still ours (read under `contain()`) and frees the copy once
-    drained. No patching of slots in the real vtable: it misses devirtualized and direct calls;
-  - hook requests from facts, with the slot's signature checked against the fact's, and install
-    checking `vtable[slot] == method` when both are facts;
-  - `hook_access` created per call.
-- Access boundary (`read_access`/`write_access` over a type-level `capability` have landed):
-  - a feature touching foreign memory directly is a compile error: features get views and stage
-    tokens, never an access token;
-  - typed calls through method facts, and slot reads through vtable facts;
-  - `foreign_ptr32` owners for fields, when stable's foreign layer lands.
-- A `raw` escape hatch: explicit, findable with grep, counted in `:check`. Uses get promoted into proper APIs.
-- Error model:
-  - `result<T>` for expected failures;
-  - `LUCENT_ENSURE` → `fault` → the feature is disabled;
-  - `LUCENT_INVARIANT` → die (`__fastfail`);
-  - foreign faults (access violations) are caught at the boundary.
+- Lifecycle (the resolve stage, hooks from facts, `hook_object`, the access boundary through
+  `domain_token`, the counted `raw` escape hatch and the error model with RVA-only release faults
+  landed):
+  - the boundary's remaining hole: a feature can still call `foreign::read` on
+    `memory_source::this_process()` directly, since `libs/foreign` arrives through kit's headers;
+  - a test of the whole lifecycle end to end (its parts are tested alone);
+  - `foreign_ptr32` owners for fields, when stable's foreign layer lands;
+  - `raw` uses get promoted into proper APIs; the counter gates nothing yet.
 - Features never hold kit resources while touching foreign memory. This closes the `/EHs` destructor gap.
 - Feature registry (registry, states, wiring, dispatch, safe point and published views landed):
   - a lapse policy per feature;
