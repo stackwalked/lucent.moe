@@ -1,0 +1,10 @@
+# Components get data from route loaders and act through server functions; a fetch in a
+# component bypasses both, and the gateway with them.
+id: web-no-fetch-in-components
+language: Tsx
+severity: error
+message: "no fetch in components: load data in the route's loader, act through a server function"
+files:
+  - "web/**/*.tsx"
+rule:
+  pattern: "fetch($$$)"

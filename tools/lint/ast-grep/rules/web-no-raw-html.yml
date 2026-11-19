@@ -1,0 +1,12 @@
+# Markup from a string bypasses React's escaping and, once Trusted Types is enforced, fails.
+id: web-no-raw-html
+language: Tsx
+severity: error
+message: "no dangerouslySetInnerHTML: render elements, or text React escapes"
+files:
+  - "web/**/*.tsx"
+rule:
+  kind: jsx_attribute
+  has:
+    kind: property_identifier
+    regex: "^dangerouslySetInnerHTML$"

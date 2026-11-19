@@ -3,7 +3,8 @@
   "private": true,
   "workspaces": [
     "platform/*",
-    "platform/packages/*"
+    "platform/packages/*",
+    "web"
   ],
   "devDependencies": {
     "@biomejs/biome": "2.6.8",

@@ -1,0 +1,28 @@
+# Platform is reached only through the gateway, which adds the session, client and request id
+# and handles the refusals no page should; the client never reaches a browser bundle.
+id: web-rpc-through-gateway
+language: TypeScript
+severity: error
+message: "the RPC client is the platform gateway's (web/src/server/platform.ts): call callPlatform or readPlatform"
+files:
+  - "web/**/*.ts"
+ignores:
+  - "web/src/server/platform.ts"
+  - "web/src/server/connect.ts"
+rule:
+  kind: import_statement
+  has:
+    kind: string
+    regex: "^.@lucent/rpc/client.$"
+---
+id: web-rpc-through-gateway-tsx
+language: Tsx
+severity: error
+message: "the RPC client is the platform gateway's (web/src/server/platform.ts): call callPlatform or readPlatform"
+files:
+  - "web/**/*.tsx"
+rule:
+  kind: import_statement
+  has:
+    kind: string
+    regex: "^.@lucent/rpc/client.$"

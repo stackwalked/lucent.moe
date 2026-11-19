@@ -1,0 +1,5 @@
+id: web-no-fetch-in-components
+valid:
+  - "export const View = () => <p>{data.name}</p>;"
+invalid:
+  - "export const View = () => { fetch(\"/api\"); return <p />; };"

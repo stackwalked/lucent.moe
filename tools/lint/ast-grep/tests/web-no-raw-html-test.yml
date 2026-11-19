@@ -1,0 +1,5 @@
+id: web-no-raw-html
+valid:
+  - "export const View = () => <p>{text}</p>;"
+invalid:
+  - "export const View = () => <p dangerouslySetInnerHTML={{ __html: html }} />;"

@@ -36,11 +36,12 @@ tasks:
       - "!/**/node_modules/**/*"
       - "!/**/node_modules/*"
   ast-grep:
-    command: "uv run tools/lint/staged.py uv run --frozen ast-grep scan --config tools/lint/ast-grep/sgconfig.yml native platform"
+    command: "uv run tools/lint/staged.py uv run --frozen ast-grep scan --config tools/lint/ast-grep/sgconfig.yml native platform web"
     options: { cache: false }
     inputs:
       - "/native/**/*"
       - "/platform/**/*"
+      - "/web/**/*"
       - "/tools/lint/ast-grep/**/*"
       - "/uv.lock"
       - "!/**/node_modules/**/*"

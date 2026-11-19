@@ -1,0 +1,46 @@
+project:
+  description: "lucent.moe in the browser: TanStack Start on React, served by its own Bun entry."
+
+language: "typescript"
+layer: "application"
+
+dependsOn:
+  - "platform-core"
+  - "policy"
+  - "rpc"
+
+tasks:
+  # routeTree.gen.ts is generated, never committed: Start's own plugin writes it, through a Vite
+  # server started and closed again.
+  routes:
+    command: "bun dev/routes.ts"
+    inputs:
+      - "src/routes/**/*"
+      - "src/router.tsx"
+      - "vite.config.ts"
+    outputs:
+      - "src/routeTree.gen.ts"
+  typecheck:
+    deps: ["~:routes"]
+  build:
+    command: "bun vite build"
+    deps: ["~:routes"]
+    inputs:
+      - "src/**/*"
+      - "vite.config.ts"
+    outputs:
+      - "dist"
+  # Vite with hot reload on :4710, beside the platform it calls.
+  dev:
+    command: "bun vite"
+    deps: ["~:routes", "server:dev"]
+    preset: "server"
+    options:
+      envFile: "/.config/dev.env"
+  # The production build behind the real entry, for checking it locally.
+  start:
+    command: "bun src/main.ts"
+    deps: ["~:build"]
+    preset: "server"
+    options:
+      envFile: "/.config/dev.env"

@@ -1,0 +1,13 @@
+# Web's CSP allows no inline styles (style-src 'self'), and its CSS uses semantic tokens only:
+# styling goes through classes in module CSS.
+id: web-no-inline-style
+language: Tsx
+severity: error
+message: "no `style` prop: the CSP refuses inline styles; use a class from module CSS"
+files:
+  - "web/**/*.tsx"
+rule:
+  kind: jsx_attribute
+  has:
+    kind: property_identifier
+    regex: "^style$"

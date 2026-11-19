@@ -1,0 +1,7 @@
+id: web-no-raw-link
+valid:
+  - "export const View = () => <Link to=\"/admin/accounts\">Accounts</Link>;"
+  - "export const View = () => <a id=\"top\" />;"
+invalid:
+  - "export const View = () => <a href=\"/admin\">Admin</a>;"
+  - "export const View = () => <a href={url} />;"

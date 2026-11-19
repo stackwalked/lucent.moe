@@ -1,0 +1,23 @@
+# Internal links go through the router's Link (typed routes, preloading); links leaving the site
+# through ExternalLink, which sets rel and target once.
+id: web-no-raw-link
+language: Tsx
+severity: error
+message: "no <a href>: use the router's Link, or ExternalLink for other sites"
+files:
+  - "web/**/*.tsx"
+ignores:
+  - "web/src/ui/external-link.tsx"
+rule:
+  any:
+    - kind: jsx_opening_element
+    - kind: jsx_self_closing_element
+  all:
+    - has:
+        field: name
+        regex: "^a$"
+    - has:
+        kind: jsx_attribute
+        has:
+          kind: property_identifier
+          regex: "^href$"

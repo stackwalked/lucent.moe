@@ -608,21 +608,17 @@ live in `wishlist/protection.md`.
   `platform/server/src/{core,db,products,authority,internal}`. Exact package pins in this section
   are provisional until their slice starts and checks them (TypeScript 7.0.2 was pinned before
   any tool needing its API was tried). Still to land:
-  - `web/` workspace (`web` moon id), Vite caches under `.moon/cache/vite/<project>`;
   - `contracts/*` and `platform/connectors/discord` (`discord`) as their slices arrive;
   - `platform/packages/testing` (the cluster harness and software authenticator), with web's
     HTTP-level integration tests, its second consumer. `core`, `rpc`, `policy` and `catalog`
     landed in `platform/packages/` (`core`'s moon id is `platform-core`: native has `core`);
   - the native `/v1` listener and periodic jobs, in the slice that gives them routes and work
     (boot, the internal listener, `ops.ts` and `server:dev`/`server:seed` landed);
-  - slice 1B pins, spiked on bun 1.4.4 + TypeScript 7.0.2 strict, all holding: TanStack Start and
-    `@tanstack/react-router@1.170.46`, `vite` with `@vitejs/plugin-react@6.3.0`, and React
-    Compiler 1.0.0 through `@rolldown/plugin-babel@0.3.1` (plugin order: `tanstackStart()`,
-    `react()`, then babel); `@types/react`/`@types/react-dom` `19.2.0`. The spike ran through
-    `nitro@3.0.261103-rc`, which the design drops for our own `Bun.serve` entry (fallback if Start's
-    build lacks a `fetch` handler). Found on the way: the server-fn input method is `.validator`
-    (not `.inputValidator`); server functions demand `Origin` + `Sec-Fetch-Site` and
-    seroval-encoded bodies; `routeTree.gen.ts` needs a Biome ignore;
+  - `web/` landed on the slice 1B pins (in `web/package.json`) without Nitro: Start's build
+    exports `{ fetch }`, which `web/src/main.ts` serves from `Bun.serve`, and the entry hands
+    each request's CSP nonce to the router through `fetch(request, { context })`. Found on the
+    way: the server-fn input method is `.validator` (not `.inputValidator`), and server
+    functions demand `Origin` + `Sec-Fetch-Site` and seroval-encoded bodies;
   - optional plan templates and `connector_discord_rule` tables when their consumers land.
 - Auth, credentials, sessions and authority:
   - No `better-auth`: old lucent spent too long fighting it, and its model has no room for the

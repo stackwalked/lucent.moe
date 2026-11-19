@@ -1,0 +1,5 @@
+id: web-no-inline-style
+valid:
+  - "export const View = () => <p className={styles.note}>x</p>;"
+invalid:
+  - "export const View = () => <p style={{ color: \"red\" }}>x</p>;"

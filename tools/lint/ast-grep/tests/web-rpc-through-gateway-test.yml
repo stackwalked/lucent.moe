@@ -1,0 +1,11 @@
+id: web-rpc-through-gateway
+valid:
+  - "import { webContract } from \"@lucent/rpc/web\";"
+invalid:
+  - "import { createRpcClient } from \"@lucent/rpc/client\";"
+---
+id: web-rpc-through-gateway-tsx
+valid:
+  - "import { callPlatform } from \"../server/platform.ts\";"
+invalid:
+  - "import type { RpcClient } from \"@lucent/rpc/client\";"
