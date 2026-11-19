@@ -493,7 +493,18 @@ live in `wishlist/protection.md`.
     and `resources` serves admin-curated files.
 - Vertical slices (directories appear only with their slice):
   1. authority, credentials, sessions and `web/` shell + admin people/audit;
-  2. PC enrollment, native `/v1` reservations/grants/leases and module/loader releases;
+  2. PC enrollment, native `/v1` reservations/grants/leases and module/loader releases. The
+     architecture is still under discussion; decided so far:
+     - one slice built end to end, native and server together, not split like slice 1;
+     - without a usable TPM 2.0 the device key falls back to a non-exportable CNG software key,
+       recorded on the device as software-backed for risk scoring and staff to see, so no PC is
+       locked out by hardware;
+     - when a product slot is full, the newest session takes it: the old session's next renewal is
+       refused and it lapses within the lease TTL, so a crashed loader never blocks a restart;
+     - open: who renews the lease. The loader (holds the device key and the only network stack,
+       relays signed leases to the module over the session pipe) or the module itself (the pipe is
+       one more channel to protect, and the module talks to the server for bundles anyway, but it
+       then needs a key it can sign with inside the game process).
   3. fact sets, session bundles, live revisions and integrity/risk scoring;
   4. cloud sync, crash reports, tickets/appeals, review queue + DB-IP geo, waitlist and resources;
   5. profiles, avatar codec, comments, shouts, inbox + SSE presence/events, guides and
