@@ -262,3 +262,6 @@ function(lucent_shaders name)
     target_sources(lucent_${name} PRIVATE ${headers})
     target_include_directories(lucent_${name} PRIVATE "${generated}")
 endfunction()
+
+# lucent::build, the generated per-release subkeys (build_keys.cmake).
+include("${CMAKE_CURRENT_LIST_DIR}/build_keys.cmake")
