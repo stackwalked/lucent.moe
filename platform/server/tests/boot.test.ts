@@ -72,3 +72,30 @@ test("a booted server stops answering once a newer instance boots", async () => 
         await second.value.stop();
     });
 });
+
+test("an instance that can't listen leaves the one serving untouched", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ databaseUrl }) => {
+        const serving = await startServer({
+            config: configFor(databaseUrl),
+            logger: silent,
+            epochPollIntervalMs: 20,
+        });
+        invariant(serving.ok, `first boot failed: ${JSON.stringify(serving)}`);
+        const port = Number(new URL(serving.value.internalAddress).port);
+
+        const clash = await startServer({
+            config: {
+                ...configFor(databaseUrl),
+                internalListen: { kind: "loopback", hostname: "127.0.0.1", port },
+            },
+            logger: silent,
+        });
+        expect(!clash.ok && clash.error.code).toBe("LISTEN_FAILED");
+        await Bun.sleep(100);
+        expect(await clientFor(serving.value).call("health.check", {})).toEqual(
+            ok({ productsLoaded: 2 }),
+        );
+        await serving.value.stop();
+    });
+});

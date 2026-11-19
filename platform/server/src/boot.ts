@@ -97,9 +97,21 @@ export async function startServer(params: {
         return await fail({ code: "CATALOG_INVALID", detail: `${where}${catalog.error.detail}` });
     }
 
-    // Claimed last before listening: from here on any older instance stops answering.
+    // Bound first, answering "unavailable" until the epoch is claimed: an instance that can't
+    // listen (another one holds the port) must not claim it, or the one serving stops answering
+    // with nothing to take over. Claiming is what makes any older instance stop.
+    let serve: ((req: Request) => Response | Promise<Response>) | null = null;
+    const listening = listen(config.internalListen, (req) =>
+        serve === null
+            ? Response.json(err({ code: "SERVICE_UNAVAILABLE" }), { status: 503 })
+            : serve(req),
+    );
+    if (!listening.ok) return await fail(listening.error);
     const epoch = await claimServiceEpoch(db);
-    if (!epoch.ok) return await fail({ code: "DATABASE_UNAVAILABLE", detail: epoch.error.code });
+    if (!epoch.ok) {
+        await listening.value.stop();
+        return await fail({ code: "DATABASE_UNAVAILABLE", detail: epoch.error.code });
+    }
     const epochGuard = openEpochGuard({
         db,
         ownEpoch: epoch.value,
@@ -126,18 +138,13 @@ export async function startServer(params: {
             detail: "LUCENT_DEV_PASSWORD_ONLY: no second factor, no step-up",
         });
     }
-    const app = createInternalWebApp({
+    serve = createInternalWebApp({
         auth,
         catalog: catalog.value,
         epochGuard,
         webInternalKey: config.webInternalKey,
         logger,
-    });
-    const listening = listen(config.internalListen, app.fetch);
-    if (!listening.ok) {
-        epochGuard.close();
-        return await fail(listening.error);
-    }
+    }).fetch;
     const { address } = listening.value;
     logger.write("info", "listening", {
         origin: "boot",
