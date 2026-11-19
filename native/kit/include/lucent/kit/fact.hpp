@@ -358,4 +358,10 @@ inline constexpr bool is_value_fact<fact::value<T>> = true;
 // const; only its status and resolved value are mutable, written at resolve. constexpr rather
 // than constinit so a capability's consteval constructor can read its members' keys; the mutable
 // members stay out of constant evaluation and are never folded.
-#define LUCENT_FACT __declspec(allocate(".lfact$m")) inline constexpr
+//
+// `used`, for optimized builds (clang-cl 23.1.5, /O2, found by the release preset's kit tests):
+// without it LLVM drops a fact referenced only for its compile-time key, so the section misses it,
+// and marks an internal-linkage fact it sees no store to as constant, which lands it in a
+// read-only `.lfact$m` that lld links as a second `.lfact` outside kit's markers, and folds its
+// value reads to 0. `used` makes LLVM assume references it can't see: emitted and writable.
+#define LUCENT_FACT [[gnu::used]] __declspec(allocate(".lfact$m")) inline constexpr

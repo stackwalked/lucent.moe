@@ -22,7 +22,9 @@ namespace {
 
 constexpr u8 test_module = 1;
 
-[[clang::noinline]] auto probe_function(i32 input) -> i32 {
+// optnone: at /O2 the loop folds to a closed-form leaf with no unwind data, which resolve rightly
+// accepts at any address; the rejection test needs a function .pdata describes.
+[[clang::noinline, clang::optnone]] auto probe_function(i32 input) -> i32 {
     i32 total = 0;
     for (i32 step = 0; step < input; ++step) {
         total += step;
@@ -157,6 +159,14 @@ TEST_CASE("an address inside a function, or a function in data, is rejected as a
     const module_image image = self();
     const u64 function = rva_of(image, std::bit_cast<uptr>(&probe_function));
     const u64 data = rva_of(image, std::bit_cast<uptr>(&probe_data));
+    // Without unwind data no address in the function is known not to start one, and +1 passes.
+    DWORD64 function_table_base = 0;
+    REQUIRE(
+        RtlLookupFunctionEntry(
+            std::bit_cast<DWORD64>(&probe_function), &function_table_base, nullptr
+        )
+        != nullptr
+    );
 
     CHECK(
         status_after(image, with(good_values(image), probe_method, function + 1), probe_method)
