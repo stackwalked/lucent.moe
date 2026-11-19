@@ -137,6 +137,20 @@ const PasskeyId = z
     .refine((value) => value.length % 4 !== 1, "not base64url");
 
 const SignedIn = z.object({ sessionToken: BearerToken, expiresAt: EpochMs });
+
+// The native path's ids as web carries them: 16 bytes in lowercase hex, and the loader's pushed
+// sign-in request as it appears in `/auth/device/<id>`.
+const WireId = z.string().regex(/^[0-9a-f]{32}$/);
+const SignInRequestId = z.string().regex(/^lauth_[A-Za-z0-9_-]{22}$/);
+// The first 40 bits of the device key's thumbprint, `XXXX-XXXX` in Crockford base32.
+const MatchCode = z.string().regex(/^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/);
+const KeyStorage = z.enum(["tpm", "software"]);
+const LoopbackRedirect = z.object({ redirectTo: z.string().startsWith("http://127.0.0.1:") });
+const DeviceRefusal = z.discriminatedUnion("code", [
+    Unavailable,
+    refusal("SESSION_INVALID"),
+    refusal("NOT_FOUND"),
+]);
 const PasskeyChallenge = z.object({ flowToken: BearerToken, options: RequestOptions });
 
 export const webContract = defineContract({
@@ -360,6 +374,93 @@ export const webContract = defineContract({
         input: z.strictObject({ flowToken: BearerToken, response: AuthenticationResponse }),
         output: z.object({ stepUpAt: EpochMs }),
         error: CredentialRefusal,
+    },
+
+    // The browser half of the loader's sign-in: web shows the code the loader shows, and on
+    // approval or denial sends the browser to `redirectTo`, the loader's loopback listener.
+    "devices.signIn.read": {
+        session: "member",
+        effect: "read",
+        input: z.strictObject({ requestId: SignInRequestId }),
+        output: z.object({ requestId: z.string(), matchCode: MatchCode, expiresAt: EpochMs }),
+        error: DeviceRefusal,
+    },
+    "devices.signIn.approve": {
+        session: "member",
+        effect: "write",
+        input: z.strictObject({ requestId: SignInRequestId }),
+        output: LoopbackRedirect,
+        error: DeviceRefusal,
+    },
+    "devices.signIn.deny": {
+        session: "member",
+        effect: "write",
+        input: z.strictObject({ requestId: SignInRequestId }),
+        output: LoopbackRedirect,
+        error: DeviceRefusal,
+    },
+    // PCs waiting for the member to confirm them, each with the code its loader shows.
+    "devices.enrollments.list": {
+        session: "member",
+        effect: "read",
+        input: z.strictObject({}),
+        output: z.object({
+            enrollments: z
+                .array(
+                    z.object({
+                        enrollmentId: WireId,
+                        matchCode: MatchCode,
+                        storage: KeyStorage,
+                        createdAt: EpochMs,
+                        expiresAt: EpochMs,
+                    }),
+                )
+                .readonly(),
+        }),
+        error: SessionRefusal,
+    },
+    // Needs a factor proven in the last few minutes. At the device limit the new PC replaces the
+    // old one when the self-service window allows; FORBIDDEN when it no longer does, or the key
+    // was enrolled elsewhere since the loader asked (the loader's own request names those first).
+    "devices.enrollments.approve": {
+        session: "member",
+        effect: "write",
+        input: z.strictObject({ operationId: OperationId, enrollmentId: WireId }),
+        output: z.object({ deviceId: WireId, replaced: z.boolean() }),
+        error: z.discriminatedUnion("code", [
+            Unavailable,
+            ...SessionRefusals,
+            refusal("NOT_FOUND"),
+            refusal("FORBIDDEN"),
+            Reused,
+        ]),
+    },
+    "devices.enrollments.deny": {
+        session: "member",
+        effect: "write",
+        input: z.strictObject({ enrollmentId: WireId }),
+        output: Done,
+        error: DeviceRefusal,
+    },
+    // The member's live PCs, and when they may next replace one themselves (null: now).
+    "devices.list": {
+        session: "member",
+        effect: "read",
+        input: z.strictObject({}),
+        output: z.object({
+            devices: z
+                .array(
+                    z.object({
+                        deviceId: WireId,
+                        matchCode: MatchCode,
+                        storage: KeyStorage,
+                        enrolledAt: EpochMs,
+                    }),
+                )
+                .readonly(),
+            replaceableFrom: EpochMs.nullable(),
+        }),
+        error: SessionRefusal,
     },
 
     "admin.accounts.list": {
