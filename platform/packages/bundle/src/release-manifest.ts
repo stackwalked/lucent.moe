@@ -8,6 +8,7 @@ import {
     openReader,
     type Reader,
     versionMismatch,
+    type Writer,
 } from "./wire.ts";
 
 // The release manifest (contracts/release-manifest/v1), as
@@ -84,6 +85,12 @@ export function toReleaseManifestBytes(manifest: ReleaseManifest): Uint8Array<Ar
     out.u32(RELEASE_MANIFEST_MAGIC);
     out.u16(RELEASE_MANIFEST_VERSION);
     out.u32(manifest.game);
+    writeBody(out, manifest);
+    return out.finish();
+}
+
+// The facts and capabilities, as both versions write them.
+function writeBody(out: Writer, manifest: Omit<ReleaseManifest, "game">): void {
     out.u32(manifest.facts.length);
     for (const fact of manifest.facts) {
         out.u64(fact.key);
@@ -98,7 +105,6 @@ export function toReleaseManifestBytes(manifest: ReleaseManifest): Uint8Array<Ar
             out.u64(member);
         }
     }
-    return out.finish();
 }
 
 function readCapability(input: Reader, factCount: number): Result<ManifestCapability, FormatError> {
@@ -135,10 +141,26 @@ export function parseReleaseManifest(bytes: Uint8Array): Result<ReleaseManifest,
     if (input.u16() !== RELEASE_MANIFEST_VERSION) {
         return versionMismatch();
     }
-    if (input.remaining() < 4 + 4) {
+    if (input.remaining() < 4) {
         return malformed();
     }
     const game = input.u32();
+    const body = readBody(input);
+    if (!body.ok) {
+        return body;
+    }
+    const manifest: ReleaseManifest = { game, ...body.value };
+    if (input.remaining() !== 0 || !isCanonical(manifest)) {
+        return malformed();
+    }
+    return ok(manifest);
+}
+
+// The facts and capabilities, as both versions write them; not yet checked for order.
+function readBody(input: Reader): Result<Omit<ReleaseManifest, "game">, FormatError> {
+    if (input.remaining() < 4) {
+        return malformed();
+    }
     const factCount = input.u32();
     if (factCount > MAX_FACTS || input.remaining() < factCount * FACT_SIZE) {
         return malformed();
@@ -162,11 +184,7 @@ export function parseReleaseManifest(bytes: Uint8Array): Result<ReleaseManifest,
         }
         capabilities.push(capability.value);
     }
-    const manifest: ReleaseManifest = { game, facts, capabilities };
-    if (input.remaining() !== 0 || !isCanonical(manifest)) {
-        return malformed();
-    }
-    return ok(manifest);
+    return ok({ facts, capabilities });
 }
 
 // BLAKE2b-256 over each fact's key and kind, sorted by key: what a release's fact sets carry as
@@ -181,8 +199,137 @@ export function manifestDigest(facts: readonly ManifestFact[]): Uint8Array<Array
     return blake2b256(out.finish());
 }
 
+// Version 2 (contracts/release-manifest/v2), as native/libs/bundle/src/release_manifest.cpp reads
+// and writes it: the product (products/<id>.toml) where version 1 named the Steam app, and the
+// module's features, so the server can turn an entitlement's feature tags into this release's
+// keyed ids. Version 1 stays readable through parseReleaseManifest.
+//
+//   u32 magic "LRM1", u16 version 2, u8 product size, product, the body as version 1 has it
+//   (facts, then capabilities), then u32 feature count and per feature: u64 key, u8 tag size, tag.
+
+const RELEASE_MANIFEST_V2 = 2;
+const MAX_FEATURES = 1 << 16;
+
+// A wired feature: its keyed id and the tag an entitlement grants it by.
+export type ManifestFeature = { readonly key: bigint; readonly tag: string };
+
+export type ReleaseManifestV2 = {
+    // [a-z0-9-], 1 to 32 bytes.
+    readonly product: string;
+    // Sorted by key, keys unique and never 0.
+    readonly facts: readonly ManifestFact[];
+    // Sorted by key, keys unique and never 0.
+    readonly capabilities: readonly ManifestCapability[];
+    // Sorted by key, keys unique and never 0; tags as the platform's FeatureTag.
+    readonly features: readonly ManifestFeature[];
+};
+
+const PRODUCT_ID = /^[a-z0-9-]{1,32}$/;
+const FEATURE_TAG = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+
+function isCanonicalV2(manifest: ReleaseManifestV2): boolean {
+    const keys = manifest.features.map((feature) => feature.key);
+    return (
+        PRODUCT_ID.test(manifest.product) &&
+        isCanonical({ game: 0, facts: manifest.facts, capabilities: manifest.capabilities }) &&
+        isStrictlySorted(keys) &&
+        !keys.includes(0n) &&
+        manifest.features.every((feature) => FEATURE_TAG.test(feature.tag))
+    );
+}
+
+const ascii = new TextEncoder();
+
+function writeText(out: Writer, text: string): void {
+    out.u8(text.length);
+    out.bytes(ascii.encode(text));
+}
+
+function readText(input: Reader): string | null {
+    if (input.remaining() < 1) {
+        return null;
+    }
+    const size = input.u8();
+    if (input.remaining() < size) {
+        return null;
+    }
+    return String.fromCharCode(...input.bytes(size));
+}
+
+// The manifest must be canonical, as its members describe; anything else is our own bug.
+export function toReleaseManifestV2Bytes(manifest: ReleaseManifestV2): Uint8Array<ArrayBuffer> {
+    invariant(isCanonicalV2(manifest), "release manifest isn't canonical");
+    invariant(manifest.features.length <= MAX_FEATURES, "too many features");
+    const out = createWriter();
+    out.u32(RELEASE_MANIFEST_MAGIC);
+    out.u16(RELEASE_MANIFEST_V2);
+    writeText(out, manifest.product);
+    writeBody(out, manifest);
+    out.u32(manifest.features.length);
+    for (const feature of manifest.features) {
+        out.u64(feature.key);
+        writeText(out, feature.tag);
+    }
+    return out.finish();
+}
+
+function readFeatures(input: Reader): ManifestFeature[] | null {
+    if (input.remaining() < 4) {
+        return null;
+    }
+    const count = input.u32();
+    if (count > MAX_FEATURES) {
+        return null;
+    }
+    const features: ManifestFeature[] = [];
+    for (let index = 0; index < count; index += 1) {
+        if (input.remaining() < 8) {
+            return null;
+        }
+        const key = input.u64();
+        const tag = readText(input);
+        if (tag === null) {
+            return null;
+        }
+        features.push({ key, tag });
+    }
+    return features;
+}
+
+// Canonical or nothing, as parseReleaseManifest, and besides: a valid product id, features sorted
+// with unique non-zero keys and valid tags. Version 1 bytes are VERSION_MISMATCH.
+export function parseReleaseManifestV2(bytes: Uint8Array): Result<ReleaseManifestV2, FormatError> {
+    const input = openReader(bytes);
+    if (input.remaining() < 4 + 2) {
+        return malformed();
+    }
+    if (input.u32() !== RELEASE_MANIFEST_MAGIC) {
+        return malformed();
+    }
+    if (input.u16() !== RELEASE_MANIFEST_V2) {
+        return versionMismatch();
+    }
+    const product = readText(input);
+    if (product === null) {
+        return malformed();
+    }
+    const body = readBody(input);
+    if (!body.ok) {
+        return body;
+    }
+    const features = readFeatures(input);
+    if (features === null) {
+        return malformed();
+    }
+    const manifest: ReleaseManifestV2 = { product, ...body.value, features };
+    if (input.remaining() !== 0 || !isCanonicalV2(manifest)) {
+        return malformed();
+    }
+    return ok(manifest);
+}
+
 // Sorted and unique: every fact some core capability needs.
-export function coreFactKeys(manifest: ReleaseManifest): bigint[] {
+export function coreFactKeys(manifest: Pick<ReleaseManifest, "capabilities">): bigint[] {
     const keys = new Set<bigint>();
     for (const capability of manifest.capabilities) {
         if (capability.level === "core") {

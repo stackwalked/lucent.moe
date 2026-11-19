@@ -15,6 +15,23 @@ export function readContractJson(contract: string, file: string): Promise<unknow
     return Bun.file(join(CONTRACTS, contract, "v1", file)).json();
 }
 
+// The same at another version, such as "release-manifest" / "v2".
+export function readVersionedFile(
+    contract: string,
+    version: string,
+    file: string,
+): Promise<Uint8Array> {
+    return Bun.file(join(CONTRACTS, contract, version, file)).bytes();
+}
+
+export function readVersionedJson(
+    contract: string,
+    version: string,
+    file: string,
+): Promise<unknown> {
+    return Bun.file(join(CONTRACTS, contract, version, file)).json();
+}
+
 // RFC 8032's test keys 1 and 2: the vectors' signer, and a key that signed none of them.
 export const SIGNER_PUBLIC_KEY = Uint8Array.fromHex(
     "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
