@@ -2,8 +2,12 @@ import { ProductDefinition } from "@lucent/catalog/product";
 import {
     AccountId,
     BearerToken,
+    ChannelId,
+    EntitlementId,
     EpochMs,
+    FeatureTag,
     OperationId,
+    ProductId,
     RoleId,
     SessionId,
 } from "@lucent/core/scalars";
@@ -152,6 +156,33 @@ const DeviceRefusal = z.discriminatedUnion("code", [
     refusal("NOT_FOUND"),
 ]);
 const PasskeyChallenge = z.object({ flowToken: BearerToken, options: RequestOptions });
+const DeviceName = z.string().trim().min(1).max(64);
+// A live device as its owner and staff see it. `lastSeenAt` is the last lease a module running on
+// it was given; null before its first start.
+const Device = z.object({
+    deviceId: WireId,
+    name: z.string().nullable(),
+    matchCode: MatchCode,
+    storage: KeyStorage,
+    enrolledAt: EpochMs,
+    lastSeenAt: EpochMs.nullable(),
+});
+// When the member may next replace or remove a device themselves; null when they may now.
+const DeviceWindow = EpochMs.nullable();
+const Features = z.union([z.literal("*"), z.array(FeatureTag).readonly()]);
+const ProductGrant = z.object({
+    productId: ProductId,
+    features: Features,
+    channels: z.array(ChannelId).readonly(),
+});
+const Entitlement = z.object({
+    entitlementId: EntitlementId,
+    status: z.enum(["active", "suspended", "revoked"]),
+    validFrom: EpochMs,
+    validUntil: EpochMs.nullable(),
+    createdAt: EpochMs,
+    products: z.array(ProductGrant).readonly(),
+});
 
 export const webContract = defineContract({
     "health.check": {
@@ -382,7 +413,12 @@ export const webContract = defineContract({
         session: "member",
         effect: "read",
         input: z.strictObject({ requestId: SignInRequestId }),
-        output: z.object({ requestId: z.string(), matchCode: MatchCode, expiresAt: EpochMs }),
+        output: z.object({
+            requestId: z.string(),
+            matchCode: MatchCode,
+            createdAt: EpochMs,
+            expiresAt: EpochMs,
+        }),
         error: DeviceRefusal,
     },
     "devices.signIn.approve": {
@@ -447,18 +483,64 @@ export const webContract = defineContract({
         session: "member",
         effect: "read",
         input: z.strictObject({}),
+        // `limit`: how many live PCs the account holds before approving another replaces one.
         output: z.object({
-            devices: z
+            devices: z.array(Device).readonly(),
+            limit: z.number().int().positive(),
+            replaceableFrom: DeviceWindow,
+        }),
+        error: SessionRefusal,
+    },
+    // Null clears the name.
+    "devices.rename": {
+        session: "member",
+        effect: "write",
+        input: z.strictObject({ deviceId: WireId, name: DeviceName.nullable() }),
+        output: Done,
+        error: DeviceRefusal,
+    },
+    // Needs a factor proven in the last few minutes, like approving one. Removing is a
+    // self-service change like replacing: refused while the window is closed, and it starts the
+    // window, or removing and enrolling would replace a PC as often as anyone liked.
+    "devices.remove": {
+        session: "member",
+        effect: "write",
+        input: z.strictObject({ operationId: OperationId, deviceId: WireId }),
+        output: Done,
+        error: z.discriminatedUnion("code", [
+            Unavailable,
+            ...SessionRefusals,
+            refusal("NOT_FOUND"),
+            refusal("DEVICE_CHANGE_TOO_SOON"),
+            Reused,
+        ]),
+    },
+
+    // The products the member is entitled to now, in catalog order, with the channels they may run
+    // and each channel's current release (null: none promoted there yet).
+    "products.list": {
+        session: "member",
+        effect: "read",
+        input: z.strictObject({}),
+        output: z.object({
+            products: z
                 .array(
                     z.object({
-                        deviceId: WireId,
-                        matchCode: MatchCode,
-                        storage: KeyStorage,
-                        enrolledAt: EpochMs,
+                        productId: ProductId,
+                        name: z.string(),
+                        kind: z.string(),
+                        features: Features,
+                        channels: z
+                            .array(
+                                z.object({
+                                    channel: ChannelId,
+                                    release: z.object({ promotedAt: EpochMs }).nullable(),
+                                }),
+                            )
+                            .readonly(),
                     }),
                 )
                 .readonly(),
-            replaceableFrom: EpochMs.nullable(),
         }),
         error: SessionRefusal,
     },
@@ -500,6 +582,11 @@ export const webContract = defineContract({
                 )
                 .readonly(),
             recentAudit: z.array(AuditEntry).readonly().nullable(),
+            // Every entitlement the account was issued, newest first, ended ones included.
+            entitlements: z.array(Entitlement).readonly(),
+            devices: z.array(Device).readonly(),
+            limit: z.number().int().positive(),
+            replaceableFrom: DeviceWindow,
         }),
         error: ReadRefusal,
     },
@@ -553,6 +640,37 @@ export const webContract = defineContract({
         input: z.strictObject({ accountId: AccountId }),
         output: z.object({ setupToken: BearerToken }),
         error: z.discriminatedUnion("code", [...StaffRefusals, refusal("NOT_FOUND")]),
+    },
+
+    // Valid from `validFrom` until `validUntil` (null: no end), each product on the channels given.
+    "admin.entitlements.issue": {
+        session: "member",
+        effect: "write",
+        input: z.strictObject({
+            operationId: OperationId,
+            accountId: AccountId,
+            validFrom: EpochMs,
+            validUntil: EpochMs.nullable(),
+            products: z
+                .array(
+                    z.strictObject({
+                        productId: ProductId,
+                        features: z.union([z.literal("*"), z.array(FeatureTag).min(1).max(64)]),
+                        channels: z.array(ChannelId).min(1).max(8),
+                    }),
+                )
+                .min(1)
+                .max(16),
+        }),
+        output: z.object({ entitlementId: EntitlementId }),
+        error: z.discriminatedUnion("code", [
+            ...StaffRefusals,
+            Reused,
+            refusal("NOT_FOUND"),
+            refusal("UNKNOWN_PRODUCT"),
+            refusal("UNKNOWN_CHANNEL"),
+            refusal("INVALID_WINDOW"),
+        ]),
     },
 
     "admin.roles.list": {
