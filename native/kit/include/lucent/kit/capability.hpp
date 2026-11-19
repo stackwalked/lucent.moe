@@ -12,9 +12,15 @@
 
 namespace lucent::kit {
 
-// The fact kinds foreign memory is reached through.
+// Every fact kind: foreign memory is reached through globals, fields and values, game code through
+// methods and slots, and a class is told by its vtable.
 template <typename T>
-inline constexpr bool is_fact = is_global_fact<T> || is_field_fact<T> || is_value_fact<T>;
+inline constexpr bool is_fact = is_method_fact<T>
+                                || is_global_fact<T>
+                                || is_vtable_fact<T>
+                                || is_slot_fact<T>
+                                || is_field_fact<T>
+                                || is_value_fact<T>;
 
 // NOLINTBEGIN(readability-redundant-parentheses): instantiated, a reference template argument reads as `(fact)`.
 

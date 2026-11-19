@@ -1,8 +1,10 @@
 #include "late_modules.hpp"
 
+#include <algorithm>
 #include <bit>
 #include <chrono>
 #include <expected>
+#include <span>
 #include <stop_token>
 #include <tuple>
 #include <utility>
@@ -10,12 +12,15 @@
 
 #include <Windows.h>
 
+#include <lucent/kit/capability.hpp>
+#include <lucent/kit/core_capabilities.hpp>
 #include <lucent/kit/dev_build.hpp>
 #include <lucent/kit/fact_apply.hpp>
 #include <lucent/kit/game_module.hpp>
 #include <lucent/os/unique_handle.hpp>
 
 #include "dev.hpp"
+#include "session_end.hpp"
 
 // build: Windows 10.0.26100; ntdll has exported both since Windows Vista, but neither the SDK's
 //        headers nor its ntdll.lib carry them, so they're looked up by name.
@@ -102,23 +107,61 @@ auto load_signal::wait(const std::stop_token& stop) const -> void {
     }
 }
 
-auto resolve_late_modules(const std::stop_token& stop, const load_signal& signal, late_facts late)
-    -> void {
+namespace {
+
+auto indices_of(std::span<const loaded_module> loaded) -> std::vector<u8> {
+    std::vector<u8> indices;
+    for (const loaded_module& each : loaded) {
+        indices.push_back(each.image.index);
+    }
+    return indices;
+}
+
+auto still_waiting(std::vector<declared_capability> core, std::span<const u64> waiting)
+    -> std::vector<declared_capability> {
+    std::erase_if(core, [&](const declared_capability& capability) {
+        return !std::ranges::contains(waiting, capability.key);
+    });
+    return core;
+}
+
+}
+
+auto resolve_late_modules(
+    const std::stop_token& stop, const load_signal& signal, late_facts late, session_end* ending
+) -> void {
     // Waits before the first scan: the signal watched from before the boot resolve, so a module
     // loaded since that scan has already set it, and one loaded before was in that scan.
-    while (!late.waiting.is_empty()) {
+    while (!late.waiting.is_empty() || !late.waiting_core.empty()) {
         signal.wait(stop);
         if (stop.stop_requested()) {
             return;
         }
         const std::vector<loaded_module> loaded = loaded_game_modules(late.modules);
-        const late_report report =
-            late.waiting.apply_loaded(late_request{.records = late.records, .modules = loaded});
-        if constexpr (is_dev_build) {
-            if (!report.sets.empty()) {
-                report_late_facts(report);
+        if (!late.waiting.is_empty()) {
+            const late_report report =
+                late.waiting.apply_loaded(late_request{.records = late.records, .modules = loaded});
+            if constexpr (is_dev_build) {
+                if (!report.sets.empty()) {
+                    report_late_facts(report);
+                }
             }
         }
+        if (late.waiting_core.empty()) {
+            continue;
+        }
+        const core_judgment judged =
+            judge_core(late.waiting_core, late.records, indices_of(loaded));
+        if (!judged.failed.empty()) {
+            if constexpr (is_dev_build) {
+                report_late_core_failed(judged.failed);
+            }
+            // The start went on only with a way to end the session.
+            LUCENT_INVARIANT(ending != nullptr);
+            ending->request(stop);
+            return;
+        }
+        late.waiting_core = still_waiting(std::move(late.waiting_core), judged.waiting);
     }
 }
 

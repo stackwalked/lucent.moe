@@ -9,6 +9,7 @@ lucent_library(kit
         include/lucent/kit/context.hpp
         include/lucent/kit/core_capabilities.hpp
         include/lucent/kit/dev_build.hpp
+        include/lucent/kit/domain_token.hpp
         include/lucent/kit/draw_context.hpp
         $<$<CONFIG:Debug>:include/lucent/kit/dev_channel.hpp>
         include/lucent/kit/fact.hpp
@@ -21,6 +22,7 @@ lucent_library(kit
         include/lucent/kit/hook.hpp
         include/lucent/kit/lifecycle.hpp
         include/lucent/kit/published.hpp
+        include/lucent/kit/raw.hpp
         include/lucent/kit/read_access.hpp
         include/lucent/kit/registry.hpp
         include/lucent/kit/session.hpp
@@ -46,9 +48,11 @@ lucent_library(kit
         src/hook.cpp
         src/late_modules.cpp
         src/lifecycle.cpp
+        src/raw.cpp
         src/registry.cpp
         src/release.cpp
         src/session.cpp
+        src/session_end.cpp
         src/session_message.cpp
         src/time_date_stamp.cpp
         src/worker_set.cpp
@@ -74,6 +78,7 @@ lucent_test(kit
         tests/late_modules_test.cpp
         tests/published_test.cpp
         tests/registry_test.cpp
+        tests/session_end_test.cpp
         tests/session_message_test.cpp
         tests/settings_test.cpp
         tests/unmap_stub_test.cpp
@@ -121,4 +126,28 @@ set_tests_properties(
         LABELS kit
         PASS_REGULAR_EXPRESSION
             "because 'needed_by<[^']*clock_view, [^']*tracker>' evaluated to false"
+)
+
+# Proves the access boundary: a feature that opens access to foreign memory itself, rather than
+# taking a domain's views, fails to compile with the boundary's own refusal. Built only by the test,
+# and kept out of compile_commands.json as above.
+add_library(lucent_kit_feature_opens_access OBJECT EXCLUDE_FROM_ALL tests/feature_opens_access.cpp)
+target_include_directories(lucent_kit_feature_opens_access PRIVATE include)
+target_link_libraries(
+    lucent_kit_feature_opens_access
+    PRIVATE lucent::core lucent::build lucent::draw lucent::foreign
+)
+target_compile_definitions(lucent_kit_feature_opens_access PRIVATE LUCENT_KIT_DEV_BUILD=1)
+set_target_properties(lucent_kit_feature_opens_access PROPERTIES EXPORT_COMPILE_COMMANDS OFF)
+add_test(
+    NAME "kit: a feature that opens foreign access itself fails to compile"
+    COMMAND
+        "${CMAKE_COMMAND}" --build "${CMAKE_BINARY_DIR}" --target lucent_kit_feature_opens_access
+)
+set_tests_properties(
+    "kit: a feature that opens foreign access itself fails to compile"
+    PROPERTIES
+        LABELS kit
+        PASS_REGULAR_EXPRESSION
+            "features get views and stage tokens; a domain opens access with its domain_token"
 )

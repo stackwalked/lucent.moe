@@ -2,11 +2,15 @@
 
 #include <span>
 #include <stop_token>
+#include <vector>
 
+#include <lucent/kit/capability.hpp>
 #include <lucent/kit/fact.hpp>
 #include <lucent/kit/fact_apply.hpp>
 #include <lucent/kit/game_module.hpp>
 #include <lucent/os/unique_handle.hpp>
+
+#include "session_end.hpp"
 
 namespace lucent::kit::detail {
 
@@ -44,18 +48,33 @@ private:
     unregister_fn m_unregister = nullptr;
 };
 
-// What the late-module worker needs: the sets still waiting, and what they apply to.
+// What the late-module worker needs: the sets and core capabilities still waiting, and what they
+// apply to.
 struct late_facts {
     waiting_sets waiting;
+    // Core capabilities that were unavailable only for a module not loaded yet.
+    std::vector<declared_capability> waiting_core;
     // The target's game modules: static data.
     std::span<const game_module> modules;
     std::span<const fact_record> records;
 };
 
 // The late-module worker's body. After every DLL load the signal reports, applies the waiting sets
-// whose modules the game has loaded, until none waits or stop is requested. The signal must have
-// been watched since before the sets were judged at boot. A dev build reports each outcome.
-auto resolve_late_modules(const std::stop_token& stop, const load_signal& signal, late_facts late)
-    -> void;
+// whose modules the game has loaded, then judges the waiting core capabilities again: one that
+// failed once its modules loaded ends the session (decided: a late core module waits, and only its
+// failure ends the session). Returns once nothing waits, once it ended the session, or once stop is
+// requested. The signal must have been watched since before the sets were judged at boot. A dev
+// build reports each outcome.
+auto resolve_late_modules(
+    const std::stop_token& stop, const load_signal& signal, late_facts late, session_end* ending
+) -> void;
+
+// What the lifecycle hands the late-module worker. The signal and the session end outlive it; the
+// session end is null only when no core capability waits.
+struct late_worker {
+    const load_signal* signal = nullptr;
+    session_end* ending = nullptr;
+    late_facts facts;
+};
 
 }

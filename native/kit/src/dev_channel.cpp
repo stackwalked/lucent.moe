@@ -43,7 +43,11 @@ auto name_of(fault_kind kind) -> std::string_view {
 auto describe(const fault& caught) -> std::string {
     if (caught.kind == fault_kind::ensure_failed) {
         return std::format(
-            "{} at {}:{}", name_of(caught.kind), caught.where.file_name(), caught.where.line()
+            "{} at {}:{} (rva {:#x})",
+            name_of(caught.kind),
+            caught.where.file_name(),
+            caught.where.line(),
+            caught.check
         );
     }
     return std::format(

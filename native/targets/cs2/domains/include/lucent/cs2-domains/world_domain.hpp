@@ -5,6 +5,7 @@
 #include <lucent/cs2-domains/view.hpp>
 #include <lucent/cs2-domains/world.hpp>
 #include <lucent/foreign/memory_source.hpp>
+#include <lucent/kit/domain_token.hpp>
 #include <lucent/kit/published.hpp>
 
 namespace lucent::cs2 {
@@ -23,7 +24,7 @@ struct world_frame {
 // frame stage once a hook there exists); read() on any. Competing features: none, it only reads.
 class world_domain final {
 public:
-    explicit world_domain(lucent::foreign::memory_source game);
+    world_domain(const kit::domain_token& opens, lucent::foreign::memory_source game);
     world_domain(const world_domain&) = delete ("the render thread reads its published frame");
     auto operator=(const world_domain&)
         -> world_domain& = delete ("the render thread reads its published frame");
@@ -38,6 +39,7 @@ public:
     auto read() -> kit::published<world_frame>::reading;
 
 private:
+    kit::domain_token m_opens;
     lucent::foreign::memory_source m_game;
     kit::published<world_frame> m_published;
 };

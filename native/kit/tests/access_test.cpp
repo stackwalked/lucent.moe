@@ -1,8 +1,11 @@
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cstddef>
 #include <span>
 #include <tuple>
+
+#include <Windows.h>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -11,6 +14,7 @@
 #include <lucent/kit/capability.hpp>
 #include <lucent/kit/fact.hpp>
 #include <lucent/kit/fact_resolve.hpp>
+#include <lucent/kit/raw.hpp>
 #include <lucent/kit/read_access.hpp>
 #include <lucent/kit/write_access.hpp>
 
@@ -49,6 +53,57 @@ LUCENT_FACT fact::field<player, i32> access_armor{
 
 using players = capability<access_root, access_player_size, access_health>;
 using armor = capability<access_armor>;
+
+// A class of this test binary's own, standing in for one of the game's: its vtable is a real one
+// in this image's read-only data, and an object of it starts with a pointer to it (MSVC x64 ABI).
+class widget {
+public:
+    widget() = default;
+    widget(const widget&) = delete ("a vtable sample, never copied");
+    auto operator=(const widget&) -> widget& = delete ("never copied");
+    widget(widget&&) = delete ("never moved");
+    auto operator=(widget&&) -> widget& = delete ("never moved");
+    virtual ~widget() = default;
+
+    virtual auto scaled(i32 factor) -> i32 {
+        return factor * m_scale;
+    }
+
+private:
+    i32 m_scale = 7;
+};
+
+// Another class, to be told apart from a widget.
+class gadget {
+public:
+    gadget() = default;
+    gadget(const gadget&) = delete ("a vtable sample, never copied");
+    auto operator=(const gadget&) -> gadget& = delete ("never copied");
+    gadget(gadget&&) = delete ("never moved");
+    auto operator=(gadget&&) -> gadget& = delete ("never moved");
+    virtual ~gadget() = default;
+
+    virtual auto scaled(i32 factor) -> i32 {
+        return -factor;
+    }
+};
+
+constexpr u8 this_image = 3;
+// The vtable's first entry is the deleting destructor; scaled() follows it.
+constexpr u64 scaled_slot = 1;
+
+LUCENT_FACT fact::vtable<widget> widget_vtable{"access_widget_vtable", this_image};
+LUCENT_FACT fact::slot<i32(widget*, i32)> widget_scaled{
+    "access_widget_scaled",
+    this_image,
+    "access_widget_vtable",
+};
+LUCENT_FACT fact::method<i32(widget*, i32)> widget_scaled_code{
+    "access_widget_scaled_code",
+    this_image,
+};
+
+using widgets = capability<widget_vtable, widget_scaled, widget_scaled_code>;
 
 // Reaching for a fact outside the capability fails to compile; the concept turns that into a value.
 template <typename Access, const auto& Field>
@@ -96,15 +151,51 @@ auto game_image() -> module_image {
     };
 }
 
-// Resolves the players' facts; armor gets no value.
+auto code_pointer_at(uptr address) -> uptr {
+    const result<uptr> held = foreign::read(
+        foreign::memory_source::this_process(), foreign::foreign_ptr<uptr>{.address = address}
+    );
+    REQUIRE(held.has_value());
+    return *held;
+}
+
+auto vtable_of(const void* object) -> uptr {
+    return code_pointer_at(std::bit_cast<uptr>(object));
+}
+
+auto entry_of(uptr vtable, u64 slot) -> uptr {
+    return code_pointer_at(vtable + (slot * sizeof(uptr)));
+}
+
+auto self() -> module_image {
+    const result<module_image> image =
+        image_at(this_image, std::bit_cast<uptr>(GetModuleHandleW(nullptr)));
+    REQUIRE(image.has_value());
+    return *image;
+}
+
+// Resolves the players' and the widget's facts; armor gets no value.
 auto resolve_players() -> void {
+    const module_image own = self();
+    const widget sample;
+    const uptr vtable = vtable_of(&sample);
     const std::array values{
         fact_value{.key = access_root.record().key, .value = root_rva},
         fact_value{.key = access_player_size.record().key, .value = player_stride},
         fact_value{.key = access_health.record().key, .value = health_offset},
+        fact_value{.key = widget_vtable.record().key, .value = vtable - own.base},
+        fact_value{.key = widget_scaled.record().key, .value = scaled_slot},
+        fact_value{
+            .key = widget_scaled_code.record().key,
+            .value = entry_of(vtable, scaled_slot) - own.base,
+        },
     };
-    const std::array modules{game_image()};
+    const std::array modules{game_image(), own};
     std::ignore = resolve(linked_fact_records(), values, modules);
+}
+
+auto address_of(const void* object) -> foreign::foreign_ptr<widget> {
+    return {.address = std::bit_cast<uptr>(object)};
 }
 
 TEST_CASE(
@@ -112,7 +203,9 @@ TEST_CASE(
 ) {
     resolve_players();
     std::array<std::byte, image_size> game = laid_out_game();
-    const read_access<players> access{foreign::memory_source::from_bytes(image_base, game)};
+    const read_access<players> access{
+        raw::token(), foreign::memory_source::from_bytes(image_base, game)
+    };
 
     const result<foreign::foreign_ptr<player>> first = access.read<access_root>();
     REQUIRE(first.has_value());
@@ -127,8 +220,8 @@ TEST_CASE("a field written through write_access is what read_access then reads")
     resolve_players();
     std::array<std::byte, image_size> game = laid_out_game();
     const foreign::memory_source source = foreign::memory_source::from_bytes(image_base, game);
-    const read_access<players> reader{source};
-    const write_access<players> writer{source};
+    const read_access<players> reader{raw::token(), source};
+    const write_access<players> writer{raw::token(), source};
     const foreign::foreign_ptr<player> first{.address = image_base + players_rva};
 
     REQUIRE(writer.write<access_health>(first, 40).has_value());
@@ -141,7 +234,9 @@ TEST_CASE("a field written through write_access is what read_access then reads")
 TEST_CASE("a field of a null owner fails to read instead of reading memory near address zero") {
     resolve_players();
     std::array<std::byte, image_size> low_memory{};
-    const read_access<players> access{foreign::memory_source::from_bytes(0, low_memory)};
+    const read_access<players> access{
+        raw::token(), foreign::memory_source::from_bytes(0, low_memory)
+    };
     CHECK_FALSE(access.read<access_health>(foreign::foreign_ptr<player>{}).has_value());
 }
 
@@ -149,6 +244,46 @@ TEST_CASE("a capability is unavailable while any one of its facts is unresolved"
     resolve_players();
     CHECK(is_available(players{}));
     CHECK_FALSE(is_available(armor{}));
+}
+
+TEST_CASE("a capability holding a vtable fact tells an object of its class from another") {
+    resolve_players();
+    REQUIRE(is_available(widgets{}));
+    const read_access<widgets> access{raw::token(), foreign::memory_source::this_process()};
+    const widget one;
+    const gadget other;
+
+    const result<bool> is_widget = access.is_instance<widget_vtable>(address_of(&one));
+    const result<bool> is_other_widget = access.is_instance<widget_vtable>(address_of(&other));
+
+    REQUIRE(is_widget.has_value());
+    REQUIRE(is_other_widget.has_value());
+    CHECK(*is_widget);
+    CHECK_FALSE(*is_other_widget);
+}
+
+TEST_CASE("a slot read through an object's vtable is the vtable fact's entry at that slot") {
+    resolve_players();
+    const read_access<widgets> access{raw::token(), foreign::memory_source::this_process()};
+    const widget one;
+
+    const result<uptr> through_object = access.slot_target<widget_scaled>(address_of(&one));
+    const result<uptr> through_vtable = access.vtable_entry<widget_vtable, widget_scaled>();
+
+    REQUIRE(through_object.has_value());
+    REQUIRE(through_vtable.has_value());
+    CHECK(*through_object == widget_scaled_code.address());
+    CHECK(*through_vtable == widget_scaled_code.address());
+}
+
+TEST_CASE("a method fact is called with the object as the target's own pointer") {
+    resolve_players();
+    const write_access<widgets> access{raw::token(), foreign::memory_source::this_process()};
+    widget one;
+
+    const i32 scaled = access.call<widget_scaled_code>(address_of(&one), 3);
+
+    CHECK(scaled == 21);
 }
 
 }

@@ -27,7 +27,10 @@
 #include <lucent/kit/game_module.hpp>
 #include <lucent/kit/worker_set.hpp>
 #include <lucent/os/file.hpp>
+#include <lucent/os/unique_handle.hpp>
 #include <lucent/pe/image_view.hpp>
+
+#include "../src/session_end.hpp"
 
 // A set keyed by a module that isn't loaded at boot waits, and applies once the module loads. This
 // test binary stands in for a module that "loads" between boot and a later scan; the late fixture
@@ -188,12 +191,10 @@ auto wait_until_available() -> bool {
 }
 
 // Starts the late worker the way the lifecycle does.
-auto start_late_worker(
-    worker_set& workers, const detail::load_signal& signal, detail::late_facts late
-) -> result<void> {
+auto start_late_worker(worker_set& workers, detail::late_worker handed) -> result<void> {
     return workers.start<"late facts">(
-        [&signal, waiting = std::move(late)](const std::stop_token& stop) mutable {
-            detail::resolve_late_modules(stop, signal, std::move(waiting));
+        [late = std::move(handed)](const std::stop_token& stop) mutable {
+            detail::resolve_late_modules(stop, *late.signal, std::move(late.facts), late.ending);
         }
     );
 }
@@ -210,11 +211,15 @@ TEST_CASE("the late worker resolves a module's facts when the loader loads it") 
     worker_set workers;
     const result<void> started = start_late_worker(
         workers,
-        *signal,
-        detail::late_facts{
-            .waiting = std::move(booted.waiting),
-            .modules = known,
-            .records = linked_fact_records(),
+        detail::late_worker{
+            .signal = &*signal,
+            .ending = nullptr,
+            .facts = detail::late_facts{
+                .waiting = std::move(booted.waiting),
+                .waiting_core = {},
+                .modules = known,
+                .records = linked_fact_records(),
+            },
         }
     );
     REQUIRE(started.has_value());
@@ -228,6 +233,92 @@ TEST_CASE("the late worker resolves a module's facts when the loader loads it") 
 
     CHECK(is_resolved);
     CHECK(fixture_count.get() == 3);
+}
+
+auto wait_until_requested(const detail::session_end& ending) -> bool {
+    const monotonic_clock real_time;
+    const clock::time_point deadline = real_time.now() + std::chrono::seconds{10};
+    while (!ending.is_requested()) {
+        if (real_time.now() > deadline) {
+            return false;
+        }
+        std::this_thread::yield();
+    }
+    return true;
+}
+
+// Stands in for the lifecycle thread blocked on the host; it holds no I/O to cancel.
+auto idle_until_stopped(const std::stop_token& stop) -> void {
+    while (!stop.stop_requested()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+}
+
+auto handle_of(std::jthread& thread) -> os::unique_handle {
+    HANDLE duplicated = nullptr;
+    const BOOL is_duplicated = DuplicateHandle(
+        GetCurrentProcess(),
+        thread.native_handle(),
+        GetCurrentProcess(),
+        &duplicated,
+        0,
+        FALSE,
+        DUPLICATE_SAME_ACCESS
+    );
+    REQUIRE(is_duplicated != FALSE);
+    return os::unique_handle{duplicated};
+}
+
+// A core capability made of the fixture's one fact, waiting for the fixture to load.
+auto fixture_core() -> std::vector<declared_capability> {
+    return {
+        declared_capability{
+            .key = 0x5eed,
+            .level = capability_level::core,
+            .members = {fixture_count.record().key},
+        },
+    };
+}
+
+TEST_CASE("a core capability waiting for a module that loads without its facts ends the session") {
+    REQUIRE(GetModuleHandleW(fixture_path().filename().c_str()) == nullptr);
+    const result<detail::load_signal> signal = detail::load_signal::watch();
+    REQUIRE(signal.has_value());
+    // 65 is outside fixture_count's range: the set applies once the fixture loads, and is rejected.
+    apply_report booted = apply_at_boot(
+        bundle_for(fixture_build(), {bundle::literal(fixture_count.record().key, 65)})
+    );
+    const std::string name = fixture_name();
+    const std::array known{game_module{.index = fixture_module, .name = name}};
+    std::jthread lifecycle{&idle_until_stopped};
+    detail::session_end ending{handle_of(lifecycle)};
+    worker_set workers;
+    const result<void> started = start_late_worker(
+        workers,
+        detail::late_worker{
+            .signal = &*signal,
+            .ending = &ending,
+            .facts = detail::late_facts{
+                .waiting = std::move(booted.waiting),
+                .waiting_core = fixture_core(),
+                .modules = known,
+                .records = linked_fact_records(),
+            },
+        }
+    );
+    REQUIRE(started.has_value());
+    std::this_thread::sleep_for(std::chrono::milliseconds{50});
+    const bool ended_before_load = ending.is_requested();
+
+    const HMODULE fixture = LoadLibraryW(fixture_path().c_str());
+    REQUIRE(fixture != nullptr);
+    const bool has_ended = wait_until_requested(ending);
+    CHECK(workers.stop().empty());
+    FreeLibrary(fixture);
+
+    CHECK_FALSE(ended_before_load);
+    CHECK(has_ended);
+    CHECK(fixture_count.record().status == fact_status::rejected);
 }
 
 }

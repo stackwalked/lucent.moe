@@ -18,6 +18,7 @@
 #include <lucent/kit/capability.hpp>
 #include <lucent/kit/fact.hpp>
 #include <lucent/kit/fact_resolve.hpp>
+#include <lucent/kit/raw.hpp>
 #include <lucent/kit/read_access.hpp>
 
 // client.dll laid out in bytes: the entity system, one chunk of identities, two controllers and
@@ -248,6 +249,7 @@ auto world_of(image& bytes) -> world {
     resolve_entities();
     REQUIRE(kit::is_available(foreign::entities{}));
     const kit::read_access<foreign::entities> game{
+        kit::raw::token(),
         lucent::foreign::memory_source::from_bytes(image_base, bytes),
     };
     return read_world(game);

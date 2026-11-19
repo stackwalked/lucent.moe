@@ -154,6 +154,8 @@ class method;
 template <typename R, typename... Args>
 class method<R(Args...)> final {
 public:
+    using signature = R(Args...);
+
     consteval method(std::string_view name, u8 module) noexcept
         : m_record{detail::make_record(name, {.kind = fact_kind::method, .module = module})} {}
 
@@ -198,6 +200,8 @@ private:
 template <typename Class>
 class vtable final {
 public:
+    using class_type = Class;
+
     consteval vtable(std::string_view name, u8 module) noexcept
         : m_record{detail::make_record(name, {.kind = fact_kind::vtable, .module = module})} {}
 
@@ -221,6 +225,9 @@ class slot;
 template <typename R, typename Class, typename... Args>
 class slot<R(Class*, Args...)> final {
 public:
+    using class_type = Class;
+    using signature = R(Class*, Args...);
+
     consteval slot(std::string_view name, u8 module) noexcept
         : m_record{detail::make_record(name, {.kind = fact_kind::slot, .module = module})} {}
 
@@ -327,6 +334,24 @@ private:
 };
 
 }
+
+template <typename T>
+inline constexpr bool is_method_fact = false;
+
+template <typename Signature>
+inline constexpr bool is_method_fact<fact::method<Signature>> = true;
+
+template <typename T>
+inline constexpr bool is_vtable_fact = false;
+
+template <typename Class>
+inline constexpr bool is_vtable_fact<fact::vtable<Class>> = true;
+
+template <typename T>
+inline constexpr bool is_slot_fact = false;
+
+template <typename Signature>
+inline constexpr bool is_slot_fact<fact::slot<Signature>> = true;
 
 template <typename T>
 inline constexpr bool is_global_fact = false;

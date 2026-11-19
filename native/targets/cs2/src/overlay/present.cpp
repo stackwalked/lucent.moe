@@ -18,12 +18,12 @@ namespace {
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables): the plain function the game calls can reach it no other way; the attachment owns what it points at.
 constinit overlay* drawn_overlay = nullptr;
 
-using present_fn = HRESULT (*)(IDXGISwapChain*, UINT, UINT);
+using present_call = kit::hook_access<HRESULT(IDXGISwapChain*, UINT, UINT)>;
 
-auto on_present(present_fn original, IDXGISwapChain* swap_chain, UINT interval, UINT flags)
+auto on_present(const present_call& call, IDXGISwapChain* swap_chain, UINT interval, UINT flags)
     -> HRESULT {
     drawn_overlay->draw(*swap_chain);
-    return original(swap_chain, interval, flags);
+    return call.original(swap_chain, interval, flags);
 }
 
 // NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables): a hook slot is a constinit global by design; the hook_set owns it while installed.

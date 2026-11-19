@@ -36,5 +36,11 @@ auto report_feature_fault(feature_id feature, const fault& caught) -> void;
 
 // The start was refused (lifecycle.cpp): these core capabilities are unavailable.
 auto report_refused_start(std::span<const u64> unavailable) -> void;
+// The start went on while these core capabilities wait for their modules (lifecycle.cpp), and these
+// failed once their modules loaded, which ends the session (late_modules.cpp).
+auto report_waiting_core(std::span<const u64> waiting) -> void;
+auto report_late_core_failed(std::span<const u64> failed) -> void;
+// The start was refused: core capabilities wait, and nothing could end the session if they fail.
+auto report_no_session_end(const error& failure) -> void;
 
 }

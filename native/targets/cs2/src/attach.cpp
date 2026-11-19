@@ -9,6 +9,7 @@
 #include <lucent/cs2-features/all.hpp>
 #include <lucent/foreign/memory_source.hpp>
 #include <lucent/kit/clock.hpp>
+#include <lucent/kit/domain_token.hpp>
 #include <lucent/kit/hook.hpp>
 #include <lucent/kit/lifecycle.hpp>
 #include <lucent/kit/registry.hpp>
@@ -69,13 +70,15 @@ private:
 
 }
 
-auto attach(kit::worker_set& workers) -> result<std::unique_ptr<kit::attachment>> {
+auto attach(kit::worker_set& workers, const kit::domain_token& opens)
+    -> result<std::unique_ptr<kit::attachment>> {
     kit::wiring wired;
     features::wire(wired);
     auto time = std::make_unique<kit::monotonic_clock>();
     auto features =
         std::make_unique<kit::registry>(std::move(wired), kit::default_entitlements(), *time);
-    auto world = std::make_unique<world_domain>(lucent::foreign::memory_source::this_process());
+    auto world =
+        std::make_unique<world_domain>(opens, lucent::foreign::memory_source::this_process());
     auto drawn = std::make_unique<overlay::overlay>(overlay::overlay_parts{
         .workers = &workers,
         .features = features.get(),
