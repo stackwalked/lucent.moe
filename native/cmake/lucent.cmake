@@ -110,6 +110,71 @@ function(lucent_module name)
             "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/check_no_tls.cmake"
         VERBATIM
     )
+    set_property(GLOBAL APPEND PROPERTY lucent_modules ${target})
+    get_property(is_layering_deferred GLOBAL PROPERTY lucent_layering_deferred)
+    if(NOT is_layering_deferred)
+        set_property(GLOBAL PROPERTY lucent_layering_deferred TRUE)
+        # At the end of the top-level directory: by then every target and every link is declared.
+        cmake_language(DEFER DIRECTORY "${CMAKE_SOURCE_DIR}" CALL lucent_check_module_layering)
+    endif()
+endfunction()
+
+# Fails the configure, and with it the build and :check, when a module links a <target>-finders
+# library, directly or through any chain of our libraries: finders are tooling, linked only by the
+# generator. Checked on CMake's own link graph rather than on moon's dependsOn, which is declared
+# by hand beside it and can drift from what actually links. A link inside a generator expression
+# counts whatever its condition, so a finder linked in one configuration fails all of them.
+function(lucent_check_module_layering)
+    get_property(modules GLOBAL PROPERTY lucent_modules)
+    foreach(module IN LISTS modules)
+        set(queue ${module})
+        set(seen ${module})
+        while(queue)
+            list(POP_FRONT queue current)
+            if(current STREQUAL module)
+                get_target_property(links ${current} LINK_LIBRARIES)
+            else()
+                get_target_property(links ${current} INTERFACE_LINK_LIBRARIES)
+            endif()
+            if(NOT links)
+                continue()
+            endif()
+            # Every name in an entry, so `$<$<CONFIG:Debug>:x>` and `$<LINK_ONLY:x>` yield x; the
+            # names that aren't targets (CONFIG, Debug, system libraries) drop out below.
+            string(REGEX MATCHALL "[A-Za-z0-9_.+-]+(::[A-Za-z0-9_.+-]+)*" names "${links}")
+            foreach(name IN LISTS names)
+                if(NOT TARGET ${name})
+                    continue()
+                endif()
+                get_target_property(aliased ${name} ALIASED_TARGET)
+                if(aliased)
+                    set(name ${aliased})
+                endif()
+                get_target_property(is_imported ${name} IMPORTED)
+                if(is_imported OR name IN_LIST seen)
+                    continue()
+                endif()
+                list(APPEND seen ${name})
+                set(parent_of_${name} ${current})
+                if(name MATCHES "-finders$")
+                    set(chain ${name})
+                    set(step ${current})
+                    while(NOT step STREQUAL module)
+                        list(PREPEND chain ${step})
+                        set(step ${parent_of_${step}})
+                    endwhile()
+                    list(PREPEND chain ${module})
+                    list(JOIN chain " -> " path)
+                    message(
+                        FATAL_ERROR
+                        "${module} links ${name}, a finders library, which only the generator may "
+                        "link: ${path}"
+                    )
+                endif()
+                list(APPEND queue ${name})
+            endforeach()
+        endwhile()
+    endforeach()
 endfunction()
 
 # lucent_executable(<name> SOURCES <sources>... [DEPS <targets>...])
