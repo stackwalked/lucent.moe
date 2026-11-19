@@ -396,7 +396,10 @@ Still to land, in order:
     against the schema's size and type. Coverage both ways, matching kinds. Deltas from the
     previous build flagged for sign-off. The generator signs nothing.
   - publish: the server refuses a set whose manifest digest isn't the release's, that lacks a fact
-    a `core` capability needs, or whose revision isn't newer.
+    a `core` capability needs, or whose revision isn't newer. It knows the release's facts and
+    core capabilities from the release manifest (`contracts/release-manifest/v1`, written by
+    `facts manifest`), which `publish-release` uploads; the server side of both is still to land,
+    and whether the manifest's game id is the Steam app or a product id is open.
   - load: bundle signature, format and module keys; the per-kind checks against the loaded image
     (`RtlLookupFunctionEntry` for methods), header reads through `contain()`. A failed fact makes
     its capabilities unavailable; telemetry reports its key and module build.
