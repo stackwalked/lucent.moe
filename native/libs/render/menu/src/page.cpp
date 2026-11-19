@@ -17,7 +17,6 @@
 #include <lucent/kit/registry.hpp>
 #include <lucent/kit/settings.hpp>
 #include <lucent/menu/catalog.hpp>
-#include <lucent/menu/described_feature.hpp>
 #include <lucent/menu/text_key.hpp>
 #include <lucent/text/text_layout.hpp>
 #include <lucent/ui/box_style.hpp>
@@ -72,13 +71,6 @@ struct page_build {
     std::string query;
     std::vector<kit::registry_change> changes;
 };
-
-auto description_of_feature(std::span<const described_feature> features, kit::feature_id feature)
-    -> const described_feature& {
-    const auto found = std::ranges::find(features, feature, &described_feature::id);
-    LUCENT_INVARIANT(found != features.end());
-    return *found;
-}
 
 auto line_text(ui::context& frame, std::string_view utf8, draw::color ink) -> void {
     frame.text({
@@ -294,10 +286,9 @@ auto setting_row(ui::context& frame, page_build& build, const shown_setting& set
 auto shown_settings(const page_build& build, const shown_feature& feature)
     -> std::vector<shown_setting> {
     const kit::feature_snapshot& shown = *feature.snapshot;
-    const described_feature& described = description_of_feature(build.input->features, shown.id);
-    LUCENT_INVARIANT(std::ssize(described.settings) == std::ssize(shown.settings));
+    LUCENT_INVARIANT(std::ssize(shown.descriptions) == std::ssize(shown.settings));
     std::vector<shown_setting> settings;
-    for (const auto [index, description] : std::views::enumerate(described.settings)) {
+    for (const auto [index, description] : std::views::enumerate(shown.descriptions)) {
         std::string label = text_of(
             *build.input->text, setting_text{.feature = shown.id, .setting = description.id}
         );

@@ -1,7 +1,6 @@
 lucent_library(menu
     HEADERS
         include/lucent/menu/catalog.hpp
-        include/lucent/menu/described_feature.hpp
         include/lucent/menu/page.hpp
         include/lucent/menu/table_catalog.hpp
         include/lucent/menu/text_key.hpp

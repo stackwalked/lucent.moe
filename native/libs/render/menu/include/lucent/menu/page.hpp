@@ -1,6 +1,5 @@
 #pragma once
 
-#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -10,7 +9,6 @@
 #include <lucent/kit/registry.hpp>
 #include <lucent/kit/settings.hpp>
 #include <lucent/menu/catalog.hpp>
-#include <lucent/menu/described_feature.hpp>
 #include <lucent/ui/context.hpp>
 #include <lucent/ui/element_id.hpp>
 
@@ -18,10 +16,9 @@ namespace lucent::menu {
 
 // What one frame of the settings page is generated from. Everything is borrowed for the call.
 struct page_input {
-    // The registry's published snapshot: the only state the page reads. Not null.
+    // The registry's published snapshot: the only state the page reads, settings' descriptions
+    // included. Not null.
     const kit::registry_snapshot* snapshot = nullptr;
-    // Every feature the snapshot lists, each with as many settings as its snapshot has values.
-    std::span<const described_feature> features;
     // Not null.
     const catalog* text = nullptr;
     // The search field's text: rows whose label holds it (ignoring ASCII case) are shown.

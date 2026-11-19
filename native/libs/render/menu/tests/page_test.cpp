@@ -18,7 +18,6 @@
 #include <lucent/kit/settings.hpp>
 #include <lucent/kit/wiring.hpp>
 #include <lucent/menu/catalog.hpp>
-#include <lucent/menu/described_feature.hpp>
 #include <lucent/menu/table_catalog.hpp>
 #include <lucent/menu/text_key.hpp>
 #include <lucent/ui/box_style.hpp>
@@ -80,13 +79,6 @@ constexpr auto control_of(kit::setting_id setting) -> ui::element_id {
     return setting_control_id(page, {.feature = box, .setting = setting});
 }
 
-const std::array<described_feature, 4> described{
-    description_of<box_feature>,
-    described_feature{.id = radar, .settings = {}},
-    described_feature{.id = aimbot, .settings = {}},
-    described_feature{.id = chams, .settings = {}},
-};
-
 auto initial_values() -> std::vector<kit::setting_value> {
     std::vector<kit::setting_value> values;
     values.reserve(kit::descriptions_of<box_settings>.size());
@@ -100,10 +92,25 @@ auto snapshot_with(kit::feature_state box_state) -> kit::registry_snapshot {
     return {
         .revision = 1,
         .features = {
-            {.id = box, .state = box_state, .settings = initial_values()},
-            {.id = radar, .state = kit::feature_state::unavailable, .settings = {}},
-            {.id = aimbot, .state = kit::feature_state::unentitled, .settings = {}},
-            {.id = chams, .state = kit::feature_state::failed, .settings = {}},
+            {
+                .id = box,
+                .state = box_state,
+                .descriptions = kit::descriptions_of<box_settings>,
+                .settings = initial_values(),
+            },
+            {
+                .id = radar,
+                .state = kit::feature_state::unavailable,
+                .descriptions = {},
+                .settings = {},
+            },
+            {
+                .id = aimbot,
+                .state = kit::feature_state::unentitled,
+                .descriptions = {},
+                .settings = {},
+            },
+            {.id = chams, .state = kit::feature_state::failed, .descriptions = {}, .settings = {}},
         },
     };
 }
@@ -179,7 +186,6 @@ public:
                         ui::key<"page">(),
                         {
                             .snapshot = &m_shown,
-                            .features = described,
                             .text = m_words,
                             .query = m_query,
                         }
