@@ -1,3 +1,6 @@
+project:
+  description: "The overlay's text through DirectWrite: fonts, shaping, fallback, rasterization, the glyph atlas, measure and wrap."
+
 language: "cpp"
 layer: "library"
 

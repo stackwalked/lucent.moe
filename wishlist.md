@@ -110,31 +110,16 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
 - Binds: `bind_slot`. Activity (a held key) is separate from lifecycle (on/off).
 - Overlay rendering is our own, not Dear ImGui: a highly custom look would mean patching its backend
   and rewriting its widgets. Libraries, in dependency order:
-  - `libs/render/text`: fonts, shaping, fallback, rasterization, the glyph atlas, measure and wrap.
-    Emits glyph quads into a draw list.
   - `libs/render/ui`: input snapshot, layout, widgets, interaction, animation, theme tokens. No GPU.
   - `libs/render/menu`: menu pages from the settings' `describe()`.
   - The target glues it together (Present hook, snapshot, ui, backend). A backend draws into the
     device and target it's handed and knows no hooks, so the same stack runs in a standalone window.
-- Text is DirectWrite end to end (an OS DLL: no dependency to vet for TLS), from an isolated
-  factory:
-  - shaping, bidi, line breaking, and fallback (our chain first, then the system's); our fonts
-    registered from bytes through an in-memory loader;
-  - hinted grayscale rasterization (`NATURAL_SYMMETRIC`) to A8 on the CPU, four horizontal subpixel
-    phases; no ClearType, which can't blend over arbitrary backgrounds;
-  - a fast path for strings fully in the primary font that need no shaping (cached advances plus
-    kerning pairs), and `IDWriteTextLayout` with a glyph-run-collecting renderer for the rest,
-    cached by string, font and width. Both yield one `text_layout` with one measure, wrap, ellipsis
-    and draw;
-  - the glyph atlas is fixed A8 pages (texture-array slices); entries carry their page's
-    generation; when full, the least recently used page not touched this frame is cleared and
-    reused. Icon pages are pinned. Rasterization is synchronous with a per-frame budget (an
-    over-budget glyph appears a frame later), and the UI's known characters are prewarmed;
-  - COLR emoji are stacked tinted glyph quads from the same atlas; bitmap emoji (sbix, CBDT) fall
-    back to the outline. Segoe UI Emoji on Windows 11 has v0 layers for every colour glyph,
-    beside its v1 paints (`research/kb/windows/segoe-ui-emoji-colr.md`);
-  - the text system lives on the render thread, takes UTF-8, and converts at the DirectWrite
-    boundary.
+- Text landed in `libs/render/text` (DirectWrite). Still to land with it:
+  - one atlas patch type in `draw` for `text::atlas_patch` and `d3d11::atlas_upload`, which match
+    field for field;
+  - `draw_list` exposing `pixels_per_unit`, so drawing a layout on a list of another scale is
+    refused;
+  - a COLR test on a fixture font with colour layers (only probed against Segoe UI Emoji so far).
 - Around the D3D11 backend (`libs/render/backends/d3d11` has landed):
   - HDR targets (scRGB, HDR10) draw in linear scRGB at a fixed paper white, built when first seen;
     until then the backend refuses them;
