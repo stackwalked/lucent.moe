@@ -1,0 +1,12 @@
+project:
+  description: "What a target's finders library hands the generator: its fact searches and how to find its game. Tooling only."
+
+language: "cpp"
+layer: "library"
+
+dependsOn: ["core", "kit", "probe"]
+
+# Declarations only; their behavior is the generator's and libs/probe's.
+workspace:
+  inheritedTasks:
+    exclude: ["test"]
