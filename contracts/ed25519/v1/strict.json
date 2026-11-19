@@ -1,0 +1,124 @@
+{
+  "cases": [
+    {
+      "name": "valid",
+      "is_valid": true,
+      "defect": "",
+      "public_key": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+      "message": "6c7563656e74207374726963742065643235353139",
+      "signature": "b71705ecef1368ded828312f3facd608c4ec7ee121ebfe3a3af33d297a589dd0d1a1f99f55e8a128226929d4ac8ae3cd78c36bc108ad030fe5ae66865dd98d00"
+    },
+    {
+      "name": "s_unreduced",
+      "is_valid": false,
+      "defect": "S is not below L",
+      "public_key": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+      "message": "6c7563656e74207374726963742065643235353139",
+      "signature": "b71705ecef1368ded828312f3facd608c4ec7ee121ebfe3a3af33d297a589dd0be75effc6f4bb480f80521778b84c2e278c36bc108ad030fe5ae66865dd98d10"
+    },
+    {
+      "name": "r_identity",
+      "is_valid": false,
+      "defect": "R is of small order",
+      "public_key": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+      "message": "6c7563656e74207374726963742065643235353139",
+      "signature": "010000000000000000000000000000000000000000000000000000000000000056d86e1eed1dd4cfdba94f5d7987016a49ab10d7d34d42938681bc2b6cdb8b06"
+    },
+    {
+      "name": "r_identity_above_p",
+      "is_valid": false,
+      "defect": "R is encoded with y not below p",
+      "public_key": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+      "message": "6c7563656e74207374726963742065643235353139",
+      "signature": "eeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f729e355b9316eb7d2dc3c6338646f861162bb28751ba717c54cb147e3eba5103"
+    },
+    {
+      "name": "r_identity_negative_zero",
+      "is_valid": false,
+      "defect": "R is encoded with x = 0 and the sign bit set",
+      "public_key": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+      "message": "6c7563656e74207374726963742065643235353139",
+      "signature": "01000000000000000000000000000000000000000000000000000000000000808dc24eeb59d53114e2687d618d94ebb711845f67f19fa6316a9758c09110b005"
+    },
+    {
+      "name": "r_order_eight",
+      "is_valid": false,
+      "defect": "R is of small order",
+      "public_key": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a",
+      "message": "6c7563656e74207374726963742065643235353139",
+      "signature": "c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac037ad1d97be766acd2f282b91dc1981adbbf78dce0cf3bfa51ebb0527004f2cd160c"
+    },
+    {
+      "name": "key_identity",
+      "is_valid": false,
+      "defect": "the key is of small order",
+      "public_key": "0100000000000000000000000000000000000000000000000000000000000000",
+      "message": "6c7563656e7420737472696374206564323535313900",
+      "signature": "3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660cc799d106d5927970e5989f5671131fa27e6c6b3b7f821c5e259a24b02e502e01"
+    },
+    {
+      "name": "key_order_two",
+      "is_valid": false,
+      "defect": "the key is of small order",
+      "public_key": "ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+      "message": "6c7563656e7420737472696374206564323535313900",
+      "signature": "3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660cc799d106d5927970e5989f5671131fa27e6c6b3b7f821c5e259a24b02e502e01"
+    },
+    {
+      "name": "key_order_four",
+      "is_valid": false,
+      "defect": "the key is of small order",
+      "public_key": "0000000000000000000000000000000000000000000000000000000000000000",
+      "message": "6c7563656e7420737472696374206564323535313901",
+      "signature": "3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660cc799d106d5927970e5989f5671131fa27e6c6b3b7f821c5e259a24b02e502e01"
+    },
+    {
+      "name": "key_order_four_negated",
+      "is_valid": false,
+      "defect": "the key is of small order",
+      "public_key": "0000000000000000000000000000000000000000000000000000000000000080",
+      "message": "6c7563656e7420737472696374206564323535313901",
+      "signature": "3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660cc799d106d5927970e5989f5671131fa27e6c6b3b7f821c5e259a24b02e502e01"
+    },
+    {
+      "name": "key_order_eight",
+      "is_valid": false,
+      "defect": "the key is of small order",
+      "public_key": "c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac037a",
+      "message": "6c7563656e7420737472696374206564323535313905",
+      "signature": "3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660cc799d106d5927970e5989f5671131fa27e6c6b3b7f821c5e259a24b02e502e01"
+    },
+    {
+      "name": "key_order_eight_negated",
+      "is_valid": false,
+      "defect": "the key is of small order",
+      "public_key": "c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac03fa",
+      "message": "6c7563656e742073747269637420656432353531390c",
+      "signature": "3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660cc799d106d5927970e5989f5671131fa27e6c6b3b7f821c5e259a24b02e502e01"
+    },
+    {
+      "name": "key_order_eight_other",
+      "is_valid": false,
+      "defect": "the key is of small order",
+      "public_key": "26e8958fc2b227b045c3f489f2ef98f0d5dfac05d3c63339b13802886d53fc05",
+      "message": "6c7563656e7420737472696374206564323535313900",
+      "signature": "3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660cc799d106d5927970e5989f5671131fa27e6c6b3b7f821c5e259a24b02e502e01"
+    },
+    {
+      "name": "key_identity_above_p",
+      "is_valid": false,
+      "defect": "the key is encoded with y not below p",
+      "public_key": "eeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+      "message": "6c7563656e7420737472696374206564323535313900",
+      "signature": "3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660cc799d106d5927970e5989f5671131fa27e6c6b3b7f821c5e259a24b02e502e01"
+    },
+    {
+      "name": "key_identity_negative_zero",
+      "is_valid": false,
+      "defect": "the key is encoded with x = 0 and the sign bit set",
+      "public_key": "0100000000000000000000000000000000000000000000000000000000000080",
+      "message": "6c7563656e7420737472696374206564323535313900",
+      "signature": "3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660cc799d106d5927970e5989f5671131fa27e6c6b3b7f821c5e259a24b02e502e01"
+    }
+  ]
+}
