@@ -47,7 +47,25 @@ spec: entries leave as they land. Facts' own seams for this work stay in `wishli
 - Sessions running on a replaced release finish, up to a 12-hour session cap; the replaced release
   stays servable (leases, bundles) until they do.
 - The module travels in our own pre-mapped container (sections, imports by hash, no PE headers),
-  encrypted to the session, never on disk. The format lives in `contracts/`.
+  encrypted to the session, never on disk. The format lives in `contracts/`. Decided:
+  - a post-link step in the release preset writes it from the linked DLL; dev keeps mapping PEs;
+  - header: format version, release id, image size, entry RVA, the `boot_info` version it expects,
+    counts; no names, timestamps or PE fields;
+  - sections laid out at their RVAs with their final protection, never writable and executable
+    at once, trailing zero pages dropped;
+  - relocation slots as a compact list the loader applies for its base and then frees;
+  - imports as seeded-hash (DLL, function) pairs under the release's `api` subkey, each with its
+    slot's RVA. The loader fills the slots while mapping (`manualmap`, switched from names to
+    hashes); later refract rewrites each slot call into an encoded resolver thunk, so no API table
+    is left in memory, with the format unchanged;
+  - `.pdata`'s RVA and size, registered by the module so faults unwind to `contain()`;
+  - refused at build: a TLS directory, delay-load imports, unhashable forwarded exports, any
+    writable and executable section;
+  - LZ4 before encryption (a new dependency, for the loader and the build tool);
+  - encrypted per start in 64 KiB XChaCha20-Poly1305 chunks under the start's key, each chunk's
+    index and a last-chunk flag in its associated data; the loader verifies while downloading;
+  - the offline-signed artifact list carries the plaintext container's digest; the loader decrypts,
+    checks it, and only then parses.
 - `lucent-host` is its own small executable, shipped with the loader and signed by the code key.
   The loader verifies it through a handle held against writes, spawns it, and maps the module into
   it exactly as it maps into a game. Tokens and the device key stay out of the process that touches
