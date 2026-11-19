@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <bit>
+#include <chrono>
 #include <memory>
 #include <optional>
 #include <span>
@@ -20,16 +21,26 @@
 
 #include <lucent/core/contain.hpp>
 #include <lucent/core/narrow.hpp>
+#include <lucent/cs2-overlay/input_feed.hpp>
 #include <lucent/cs2-overlay/overlay_state.hpp>
+#include <lucent/cs2-overlay/window_input.hpp>
 #include <lucent/d3d11/renderer.hpp>
 #include <lucent/draw/draw_list.hpp>
+#include <lucent/draw/vec2.hpp>
+#include <lucent/kit/clock.hpp>
 #include <lucent/kit/dev_build.hpp>
+#include <lucent/kit/published.hpp>
+#include <lucent/kit/registry.hpp>
 #include <lucent/kit/worker_set.hpp>
 #include <lucent/text/glyph_atlas.hpp>
+#include <lucent/text/text_layout.hpp>
 #include <lucent/text/text_system.hpp>
+#include <lucent/ui/context.hpp>
 
 #include "dev_demo.hpp"
 #include "renderer_build.hpp"
+#include "settings_menu.hpp"
+#include "system_font.hpp"
 
 namespace lucent::cs2::overlay {
 namespace {
@@ -72,17 +83,22 @@ auto is_game_window(HWND window) -> bool {
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wlanguage-extension-token" // IID_PPV_ARGS spells __uuidof
 
-// The D3D11 device behind the game window's swap chain; empty for any other swap chain, which
-// the overlay leaves alone (Vulkan and D3D12 ones included).
-auto game_window_device(IDXGISwapChain& swap_chain) -> ComPtr<ID3D11Device> {
+struct game_window {
+    ComPtr<ID3D11Device> device;
+    HWND window = nullptr;
+};
+
+// The game's window and the D3D11 device behind its swap chain; no device for any other swap
+// chain, which the overlay leaves alone (Vulkan and D3D12 ones included).
+auto game_window_of(IDXGISwapChain& swap_chain) -> game_window {
     DXGI_SWAP_CHAIN_DESC description{};
     if (FAILED(swap_chain.GetDesc(&description)) || !is_game_window(description.OutputWindow)) {
         return {};
     }
     // A failed call leaves the pointer empty.
-    ComPtr<ID3D11Device> device;
-    std::ignore = swap_chain.GetDevice(IID_PPV_ARGS(&device));
-    return device;
+    game_window found{.device = nullptr, .window = description.OutputWindow};
+    std::ignore = swap_chain.GetDevice(IID_PPV_ARGS(&found.device));
+    return found;
 }
 
 // Empty when the swap chain has none to give.
@@ -128,43 +144,76 @@ auto to_uploads(std::span<const text::atlas_patch> patches) -> std::vector<d3d11
     return uploads;
 }
 
+// Empty when the window has none to give: the cursor is then left unscaled.
+auto client_size_of(HWND window) -> draw::vec2 {
+    RECT client{};
+    if (GetClientRect(window, &client) == FALSE) {
+        return {};
+    }
+    return {
+        .x = static_cast<f32>(client.right - client.left),
+        .y = static_cast<f32>(client.bottom - client.top),
+    };
 }
 
-overlay::overlay(kit::worker_set& workers)
-    : m_workers{&workers} {}
+}
+
+overlay::overlay(kit::worker_set& workers, kit::registry& features, const kit::clock& time)
+    : m_workers{&workers}
+    , m_features{&features}
+    , m_clock{&time} {}
 
 overlay::~overlay() = default;
 
 auto overlay::draw(IDXGISwapChain& swap_chain) -> void {
-    ComPtr<ID3D11Device> device;
+    game_window found;
     // A fault here may be on any presenting thread, so it changes no state: that frame is skipped.
-    if (!contain([&] { device = game_window_device(swap_chain); }) || device == nullptr) {
+    if (!contain([&] { found = game_window_of(swap_chain); }) || found.device == nullptr) {
         return;
     }
-    if (!contain([&] { draw_contained(swap_chain, *device.Get()); })) {
+    const game_frame frame{
+        .swap_chain = &swap_chain,
+        .device = found.device.Get(),
+        .window = found.window,
+    };
+    if (!contain([&] { draw_contained(frame); })) {
         m_state.turn_off();
+        std::ignore = contain([this] { release_input(); });
     }
 }
 
-auto overlay::draw_contained(IDXGISwapChain& swap_chain, ID3D11Device& device) -> void {
+auto overlay::unsubclass(std::chrono::milliseconds patience) -> result<void> {
+    return m_input.unsubclass(patience);
+}
+
+auto overlay::draw_contained(const game_frame& frame) -> void {
+    m_input.subclass(std::bit_cast<window_id>(frame.window));
+    // The world domain's tick will own the safe point once it lands. Until then the game window's
+    // frames are the registry's ticks, and this one, before the menu reads the snapshot, publishes
+    // what the menu asked for last frame.
+    m_features->safe_point();
+    m_has_taken_input = false;
     collect_build();
-    switch (m_state.frame(id_of(device))) {
+    switch (m_state.frame(id_of(*frame.device))) {
     case frame_action::none:
-        return;
+        break;
     case frame_action::start_over:
-        start_over(device);
-        return;
+        start_over(*frame.device);
+        break;
     case frame_action::build:
         start_build();
-        return;
+        break;
     case frame_action::draw_with_atlas:
         LUCENT_INVARIANT(m_renderer.has_value() && m_text.has_value());
         m_renderer->upload_atlas(to_uploads(m_text->every_page()));
-        render(swap_chain, device);
-        return;
+        render(frame);
+        break;
     case frame_action::draw:
-        render(swap_chain, device);
-        return;
+        render(frame);
+        break;
+    }
+    if (!m_has_taken_input) {
+        release_input();
     }
 }
 
@@ -191,13 +240,14 @@ auto overlay::start_over(ID3D11Device& device) -> void {
             return;
         }
         m_text = std::move(*made);
+        const result<text::face_id> face = add_message_font(*m_text);
+        if (!face) {
+            m_state.turn_off();
+            return;
+        }
+        m_menu.emplace(*m_text, *face, *m_features);
         if constexpr (kit::is_dev_build) {
-            result<dev_demo> demo = dev_demo::create(*m_text);
-            if (!demo) {
-                m_state.turn_off();
-                return;
-            }
-            m_demo = *demo;
+            m_demo.emplace(*face);
         }
     }
     ComPtr<ID3D11DeviceContext> context;
@@ -230,14 +280,14 @@ auto overlay::start_build() -> void {
     m_build = std::move(*started);
 }
 
-auto overlay::render(IDXGISwapChain& swap_chain, ID3D11Device& device) -> void {
-    LUCENT_INVARIANT(m_renderer.has_value() && m_text.has_value());
+auto overlay::render(const game_frame& frame) -> void {
+    LUCENT_INVARIANT(m_renderer.has_value() && m_text.has_value() && m_menu.has_value());
     if constexpr (kit::is_dev_build) {
         LUCENT_INVARIANT(m_demo.has_value());
     }
     // Made for this frame and released before Present returns, so no back buffer outlives the
     // frame and a resize needs nothing of the overlay.
-    const ComPtr<ID3D11Texture2D> back_buffer = back_buffer_of(swap_chain);
+    const ComPtr<ID3D11Texture2D> back_buffer = back_buffer_of(*frame.swap_chain);
     if (back_buffer == nullptr) {
         return;
     }
@@ -252,7 +302,7 @@ auto overlay::render(IDXGISwapChain& swap_chain, ID3D11Device& device) -> void {
     view_description.ViewDimension = stored.SampleDesc.Count > 1 ? D3D11_RTV_DIMENSION_TEXTURE2DMS
                                                                  : D3D11_RTV_DIMENSION_TEXTURE2D;
     ComPtr<ID3D11RenderTargetView> view;
-    if (FAILED(device.CreateRenderTargetView(back_buffer.Get(), &view_description, &view))) {
+    if (FAILED(frame.device->CreateRenderTargetView(back_buffer.Get(), &view_description, &view))) {
         return;
     }
     const d3d11::render_target target{
@@ -270,12 +320,52 @@ auto overlay::render(IDXGISwapChain& swap_chain, ID3D11Device& device) -> void {
             return;
         }
     }
+    const draw::vec2 viewport{
+        .x = static_cast<f32>(stored.Width),
+        .y = static_cast<f32>(stored.Height),
+    };
+    if (!draw_menu(frame.window, viewport)) {
+        m_state.turn_off();
+        return;
+    }
+    LUCENT_INVARIANT(m_renderer.has_value() && m_text.has_value());
     m_renderer->upload_atlas(to_uploads(m_text->take_patches()));
     const result<void> rendered = m_renderer->render(m_list.frame(), target);
     // Unsupported is a target the renderer refuses as designed (HDR): nothing is drawn on it.
     if (!rendered && rendered.error().code != error_code::unsupported) {
         m_state.turn_off();
     }
+}
+
+auto overlay::draw_menu(HWND window, draw::vec2 viewport) -> result<void> {
+    LUCENT_INVARIANT(m_menu.has_value());
+    frame_snapshot taken;
+    {
+        const kit::published<input_feed>::reading feed = m_input.read();
+        if (!feed->is_menu_open) {
+            return {};
+        }
+        taken = snapshot_of(
+            *feed,
+            m_consumed,
+            {.time = m_clock->now(), .client_size = client_size_of(window), .viewport = viewport}
+        );
+    }
+    m_consumed = taken.consumed;
+    const ui::frame_report wanted =
+        LUCENT_TRY(m_menu->draw({.input = std::move(taken.input), .viewport = viewport}, m_list));
+    m_input.report({
+        .consumed = m_consumed,
+        .wants_mouse = wanted.wants_mouse,
+        .wants_keyboard = wanted.wants_keyboard,
+    });
+    m_has_taken_input = true;
+    return {};
+}
+
+auto overlay::release_input() -> void {
+    m_consumed = m_input.read()->serial;
+    m_input.report({.consumed = m_consumed, .wants_mouse = false, .wants_keyboard = false});
 }
 
 }

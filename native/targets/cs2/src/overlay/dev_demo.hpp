@@ -11,14 +11,12 @@ namespace lucent::cs2::overlay {
 // string of it reaches a release image.
 class dev_demo final {
 public:
-    // Registers a system face through DirectWrite with the text system: no font file of ours.
-    static auto create(text::text_system& text) -> result<dev_demo>;
+    // Set in face, a face the text system holds.
+    explicit dev_demo(text::face_id face);
 
     auto draw(text::text_system& text, draw::draw_list& list) const -> result<void>;
 
 private:
-    explicit dev_demo(text::face_id face);
-
     text::face_id m_face;
 };
 
