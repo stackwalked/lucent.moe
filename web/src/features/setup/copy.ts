@@ -1,0 +1,16 @@
+export const SETUP_COPY = {
+    title: "Set up your lucent.moe account",
+    continue: "Continue",
+    signedInAs: (username: string) => `You're signed in as ${username}. Continuing signs you out.`,
+    noLink: "This setup link has expired or was already used. Ask staff for a new one.",
+    usernameTitle: "Choose a username",
+    username: "Username",
+    usernameRules: "3 to 24 characters: a–z, 0–9 and _, starting with a letter.",
+    chooseUsername: "Continue",
+    methodTitle: "How you'll sign in",
+    passkey: "Passkey (recommended)",
+    passwordAndApp: "Password and authenticator app",
+    doneTitle: "You're set up.",
+    addAnother: "Add another way to sign in",
+    finish: "Finish",
+} as const;

@@ -14,6 +14,11 @@ export function toSignIn(): never {
     throw redirect({ href: SIGN_IN_PATH, statusCode: 303 });
 }
 
+// Somewhere of ours already checked (a safe returnTo); after a POST or a guard, so 303.
+export function toPage(href: string): never {
+    throw redirect({ href, statusCode: 303 });
+}
+
 export function toNotFound(): never {
     throw notFound();
 }

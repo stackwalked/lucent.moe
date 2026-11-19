@@ -47,16 +47,17 @@ tasks:
   test:
     deps: ["~:generate"]
   build:
-    command: "bun vite build"
+    command: "bun --bun vite build"
     deps: ["~:routes", "~:generate"]
     inputs:
       - "src/**/*"
       - "vite.config.ts"
     outputs:
       - "dist"
-  # Vite with hot reload on :4710, beside the platform it calls.
+  # Vite with hot reload on :4710, beside the platform it calls. --bun runs Vite (and with it the
+  # server code it loads) under Bun, as production runs; without it Vite's node shebang wins.
   dev:
-    command: "bun vite"
+    command: "bun --bun vite"
     deps: ["~:routes", "~:generate", "server:dev"]
     preset: "server"
     options:

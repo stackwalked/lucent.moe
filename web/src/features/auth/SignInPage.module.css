@@ -1,0 +1,9 @@
+@layer features {
+    .title {
+        font-size: var(--size-20);
+    }
+
+    .form {
+        inline-size: 100%;
+    }
+}

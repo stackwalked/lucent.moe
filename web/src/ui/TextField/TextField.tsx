@@ -3,7 +3,8 @@ import { Field } from "../Field/Field.tsx";
 type TextFieldProps = {
     readonly name: string;
     readonly label: string;
-    readonly type?: "text" | "email" | "search";
+    // "password" is for a password being typed in (sign-in); a new one is NewPassword.
+    readonly type?: "text" | "email" | "search" | "password";
     readonly hint?: string;
     readonly error?: string;
     readonly required?: boolean;

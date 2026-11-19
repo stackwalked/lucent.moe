@@ -1,0 +1,25 @@
+@layer features {
+    .place {
+        display: inline-flex;
+        align-items: center;
+        block-size: var(--control-h);
+        padding-inline: var(--s-3);
+        border-radius: var(--r);
+        color: var(--ink-2);
+        font-size: var(--size-13);
+        font-weight: var(--w-medium);
+        transition:
+            background-color var(--t-hover) var(--ease),
+            color var(--t-hover) var(--ease);
+    }
+
+    .place:hover {
+        background: var(--hover);
+        color: var(--ink);
+    }
+
+    .place[aria-current="page"] {
+        background: var(--chosen);
+        color: var(--ink);
+    }
+}

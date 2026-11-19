@@ -629,8 +629,9 @@ live in `wishlist/protection.md`.
       them);
     - the `"appeal"` session purpose (30m, minted only after full 2FA on a suspended account), with
       `/appeal`;
-    - per-IP throttling of sign-in, in web or Caddy (the server caps wrong answers per flow only);
-    - `@simplewebauthn/browser@14.0.0` in web, and `jose@6.2.17` for client P-256 DPoP proofs.
+    - `jose@6.2.17` for client P-256 DPoP proofs, with the native loader's sign-in. (Web's
+      per-IP sign-in throttles landed in its gateway; its browser WebAuthn uses the platform's own
+      JSON helpers, so `@simplewebauthn/browser` isn't needed.)
   - Native loader sign-in uses pushed auth requests (`POST /v1/auth/requests` → clean
     `lucent.moe/auth/device/lauth_...` URL) + loopback `127.0.0.1:<port>/callback` PKCE + DPoP →
     30-day rotating refresh token (30s retry grace) + 5m DPoP-bound access token.

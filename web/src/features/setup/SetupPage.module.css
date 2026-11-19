@@ -1,0 +1,5 @@
+@layer features {
+    .title {
+        font-size: var(--size-20);
+    }
+}

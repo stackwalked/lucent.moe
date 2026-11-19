@@ -1,27 +1,43 @@
+import { systemClock } from "@lucent/core/clock";
 import {
     createRootRoute,
     type ErrorComponentProps,
     HeadContent,
     Scripts,
 } from "@tanstack/react-router";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect } from "react";
 import { isUnavailable } from "../failure.ts";
+import { StepUpProvider } from "../features/step-up/StepUp.tsx";
 import { currentTheme } from "../theme.ts";
+import { currentTimeZone, reportTimeZone } from "../time-zone.ts";
+import { TimeProvider } from "../ui/Time/TimeProvider.tsx";
+import { ToastProvider } from "../ui/Toast/Toast.tsx";
+import { loadSession, rememberSession } from "../viewer.ts";
 import "../ui/global.css";
 import "virtual:lucent/tokens.css";
 import plex400 from "../ui/fonts/ibm-plex-sans-400.woff2?url";
 import plex500 from "../ui/fonts/ibm-plex-sans-500.woff2?url";
 
-// The document every page renders in, error and not-found pages included.
+// The document every page renders in, error and not-found pages included. "now" is the moment
+// the page was made, so relative times read the same on the server and after hydration.
 function Document({ children }: { readonly children: ReactNode }) {
     const theme = currentTheme();
+    const { session, now, timeZone } = Route.useRouteContext();
+    useEffect(() => {
+        rememberSession(session);
+        void reportTimeZone(systemClock.now());
+    }, [session]);
     return (
         <html lang="en" {...(theme === "system" ? {} : { "data-theme": theme })}>
             <head>
                 <HeadContent />
             </head>
             <body>
-                {children}
+                <TimeProvider now={now} timeZone={timeZone}>
+                    <ToastProvider>
+                        <StepUpProvider>{children}</StepUpProvider>
+                    </ToastProvider>
+                </TimeProvider>
                 <Scripts />
             </body>
         </html>
@@ -45,6 +61,11 @@ function Failure({ error }: ErrorComponentProps) {
 }
 
 export const Route = createRootRoute({
+    beforeLoad: async () => ({
+        session: await loadSession(),
+        now: systemClock.now(),
+        timeZone: currentTimeZone(),
+    }),
     head: () => ({
         meta: [
             { charSet: "utf-8" },

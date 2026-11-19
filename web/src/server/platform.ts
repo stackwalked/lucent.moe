@@ -3,15 +3,16 @@ import { systemClock } from "@lucent/core/clock";
 import { invariant } from "@lucent/core/contain";
 import { err, type Result } from "@lucent/core/result";
 import { systemCryptoRng } from "@lucent/core/rng";
-import { BearerToken, ClientInfo, toBase64Url } from "@lucent/core/scalars";
+import { type AccountId, ClientInfo, toBase64Url } from "@lucent/core/scalars";
 import type { ReplyOf, RpcClient } from "@lucent/rpc/client";
 import { RequestId } from "@lucent/rpc/contract";
 import { type WebContract, webContract } from "@lucent/rpc/web";
 import { getGlobalStartContext } from "@tanstack/react-start";
-import { deleteCookie, getCookie, getRequestHeader } from "@tanstack/react-start/server";
+import { getRequestHeader } from "@tanstack/react-start/server";
 import type { z } from "zod";
 import { processEnvironment, readWebConfig } from "./config.ts";
 import { connectPlatform } from "./connect.ts";
+import { clearSessionToken, readSessionToken } from "./cookies.ts";
 import { createRequestTrace, type WebRequest } from "./request.ts";
 import { toNotFound, toSignIn, toUnavailable } from "./route-control.ts";
 import { BUCKETS, type Bucket, createThrottle } from "./throttle.ts";
@@ -20,11 +21,10 @@ import { BUCKETS, type Bucket, createThrottle } from "./throttle.ts";
 // carries the session, client and request id, applies the per-procedure throttles, and handles
 // the refusals no page should handle on its own.
 
-export const SESSION_COOKIE = "__Host-lucent";
-
 type Name = keyof WebContract & string;
 type Input<K extends Name> = z.input<WebContract[K]["input"]>;
-export type Throttled = { readonly code: "THROTTLED" };
+// What the gateway itself can answer, besides what platform does.
+export type GatewayRefusal = { readonly code: "THROTTLED" } | { readonly code: "SESSION_INVALID" };
 
 let platform: RpcClient<WebContract> | null = null;
 
@@ -69,22 +69,26 @@ function codeOf(error: unknown): string | null {
 const READ_RETRY_DELAY_MS = 250;
 
 // Refusals come back to the caller to show, except an ended session: the cookie is cleared and
-// the browser sent to sign in. Reads are retried once, which rides out platform's epoch handover
-// during a deploy; writes never are.
+// the browser sent to sign in (or, with `whenSignedOut: "return"`, the refusal comes back too,
+// for a caller to whom signed out is an ordinary answer). Reads are retried once, which rides out
+// platform's epoch handover during a deploy; writes never are.
 export async function callPlatform<K extends Name>(
     name: K,
     input: Input<K>,
-): Promise<ReplyOf<WebContract[K]> | Result<never, Throttled>> {
+    options?: { readonly whenSignedOut?: "redirect" | "return" },
+): Promise<ReplyOf<WebContract[K]> | Result<never, GatewayRefusal>> {
     const web = currentRequest();
     const bucket = bucketFor(name);
     if (bucket !== null && !web.throttle.take(bucket, web.client.ip)) {
         return err({ code: "THROTTLED" });
     }
     const contract = webContract[name];
-    const parsedSession = BearerToken.safeParse(getCookie(SESSION_COOKIE));
-    const session =
-        contract.session === "none" || !parsedSession.success ? null : parsedSession.data;
-    if (contract.session !== "none" && session === null) toSignIn();
+    const signedOut = options?.whenSignedOut ?? "redirect";
+    const session = contract.session === "none" ? null : readSessionToken();
+    if (contract.session !== "none" && session === null) {
+        if (signedOut === "return") return err({ code: "SESSION_INVALID" });
+        toSignIn();
+    }
 
     const send = async (): Promise<ReplyOf<WebContract[K]>> => {
         const startedAt = systemClock.now();
@@ -102,10 +106,20 @@ export async function callPlatform<K extends Name>(
         reply = await send();
     }
     if (!reply.ok && codeOf(reply.error) === "SESSION_INVALID") {
-        deleteCookie(SESSION_COOKIE, { path: "/", secure: true });
-        toSignIn();
+        clearSessionToken();
+        if (signedOut === "redirect") toSignIn();
     }
     return reply;
+}
+
+// The request's trace learns whose session it carried, for the request log.
+export function noteAccount(accountId: AccountId): void {
+    currentRequest().trace.setAccount(accountId);
+}
+
+// The request id, shown as the support reference on an unexpected failure.
+export function requestReference(): string {
+    return currentRequest().requestId;
 }
 
 // For loaders: what a page can't render becomes the router's 404 or the 503 page; every other
@@ -113,7 +127,7 @@ export async function callPlatform<K extends Name>(
 export async function readPlatform<K extends Name>(
     name: K,
     input: Input<K>,
-): Promise<ReplyOf<WebContract[K]> | Result<never, Throttled>> {
+): Promise<ReplyOf<WebContract[K]> | Result<never, GatewayRefusal>> {
     const reply = await callPlatform(name, input);
     if (reply.ok) return reply;
     const code = codeOf(reply.error);
