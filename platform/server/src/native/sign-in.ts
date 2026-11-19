@@ -146,6 +146,7 @@ const RequestRowSchema = z.object({
     redirect_uri: z.string(),
     code_challenge: z.string(),
     state: z.string(),
+    created_at: EpochMs,
     expires_at: EpochMs,
     account_id: AccountId.nullable(),
     decision: z.enum(["approved", "denied"]).nullable(),
@@ -168,8 +169,8 @@ async function findPendingRequest(
     const row = await queryOne(
         q,
         RequestRowSchema,
-        sql`select jkt, redirect_uri, code_challenge, state, expires_at, account_id, decision,
-                   code_expires_at, redeemed_at, family_id
+        sql`select jkt, redirect_uri, code_challenge, state, created_at, expires_at, account_id,
+                   decision, code_expires_at, redeemed_at, family_id
             from native_auth_request where id = ${params.id}
             ${params.lock === "for update" ? sql`for update` : sql``}`,
     );
@@ -183,6 +184,7 @@ async function findPendingRequest(
 export type SignInRequestView = {
     readonly requestId: SignInRequestId;
     readonly matchCode: string;
+    readonly createdAt: EpochMs;
     readonly expiresAt: EpochMs;
 };
 
@@ -207,6 +209,7 @@ export async function readSignInRequest(
         return ok({
             requestId: params.requestId,
             matchCode: matchCodeOf(request.value.jkt),
+            createdAt: request.value.created_at,
             expiresAt: request.value.expires_at,
         });
     });
@@ -342,8 +345,8 @@ export async function redeemCode(
         const row = await queryOne(
             tx,
             RequestRowSchema,
-            sql`select jkt, redirect_uri, code_challenge, state, expires_at, account_id, decision,
-                       code_expires_at, redeemed_at, family_id
+            sql`select jkt, redirect_uri, code_challenge, state, created_at, expires_at, account_id,
+                       decision, code_expires_at, redeemed_at, family_id
                 from native_auth_request where id = ${found.value.id} for update`,
         );
         if (!row.ok) return row;

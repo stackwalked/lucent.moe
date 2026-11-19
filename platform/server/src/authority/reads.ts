@@ -1,6 +1,15 @@
 import { trySync } from "@lucent/core/contain";
 import { err, ok, type Result } from "@lucent/core/result";
-import { AccountId, EpochMs, RoleId, toBase64Url } from "@lucent/core/scalars";
+import {
+    AccountId,
+    ChannelId,
+    EntitlementId,
+    EpochMs,
+    FeatureTag,
+    ProductId,
+    RoleId,
+    toBase64Url,
+} from "@lucent/core/scalars";
 import { ACTIONS, type Action } from "@lucent/policy/actions";
 import { type Caller, can, type Subject } from "@lucent/policy/policy";
 import { AccountStatus } from "@lucent/rpc/web";
@@ -16,6 +25,8 @@ import {
     toTimestamptz,
 } from "../db/pool.ts";
 import { withTx } from "../db/tx.ts";
+import { type DeviceList, readAccountDevices } from "../native/devices.ts";
+import type { FeatureSelection } from "./entitlements.ts";
 import { readStanding } from "./standing.ts";
 
 // What staff read in the admin area. Reads take no locks and need no step-up: `can()` with the
@@ -285,7 +296,74 @@ export type AccountDetail = AccountSummary & {
     }[];
     // Null when the reader can't read audit.
     readonly recentAudit: readonly AuditEntry[] | null;
+    readonly entitlements: readonly IssuedEntitlement[];
+} & DeviceList;
+
+export type IssuedEntitlement = {
+    readonly entitlementId: EntitlementId;
+    readonly status: "active" | "suspended" | "revoked";
+    readonly validFrom: EpochMs;
+    readonly validUntil: EpochMs | null;
+    readonly createdAt: EpochMs;
+    readonly products: readonly {
+        readonly productId: ProductId;
+        readonly features: FeatureSelection;
+        readonly channels: readonly ChannelId[];
+    }[];
 };
+
+const EntitlementRowSchema = z.object({
+    id: EntitlementId,
+    status: z.enum(["active", "suspended", "revoked"]),
+    valid_from: EpochMs,
+    valid_until: EpochMs.nullable(),
+    created_at: EpochMs,
+});
+
+const EntitlementProductRowSchema = z.object({
+    entitlement_id: EntitlementId,
+    product_id: ProductId,
+    features: z.union([z.literal("*"), z.array(FeatureTag)]),
+    channels: z.array(ChannelId),
+});
+
+// Every entitlement the account was issued, newest first, with what each covers.
+async function readIssuedEntitlements(
+    q: Queryable,
+    accountId: AccountId,
+): Promise<Result<readonly IssuedEntitlement[], DbFailure>> {
+    const rows = await queryAll(
+        q,
+        EntitlementRowSchema,
+        sql`select id, status, valid_from, valid_until, created_at from entitlement
+            where account_id = ${accountId} order by created_at desc, id`,
+    );
+    if (!rows.ok) return rows;
+    const products = await queryAll(
+        q,
+        EntitlementProductRowSchema,
+        sql`select ep.entitlement_id, ep.product_id, ep.features, ep.channels
+            from entitlement_product ep join entitlement e on e.id = ep.entitlement_id
+            where e.account_id = ${accountId} order by ep.product_id`,
+    );
+    if (!products.ok) return products;
+    return ok(
+        rows.value.map((row) => ({
+            entitlementId: row.id,
+            status: row.status,
+            validFrom: row.valid_from,
+            validUntil: row.valid_until,
+            createdAt: row.created_at,
+            products: products.value
+                .filter((product) => product.entitlement_id === row.id)
+                .map((product) => ({
+                    productId: product.product_id,
+                    features: product.features,
+                    channels: product.channels,
+                })),
+        })),
+    );
+}
 
 const SignInRowSchema = z.object({
     passkeys: z.coerce.number().int(),
@@ -350,6 +428,10 @@ export async function readAccount(
             if (!audit.ok) return audit;
             recentAudit = audit.value.map(toAuditEntry);
         }
+        const entitlements = await readIssuedEntitlements(q, params.accountId);
+        if (!entitlements.ok) return entitlements;
+        const devices = await readAccountDevices(q, { accountId: params.accountId, txNow });
+        if (!devices.ok) return devices;
         return ok({
             ...toAccountSummary(row.value),
             signIn: signIn.value ?? { passkeys: 0, password: false, totp: false },
@@ -361,6 +443,8 @@ export async function readAccount(
                 expiresAt: role.expires_at,
             })),
             recentAudit,
+            entitlements: entitlements.value,
+            ...devices.value,
         });
     });
 }

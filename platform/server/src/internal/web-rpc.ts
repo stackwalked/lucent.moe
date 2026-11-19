@@ -37,12 +37,14 @@ import {
 import {
     assignAccountRole,
     createAccount,
+    issueEntitlement,
     recoverAccount,
     reinstateAccount,
     renameAccount,
     suspendAccount,
     unassignAccountRole,
     upsertRole,
+    type WriterFailure,
 } from "../authority/writers.ts";
 import type { DbFailure } from "../db/pool.ts";
 import {
@@ -50,8 +52,11 @@ import {
     denyEnrollment,
     listDevices,
     listPendingEnrollments,
+    removeDevice,
+    renameDevice,
 } from "../native/devices.ts";
 import { decideSignInRequest, readSignInRequest, SignInRequestId } from "../native/sign-in.ts";
+import { listMemberProducts } from "./products.ts";
 
 export type WebRpcContext = {
     readonly catalog: ProductCatalog;
@@ -134,6 +139,55 @@ function withoutChannels<T, E extends { readonly code: string }>(
         isNotChannelRefusal(error),
         "a role saved without channel grants was refused for one",
     );
+    return err(error);
+}
+
+// What issuing an entitlement can be refused with, given the contract's input: at least one product
+// (so never NO_PRODUCTS), and none of the account or role writers' own codes.
+type IssueRefusal = Extract<
+    WriterFailure,
+    {
+        readonly code:
+            | "FORBIDDEN"
+            | "STEP_UP_REQUIRED"
+            | "IDEMPOTENCY_CONFLICT"
+            | "RECEIPT_UNREADABLE"
+            | "NOT_FOUND"
+            | "UNKNOWN_PRODUCT"
+            | "UNKNOWN_CHANNEL"
+            | "INVALID_WINDOW"
+            | "STATEMENT_TIMEOUT"
+            | "SERIALIZATION_FAILURE"
+            | "UNIQUE_VIOLATION"
+            | "CHECK_VIOLATION"
+            | "DB_UNAVAILABLE";
+    }
+>;
+
+const ISSUE_CODES: ReadonlySet<string> = new Set<IssueRefusal["code"]>([
+    "FORBIDDEN",
+    "STEP_UP_REQUIRED",
+    "IDEMPOTENCY_CONFLICT",
+    "RECEIPT_UNREADABLE",
+    "NOT_FOUND",
+    "UNKNOWN_PRODUCT",
+    "UNKNOWN_CHANNEL",
+    "INVALID_WINDOW",
+    "STATEMENT_TIMEOUT",
+    "SERIALIZATION_FAILURE",
+    "UNIQUE_VIOLATION",
+    "CHECK_VIOLATION",
+    "DB_UNAVAILABLE",
+]);
+
+function isIssueRefusal(error: WriterFailure): error is IssueRefusal {
+    return ISSUE_CODES.has(error.code);
+}
+
+function asIssued<T>(result: Result<T, WriterFailure>): Result<T, IssueRefusal> {
+    if (result.ok) return result;
+    const error = result.error;
+    invariant(isIssueRefusal(error), `issuing an entitlement was refused with ${error.code}`);
     return err(error);
 }
 
@@ -295,6 +349,37 @@ const handlers: Handlers<WebRpcContext, WebContract> = {
         ),
     "devices.list": async (ctx, _input, { session }) =>
         served(await listDevices(ctx.auth.db, { sessionToken: session })),
+    "devices.rename": async (ctx, input, { session }) =>
+        served(
+            done(
+                await renameDevice(ctx.auth.db, {
+                    sessionToken: session,
+                    deviceId: Uint8Array.fromHex(input.deviceId),
+                    name: input.name,
+                }),
+            ),
+        ),
+    "devices.remove": async (ctx, input, { session }) =>
+        served(
+            done(
+                await removeDevice(ctx.auth.db, {
+                    sessionToken: session,
+                    operationId: input.operationId,
+                    deviceId: Uint8Array.fromHex(input.deviceId),
+                }),
+            ),
+        ),
+
+    "products.list": async (ctx, _input, { session }) =>
+        served(
+            mapOk(
+                await listMemberProducts(ctx.auth.db, {
+                    catalog: ctx.catalog,
+                    sessionToken: session,
+                }),
+                (products) => ({ products }),
+            ),
+        ),
 
     "admin.accounts.list": (ctx, input, call) =>
         asStaff(ctx, call, (caller) => listAccounts(ctx.auth.db, { caller, ...input })),
@@ -358,6 +443,26 @@ const handlers: Handlers<WebRpcContext, WebContract> = {
                 caller,
                 targetAccountId: input.accountId,
             }),
+        ),
+
+    "admin.entitlements.issue": (ctx, input, call) =>
+        asStaff(ctx, call, async (caller) =>
+            mapOk(
+                asIssued(
+                    await issueEntitlement({
+                        db: ctx.auth.db,
+                        rng: ctx.auth.rng,
+                        catalog: ctx.catalog,
+                        caller,
+                        operationId: input.operationId,
+                        targetAccountId: input.accountId,
+                        validFrom: input.validFrom,
+                        validUntil: input.validUntil,
+                        products: input.products,
+                    }),
+                ),
+                (issued) => ({ entitlementId: issued.entitlementId }),
+            ),
         ),
 
     "admin.roles.list": (ctx, _input, call) =>

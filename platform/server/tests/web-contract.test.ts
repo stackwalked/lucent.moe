@@ -39,6 +39,9 @@ const inputs: SinglePurpose = {
     "devices.enrollments.approve": { operationId: OPERATION, enrollmentId: "0".repeat(32) },
     "devices.enrollments.deny": { enrollmentId: "0".repeat(32) },
     "devices.list": {},
+    "devices.rename": { deviceId: "0".repeat(32), name: "desk" },
+    "devices.remove": { operationId: OPERATION, deviceId: "0".repeat(32) },
+    "products.list": {},
     "admin.accounts.list": {
         filter: { status: null, roleId: null, text: null },
         sort: "newest",
@@ -50,6 +53,13 @@ const inputs: SinglePurpose = {
     "admin.accounts.reinstate": { operationId: OPERATION, accountId: SOMEONE },
     "admin.accounts.rename": { operationId: OPERATION, accountId: SOMEONE, username: "renamed" },
     "admin.accounts.recover": { accountId: SOMEONE },
+    "admin.entitlements.issue": {
+        operationId: OPERATION,
+        accountId: SOMEONE,
+        validFrom: 0,
+        validUntil: null,
+        products: [{ productId: "cs2", features: "*", channels: ["stable"] }],
+    },
     "admin.roles.list": {},
     "admin.roles.get": { roleId: "role_support" },
     "admin.roles.save": {

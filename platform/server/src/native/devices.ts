@@ -120,6 +120,19 @@ async function mayReplaceItself(
     );
 }
 
+async function startChangeWindow(
+    tx: Tx,
+    accountId: AccountId,
+    txNow: EpochMs,
+): Promise<Result<number, DbFailure>> {
+    return await execute(
+        tx,
+        sql`insert into device_change_window (account_id, last_replaced_at)
+            values (${accountId}, ${toTimestamptz(txNow)}::timestamptz)
+            on conflict (account_id) do update set last_replaced_at = excluded.last_replaced_at`,
+    );
+}
+
 async function liveKeyOwner(
     q: Queryable,
     jkt: string,
@@ -415,12 +428,7 @@ export async function approveEnrollment(
                     where account_id = ${accountId} and revoked_at is null`,
             );
             if (!revoked.ok) return revoked;
-            const window = await execute(
-                tx,
-                sql`insert into device_change_window (account_id, last_replaced_at)
-                    values (${accountId}, ${toTimestamptz(txNow)}::timestamptz)
-                    on conflict (account_id) do update set last_replaced_at = excluded.last_replaced_at`,
-            );
+            const window = await startChangeWindow(tx, accountId, txNow);
             if (!window.ok) return window;
         }
         const inserted = await execute(
@@ -477,19 +485,71 @@ export async function denyEnrollment(
 
 export type ListedDevice = {
     readonly deviceId: string;
+    readonly name: string | null;
     readonly matchCode: string;
     readonly storage: KeyStorage;
     readonly enrolledAt: EpochMs;
+    // The last lease a module on this PC was given: the server's own record of the PC in use.
+    readonly lastSeenAt: EpochMs | null;
 };
 
 export type DeviceList = {
     readonly devices: readonly ListedDevice[];
-    // When the member may next replace a device themselves; null when they may now.
+    readonly limit: number;
+    // When the member may next replace or remove a device themselves; null when they may now.
     readonly replaceableFrom: EpochMs | null;
 };
 
-// The member's live devices. Software-backed keys are marked: staff and the member see which PCs
-// had no usable TPM.
+const ListedDeviceRowSchema = z.object({
+    id: Bytes,
+    name: z.string().nullable(),
+    jkt: z.string(),
+    storage: Storage,
+    enrolled_at: EpochMs,
+    last_seen_at: EpochMs.nullable(),
+});
+
+// An account's live devices and its replacement window, for the member and for staff alike.
+// Software-backed keys are marked: both see which PCs had no usable TPM.
+export async function readAccountDevices(
+    q: Queryable,
+    params: { readonly accountId: AccountId; readonly txNow: EpochMs },
+): Promise<Result<DeviceList, DbFailure>> {
+    const rows = await queryAll(
+        q,
+        ListedDeviceRowSchema,
+        sql`select d.id, d.name, d.jkt, d.storage, d.enrolled_at,
+                   (select max(s.lease_issued_at) from runtime_session s
+                    where s.account_id = d.account_id and s.device_id = d.id) as last_seen_at
+            from device d
+            where d.account_id = ${params.accountId} and d.revoked_at is null
+            order by d.enrolled_at, d.id`,
+    );
+    if (!rows.ok) return rows;
+    const window = await queryOne(
+        q,
+        z.object({ last_replaced_at: EpochMs }),
+        sql`select last_replaced_at from device_change_window where account_id = ${params.accountId}`,
+    );
+    if (!window.ok) return window;
+    const from =
+        window.value === null
+            ? null
+            : EpochMs.parse(window.value.last_replaced_at + SELF_SERVICE_REPLACEMENT_MS);
+    return ok({
+        devices: rows.value.map((row) => ({
+            deviceId: toHex(row.id),
+            name: row.name,
+            matchCode: matchCodeOf(row.jkt),
+            storage: row.storage,
+            enrolledAt: row.enrolled_at,
+            lastSeenAt: row.last_seen_at,
+        })),
+        limit: MAX_DEVICES,
+        replaceableFrom: from !== null && from > params.txNow ? from : null,
+    });
+}
+
 export async function listDevices(
     db: Db,
     params: { readonly sessionToken: BearerToken },
@@ -501,33 +561,97 @@ export async function listDevices(
             purposes: ["member"],
         });
         if (!session.ok) return session;
-        const { accountId } = session.value;
-        const rows = await queryAll(
-            tx,
-            z.object({ id: Bytes, jkt: z.string(), storage: Storage, enrolled_at: EpochMs }),
-            sql`select id, jkt, storage, enrolled_at from device
-                where account_id = ${accountId} and revoked_at is null
-                order by enrolled_at, id`,
-        );
-        if (!rows.ok) return rows;
-        const window = await queryOne(
-            tx,
-            z.object({ last_replaced_at: EpochMs }),
-            sql`select last_replaced_at from device_change_window where account_id = ${accountId}`,
-        );
-        if (!window.ok) return window;
-        const from =
-            window.value === null
-                ? null
-                : EpochMs.parse(window.value.last_replaced_at + SELF_SERVICE_REPLACEMENT_MS);
-        return ok({
-            devices: rows.value.map((row) => ({
-                deviceId: toHex(row.id),
-                matchCode: matchCodeOf(row.jkt),
-                storage: row.storage,
-                enrolledAt: row.enrolled_at,
-            })),
-            replaceableFrom: from !== null && from > txNow ? from : null,
+        return await readAccountDevices(tx, { accountId: session.value.accountId, txNow });
+    });
+}
+
+// A name is the member's own label; changing it binds nothing, so it needs no fresh factor.
+export async function renameDevice(
+    db: Db,
+    params: {
+        readonly sessionToken: BearerToken;
+        readonly deviceId: Uint8Array;
+        readonly name: string | null;
+    },
+): Promise<Result<void, SessionInvalid | NotFound | DbFailure>> {
+    return await withTx(db, async (tx, txNow) => {
+        const session = await readSession(tx, {
+            token: params.sessionToken,
+            txNow,
+            purposes: ["member"],
         });
+        if (!session.ok) return session;
+        const renamed = await queryOne(
+            tx,
+            z.object({ id: Bytes }),
+            sql`update device set name = ${params.name}
+                where id = ${params.deviceId} and account_id = ${session.value.accountId}
+                  and revoked_at is null
+                returning id`,
+        );
+        if (!renamed.ok) return renamed;
+        if (renamed.value === null) return err({ code: "NOT_FOUND" });
+        return ok(undefined);
+    });
+}
+
+type TooSoon = { readonly code: "DEVICE_CHANGE_TOO_SOON" };
+
+const RemovedReceipt = z.object({ removed: z.literal(true) });
+
+// The member takes a PC off their account, having proven a factor in the last few minutes. It
+// counts as their self-service change: refused while the window is closed, and it starts the
+// window. Otherwise removing one PC and enrolling another would replace a PC as often as anyone
+// liked, since enrolling below the limit consults no window. The PC's running sessions end at
+// their next renewal, which refuses a revoked device.
+export async function removeDevice(
+    db: Db,
+    params: {
+        readonly sessionToken: BearerToken;
+        readonly operationId: OperationId;
+        readonly deviceId: Uint8Array;
+    },
+): Promise<Result<void, SessionRefusal | NotFound | TooSoon | ReceiptRefusal | DbFailure>> {
+    return await withTx(db, async (tx, txNow) => {
+        const session = await lockSession(tx, {
+            token: params.sessionToken,
+            txNow,
+            purposes: ["member"],
+        });
+        if (!session.ok) return session;
+        const fresh = requireFresh(session.value, txNow);
+        if (!fresh.ok) return fresh;
+        const { accountId } = session.value;
+        const op = await toOperationKey({
+            principal: `account:${accountId}`,
+            endpoint: "devices.remove",
+            operationId: params.operationId,
+            payload: { deviceId: toHex(params.deviceId) },
+        });
+        const live = await lockLiveDevices(tx, accountId);
+        if (!live.ok) return live;
+
+        const replay = await readReplay(tx, op, RemovedReceipt);
+        if (!replay.ok) return replay;
+        if (replay.value.replayed) return ok(undefined);
+
+        if (!live.value.some((id) => toHex(id) === toHex(params.deviceId))) {
+            return err({ code: "NOT_FOUND" });
+        }
+        const allowed = await mayReplaceItself(tx, accountId, txNow);
+        if (!allowed.ok) return allowed;
+        if (!allowed.value) return err({ code: "DEVICE_CHANGE_TOO_SOON" });
+
+        const revoked = await execute(
+            tx,
+            sql`update device set revoked_at = ${toTimestamptz(txNow)}::timestamptz
+                where id = ${params.deviceId}`,
+        );
+        if (!revoked.ok) return revoked;
+        const window = await startChangeWindow(tx, accountId, txNow);
+        if (!window.ok) return window;
+        const recorded = await recordReceipt(tx, op, { removed: true });
+        if (!recorded.ok) return recorded;
+        return ok(undefined);
     });
 }
