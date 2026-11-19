@@ -10,6 +10,7 @@ import {
     setPassword,
 } from "../auth/credentials.ts";
 import type { AuthDeps } from "../auth/deps.ts";
+import type { SessionInvalid } from "../auth/sessions.ts";
 import { listSessions, signOut, signOutOthers, signOutSession } from "../auth/sessions.ts";
 import { chooseUsername, redeemSetupLink } from "../auth/setup.ts";
 import {
@@ -18,11 +19,30 @@ import {
     signInWithPassword,
     signInWithTotp,
 } from "../auth/sign-in.ts";
-import { resolveViewer } from "../auth/viewer.ts";
+import { resolveCaller, resolveViewer } from "../auth/viewer.ts";
+import type { Caller } from "../authority/policy.ts";
+import {
+    listAccounts,
+    listAudit,
+    listRoles,
+    readAccount,
+    readRoleSummary,
+} from "../authority/reads.ts";
+import {
+    assignAccountRole,
+    createAccount,
+    recoverAccount,
+    reinstateAccount,
+    renameAccount,
+    suspendAccount,
+    unassignAccountRole,
+    upsertRole,
+} from "../authority/writers.ts";
 import { type WebContract, webContract } from "../contract/web.ts";
+import { invariant } from "../core/contain.ts";
 import { err, ok, type Result } from "../core/result.ts";
 import { type Handlers, implement } from "../core/rpc.ts";
-import type { ClientInfo } from "../core/scalars.ts";
+import type { BearerToken, ClientInfo } from "../core/scalars.ts";
 import type { DbFailure } from "../db/pool.ts";
 import type { ProductCatalog } from "../products/catalog.ts";
 
@@ -33,23 +53,29 @@ export type WebRpcContext = {
 
 type Unavailable = { readonly code: "SERVICE_UNAVAILABLE" };
 
-const DB_FAILURE_CODES: ReadonlySet<string> = new Set([
+// Failures that are the server's, not the request's: a receipt that won't parse is a bug here.
+type Unservable = DbFailure | { readonly code: "RECEIPT_UNREADABLE" };
+
+const UNSERVABLE_CODES: ReadonlySet<string> = new Set([
     "STATEMENT_TIMEOUT",
     "SERIALIZATION_FAILURE",
     "UNIQUE_VIOLATION",
     "CHECK_VIOLATION",
     "DB_UNAVAILABLE",
+    "RECEIPT_UNREADABLE",
 ]);
 
-function isServable<E extends { readonly code: string }>(error: E): error is Exclude<E, DbFailure> {
-    return !DB_FAILURE_CODES.has(error.code);
+function isServable<E extends { readonly code: string }>(
+    error: E,
+): error is Exclude<E, Unservable> {
+    return !UNSERVABLE_CODES.has(error.code);
 }
 
 // A database failure is the server being unavailable, as far as web is concerned; the detail
 // stays out of the reply.
 function served<T, E extends { readonly code: string }>(
     result: Result<T, E>,
-): Result<T, Exclude<E, DbFailure> | Unavailable> {
+): Result<T, Exclude<E, Unservable> | Unavailable> {
     if (result.ok) return result;
     if (isServable(result.error)) return err(result.error);
     return err({ code: "SERVICE_UNAVAILABLE" });
@@ -62,6 +88,45 @@ function done<E>(result: Result<void, E>): Result<Record<string, never>, E> {
 // Domain functions take the client as an optional field, absent when unknown.
 function from(call: { readonly client: ClientInfo | null }): { readonly client?: ClientInfo } {
     return call.client === null ? {} : { client: call.client };
+}
+
+// An admin procedure acts as the account holding the member session.
+async function asStaff<T, E extends { readonly code: string }>(
+    ctx: WebRpcContext,
+    call: { readonly session: BearerToken; readonly client: ClientInfo | null },
+    act: (caller: Caller) => Promise<Result<T, E>>,
+): Promise<Result<T, Exclude<E | SessionInvalid | DbFailure, Unservable> | Unavailable>> {
+    const caller = await resolveCaller(ctx.auth.db, {
+        sessionToken: call.session,
+        client: call.client,
+    });
+    if (!caller.ok) return served(caller);
+    return served(await act(caller.value));
+}
+
+function mapOk<T, U, E>(result: Result<T, E>, map: (value: T) => U): Result<U, E> {
+    return result.ok ? ok(map(result.value)) : result;
+}
+
+type ChannelRefusal = { readonly code: "UNKNOWN_PRODUCT" | "UNKNOWN_CHANNEL" };
+
+function isNotChannelRefusal<E extends { readonly code: string }>(
+    error: E,
+): error is Exclude<E, ChannelRefusal> {
+    return error.code !== "UNKNOWN_PRODUCT" && error.code !== "UNKNOWN_CHANNEL";
+}
+
+// The role editor never sends channel grants, so their refusals can't come back.
+function withoutChannels<T, E extends { readonly code: string }>(
+    result: Result<T, E>,
+): Result<T, Exclude<E, ChannelRefusal>> {
+    if (result.ok) return result;
+    const error = result.error;
+    invariant(
+        isNotChannelRefusal(error),
+        "a role saved without channel grants was refused for one",
+    );
+    return err(error);
 }
 
 const handlers: Handlers<WebRpcContext, WebContract> = {
@@ -160,6 +225,120 @@ const handlers: Handlers<WebRpcContext, WebContract> = {
         served(await beginStepUp(ctx.auth, { sessionToken: session })),
     "stepUp.finish": async (ctx, input, { session }) =>
         served(await finishStepUp(ctx.auth, { sessionToken: session, ...input })),
+
+    "admin.accounts.list": (ctx, input, call) =>
+        asStaff(ctx, call, (caller) => listAccounts(ctx.auth.db, { caller, ...input })),
+    "admin.accounts.get": (ctx, input, call) =>
+        asStaff(ctx, call, (caller) =>
+            readAccount(ctx.auth.db, { caller, accountId: input.accountId }),
+        ),
+    "admin.accounts.create": (ctx, input, call) =>
+        asStaff(ctx, call, async (caller) =>
+            mapOk(
+                await createAccount({ db: ctx.auth.db, rng: ctx.auth.rng, caller, ...input }),
+                (created) => ({
+                    accountId: created.accountId,
+                    setupToken: created.replayed ? null : created.setupToken,
+                }),
+            ),
+        ),
+    "admin.accounts.suspend": (ctx, input, call) =>
+        asStaff(ctx, call, async (caller) =>
+            mapOk(
+                await suspendAccount({
+                    db: ctx.auth.db,
+                    caller,
+                    operationId: input.operationId,
+                    targetAccountId: input.accountId,
+                    reason: input.reason,
+                }),
+                () => ({}),
+            ),
+        ),
+    "admin.accounts.reinstate": (ctx, input, call) =>
+        asStaff(ctx, call, async (caller) =>
+            mapOk(
+                await reinstateAccount({
+                    db: ctx.auth.db,
+                    caller,
+                    operationId: input.operationId,
+                    targetAccountId: input.accountId,
+                }),
+                () => ({}),
+            ),
+        ),
+    "admin.accounts.rename": (ctx, input, call) =>
+        asStaff(ctx, call, async (caller) =>
+            mapOk(
+                await renameAccount({
+                    db: ctx.auth.db,
+                    caller,
+                    operationId: input.operationId,
+                    targetAccountId: input.accountId,
+                    username: input.username,
+                }),
+                (renamed) => ({ username: renamed.username }),
+            ),
+        ),
+    "admin.accounts.recover": (ctx, input, call) =>
+        asStaff(ctx, call, (caller) =>
+            recoverAccount({
+                db: ctx.auth.db,
+                rng: ctx.auth.rng,
+                caller,
+                targetAccountId: input.accountId,
+            }),
+        ),
+
+    "admin.roles.list": (ctx, _input, call) =>
+        asStaff(ctx, call, async (caller) =>
+            mapOk(await listRoles(ctx.auth.db, { caller }), (roles) => ({ roles })),
+        ),
+    "admin.roles.get": (ctx, input, call) =>
+        asStaff(ctx, call, (caller) =>
+            readRoleSummary(ctx.auth.db, { caller, roleId: input.roleId }),
+        ),
+    "admin.roles.save": (ctx, input, call) =>
+        asStaff(ctx, call, async (caller) =>
+            withoutChannels(
+                mapOk(
+                    await upsertRole({
+                        db: ctx.auth.db,
+                        catalog: ctx.catalog,
+                        caller,
+                        ...input,
+                        channelGrants: "unchanged",
+                    }),
+                    (saved) => ({ roleId: saved.roleId }),
+                ),
+            ),
+        ),
+    "admin.roles.assign": (ctx, input, call) =>
+        asStaff(ctx, call, async (caller) =>
+            done(
+                await assignAccountRole({
+                    db: ctx.auth.db,
+                    caller,
+                    targetAccountId: input.accountId,
+                    roleId: input.roleId,
+                    expiresAt: input.expiresAt,
+                }),
+            ),
+        ),
+    "admin.roles.unassign": (ctx, input, call) =>
+        asStaff(ctx, call, async (caller) =>
+            done(
+                await unassignAccountRole({
+                    db: ctx.auth.db,
+                    caller,
+                    targetAccountId: input.accountId,
+                    roleId: input.roleId,
+                }),
+            ),
+        ),
+
+    "admin.audit.list": (ctx, input, call) =>
+        asStaff(ctx, call, (caller) => listAudit(ctx.auth.db, { caller, ...input })),
 };
 
 export const webProcedures = implement(webContract, handlers);

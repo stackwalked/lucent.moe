@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { AuditOperation } from "../authority/operations.ts";
 import type {
     AuthenticationResponse,
     CreationOptions,
@@ -88,7 +89,7 @@ async function finishCredentialChange(
     tx: Tx,
     params: {
         readonly change: CredentialChange;
-        readonly operation: string;
+        readonly operation: AuditOperation;
         readonly detail: Record<string, unknown>;
         readonly txNow: EpochMs;
         readonly client: ClientInfo | undefined;
@@ -445,6 +446,12 @@ export type CredentialRef =
     | { readonly kind: "password" }
     | { readonly kind: "totp" };
 
+const REMOVED = {
+    passkey: "credential.passkey_removed",
+    password: "credential.password_removed",
+    totp: "credential.totp_removed",
+} as const satisfies Record<CredentialRef["kind"], AuditOperation>;
+
 // Never leaves the account without a way in. The account lock serializes removals, so two
 // removals that would each be fine alone can't together strand it.
 export async function removeCredential(
@@ -484,7 +491,7 @@ export async function removeCredential(
         }
         return await finishCredentialChange(tx, {
             change: change.value,
-            operation: `credential.${credential.kind}_removed`,
+            operation: REMOVED[credential.kind],
             detail: credential.kind === "passkey" ? { passkeyId: toBase64Url(credential.id) } : {},
             txNow,
             client: params.client,

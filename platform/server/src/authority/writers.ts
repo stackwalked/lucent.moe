@@ -48,7 +48,13 @@ export type WriterFailure =
           readonly channel: ChannelId;
       }
     | { readonly code: "NO_PRODUCTS" }
-    | { readonly code: "INVALID_WINDOW" };
+    | { readonly code: "INVALID_WINDOW" }
+    | { readonly code: "ROLE_NAME_TAKEN" };
+
+// What a staff-facing writer can refuse with, besides its own codes: every one locks the caller
+// and authorizes; most keep a receipt.
+type Refusal<Code extends string> = { readonly code: Code };
+type StaffFailure<Extra> = DbFailure | AuthzRefusal | Extra;
 
 // `role.rank` is a PostgreSQL integer.
 const MAX_RANK = 2_147_483_647;
@@ -157,7 +163,7 @@ export async function createAccount(params: {
               readonly replayed: false;
           }
         | { readonly accountId: AccountId; readonly replayed: true },
-        WriterFailure
+        StaffFailure<ReceiptRefusal | Refusal<"EMAIL_TAKEN">>
     >
 > {
     const email = params.email.trim().toLowerCase();
@@ -222,7 +228,7 @@ export async function recoverAccount(params: {
     readonly rng: CryptoRng;
     readonly caller: Caller;
     readonly targetAccountId: AccountId;
-}): Promise<Result<{ readonly setupToken: BearerToken }, WriterFailure>> {
+}): Promise<Result<{ readonly setupToken: BearerToken }, StaffFailure<Refusal<"NOT_FOUND">>>> {
     return await withTx(params.db, async (tx, txNow) => {
         const locked = await lockCallerWith(tx, {
             caller: params.caller,
@@ -299,6 +305,14 @@ export async function recoverRootAccount(params: {
     });
 }
 
+type ChannelRefusal =
+    | { readonly code: "UNKNOWN_PRODUCT"; readonly productId: ProductId }
+    | {
+          readonly code: "UNKNOWN_CHANNEL";
+          readonly productId: ProductId;
+          readonly channel: ChannelId;
+      };
+
 export type ChannelGrantInput = {
     readonly productId: ProductId;
     readonly channels: readonly ChannelId[];
@@ -308,7 +322,7 @@ function checkChannels(
     catalog: ProductCatalog,
     productId: ProductId,
     channels: readonly ChannelId[],
-): Result<void, WriterFailure> {
+): Result<void, ChannelRefusal> {
     const product = catalog.get(productId);
     if (product === undefined) {
         return err({ code: "UNKNOWN_PRODUCT", productId });
@@ -355,29 +369,42 @@ export async function upsertRole(params: {
     readonly name: string;
     readonly rank: number;
     readonly permissions: readonly Action[];
-    readonly channelGrants: readonly ChannelGrantInput[];
-}): Promise<Result<{ readonly roleId: RoleId; readonly replayed: boolean }, WriterFailure>> {
+    // "unchanged" keeps what the role has (none for a new one): the slice 1 editor doesn't show
+    // channel grants, and saving there must not wipe them.
+    readonly channelGrants: readonly ChannelGrantInput[] | "unchanged";
+}): Promise<
+    Result<
+        { readonly roleId: RoleId; readonly replayed: boolean },
+        StaffFailure<
+            ReceiptRefusal | ChannelRefusal | Refusal<"INVALID_RANK"> | Refusal<"ROLE_NAME_TAKEN">
+        >
+    >
+> {
     if (!Number.isInteger(params.rank) || params.rank < 0 || params.rank > MAX_RANK) {
         return err({ code: "INVALID_RANK" });
     }
-    const channelGrants: ChannelGrant[] = [];
-    for (const grant of params.channelGrants) {
-        const checked = checkChannels(params.catalog, grant.productId, grant.channels);
-        if (!checked.ok) return checked;
-        channelGrants.push({ productId: grant.productId, channels: sortedUnique(grant.channels) });
+    let requestedGrants: ChannelGrant[] | "unchanged" = "unchanged";
+    if (params.channelGrants !== "unchanged") {
+        const grants: ChannelGrant[] = [];
+        for (const grant of params.channelGrants) {
+            const checked = checkChannels(params.catalog, grant.productId, grant.channels);
+            if (!checked.ok) return checked;
+            grants.push({ productId: grant.productId, channels: sortedUnique(grant.channels) });
+        }
+        requestedGrants = grants;
     }
-    const after = {
+    const requested = {
         name: params.name,
         rank: params.rank,
         permissions: sortedUnique(params.permissions),
-        channelGrants,
+        channelGrants: requestedGrants,
     };
 
     const op = await toOperationKey({
         principal: principalOf(params.caller),
         endpoint: "roles.upsert",
         operationId: params.operationId,
-        payload: { roleId: params.roleId, ...after },
+        payload: { roleId: params.roleId, ...requested },
     });
 
     return await withTx(params.db, async (tx, txNow) => {
@@ -387,6 +414,13 @@ export async function upsertRole(params: {
         const existing = await lockRole(tx, params.roleId);
         if (!existing.ok) return existing;
         const before = existing.value;
+        const after = {
+            ...requested,
+            channelGrants:
+                requested.channelGrants === "unchanged"
+                    ? (before?.channelGrants ?? [])
+                    : requested.channelGrants,
+        };
 
         // Rewriting a role touches everyone who holds it, so the caller must outrank it both as
         // it stands and as it will stand.
@@ -433,7 +467,15 @@ export async function upsertRole(params: {
                               channel_grants = ${JSON.stringify(after.channelGrants)}::jsonb
                           where id = ${params.roleId}`,
                   );
-        if (!written.ok) return written;
+        if (!written.ok) {
+            if (
+                written.error.code === "UNIQUE_VIOLATION" &&
+                written.error.constraint === "role_name_key"
+            ) {
+                return err({ code: "ROLE_NAME_TAKEN" });
+            }
+            return written;
+        }
 
         const auditRes = await appendAudit(tx, {
             actorId: params.caller.accountId,
@@ -461,7 +503,7 @@ export async function assignAccountRole(params: {
     readonly targetAccountId: AccountId;
     readonly roleId: RoleId;
     readonly expiresAt: EpochMs | null;
-}): Promise<Result<void, WriterFailure>> {
+}): Promise<Result<void, StaffFailure<Refusal<"NOT_FOUND">>>> {
     return await withTx(params.db, async (tx, txNow) => {
         const locked = await lockCallerWith(tx, {
             caller: params.caller,
@@ -648,7 +690,9 @@ export async function suspendAccount(params: {
     readonly operationId: OperationId;
     readonly targetAccountId: AccountId;
     readonly reason: string;
-}): Promise<Result<{ readonly replayed: boolean }, WriterFailure>> {
+}): Promise<
+    Result<{ readonly replayed: boolean }, StaffFailure<ReceiptRefusal | Refusal<"NOT_FOUND">>>
+> {
     const op = await toOperationKey({
         principal: principalOf(params.caller),
         endpoint: "accounts.suspend",
@@ -702,5 +746,225 @@ export async function suspendAccount(params: {
         if (!recRes.ok) return recRes;
 
         return ok({ replayed: false });
+    });
+}
+
+const ReinstateReceiptSchema = z.object({ reinstated: z.literal(true) });
+
+export async function reinstateAccount(params: {
+    readonly db: Db;
+    readonly caller: Caller;
+    readonly operationId: OperationId;
+    readonly targetAccountId: AccountId;
+}): Promise<
+    Result<{ readonly replayed: boolean }, StaffFailure<ReceiptRefusal | Refusal<"NOT_FOUND">>>
+> {
+    const op = await toOperationKey({
+        principal: principalOf(params.caller),
+        endpoint: "accounts.reinstate",
+        operationId: params.operationId,
+        payload: { targetAccountId: params.targetAccountId },
+    });
+
+    return await withTx(params.db, async (tx, txNow) => {
+        const locked = await lockCallerWith(tx, {
+            caller: params.caller,
+            targets: [params.targetAccountId],
+            txNow,
+        });
+        if (!locked.ok) return locked;
+        const target = locked.value.accounts.get(params.targetAccountId);
+        if (target === undefined) return err({ code: "NOT_FOUND" });
+        const authz = authorize({
+            txNow,
+            subject: locked.value.subject,
+            action: "accounts:reinstate",
+            target: { kind: "account", account: target },
+        });
+        if (!authz.ok) return authz;
+
+        const replay = await readReplay(tx, op, ReinstateReceiptSchema);
+        if (!replay.ok) return replay;
+        if (replay.value.replayed) return ok({ replayed: true });
+
+        const upd = await execute(
+            tx,
+            sql`update account set status = 'active' where id = ${params.targetAccountId}`,
+        );
+        if (!upd.ok) return upd;
+        const audited = await appendAudit(tx, {
+            actorId: params.caller.accountId,
+            operation: "account.reinstate",
+            target: { accountId: params.targetAccountId },
+            at: txNow,
+            client: params.caller.client,
+        });
+        if (!audited.ok) return audited;
+        const recorded = await recordReceipt(tx, op, { reinstated: true });
+        if (!recorded.ok) return recorded;
+        return ok({ replayed: false });
+    });
+}
+
+const RenameReceiptSchema = z.object({ username: z.string() });
+
+// A rename claims the new name's skeleton for good, and the old claim stays, so neither name
+// (nor a look-alike) can go to anyone else. Reclaiming one of the account's own earlier names is
+// allowed: its claim is already theirs.
+export async function renameAccount(params: {
+    readonly db: Db;
+    readonly caller: Caller;
+    readonly operationId: OperationId;
+    readonly targetAccountId: AccountId;
+    readonly username: string;
+}): Promise<
+    Result<
+        { readonly username: string; readonly replayed: boolean },
+        StaffFailure<
+            ReceiptRefusal | UsernameInvalid | Refusal<"NOT_FOUND"> | Refusal<"USERNAME_TAKEN">
+        >
+    >
+> {
+    const parsed = parseUsername(params.username);
+    if (!parsed.ok) return parsed;
+    const { username, skeleton } = parsed.value;
+    const op = await toOperationKey({
+        principal: principalOf(params.caller),
+        endpoint: "accounts.rename",
+        operationId: params.operationId,
+        payload: { targetAccountId: params.targetAccountId, username },
+    });
+
+    return await withTx(params.db, async (tx, txNow) => {
+        const locked = await lockCallerWith(tx, {
+            caller: params.caller,
+            targets: [params.targetAccountId],
+            txNow,
+        });
+        if (!locked.ok) return locked;
+        const target = locked.value.accounts.get(params.targetAccountId);
+        if (target === undefined) return err({ code: "NOT_FOUND" });
+        const authz = authorize({
+            txNow,
+            subject: locked.value.subject,
+            action: "accounts:rename",
+            target: { kind: "account", account: target },
+        });
+        if (!authz.ok) return authz;
+
+        const replay = await readReplay(tx, op, RenameReceiptSchema);
+        if (!replay.ok) return replay;
+        if (replay.value.replayed) {
+            return ok({ username: replay.value.result.username, replayed: true });
+        }
+
+        const before = await queryOne(
+            tx,
+            z.object({ username: z.string().nullable() }),
+            sql`select username from account where id = ${params.targetAccountId}`,
+        );
+        if (!before.ok) return before;
+        const claim = await queryOne(
+            tx,
+            z.object({ account_id: AccountId }),
+            sql`select account_id from username_claim where skeleton = ${skeleton}`,
+        );
+        if (!claim.ok) return claim;
+        if (claim.value !== null && claim.value.account_id !== params.targetAccountId) {
+            return err({ code: "USERNAME_TAKEN" });
+        }
+        if (claim.value === null) {
+            const claimed = await execute(
+                tx,
+                sql`insert into username_claim (skeleton, username, account_id, claimed_at)
+                    values (${skeleton}, ${username}, ${params.targetAccountId},
+                            ${toTimestamptz(txNow)}::timestamptz)`,
+            );
+            if (!claimed.ok) {
+                if (claimed.error.code === "UNIQUE_VIOLATION")
+                    return err({ code: "USERNAME_TAKEN" });
+                return claimed;
+            }
+        }
+        // The database refuses a username change unless the transaction says it's an admin
+        // rename (0001's account_username_immutable_trg); `true` scopes the setting to this tx.
+        const allowed = await execute(
+            tx,
+            sql`select set_config('lucent.username_rename', 'on', true)`,
+        );
+        if (!allowed.ok) return allowed;
+        const renamed = await execute(
+            tx,
+            sql`update account set username = ${username} where id = ${params.targetAccountId}`,
+        );
+        if (!renamed.ok) {
+            if (renamed.error.code === "UNIQUE_VIOLATION") return err({ code: "USERNAME_TAKEN" });
+            return renamed;
+        }
+        const audited = await appendAudit(tx, {
+            actorId: params.caller.accountId,
+            operation: "account.rename",
+            target: {
+                accountId: params.targetAccountId,
+                from: before.value?.username ?? null,
+                to: username,
+            },
+            at: txNow,
+            client: params.caller.client,
+        });
+        if (!audited.ok) return audited;
+        const recorded = await recordReceipt(tx, op, { username });
+        if (!recorded.ok) return recorded;
+        return ok({ username, replayed: false });
+    });
+}
+
+// Taking a role away needs the same standing as handing it out. One not held is already gone.
+export async function unassignAccountRole(params: {
+    readonly db: Db;
+    readonly caller: Caller;
+    readonly targetAccountId: AccountId;
+    readonly roleId: RoleId;
+}): Promise<Result<void, StaffFailure<Refusal<"NOT_FOUND">>>> {
+    return await withTx(params.db, async (tx, txNow) => {
+        const locked = await lockCallerWith(tx, {
+            caller: params.caller,
+            targets: [params.targetAccountId],
+            txNow,
+        });
+        if (!locked.ok) return locked;
+        const target = locked.value.accounts.get(params.targetAccountId);
+        if (target === undefined) return err({ code: "NOT_FOUND" });
+        const role = await readRole(tx, params.roleId);
+        if (!role.ok) return role;
+        const roleAuthz = authorize({
+            txNow,
+            subject: locked.value.subject,
+            action: "roles:assign",
+            target: { kind: "role", rank: role.value.rank, permissions: role.value.permissions },
+        });
+        if (!roleAuthz.ok) return roleAuthz;
+        const accountAuthz = authorize({
+            txNow,
+            subject: locked.value.subject,
+            action: "roles:assign",
+            target: { kind: "account", account: target },
+        });
+        if (!accountAuthz.ok) return accountAuthz;
+
+        const removed = await execute(
+            tx,
+            sql`delete from account_role
+                where account_id = ${params.targetAccountId} and role_id = ${params.roleId}`,
+        );
+        if (!removed.ok) return removed;
+        if (removed.value === 0) return ok(undefined);
+        return await appendAudit(tx, {
+            actorId: params.caller.accountId,
+            operation: "role.unassign",
+            target: { accountId: params.targetAccountId, roleId: params.roleId },
+            at: txNow,
+            client: params.caller.client,
+        });
     });
 }

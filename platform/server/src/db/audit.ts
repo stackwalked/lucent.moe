@@ -1,3 +1,4 @@
+import type { AuditOperation } from "../authority/operations.ts";
 import { ok, type Result } from "../core/result.ts";
 import type { ClientInfo, EpochMs } from "../core/scalars.ts";
 import { type DbFailure, execute, sql, type Tx, toTimestamptz } from "./pool.ts";
@@ -8,7 +9,7 @@ export async function appendAudit(
     tx: Tx,
     params: {
         readonly actorId: string;
-        readonly operation: string;
+        readonly operation: AuditOperation;
         readonly target: Record<string, unknown>;
         readonly at: EpochMs;
         readonly client: ClientInfo | null;

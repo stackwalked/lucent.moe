@@ -1,12 +1,13 @@
 import { z } from "zod";
 import type { Action } from "../authority/actions.ts";
+import type { Caller } from "../authority/policy.ts";
 import { readStanding } from "../authority/standing.ts";
 import { invariant } from "../core/contain.ts";
 import { ok, type Result } from "../core/result.ts";
 import type { AccountId, BearerToken, ClientInfo, EpochMs, SessionId } from "../core/scalars.ts";
 import { type Db, type DbFailure, queryOne, sql } from "../db/pool.ts";
 import { withTx } from "../db/tx.ts";
-import { readSession, type SessionPurpose, type SessionRefusal, touchSession } from "./sessions.ts";
+import { readSession, type SessionInvalid, type SessionPurpose, touchSession } from "./sessions.ts";
 
 // Who holds a session, with the standing `can()` needs. Web uses it to decide what to show;
 // every procedure decides again for itself.
@@ -28,7 +29,7 @@ export type Viewer = {
 export async function resolveViewer(
     db: Db,
     params: { readonly sessionToken: BearerToken; readonly client: ClientInfo | null },
-): Promise<Result<Viewer, SessionRefusal | DbFailure>> {
+): Promise<Result<Viewer, SessionInvalid | DbFailure>> {
     return await withTx(db, async (tx, txNow) => {
         const session = await readSession(tx, {
             token: params.sessionToken,
@@ -65,6 +66,28 @@ export async function resolveViewer(
                 maxRank: standing.value.maxRank,
                 permissions: [...standing.value.permissions].sort(),
             },
+        });
+    });
+}
+
+// The staff member behind an admin call. Read in its own short transaction: the writer then
+// re-reads the caller's standing under lock, so all this vouches for is who holds the session
+// and when they last stepped up. A session ended in between can finish the one call in flight.
+export async function resolveCaller(
+    db: Db,
+    params: { readonly sessionToken: BearerToken; readonly client: ClientInfo | null },
+): Promise<Result<Caller, SessionInvalid | DbFailure>> {
+    return await withTx(db, async (tx, txNow) => {
+        const session = await readSession(tx, {
+            token: params.sessionToken,
+            txNow,
+            purposes: ["member"],
+        });
+        if (!session.ok) return session;
+        return ok({
+            accountId: session.value.accountId,
+            stepUpAt: session.value.stepUpAt,
+            client: params.client,
         });
     });
 }

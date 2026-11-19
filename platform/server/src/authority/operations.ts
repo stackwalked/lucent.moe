@@ -1,0 +1,27 @@
+import { z } from "zod";
+
+// Every operation an audit row can record. Web gives each one a label; adding one here fails its
+// typecheck until it has one. Rows outlive this list, so readers treat the stored string as
+// possibly unknown.
+export const AUDIT_OPERATIONS = [
+    "account.bootstrap_root",
+    "account.create",
+    "account.recover",
+    "account.suspend",
+    "account.reinstate",
+    "account.rename",
+    "account.username_chosen",
+    "credential.password_set",
+    "credential.totp_enrolled",
+    "credential.passkey_added",
+    "credential.passkey_removed",
+    "credential.password_removed",
+    "credential.totp_removed",
+    "role.upsert",
+    "role.assign",
+    "role.unassign",
+    "entitlement.issue",
+] as const;
+
+export const AuditOperation = z.enum(AUDIT_OPERATIONS);
+export type AuditOperation = z.output<typeof AuditOperation>;

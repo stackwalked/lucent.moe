@@ -50,8 +50,10 @@ export type BrowserSession = {
     readonly stepUpAt: EpochMs | null;
 };
 
+export type SessionInvalid = { readonly code: "SESSION_INVALID" };
+
 export type SessionRefusal =
-    | { readonly code: "SESSION_INVALID" }
+    | SessionInvalid
     | { readonly code: "REAUTH_REQUIRED"; readonly withinSeconds: number };
 
 export async function mintSession(
@@ -99,7 +101,7 @@ async function findSession(
         readonly purposes: readonly SessionPurpose[];
         readonly lockAccount: "for update" | "no lock";
     },
-): Promise<Result<BrowserSession, SessionRefusal | DbFailure>> {
+): Promise<Result<BrowserSession, SessionInvalid | DbFailure>> {
     const tokenHash = await hashToken(params.token);
     const lock = params.lockAccount === "for update" ? sql`for update of a` : sql``;
     const row = await queryOne(
@@ -139,7 +141,7 @@ export function lockSession(
         readonly txNow: EpochMs;
         readonly purposes: readonly SessionPurpose[];
     },
-): Promise<Result<BrowserSession, SessionRefusal | DbFailure>> {
+): Promise<Result<BrowserSession, SessionInvalid | DbFailure>> {
     return findSession(tx, { ...params, lockAccount: "for update" });
 }
 
@@ -150,7 +152,7 @@ export function readSession(
         readonly txNow: EpochMs;
         readonly purposes: readonly SessionPurpose[];
     },
-): Promise<Result<BrowserSession, SessionRefusal | DbFailure>> {
+): Promise<Result<BrowserSession, SessionInvalid | DbFailure>> {
     return findSession(q, { ...params, lockAccount: "no lock" });
 }
 
@@ -245,7 +247,7 @@ export type ListedSession = {
 export async function listSessions(
     db: Db,
     params: { readonly sessionToken: BearerToken },
-): Promise<Result<readonly ListedSession[], SessionRefusal | DbFailure>> {
+): Promise<Result<readonly ListedSession[], SessionInvalid | DbFailure>> {
     return await withTx(db, async (tx, txNow) => {
         const session = await readSession(tx, {
             token: params.sessionToken,
@@ -282,7 +284,7 @@ export async function listSessions(
 export async function signOutSession(
     db: Db,
     params: { readonly sessionToken: BearerToken; readonly sessionId: SessionId },
-): Promise<Result<void, SessionRefusal | DbFailure>> {
+): Promise<Result<void, SessionInvalid | DbFailure>> {
     return await withTx(db, async (tx, txNow) => {
         const session = await lockSession(tx, {
             token: params.sessionToken,
