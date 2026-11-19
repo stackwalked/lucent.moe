@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <optional>
 #include <span>
 #include <string>
 
@@ -13,6 +14,8 @@ struct options {
     std::string process = "cs2.exe";
     // Mapped, as release does; the OS loader on request, for debugging with symbols.
     kit::image_kind loading = kit::image_kind::mapped;
+    // A fact bundle for boot_info (devkey sign makes one); without it every fact stays unresolved.
+    std::optional<std::filesystem::path> bundle;
 };
 
 // Prints the usage line to stderr when the arguments don't fit it.

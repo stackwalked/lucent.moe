@@ -25,19 +25,25 @@ struct boot_info {
     // Mapped only: the mapper's RtlPcToFileHeader trampoline region, freed with the image; 0 if
     // the mapper made none.
     u64 trampolines = 0;
+    // The fact bundle, which the host wrote into the module's process. Borrowed only until the
+    // boot entry returns: kit::start copies it. Null, with a size of 0, when the host has none.
+    const std::byte* bundle = nullptr;
+    u64 bundle_size = 0;
 };
 
-inline constexpr u32 boot_info_version = 2;
+inline constexpr u32 boot_info_version = 3;
 
 static_assert(
     std::is_trivially_copyable_v<boot_info>, "the host copies boot_info across processes"
 );
 static_assert(
-    sizeof(boot_info) == 32, "boot_info crosses binaries: a layout change bumps the version"
+    sizeof(boot_info) == 48, "boot_info crosses binaries: a layout change bumps the version"
 );
 static_assert(offsetof(boot_info, kind) == 4, "boot_info's layout is pinned");
 static_assert(offsetof(boot_info, from_host) == 8, "boot_info's layout is pinned");
 static_assert(offsetof(boot_info, to_host) == 16, "boot_info's layout is pinned");
 static_assert(offsetof(boot_info, trampolines) == 24, "boot_info's layout is pinned");
+static_assert(offsetof(boot_info, bundle) == 32, "boot_info's layout is pinned");
+static_assert(offsetof(boot_info, bundle_size) == 40, "boot_info's layout is pinned");
 
 }

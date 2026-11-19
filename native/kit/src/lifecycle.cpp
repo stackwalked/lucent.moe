@@ -1,13 +1,24 @@
 #include <lucent/kit/lifecycle.hpp>
 
+#include <cstddef>
 #include <expected>
+#include <format>
 #include <memory>
+#include <span>
+#include <string>
+#include <string_view>
 #include <tuple>
+#include <utility>
+#include <vector>
 
 #include <Windows.h>
 
 #include <lucent/core/match.hpp>
+#include <lucent/core/narrow.hpp>
 #include <lucent/kit/boot_info.hpp>
+#include <lucent/kit/fact.hpp>
+#include <lucent/kit/fact_apply.hpp>
+#include <lucent/kit/game_module.hpp>
 #include <lucent/kit/session.hpp>
 #include <lucent/kit/session_message.hpp>
 #include <lucent/os/unique_handle.hpp>
@@ -41,10 +52,92 @@ auto wait_for_unload(session& channel) -> void {
     }
 }
 
+// Far above any real bundle; a size past it is a host bug, not a bundle.
+constexpr u64 max_bundle_size = u64{16} << 20U;
+
 struct start_request {
     boot_info info;
-    attach_fn attach = nullptr;
+    target started;
+    // A copy: the host's is borrowed only until the boot entry returns.
+    std::vector<std::byte> bundle;
 };
+
+auto name_of(set_outcome outcome) -> std::string_view {
+    switch (outcome) {
+    case set_outcome::applied:
+        return "applied";
+    case set_outcome::unverified:
+        return "unverified";
+    case set_outcome::other_manifest:
+        return "other manifest";
+    case set_outcome::other_build:
+        return "other module build";
+    case set_outcome::module_absent:
+        return "module not loaded";
+    }
+    return "unknown";
+}
+
+auto describe(const apply_report& report) -> std::string {
+    std::string sets;
+    for (const set_outcome outcome : report.sets) {
+        sets += std::format("{}{}", sets.empty() ? "" : ", ", name_of(outcome));
+    }
+    return std::format(
+        "facts: sets [{}]; {} resolved, {} rejected, {} unresolved, {} unknown, {} misplaced",
+        sets,
+        report.facts.resolved,
+        report.facts.rejected,
+        report.facts.unresolved,
+        report.facts.unknown,
+        report.misplaced
+    );
+}
+
+auto log(session& channel, std::string text) -> void {
+    // As with stage reports, a failure means the host is gone.
+    std::ignore = channel.send(log_line{.text = std::move(text)});
+}
+
+// The resolve stage: every linked fact gets its value from the bundle, or stays unresolved.
+auto apply_bundle(session& channel, const start_request& request) -> void {
+    if (request.bundle.empty()) {
+        log(channel, "facts: no bundle, every fact unresolved");
+        return;
+    }
+    const std::vector<loaded_module> modules = loaded_game_modules(request.started.modules);
+    const result<apply_report> applied = apply(
+        apply_request{
+            .bundle = request.bundle,
+            .trusted = request.started.trusted,
+            .records = linked_fact_records(),
+            .modules = modules,
+        }
+    );
+    if (!applied) {
+        log(channel,
+            std::format(
+                "facts: the bundle doesn't decode (error {}), every fact unresolved",
+                std::to_underlying(applied.error().code)
+            ));
+        return;
+    }
+    log(channel, describe(*applied));
+}
+
+auto copy_bundle(const boot_info& info) -> result<std::vector<std::byte>> {
+    if (info.bundle_size > max_bundle_size || (info.bundle_size != 0 && info.bundle == nullptr)) {
+        return std::unexpected(error{.code = error_code::malformed});
+    }
+    if (info.bundle_size == 0) {
+        return std::vector<std::byte>{};
+    }
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunsafe-buffer-usage-in-container" // the host's stated size
+    const std::span<const std::byte> given{info.bundle, narrow<usize>(info.bundle_size)};
+#pragma clang diagnostic pop
+    return std::vector<std::byte>{given.begin(), given.end()};
+}
 
 // Whether the module may be freed: not when detach couldn't show that no thread will run its code
 // again.
@@ -54,10 +147,11 @@ auto run(const start_request& request) -> bool {
         .outbound = os::unique_handle{request.info.to_host},
     }};
     report(channel, stage::boot);
+    apply_bundle(channel, request);
     bool is_detached = true;
     {
         // A target that fails to attach skips straight to detach: the host sees no attach stage.
-        const result<std::unique_ptr<attachment>> attached = request.attach();
+        const result<std::unique_ptr<attachment>> attached = request.started.attach();
         if (attached) {
             report(channel, stage::attach);
             report(channel, stage::run);
@@ -97,13 +191,18 @@ auto WINAPI lifecycle_main(void* parameter) -> DWORD {
 
 }
 
-auto start(const boot_info& info, attach_fn attach) -> result<void> {
-    LUCENT_INVARIANT(attach != nullptr);
+auto start(const boot_info& info, const target& started) -> result<void> {
+    LUCENT_INVARIANT(started.attach != nullptr);
     // The host wrote it: an unknown kind is bad input, and releasing by guess would crash later.
     if (info.kind != image_kind::loaded && info.kind != image_kind::mapped) {
         return std::unexpected(error{.code = error_code::malformed});
     }
-    auto owned = std::make_unique<start_request>(start_request{.info = info, .attach = attach});
+    auto owned = std::make_unique<start_request>(
+        start_request{.info = info, .started = started, .bundle = LUCENT_TRY(copy_bundle(info))}
+    );
+    // The copy is the module's own; the host's goes away once the boot entry returns.
+    owned->info.bundle = nullptr;
+    owned->info.bundle_size = 0;
     const os::unique_handle thread{
         CreateThread(nullptr, 0, &lifecycle_main, owned.get(), 0, nullptr)
     };

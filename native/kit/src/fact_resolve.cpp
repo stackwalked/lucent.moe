@@ -17,6 +17,8 @@
 #include <lucent/os/address_range.hpp>
 #include <lucent/pe/image_view.hpp>
 
+#include "time_date_stamp.hpp"
+
 namespace lucent::kit {
 namespace {
 
@@ -209,6 +211,8 @@ auto image_at(u8 index, uptr base) -> result<module_image> {
         .base = base,
         .size = range.end - range.begin,
         .sections = {},
+        .time_date_stamp = 0,
+        .size_of_image = 0,
     };
     bool is_parsed = false;
     const contained<void> read = contain([&] {
@@ -220,6 +224,12 @@ auto image_at(u8 index, uptr base) -> result<module_image> {
         if (!view) {
             return;
         }
+        const result<u32> stamp = detail::time_date_stamp_of(*view);
+        if (!stamp) {
+            return;
+        }
+        image.time_date_stamp = *stamp;
+        image.size_of_image = view->size_of_image();
         for (const pe::section& stored : view->sections()) {
             image.sections.push_back(
                 image_section{

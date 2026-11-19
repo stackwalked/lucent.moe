@@ -1,13 +1,18 @@
+#include <cstddef>
 #include <cstdio>
+#include <format>
 #include <print>
 #include <span>
+#include <string>
 #include <thread>
 #include <tuple>
+#include <vector>
 
 #include <lucent/core/narrow.hpp>
 #include <lucent/kit/boot_info.hpp>
 #include <lucent/kit/session.hpp>
 #include <lucent/kit/session_message.hpp>
+#include <lucent/os/file.hpp>
 #include <lucent/os/process.hpp>
 
 #include "cli/describe.hpp"
@@ -23,17 +28,27 @@ namespace {
 auto run(const options& chosen) -> result<void> {
     const u32 process_id = LUCENT_TRY(os::find_process_id(chosen.process));
     const os::process target = LUCENT_TRY(os::process::open(process_id));
+    const std::vector<std::byte> bundle =
+        chosen.bundle ? LUCENT_TRY(os::read_file(*chosen.bundle)) : std::vector<std::byte>{};
     const loaded_module module = LUCENT_TRY(load_module(target, chosen));
     host_channel channel = LUCENT_TRY(open_channel(target));
     channel.boot.kind = module.kind;
     channel.boot.trampolines = module.trampolines;
-    LUCENT_TRY(start_module(target, module.base + module.boot_offset, channel.boot));
+    LUCENT_TRY(start_module(
+        target,
+        boot_request{
+            .entry = module.base + module.boot_offset,
+            .info = channel.boot,
+            .bundle = bundle,
+        }
+    ));
     std::println(
-        "started in {} ({}), {} at {:#x}; press Enter to unload",
+        "started in {} ({}), {} at {:#x}, with {}; press Enter to unload",
         chosen.process,
         target.id(),
         module.kind == kit::image_kind::mapped ? "mapped" : "OS-loaded",
-        module.base
+        module.base,
+        bundle.empty() ? std::string{"no bundle"} : std::format("a {}-byte bundle", bundle.size())
     );
 
     const std::jthread relaying{[&channel] { relay(channel.session); }};

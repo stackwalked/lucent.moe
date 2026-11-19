@@ -29,6 +29,9 @@ struct module_image {
     uptr base = 0;
     usize size = 0;
     std::vector<image_section> sections;
+    // The headers' half of the module's build key (the name is the other).
+    u32 time_date_stamp = 0;
+    u32 size_of_image = 0;
 };
 
 // Reads the image's own headers where it's loaded. They're foreign memory, so the read is

@@ -1,7 +1,9 @@
 #include "inject/boot.hpp"
 
+#include <bit>
 #include <cstddef>
 #include <expected>
+#include <optional>
 #include <span>
 
 #include <lucent/core/match.hpp>
@@ -27,14 +29,24 @@ auto boot_entry_offset(std::span<const std::byte> module_file) -> result<u32> {
     );
 }
 
-auto start_module(const os::process& target, uptr entry, const kit::boot_info& info)
-    -> result<void> {
+auto start_module(const os::process& target, const boot_request& request) -> result<void> {
+    kit::boot_info info = request.info;
+    std::optional<os::remote_region> remote_bundle;
+    if (!request.bundle.empty()) {
+        remote_bundle.emplace(LUCENT_TRY(
+            os::remote_region::allocate(target, request.bundle.size(), os::page_access::read_write)
+        ));
+        LUCENT_TRY(remote_bundle->write(0, request.bundle));
+        info.bundle = std::bit_cast<const std::byte*>(remote_bundle->base());
+        info.bundle_size = request.bundle.size();
+    }
     const std::span<const std::byte> bytes = std::as_bytes(std::span{&info, 1});
     os::remote_region remote_info =
         LUCENT_TRY(os::remote_region::allocate(target, bytes.size(), os::page_access::read_write));
     LUCENT_TRY(remote_info.write(0, bytes));
-    const u32 exit_code =
-        LUCENT_TRY(os::run_remote(target, {.start = entry, .argument = remote_info.base()}));
+    const u32 exit_code = LUCENT_TRY(
+        os::run_remote(target, {.start = request.entry, .argument = remote_info.base()})
+    );
     if (exit_code != 0) {
         // The entry reports failure as an error_code plus one.
         return std::unexpected(error{.code = static_cast<error_code>(exit_code - 1)});

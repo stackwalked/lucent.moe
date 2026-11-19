@@ -1,0 +1,13 @@
+project:
+  description: "The per-machine dev signing key: emits its public key for dev builds and signs local dev fact bundles."
+
+language: "cpp"
+layer: "tool"
+
+dependsOn: ["bundle", "crypto", "kit", "os", "pe"]
+
+# The build runs `devkey header`; `devkey sign` is run by hand, from the build tree
+# (.moon/cache/cmake/dev/tools/devkey/devkey.exe), with no arguments for its usage.
+workspace:
+  inheritedTasks:
+    exclude: ["test"]

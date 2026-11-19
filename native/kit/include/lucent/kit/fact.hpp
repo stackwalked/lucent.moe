@@ -44,9 +44,9 @@ static_assert(alignof(fact_record) == 8, "fact records tile the section with no 
 // header, so a fact's key differs per release.
 inline constexpr u64 dev_fact_seed = 0x6c75'6365'6e74'0001;
 
-// FNV-1a over the seed's bytes, then the name's. The name exists only at compile time. noexcept for
-// the constinit fact objects it initializes, which may not have a throwing initializer.
-consteval auto fact_key(u64 seed, std::string_view name) noexcept -> u64 {
+// FNV-1a over the seed's bytes, then the name's. Tools that take fact names from a person (devkey)
+// hash them at run time; module code reaches it only through fact_key, so no name ships.
+constexpr auto fact_name_hash(u64 seed, std::string_view name) noexcept -> u64 {
     constexpr u64 offset_basis = 0xcbf2'9ce4'8422'2325;
     constexpr u64 prime = 0x0000'0100'0000'01b3;
     u64 hash = offset_basis;
@@ -58,6 +58,12 @@ consteval auto fact_key(u64 seed, std::string_view name) noexcept -> u64 {
     }
     // 0 marks a gap in the section, never a fact.
     return hash == 0 ? 1 : hash;
+}
+
+// A fact's key. The name exists only at compile time. noexcept for the constinit fact objects it
+// initializes, which may not have a throwing initializer.
+consteval auto fact_key(u64 seed, std::string_view name) noexcept -> u64 {
+    return fact_name_hash(seed, name);
 }
 
 // The inclusive range a value fact must fall in; carried in its record's bound.

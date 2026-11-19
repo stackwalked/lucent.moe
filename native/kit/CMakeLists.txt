@@ -2,24 +2,30 @@ lucent_library(kit
     HEADERS
         include/lucent/kit/boot_info.hpp
         include/lucent/kit/fact.hpp
+        include/lucent/kit/fact_apply.hpp
         include/lucent/kit/fact_resolve.hpp
+        include/lucent/kit/game_module.hpp
         include/lucent/kit/hook.hpp
         include/lucent/kit/lifecycle.hpp
         include/lucent/kit/session.hpp
         include/lucent/kit/session_message.hpp
     SOURCES
+        src/fact_apply.cpp
         src/fact_resolve.cpp
         src/fact_section.cpp
+        src/game_module.cpp
         src/hook.cpp
         src/lifecycle.cpp
         src/release.cpp
         src/session.cpp
         src/session_message.cpp
-    DEPS lucent::os lucent::pe safetyhook::safetyhook
+        src/time_date_stamp.cpp
+    DEPS lucent::bundle lucent::crypto lucent::os lucent::pe safetyhook::safetyhook
 )
 
 lucent_test(kit
     SOURCES
+        tests/fact_apply_test.cpp
         tests/fact_resolve_test.cpp
         tests/fact_section_other.cpp
         tests/fact_section_test.cpp
