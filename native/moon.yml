@@ -19,6 +19,16 @@ tasks:
       - "/.prototools"
     options:
       cache: false
+  # Only the headers the build generates (shaders, devkey's public key): what lint needs from a
+  # build, without waiting for, or competing for memory with, the whole tree's compile.
+  generate:
+    command: "cmake --build --preset dev --target lucent_generated"
+    deps: ["~:configure"]
+    inputs:
+      - "**/*"
+      - "/.prototools"
+    options:
+      cache: false
   build:
     command: "cmake --build --preset dev"
     deps: ["~:configure"]

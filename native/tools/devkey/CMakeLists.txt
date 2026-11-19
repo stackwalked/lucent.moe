@@ -38,3 +38,4 @@ target_link_options(
     INTERFACE
         "$<$<AND:$<NOT:$<CONFIG:Debug>>,$<STREQUAL:$<TARGET_PROPERTY:TYPE>,MODULE_LIBRARY>>:/INCLUDE:lucent_release_module_trusts_the_dev_public_key>"
 )
+add_dependencies(lucent_generated lucent_devkey_header)

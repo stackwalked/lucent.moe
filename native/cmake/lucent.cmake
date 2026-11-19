@@ -340,7 +340,14 @@ function(lucent_shaders name)
     endforeach()
     target_sources(lucent_${name} PRIVATE ${headers})
     target_include_directories(lucent_${name} PRIVATE "${generated}")
+    add_custom_target(lucent_${name}_shaders DEPENDS ${headers})
+    add_dependencies(lucent_generated lucent_${name}_shaders)
 endfunction()
+
+# Every header the build generates rather than configure, so lint (which compiles each unit through
+# clang-tidy) can wait for these alone instead of the whole build: lucent_shaders and devkey add
+# their steps to it.
+add_custom_target(lucent_generated)
 
 # lucent::build, the generated per-release subkeys (build_keys.cmake).
 include("${CMAKE_CURRENT_LIST_DIR}/build_keys.cmake")

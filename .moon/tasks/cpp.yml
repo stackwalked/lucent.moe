@@ -1,8 +1,9 @@
 inheritedBy:
   language: "cpp"
 
-# Lint and tests per project; native:build compiles the whole tree once. Lint needs only a
-# configured tree (compile_commands.json), not a build.
+# Lint and tests per project; native:build compiles the whole tree once. Lint needs a configured
+# tree (compile_commands.json) and the headers the build generates (native:generate), which some
+# units include; it doesn't wait for the whole build.
 implicitInputs:
   - "/native/.clang-tidy"
   - "/tools/lint/tidy.py"
@@ -10,7 +11,11 @@ implicitInputs:
 tasks:
   lint:
     command: "uv run $workspaceRoot/tools/lint/tidy.py ."
-    deps: ["native:configure"]
+    deps: ["native:generate"]
+    options:
+      # tidy.py already runs one clang-tidy per core; projects linting at once multiplied that past
+      # memory (LLVM out-of-memory in whichever lint lost the race).
+      mutex: "clang-tidy"
   test:
     command: "ctest --test-dir $workspaceRoot/.moon/cache/cmake/dev -L ^$project$ --output-on-failure --no-tests=error"
     deps: ["native:build"]
