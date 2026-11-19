@@ -1,5 +1,6 @@
 #include <algorithm>
 #include <span>
+#include <string>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -36,6 +37,19 @@ TEST_CASE("a shared fact is one object, wherever it's named, and it lives in the
     CHECK(lies_in_section(&fixtures::shared_value.record()));
     CHECK(lies_in_section(&this_unit_fact.record()));
     CHECK(lies_in_section(fixtures::other_unit_own_fact()));
+}
+
+// Python's hashlib under the dev seed's fact subkey (core's identifier_hash_test says how), so the
+// module's keys follow seed, subkey and name end to end. Release keys come from another subkey.
+static_assert(
+    LUCENT_KIT_DEV_BUILD == 0 || this_unit_fact.record().key == 0x31c1'fc0b'f111'a820,
+    "a dev build's fact key is the keyed hash of its name under the dev fact subkey"
+);
+
+TEST_CASE("a fact's key in the section is the key the tools derive from its name at run time") {
+    const std::string name{"this_unit_fact"};
+
+    CHECK(fact_key_of(name) == this_unit_fact.record().key);
 }
 
 TEST_CASE("a write through the section is what the fact's owner reads") {

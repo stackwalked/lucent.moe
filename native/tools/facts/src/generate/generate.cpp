@@ -62,7 +62,7 @@ auto miss_name(probe::miss missed) -> std::string_view {
 }
 
 auto key_of(const finder::fact_search& search) -> u64 {
-    return kit::fact_name_hash(kit::dev_fact_seed, search.fact);
+    return kit::fact_key_of(search.fact);
 }
 
 // A search whose fact the module links, with the kind it was declared with, and finders fit to

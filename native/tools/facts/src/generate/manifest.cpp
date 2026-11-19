@@ -150,7 +150,7 @@ auto game_of(const finder::target& target) -> u32 {
 
 auto fact_name(u64 key, std::span<const finder::fact_search> searches) -> std::string {
     const auto found = std::ranges::find_if(searches, [&](const finder::fact_search& search) {
-        return kit::fact_name_hash(kit::dev_fact_seed, search.fact) == key;
+        return kit::fact_key_of(search.fact) == key;
     });
     return found == searches.end() ? std::format("{:#018x}", key) : std::string{found->fact};
 }

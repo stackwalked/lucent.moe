@@ -36,7 +36,7 @@ lucent_library(kit
         src/session_message.cpp
         src/time_date_stamp.cpp
         src/worker_set.cpp
-    DEPS lucent::bundle lucent::crypto lucent::foreign lucent::os lucent::pe safetyhook::safetyhook
+    DEPS lucent::build lucent::bundle lucent::crypto lucent::foreign lucent::os lucent::pe safetyhook::safetyhook
 )
 # Read by <lucent/kit/dev_build.hpp>: 1 in dev builds, 0 in every other.
 target_compile_definitions(lucent_kit PUBLIC "LUCENT_KIT_DEV_BUILD=$<CONFIG:Debug>")

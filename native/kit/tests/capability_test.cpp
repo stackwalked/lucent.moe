@@ -22,7 +22,7 @@
 namespace lucent::kit {
 namespace {
 
-static_assert(capability_key("entities") != fact_key(dev_fact_seed, "entities"));
+static_assert(capability_key("entities") != fact_key("entities"));
 static_assert(sizeof(capability_record<fixtures::shared>) == 24);
 
 auto linked() -> std::vector<declared_capability> {

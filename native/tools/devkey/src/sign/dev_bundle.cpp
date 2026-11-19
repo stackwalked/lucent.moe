@@ -46,7 +46,7 @@ auto entries_for(std::span<const named_value> values, std::span<const kit::fact_
     std::vector<bundle::entry> entries;
     entries.reserve(values.size());
     for (const named_value& given : values) {
-        const u64 key = kit::fact_name_hash(kit::dev_fact_seed, given.name);
+        const u64 key = kit::fact_key_of(given.name);
         if (std::ranges::find(records, key, &kit::fact_record::key) == records.end()) {
             return std::unexpected(error{.code = error_code::not_found});
         }

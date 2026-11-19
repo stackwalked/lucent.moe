@@ -5,6 +5,9 @@
 #include <span>
 #include <string_view>
 
+#include <lucent/core/build/subkeys.hpp>
+#include <lucent/core/identifier_hash.hpp>
+
 namespace lucent::kit {
 
 enum class fact_kind : u8 { method, global, vtable, slot, field, value };
@@ -41,12 +44,9 @@ struct fact_record {
 static_assert(sizeof(fact_record) == 32, "fact records tile the section with no padding");
 static_assert(alignof(fact_record) == 8, "fact records tile the section with no padding");
 
-// Dev builds hash keys with this seed; release builds will take theirs from the generated build
-// header, so a fact's key differs per release.
-inline constexpr u64 dev_fact_seed = 0x6c75'6365'6e74'0001;
-
-// FNV-1a over the seed's bytes, then the name's. Tools that take fact names from a person (devkey)
-// hash them at run time; module code reaches it only through fact_key, so no name ships.
+// FNV-1a over the seed's bytes, then the name's: the capability and game module name hashes, whose
+// seeds are fixed and public. Fact keys don't use it: it is invertible, so a guessed name and its
+// hash give back the seed.
 constexpr auto fact_name_hash(u64 seed, std::string_view name) noexcept -> u64 {
     constexpr u64 offset_basis = 0xcbf2'9ce4'8422'2325;
     constexpr u64 prime = 0x0000'0100'0000'01b3;
@@ -61,10 +61,19 @@ constexpr auto fact_name_hash(u64 seed, std::string_view name) noexcept -> u64 {
     return hash == 0 ? 1 : hash;
 }
 
-// A fact's key. The name exists only at compile time. noexcept for the constinit fact objects it
-// initializes, which may not have a throwing initializer.
-consteval auto fact_key(u64 seed, std::string_view name) noexcept -> u64 {
-    return fact_name_hash(seed, name);
+// A fact's key: the identifier hash of its name under this build's fact subkey, so keys differ per
+// release (dev's subkey is fixed and public) and a shipped key gives back neither the name nor the
+// subkey. The one derivation of a fact key: tools that take fact names from a person or a finder
+// (devkey, facts) call it at run time with the subkey of the build tree they were built in, which
+// is the module's. Module code reaches it only through fact_key, so no name ships.
+constexpr auto fact_key_of(std::string_view name) -> u64 {
+    return identifier_hash(build::fact_subkey, name);
+}
+
+// A fact's key, at compile time; the name exists only there. noexcept for the constinit fact
+// objects it initializes, which may not have a throwing initializer.
+consteval auto fact_key(std::string_view name) noexcept -> u64 {
+    return fact_key_of(name);
 }
 
 // The inclusive range a value fact must fall in; carried in its record's bound.
@@ -101,7 +110,7 @@ struct fact_shape {
 
 consteval auto make_record(std::string_view name, fact_shape shape) noexcept -> fact_record {
     return fact_record{
-        .key = fact_key(dev_fact_seed, name),
+        .key = fact_key(name),
         .kind = shape.kind,
         .module = shape.module,
         .width = shape.width,
@@ -221,7 +230,7 @@ public:
                   {
                       .kind = fact_kind::slot,
                       .module = module,
-                      .bound = fact_key(dev_fact_seed, vtable_name),
+                      .bound = fact_key(vtable_name),
                   }
               ),
           } {}
@@ -268,7 +277,7 @@ public:
                       .module = module,
                       .width = sizeof(T),
                       .alignment = alignof(T),
-                      .bound = fact_key(dev_fact_seed, owner_size_name),
+                      .bound = fact_key(owner_size_name),
                   }
               ),
           } {}
