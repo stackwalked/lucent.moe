@@ -46,6 +46,14 @@ tasks:
       - "/uv.lock"
       - "!/**/node_modules/**/*"
       - "!/**/node_modules/*"
+  # Reports the uses of kit's `raw` escape hatch; it gates nothing yet.
+  raw-count:
+    command: "uv run tools/lint/staged.py uv run tools/lint/raw_count.py"
+    options: { cache: false }
+    inputs:
+      - "/native/**/*"
+      - "/tools/lint/raw_count.py"
+      - "/uv.lock"
   # The roots mirror ts_hygiene.py's TS_ROOTS; one left out lets a cached pass hide a violation.
   ts-hygiene:
     command: "uv run tools/lint/staged.py uv run tools/lint/ts_hygiene.py"
@@ -69,7 +77,7 @@ tasks:
   # target's own inputs, not its deps'.
   check:
     inputs: ["/**/*", "!/**/node_modules/**/*", "!/**/node_modules/*"]
-    deps: ["~:format", "~:suppressions", "~:includes", "~:ast-grep", "~:ts-hygiene"]
+    deps: ["~:format", "~:suppressions", "~:includes", "~:ast-grep", "~:ts-hygiene", "~:raw-count"]
   fix:
     command: "dprint fmt --incremental=false"
     options:
