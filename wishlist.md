@@ -384,7 +384,19 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
 - `command`: createmove in stages (movement, aim_view, aim_shot, trigger, scripts).
   - One owner per stage.
   - Stage tokens for writes only one stage may make.
-- `prediction`: a what-if repredict owned by the game layer (scratch write, then restore). The riskiest code in the layer. Its design (interfaces, invariants, tests) goes to the human before any code.
+- `prediction`: a what-if repredict owned by the game layer (scratch write, then restore). The
+  riskiest code in the layer. Decided with the human: we run the command ourselves (multi-tick),
+  not the game's one-tick `ClientSidePredict` path, saving and restoring through the game's own
+  per-entity `SaveData`/`RestoreData` rather than a hand-kept copy. First, reverse engineering:
+  confirm those functions and the full state they cover on the current build (the services object
+  is 0xfe0 bytes and three pawn virtuals were never followed). Then:
+  - restore completeness proven by a dev probe (pawn and services bytes equal after any what-ifs,
+    outside a declared volatile list with a reason per entry), with results recorded;
+  - restore outside `contain()`, since a foreign fault skips destructors; a fault marks the domain
+    failed for the session;
+  - game thread only, between the movement stage and command apply, behind a phase token, with a
+    budget per command; features never call it; aim gets "self after movement" as a view;
+  - one final repredict per command after apply, so the pawn matches the command sent.
 - `view`: the mouse model.
   - The view is set through the game's own setter at frame stage.
   - The matching counts are owed to and settled into the next command.
@@ -404,7 +416,24 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
 - Movement:
   - the planner owns the movement stage, and goals propose plans;
   - requests from other domains (`request_still`);
-  - the planner gets redesigned from scratch; its design goes to the human before any code.
+  - the planner gets redesigned from scratch. Decided with the human:
+    - a goal is a kit feature with `propose`, `on_retime` and `confirm`, and no capability
+      flags; it keeps its own state and hears outcomes through the next tick's view;
+    - one arbiter rule: class (safety, committed, leading, rest; each goal declares the highest it
+      may use), then a declared precedence table, then rank, then the smaller intervention;
+      channels go to the first plan claiming them, and a plan losing any channel drops whole;
+    - retime to a fixpoint, at most two rounds;
+    - a pure simulator (no game access, clock or statics; collision behind an interface, answered
+      by `queries::trace` until `static_world` matches the game's faces);
+    - every subtick step, aim's attack included, goes through movement's one pure `emit`, which
+      refuses with a reason instead of dropping; other stages send button requests;
+    - heading is a request to `view`, never a direct yaw write;
+    - tick budgets, not deadlines, so decisions are reproducible; a wall-clock cap stays only as
+      a guard that sends the baseline;
+    - when a critical tick's last candidate fails its prediction check, the baseline goes out;
+    - `request_still` lands one tick later (world, then movement, then command apply);
+    - tests: golden trajectories recorded live with build and map as provenance, arbiter tables,
+      randomized legality tests for `emit`.
 - `targeting`: a pure shared computation, memoized per tick.
 - `trigger`: decide whether "on target" means the view or the silent-aim angle.
 - Script host:
