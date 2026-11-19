@@ -4,10 +4,10 @@ import { invariant } from "@lucent/core/contain";
 import { err, ok } from "@lucent/core/result";
 import { createRpcClient } from "@lucent/rpc/client";
 import { webContract } from "@lucent/rpc/web";
-import { WORKSPACE_ROOT } from "../dev/postgres.ts";
+import { TEST_RELYING_PARTY } from "@lucent/testing/authenticator";
+import { WORKSPACE_ROOT } from "@lucent/testing/postgres";
 import { type RunningServer, startServer } from "../src/boot.ts";
 import type { ServerConfig } from "../src/config.ts";
-import { TEST_RELYING_PARTY } from "./harness/authenticator.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 
 const PEER_KEY = "test-peer-key-0123456789abcdefghijklmnopqrstuvwxyz";

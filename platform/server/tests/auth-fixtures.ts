@@ -8,6 +8,7 @@ import {
     newOperationId,
 } from "@lucent/core/scalars";
 import { RegistrationResponse } from "@lucent/rpc/webauthn";
+import { createTestAuthenticator, type TestAuthenticator } from "@lucent/testing/authenticator";
 import {
     beginPasskeyRegistration,
     beginTotpEnrollment,
@@ -23,7 +24,6 @@ import { createAccount } from "../src/authority/writers.ts";
 import type { Db } from "../src/db/pool.ts";
 import { withTx } from "../src/db/tx.ts";
 import { dbNow, seedRoot, steppedUp } from "./authority-fixtures.ts";
-import { createTestAuthenticator, type TestAuthenticator } from "./harness/authenticator.ts";
 
 export const MEMBER_PASSWORD = "correct horse battery staple";
 

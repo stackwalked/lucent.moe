@@ -1,9 +1,9 @@
 import type { SeededRng } from "@lucent/core/rng";
+import { TEST_RELYING_PARTY } from "@lucent/testing/authenticator";
 import { type AuthDeps, createAuthDeps } from "../../src/auth/deps.ts";
 import { createArgon2idHasher } from "../../src/auth/password.ts";
 import { createTotpKeyring } from "../../src/auth/totp.ts";
 import type { Db } from "../../src/db/pool.ts";
-import { TEST_RELYING_PARTY } from "./authenticator.ts";
 
 // The keyring every auth test seals TOTP secrets under: "old" is still listed, so secrets sealed
 // before a rotation keep opening.

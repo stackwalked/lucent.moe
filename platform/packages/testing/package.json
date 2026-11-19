@@ -1,0 +1,13 @@
+{
+  "name": "@lucent/testing",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./*": "./src/*.ts"
+  },
+  "dependencies": {
+    "@lucent/core": "workspace:*",
+    "@lucent/rpc": "workspace:*",
+    "zod": "4.6.7"
+  }
+}

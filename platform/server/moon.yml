@@ -9,6 +9,7 @@ dependsOn:
   - "policy"
   - "catalog"
   - "rpc"
+  - "platform-testing"
 
 tasks:
   # The server against a persistent local cluster under .moon/cache/dev, migrated on start.

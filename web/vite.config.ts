@@ -1,9 +1,21 @@
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import babel from "@rolldown/plugin-babel";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import { defineConfig, normalizePath } from "vite";
 import { layerOrderPlugin, tokensPlugin } from "./dev/tokens-plugin.ts";
+
+const SRC = join(import.meta.dirname, "src");
+
+// "features.auth.sign-in-server--signInWithPassword" rather than a hash of it: the integration
+// tests call server functions by id over HTTP, as the page does. An id names code, not a secret.
+function readableFunctionId(params: { filename: string; functionName: string }): string {
+    const [path = ""] = params.filename.split("?");
+    const module = normalizePath(relative(SRC, path))
+        .replace(/\.tsx?$/, "")
+        .replaceAll("/", ".");
+    return `${module}--${params.functionName.replace(/_createServerFn_handler$/, "")}`;
+}
 
 const EVERGREEN = ["chrome129", "edge129", "firefox147", "safari26"];
 
@@ -23,7 +35,7 @@ export default defineConfig({
     plugins: [
         tokensPlugin(),
         layerOrderPlugin(),
-        tanstackStart(),
+        tanstackStart({ serverFns: { generateFunctionId: readableFunctionId } }),
         react(),
         babel({
             presets: [

@@ -3,6 +3,7 @@ import { invariant } from "@lucent/core/contain";
 import { err } from "@lucent/core/result";
 import { createSeededRng } from "@lucent/core/rng";
 import { AuthenticationResponse } from "@lucent/rpc/webauthn";
+import { TEST_RELYING_PARTY } from "@lucent/testing/authenticator";
 import { createAuthDeps } from "../src/auth/deps.ts";
 import { createArgon2idHasher } from "../src/auth/password.ts";
 import {
@@ -16,7 +17,6 @@ import { resolveCaller, resolveViewer } from "../src/auth/viewer.ts";
 import { execute, sql } from "../src/db/pool.ts";
 import { codeAt, MEMBER_PASSWORD, newMember } from "./auth-fixtures.ts";
 import { createTestAuthDeps, TEST_TOTP_KEYS } from "./harness/auth.ts";
-import { TEST_RELYING_PARTY } from "./harness/authenticator.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 
 describe("password and TOTP", () => {

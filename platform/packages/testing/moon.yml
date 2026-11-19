@@ -1,0 +1,17 @@
+# `testing` is the native test library's id.
+id: "platform-testing"
+
+project:
+  description: "Test support shared by platform and web: an ephemeral Postgres, a software passkey, a TOTP app, and a real platform in its own process."
+
+language: "typescript"
+layer: "library"
+
+dependsOn:
+  - "platform-core"
+  - "rpc"
+
+# Support code, exercised by the tests that use it.
+workspace:
+  inheritedTasks:
+    exclude: ["test"]

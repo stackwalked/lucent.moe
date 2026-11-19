@@ -5,6 +5,7 @@ import { createSeededRng } from "@lucent/core/rng";
 import { newOperationId, toHex } from "@lucent/core/scalars";
 import { STEP_UP_WINDOW_SECONDS } from "@lucent/policy/policy";
 import { AuthenticationResponse, RegistrationResponse } from "@lucent/rpc/webauthn";
+import { createTestAuthenticator } from "@lucent/testing/authenticator";
 import { z } from "zod";
 import {
     beginPasskeyRegistration,
@@ -32,7 +33,6 @@ import {
 } from "./auth-fixtures.ts";
 import { steppedUp, waitForLockWaiters } from "./authority-fixtures.ts";
 import { createTestAuthDeps } from "./harness/auth.ts";
-import { createTestAuthenticator } from "./harness/authenticator.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 
 describe("browser sessions", () => {

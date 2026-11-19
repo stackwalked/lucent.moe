@@ -8,13 +8,16 @@ import type {
     RequestOptions,
 } from "@lucent/rpc/webauthn";
 import type { z } from "zod";
-import type { RelyingParty } from "../../src/auth/passkeys.ts";
 
-export const TEST_RELYING_PARTY: RelyingParty = {
+// What the authenticator needs of the site it answers: the RP ID its credential is scoped to and the
+// origin the browser would report.
+export type TestRelyingParty = { readonly rpId: string; readonly origin: string };
+
+export const TEST_RELYING_PARTY = {
     rpId: "lucent.test",
     rpName: "lucent.moe",
     origin: "https://lucent.test",
-};
+} as const;
 
 // Just enough CBOR (RFC 8949) for a "none" attestation object and a COSE EC2 key.
 type Cbor = number | string | Uint8Array | ReadonlyMap<Cbor, Cbor>;
@@ -88,7 +91,7 @@ export type TestAuthenticator = {
 
 export async function createTestAuthenticator(params: {
     readonly rng: CryptoRng;
-    readonly rp?: RelyingParty;
+    readonly rp?: TestRelyingParty;
 }): Promise<TestAuthenticator> {
     const rp = params.rp ?? TEST_RELYING_PARTY;
     const credentialId = params.rng.fillBytes(new Uint8Array(16));

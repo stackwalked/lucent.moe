@@ -1,32 +1,9 @@
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { ignoreErrorsSync, invariant } from "@lucent/core/contain";
+import { resolvePgBinary, WORKSPACE_ROOT } from "@lucent/testing/postgres";
 import { z } from "zod";
 import { execute, openPool, queryOne, sql } from "../src/db/pool.ts";
-
-export const WORKSPACE_ROOT = join(import.meta.dir, "../../..");
-
-// The binaries proto installed for `.prototools`' pin, never PATH: proto's shim there runs postgres
-// as a grandchild that outlives this process (holding its output open), and a system install
-// would silently stand in for the pinned version.
-export function resolvePgBinary(name: "initdb" | "postgres" | "pg_ctl"): string {
-    const pins = readFileSync(join(WORKSPACE_ROOT, ".prototools"), "utf8");
-    const version = /^postgresql = "([^"]+)"$/m.exec(pins)?.[1];
-    invariant(version !== undefined, ".prototools pins no postgresql version");
-    const suffix = process.platform === "win32" ? ".exe" : "";
-    const binary = join(
-        homedir(),
-        ".proto",
-        "tools",
-        "postgresql",
-        version,
-        "bin",
-        `${name}${suffix}`,
-    );
-    invariant(existsSync(binary), `${binary} is missing; run \`proto install\` in the repo root`);
-    return binary;
-}
 
 const DEV_DATA_DIR = join(WORKSPACE_ROOT, ".moon/cache/dev/pg");
 const DEV_PORT = 4719;

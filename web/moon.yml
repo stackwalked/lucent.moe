@@ -8,6 +8,7 @@ dependsOn:
   - "platform-core"
   - "policy"
   - "rpc"
+  - "platform-testing"
 
 tasks:
   # routeTree.gen.ts is generated, never committed: Start's own plugin writes it, through a Vite
@@ -41,11 +42,23 @@ tasks:
       - "src/ui/tokens.ts"
       - "dev/css-lint.ts"
   check:
-    deps: ["~:css"]
+    deps: ["~:css", "~:integration"]
   typecheck:
     deps: ["~:routes", "~:generate"]
   test:
+    command: "bun test ./tests"
     deps: ["~:generate"]
+  # Web's production build against platform as an operator starts it, each in its own process, on
+  # an ephemeral Postgres (@lucent/testing): the flows that cross both and live in cookies.
+  integration:
+    command: "bun test ./integration"
+    deps: ["~:build"]
+    inputs:
+      - "integration/**/*"
+      - "/platform/server/src/**/*"
+      - "/platform/server/migrations/**/*"
+      - "/platform/packages/*/src/**/*"
+      - "/products/**/*"
   build:
     command: "bun --bun vite build"
     deps: ["~:routes", "~:generate"]

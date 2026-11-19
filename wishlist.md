@@ -594,9 +594,9 @@ live in `wishlist/protection.md`.
   are provisional until their slice starts and checks them (TypeScript 7.0.2 was pinned before
   any tool needing its API was tried). Still to land:
   - `contracts/*` and `platform/connectors/discord` (`discord`) as their slices arrive;
-  - `platform/packages/testing` (the cluster harness and software authenticator), with web's
-    HTTP-level integration tests, its second consumer. `core`, `rpc`, `policy` and `catalog`
-    landed in `platform/packages/` (`core`'s moon id is `platform-core`: native has `core`);
+  - `core`, `rpc`, `policy`, `catalog` and `testing` landed in `platform/packages/` (moon ids
+    `platform-core` and `platform-testing`: native has `core` and `testing`); web's HTTP-level
+    integration tests are `testing`'s second consumer (`web:integration`);
   - the native `/v1` listener and periodic jobs, in the slice that gives them routes and work
     (boot, the internal listener, `ops.ts` and `server:dev`/`server:seed` landed);
   - `web/` landed on the slice 1B pins (in `web/package.json`) without Nitro: Start's build
