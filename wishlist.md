@@ -299,7 +299,8 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
 - Products strip features at compile time from the explicit feature list (`features/all.cpp`).
 - Settings (`describe()` and per-tick snapshots landed): generate `describe()` with C++26
   reflection if Clang ships it (unverified).
-- Config store: profiles, undo, scopes. Per-weapon scope may need to be a real dimension.
+- Config store: profiles, undo, scopes. Per-weapon scope may need to be a real dimension. In
+  memory only until phase 4's cloud-held configs fill the same seam: no file, so no format to fix.
 - Binds: `bind_slot`. Activity (a held key) is separate from lifecycle (on/off).
 - Overlay rendering is our own, not Dear ImGui: a highly custom look would mean patching its backend
   and rewriting its widgets. Libraries, in dependency order:
@@ -400,7 +401,7 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
 - `command`: createmove in stages (movement, aim_view, aim_shot, trigger, scripts).
   - One owner per stage.
   - Stage tokens for writes only one stage may make.
-- `prediction`: a what-if repredict owned by the game layer (scratch write, then restore). The riskiest code in the layer.
+- `prediction`: a what-if repredict owned by the game layer (scratch write, then restore). The riskiest code in the layer. Its design (interfaces, invariants, tests) goes to the human before any code.
 - `view`: the mouse model.
   - The view is set through the game's own setter at frame stage.
   - The matching counts are owed to and settled into the next command.
@@ -420,7 +421,7 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
 - Movement:
   - the planner owns the movement stage, and goals propose plans;
   - requests from other domains (`request_still`);
-  - the planner gets redesigned from scratch.
+  - the planner gets redesigned from scratch; its design goes to the human before any code.
 - `targeting`: a pure shared computation, memoized per tick.
 - `trigger`: decide whether "on target" means the view or the silent-aim angle.
 - Script host:
