@@ -1,0 +1,14 @@
+{
+  "name": "@lucent/bundle",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./*": "./src/*.ts"
+  },
+  "dependencies": {
+    "@lucent/core": "workspace:*"
+  },
+  "devDependencies": {
+    "zod": "4.6.7"
+  }
+}

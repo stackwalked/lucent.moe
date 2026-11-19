@@ -10,6 +10,15 @@
         "typescript": "7.0.2",
       },
     },
+    "platform/packages/bundle": {
+      "name": "@lucent/bundle",
+      "dependencies": {
+        "@lucent/core": "workspace:*",
+      },
+      "devDependencies": {
+        "zod": "4.6.7",
+      },
+    },
     "platform/packages/catalog": {
       "name": "@lucent/catalog",
       "dependencies": {
@@ -167,6 +176,8 @@
     "@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.31", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.1.0", "@jridgewell/sourcemap-codec": "^1.4.14" } }, "sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw=="],
 
     "@levischuck/tiny-cbor": ["@levischuck/tiny-cbor@0.2.11", "", {}, "sha512-llBRm4dT4Z89aRsm6u2oEZ8tfwL/2l6BwpZ7JcyieouniDECM5AqNgr/y08zalEIvW3RSK4upYyybDcmjXqAow=="],
+
+    "@lucent/bundle": ["@lucent/bundle@workspace:platform/packages/bundle"],
 
     "@lucent/catalog": ["@lucent/catalog@workspace:platform/packages/catalog"],
 

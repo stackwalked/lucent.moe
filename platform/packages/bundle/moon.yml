@@ -1,0 +1,19 @@
+# `bundle` is the native bundle library's id; this is its TypeScript side.
+id: "platform-bundle"
+
+project:
+  description: "The fact containers in TypeScript: fact bundles (Merkle proofs, signature checks) and release manifests, byte for byte with native/libs/bundle."
+
+language: "typescript"
+layer: "library"
+
+dependsOn:
+  - "platform-core"
+
+tasks:
+  # The golden vectors are the other half of what the tests check.
+  test:
+    inputs:
+      - "**/*"
+      - "/contracts/fact-bundle/**/*"
+      - "/contracts/release-manifest/**/*"
