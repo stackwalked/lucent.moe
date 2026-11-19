@@ -10,5 +10,7 @@ namespace lucent::finder {
 auto entity_searches() -> std::span<const fact_search>;
 auto view_searches() -> std::span<const fact_search>;
 auto schema_searches() -> std::span<const fact_search>;
+auto input_searches() -> std::span<const fact_search>;
+auto command_searches() -> std::span<const fact_search>;
 
 }

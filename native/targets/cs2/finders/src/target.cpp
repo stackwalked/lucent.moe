@@ -23,6 +23,8 @@ auto cs2_target() -> target {
     searches.append_range(entity_searches());
     searches.append_range(view_searches());
     searches.append_range(schema_searches());
+    searches.append_range(input_searches());
+    searches.append_range(command_searches());
     return target{
         .name = "cs2",
         .steam_app = cs2_app,
