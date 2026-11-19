@@ -394,9 +394,18 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
 - `prediction`: a what-if repredict owned by the game layer (scratch write, then restore). The
   riskiest code in the layer. Decided with the human: we run the command ourselves (multi-tick),
   not the game's one-tick `ClientSidePredict` path, saving and restoring through the game's own
-  per-entity `SaveData`/`RestoreData` rather than a hand-kept copy. First, reverse engineering:
-  confirm those functions and the full state they cover on the current build (the services object
-  is 0xfe0 bytes and three pawn virtuals were never followed). Then:
+  per-entity `SaveData`/`RestoreData` rather than a hand-kept copy. The spike
+  (`research/kb/cs2/prediction.md`, 1.41.9.9) settled, with the human, three additions and the
+  entry point:
+  - our own save storage, built with the game's constructor and swapped into `entity+0x5a0` around
+    each call, since saving into the game's slot n deletes every slot above it;
+  - a byte-copy supplement for what `SaveData` misses (most of the 0xfe0-byte services object,
+    `v_anglePrevious`), over the pawn, controller and active weapon;
+  - the game's suppress-effects flag set by us around each run;
+  - runs call `DoMovement` with our own tick base and clock set up, skipping the controller's
+    thinks and the tick-base write; the three pawn virtuals still run weapon logic, so what-ifs
+    run on a copy of the command with attack cleared.
+    Then:
   - restore completeness proven by a dev probe (pawn and services bytes equal after any what-ifs,
     outside a declared volatile list with a reason per entry), with results recorded;
   - restore outside `contain()`, since a foreign fault skips destructors; a fault marks the domain
