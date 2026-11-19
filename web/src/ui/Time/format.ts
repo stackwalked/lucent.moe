@@ -6,7 +6,7 @@ const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 
-// "18 Nov 2026, 14:05": day first, 24-hour, no seconds. Built from parts because en-GB spells
+// "18 nov 2026, 14:05": day first, all copy lowercase, 24-hour, no seconds. Built from parts because en-GB spells
 // September "Sept" and its separators have changed between ICU versions; en-US's short months
 // are stable, and hourCycle h23 keeps midnight 00:xx rather than 24:xx.
 export function formatAbsolute(at: EpochMs, timeZone: string): string {
@@ -21,7 +21,7 @@ export function formatAbsolute(at: EpochMs, timeZone: string): string {
     }).formatToParts(at);
     const part = (type: Intl.DateTimeFormatPartTypes): string =>
         parts.find((p) => p.type === type)?.value ?? "";
-    return `${part("day")} ${part("month")} ${part("year")}, ${part("hour")}:${part("minute")}`;
+    return `${part("day")} ${part("month").toLowerCase()} ${part("year")}, ${part("hour")}:${part("minute")}`;
 }
 
 // Whole units, rounded down, so "1h ago" never shows before an hour has passed. A time ahead of

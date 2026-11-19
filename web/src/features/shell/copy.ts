@@ -1,9 +1,9 @@
 export const SHELL_COPY = {
-    account: "Account",
-    signIn: "Sign in",
-    signOut: "Sign out",
-    menu: (username: string) => `Signed in as ${username}`,
-    graphite: "Graphite",
-    washi: "Washi",
-    systemTheme: "Match system",
+    account: "account",
+    signIn: "sign in",
+    signOut: "sign out",
+    menu: (username: string) => `signed in as ${username}`,
+    graphite: "graphite",
+    washi: "washi",
+    systemTheme: "match system",
 } as const;

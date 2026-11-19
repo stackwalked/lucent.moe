@@ -6,6 +6,7 @@ import {
     Scripts,
 } from "@tanstack/react-router";
 import { type ReactNode, useEffect } from "react";
+import { SITE_COPY } from "../copy/site.ts";
 import { isUnavailable } from "../failure.ts";
 import { StepUpProvider } from "../features/step-up/StepUp.tsx";
 import { currentTheme } from "../theme.ts";
@@ -45,16 +46,16 @@ function Document({ children }: { readonly children: ReactNode }) {
 }
 
 function NotFound() {
-    return <p>Not found.</p>;
+    return <p>{SITE_COPY.notFound}</p>;
 }
 
 function Failure({ error }: ErrorComponentProps) {
-    if (!isUnavailable(error)) return <p>Error.</p>;
+    if (!isUnavailable(error)) return <p>{SITE_COPY.error}</p>;
     return (
         <p>
-            Unavailable. Reference: {error.reference}{" "}
+            {SITE_COPY.unavailable} {SITE_COPY.reference}: {error.reference}{" "}
             <button type="button" onClick={() => window.location.reload()}>
-                Retry
+                {SITE_COPY.retry}
             </button>
         </p>
     );
@@ -70,7 +71,7 @@ export const Route = createRootRoute({
         meta: [
             { charSet: "utf-8" },
             { name: "viewport", content: "width=device-width, initial-scale=1" },
-            { title: "lucent.moe" },
+            { title: SITE_COPY.name },
         ],
         // Plex only: Geist Mono loads the first time a page shows monospaced text.
         links: [plex400, plex500].map((href) => ({

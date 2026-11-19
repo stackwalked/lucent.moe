@@ -1,7 +1,7 @@
 export const STEP_UP_COPY = {
-    title: "Confirm with your passkey",
-    body: "Your browser will ask for it.",
-    confirm: "Continue",
-    cancel: "Cancel",
-    needsPasskey: "Admin actions need a passkey. Add one in Security.",
+    title: "confirm with your passkey",
+    body: "your browser will ask for it.",
+    confirm: "continue",
+    cancel: "cancel",
+    needsPasskey: "admin actions need a passkey. add one in security.",
 } as const;

@@ -6,16 +6,16 @@ const at = (ms: number) => EpochMs.parse(ms);
 const NOV_18_2026_1405_UTC = Date.UTC(2026, 10, 18, 14, 5);
 
 test("an absolute time reads day first in 24-hour time, without seconds", () => {
-    expect(formatAbsolute(at(NOV_18_2026_1405_UTC), "UTC")).toBe("18 Nov 2026, 14:05");
+    expect(formatAbsolute(at(NOV_18_2026_1405_UTC), "UTC")).toBe("18 nov 2026, 14:05");
 });
 
 test("an absolute time is shown in the zone given, across a date change", () => {
-    expect(formatAbsolute(at(NOV_18_2026_1405_UTC), "Asia/Tokyo")).toBe("18 Nov 2026, 23:05");
-    expect(formatAbsolute(at(NOV_18_2026_1405_UTC), "Pacific/Auckland")).toBe("19 Nov 2026, 03:05");
+    expect(formatAbsolute(at(NOV_18_2026_1405_UTC), "Asia/Tokyo")).toBe("18 nov 2026, 23:05");
+    expect(formatAbsolute(at(NOV_18_2026_1405_UTC), "Pacific/Auckland")).toBe("19 nov 2026, 03:05");
 });
 
-test("midnight is 00:00, not 24:00, and September keeps its three letters", () => {
-    expect(formatAbsolute(at(Date.UTC(2026, 8, 1, 0, 0)), "UTC")).toBe("1 Sep 2026, 00:00");
+test("midnight is 00:00, not 24:00, and september keeps its three letters", () => {
+    expect(formatAbsolute(at(Date.UTC(2026, 8, 1, 0, 0)), "UTC")).toBe("1 sep 2026, 00:00");
 });
 
 test("less than a minute ago, or ahead of now, is just now", () => {

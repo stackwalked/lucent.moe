@@ -68,67 +68,67 @@ function Actions() {
     const [dialog, setDialog] = useState(false);
     const toast = useToast();
     return (
-        <Section caption="Actions">
+        <Section caption="actions">
             <Stack direction="row" gap={2}>
                 <Button tone="pink" icon="plus">
-                    Add account
+                    add account
                 </Button>
-                <Button>Rename</Button>
-                <Button tone="ghost">Cancel</Button>
+                <Button>rename</Button>
+                <Button tone="ghost">cancel</Button>
                 <Button tone="danger" icon="ban">
-                    Suspend
+                    suspend
                 </Button>
-                <Button pending>Saving</Button>
-                <Button disabled>Disabled</Button>
+                <Button pending>saving</Button>
+                <Button disabled>disabled</Button>
             </Stack>
             <Stack direction="row" gap={2}>
                 <Button tone="pink" size="sm">
-                    Small
+                    small
                 </Button>
-                <Button size="sm">Small</Button>
-                <Tooltip text="More actions">
-                    <IconButton icon="ellipsis" label="More" />
+                <Button size="sm">small</Button>
+                <Tooltip text="more actions">
+                    <IconButton icon="ellipsis" label="more" />
                 </Tooltip>
-                <IconButton icon="x" label="Close" size="sm" />
+                <IconButton icon="x" label="close" size="sm" />
                 <Dropdown
-                    label="Account actions"
+                    label="account actions"
                     items={[
-                        { label: "Rename", icon: "pencil", onSelect: () => toast("Renamed") },
+                        { label: "rename", icon: "pencil", onSelect: () => toast("renamed") },
                         {
-                            label: "Recover",
+                            label: "recover",
                             icon: "rotate-ccw",
-                            onSelect: () => toast("Recovered"),
+                            onSelect: () => toast("recovered"),
                         },
                         {
-                            label: "Suspend",
+                            label: "suspend",
                             icon: "ban",
                             tone: "danger",
-                            onSelect: () => toast("Suspended"),
+                            onSelect: () => toast("suspended"),
                         },
                     ]}
                 />
-                <Popover trigger={(target) => <Button popoverTarget={target}>Popover</Button>}>
-                    <p>A panel anchored to its trigger.</p>
+                <Popover trigger={(target) => <Button popoverTarget={target}>popover</Button>}>
+                    <p>a panel anchored to its trigger.</p>
                 </Popover>
-                <Button onClick={() => setDialog(true)}>Dialog</Button>
-                <Button onClick={() => toast("Session ended")}>Toast</Button>
+                <Button onClick={() => setDialog(true)}>dialog</Button>
+                <Button onClick={() => toast("session ended")}>toast</Button>
             </Stack>
             <Dialog
                 open={dialog}
                 onClose={() => setDialog(false)}
-                title="Suspend alice"
+                title="suspend alice"
                 actions={
                     <>
                         <Button tone="ghost" onClick={() => setDialog(false)}>
-                            Cancel
+                            cancel
                         </Button>
                         <Button tone="danger" onClick={() => setDialog(false)}>
-                            Suspend
+                            suspend
                         </Button>
                     </>
                 }
             >
-                <p>They're signed out everywhere and can't sign in until reinstated.</p>
+                <p>they're signed out everywhere and can't sign in until reinstated.</p>
             </Dialog>
         </Section>
     );
@@ -136,31 +136,31 @@ function Actions() {
 
 function Inputs() {
     return (
-        <Section caption="Inputs">
+        <Section caption="inputs">
             <form className={styles.form} noValidate onSubmit={(event) => event.preventDefault()}>
                 <Stack gap={4}>
                     <TextField
                         name="username"
-                        label="Username"
+                        label="username"
                         hint="3 to 24 letters, digits or _"
                         required
                     />
                     <TextField
                         name="email"
-                        label="Email"
+                        label="email"
                         type="email"
                         error="That email has an account."
                     />
-                    <NewPassword name="password" label="New password" />
-                    <CodeInput name="code" label="Code" hint="From your authenticator app" />
-                    <Check name="remember" label="Keep this one" />
-                    <Check name="inert" label="Inert" disabled />
-                    <Switch name="notify" label="Notify me" />
-                    <Refusal>That code didn't match. Try the next one.</Refusal>
-                    <Refusal reference="7KQ2-M9XD">Something went wrong on our side.</Refusal>
+                    <NewPassword name="password" label="new password" />
+                    <CodeInput name="code" label="code" hint="From your authenticator app" />
+                    <Check name="remember" label="keep this one" />
+                    <Check name="inert" label="inert" disabled />
+                    <Switch name="notify" label="notify me" />
+                    <Refusal>that code didn't match. try the next one.</Refusal>
+                    <Refusal reference="7KQ2-M9XD">something went wrong on our side.</Refusal>
                     <Stack direction="row" gap={2}>
                         <Button tone="pink" type="submit">
-                            Continue
+                            continue
                         </Button>
                     </Stack>
                 </Stack>
@@ -172,27 +172,27 @@ function Inputs() {
 function Data({ now }: { readonly now: EpochMs }) {
     const rows = sampleRows(now);
     return (
-        <Section caption="Data">
+        <Section caption="data">
             <Pairs
                 items={[
-                    { label: "Username", value: "alice" },
-                    { label: "Id", value: <Ident value="acc_7Qm2Lx9PZt4Wv0yHcR1kSa" /> },
-                    { label: "Status", value: <Status icon="check">active</Status> },
-                    { label: "Created", value: <Time at={rows[2]?.at ?? now} /> },
+                    { label: "username", value: "alice" },
+                    { label: "id", value: <Ident value="acc_7Qm2Lx9PZt4Wv0yHcR1kSa" /> },
+                    { label: "status", value: <Status icon="check">active</Status> },
+                    { label: "created", value: <Time at={rows[2]?.at ?? now} /> },
                     {
-                        label: "Docs",
+                        label: "docs",
                         value: <ExternalLink href="https://lucide.dev">lucide.dev</ExternalLink>,
                     },
                 ]}
             />
             <Table
-                caption="Accounts"
+                caption="accounts"
                 columns={[
-                    { key: "name", header: "Username", cell: (row: SampleRow) => row.name },
-                    { key: "id", header: "Id", cell: (row: SampleRow) => <Ident value={row.id} /> },
+                    { key: "name", header: "username", cell: (row: SampleRow) => row.name },
+                    { key: "id", header: "id", cell: (row: SampleRow) => <Ident value={row.id} /> },
                     {
                         key: "status",
-                        header: "Status",
+                        header: "status",
                         cell: (row: SampleRow) => (
                             <Status
                                 tone={
@@ -209,7 +209,7 @@ function Data({ now }: { readonly now: EpochMs }) {
                     },
                     {
                         key: "seen",
-                        header: "Last seen",
+                        header: "last seen",
                         align: "end",
                         cell: (row: SampleRow) => <Time at={row.at} format="relative" />,
                     },
@@ -219,14 +219,14 @@ function Data({ now }: { readonly now: EpochMs }) {
             />
             <Pager nextCursor="next" onNext={() => undefined} />
             <Code>moon run server:seed -- recover-root</Code>
-            <Empty action={<Button size="sm">Add account</Button>}>No accounts match.</Empty>
+            <Empty action={<Button size="sm">add account</Button>}>no accounts match.</Empty>
         </Section>
     );
 }
 
 function Icons() {
     return (
-        <Section caption="Icons">
+        <Section caption="icons">
             <div className={styles.icons}>
                 {ICON_NAMES.map((name) => (
                     <span key={name} className={styles.icon} title={name}>
@@ -255,7 +255,7 @@ export function Kit({ now }: { readonly now: EpochMs }) {
     return (
         <TimeProvider now={now} timeZone="Europe/Berlin">
             <ToastProvider>
-                <Page title="Kit">
+                <Page title="kit">
                     <Themed>
                         <Stack gap={6}>
                             <Actions />

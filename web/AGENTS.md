@@ -8,10 +8,12 @@ too.
 
 - Minimal. Say what happened, then what to do; nothing else. No filler, no reassurance, no "Oops",
   no exclamation marks, no error codes in messages.
-- Plain, short, second person, sentence case. Buttons are verbs ("Sign in", "Suspend").
+- Plain, short, second person, and all lowercase: headings, buttons, labels, page titles,
+  messages, the names of browsers, systems and months too. Only what someone typed keeps its case
+  (usernames, passkey names, ids, keys). Buttons are verbs ("sign in", "suspend").
 - Words live in each feature's `copy.ts` (UI-kit words in `src/ui/copy.ts`); a component holds no
   sentence longer than a button label.
-- Unexpected failures end with "Reference: <request id>"; expected refusals don't.
+- Unexpected failures end with "reference: <request id>"; expected refusals don't.
 
 Glossary:
 

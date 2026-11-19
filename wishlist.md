@@ -576,10 +576,10 @@ live in `wishlist/protection.md`.
     icons vendored as one sprite. One shell (admin side nav inside it, auth pages a bare card);
     widths 1600 / 1040 / 480; fixed page anatomy (trail, one `h1` with verbs, captioned sections);
     components re-implemented with old lucent's CSS as visual reference only.
-  - Copy: minimal, no filler or AI phrasing (rules and glossary in `web/AGENTS.md`). Uncontrolled
+  - Copy: minimal, no filler or AI phrasing, all lowercase (rules and glossary in `web/AGENTS.md`). Uncontrolled
     forms, native constraints with our own messages, shared validation constants from `core`;
     every contract error code has compiler-checked copy; a support reference only on unexpected
-    failures. Times as "18 Nov 2026, 14:05" in the viewer's zone (`lucent-tz` cookie).
+    failures. Times as "18 nov 2026, 14:05" in the viewer's zone (`lucent-tz` cookie).
   - Admin (slice 1): accounts list and detail (sign-in summary, roles with expiry, recent audit,
     suspend with reason, reinstate, rename, recover with typed confirmation), add account showing
     the setup link once, role editor without channel grants, no role deletion, audit with typed

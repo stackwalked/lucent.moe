@@ -128,7 +128,7 @@ test("when Start fails, the page shows a reference that the log line carries too
         start: () => Promise.resolve(JSON.parse("{")),
     });
     const res = await entry(request("/"), null);
-    const reference = /Reference: ([A-Za-z0-9_-]+)/.exec(await res.text())?.[1];
+    const reference = /reference: ([A-Za-z0-9_-]+)/.exec(await res.text())?.[1];
     invariant(reference !== undefined, "the failure page carries a reference");
     expect(res.status).toBe(500);
     const logged = lines.map((line) => JSON.parse(line));
