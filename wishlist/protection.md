@@ -1,24 +1,138 @@
 # Protection wishlist
 
-The protection backlog, split out of `wishlist.md`: integrity, licensing, strings and diagnostics,
-the virtualizer, obfuscation, and how it's operated. A backlog, not a spec: entries leave as they
-land. Facts' own seams for this work stay in `wishlist.md` under Facts.
+The protection backlog, split out of `wishlist.md`: delivery, running conditions, signals, keys,
+strings and diagnostics, the virtualizer, obfuscation, and how it's operated. A backlog, not a
+spec: entries leave as they land. Facts' own seams for this work stay in `wishlist.md` under Facts.
 
 ## Aim
 
 - The aim is a crack that is never worth its cost, not one that is impossible: code on someone
   else's hardware can always be read in the end.
-- Walls interlock: getting past one breaks another's inputs (a patched signature check changes a
-  measured region, which changes the key the bundle decrypts with). No wall is a standalone check
-  that can be beaten on its own.
+- No wall feeds another for now. Integrity is a signal the server scores, not key material: an
+  interlock fails closed, so one bug in it locks every member out. A local dependence (a decode key
+  derived from the lease code's bytes) waits behind the fact accessor and `LUCENT_VIRT` seams until
+  the virtualizer can hide its consumers; a module with the server conversation patched out checks
+  nothing until then.
 - The adversaries, in order of what they cost us:
   - free users (no lease, offline): the server-held data is their wall;
-  - sharers and resellers (one real account, many users): device keys, product slots, watermarks;
+  - sharers and resellers (one real account, many users): device keys, product slots, IP history;
   - lifters (after features and methods): the release binary, the virtualizer, obfuscation.
-- A cracked release should go stale before it pays off: rotation per release, and a release
-  pipeline cheap enough to ship one in response to a crack.
+- The accepted bound: a crack built from one paid session (captured values, a patched lease check,
+  no server) is invisible to the server and lives until our next release. A game update only makes
+  the cracker capture again from the same paid account. Releases follow our own schedule; a
+  re-seeded release per game update is revisited with the virtualizer, since until then a re-seed
+  costs a cracker about an hour.
+- So the release pipeline has to be cheap: its duration is our side of the race.
 
-## Server inputs and licensing integrity
+## Delivery
+
+- Our own keys only, no Authenticode. The first loader download is trusted through TLS and the
+  member session; every update after it through the keys inside the installed loader.
+- Code runs only when the offline code key signed it: loader updates, `lucent-host`, modules.
+  Online keys sign data only. A taken-over server can withhold a release, never run its own code on
+  a member's PC. So no per-account bytes inside code: an account mark is an online-signed data blob
+  beside the loader.
+- The loader is downloaded from the member area only. One loader for every channel, with a channel
+  selection; when it isn't the latest it does nothing but update itself.
+- Channels are `stable`, `alpha` and `debug`: product tiers. `alpha` has fresher features and
+  `stable`'s integrity posture. `debug` is for a handful of vetted people and drops integrity
+  measures for performance.
+- One current release per product and channel, and one current fact-set revision per release and
+  module build. Publishing is staged, then promoted; promotion replaces. Going back means signing
+  the old code under a new number: a client accepts only the highest number it has seen signed. A
+  bad fact revision is fixed by the next one, or by an override meanwhile.
+- A release is an offline-signed list of its artifacts and their digests, with that number: one for
+  the loader and host, one per product and channel. A module's release names the `boot_info`
+  version it starts under, so a loader change to the boot interface republishes every channel.
+- Sessions running on a replaced release finish, up to a 12-hour session cap; the replaced release
+  stays servable (leases, bundles) until they do.
+- The module travels in our own pre-mapped container (sections, imports by hash, no PE headers),
+  encrypted to the session, never on disk. The format lives in `contracts/`.
+- `lucent-host` is its own small executable, shipped with the loader and signed by the code key.
+  The loader verifies it through a handle held against writes, spawns it, and maps the module into
+  it exactly as it maps into a game. Tokens and the device key stay out of the process that touches
+  the game.
+
+## Running
+
+- To start, the server checks in one transaction: the account is active and the device key proves
+  itself, an entitlement covers the product, the slot (the newest session takes a full one), the
+  loader is the latest, the chosen channel has a current release, and `core` capabilities are
+  covered for the reported game builds. Then the loader verifies, maps and boots the module.
+- The loader stays running as the only network stack and relays opaque frames. At boot the module
+  makes a one-time key pair; the server answers with its half, signed by the lease key, whose
+  public part is in the signed image. The device key (loader) proves the PC, the session key
+  (module) proves the running module, and everything from server to module is encrypted under it.
+  A patched loader sees ciphertext and can only drop frames.
+- Leases are renewed every 15 seconds and valid for 60. Each renewal carries the module's nonce,
+  which the lease signs, and the lease carries a duration counted on the monotonic clock, so
+  neither a recorded lease nor the system clock extends one. It binds session, device, product,
+  release, entitled features and bundle revision. A slot is held by a live lease and frees itself
+  when the lease expires.
+- No server, nothing runs. When the server is unreachable, features go off at the next safe point,
+  session keys and bundle data are wiped, and the module stays mapped and inert; a renewal within
+  5 minutes resumes it, otherwise it unloads.
+- A refusal (suspended, slot taken) unloads the module and the loader shows the reason. Integrity
+  is never a reason.
+- An entitlement that ends lets its session finish, up to the session cap. Suspension cuts at the
+  next renewal.
+
+## Signals
+
+- Client signals only raise suspicion; they never clear it. Silence where a healthy session would
+  speak is a signal. Bits and small enums, never inventories: no process or window names, no
+  files. Nothing gates locally, and never on hypervisor detection (VBS).
+- Classes: licensing (the server's own observations: sign-ins, device changes, session starts, slot
+  takeovers, renewal gaps, IP addresses), health (fact and capability outcomes, failed features,
+  crashes) and integrity (the next two entries).
+- Hash challenges: each lease names a nonce and a small random range of our own code and constant
+  data, and the answer returns in the next renewal.
+  - The module reports its base once and the server applies relocations to its own copy, so no
+    relocation data stays in memory. A contract test checks the expected hashes.
+  - Hashed on a kit worker. The loader reads the same range from outside and answers
+    independently; disagreement is a signal of its own.
+  - The module reports whether its code pages are still non-writable.
+  - A stored pristine copy can answer. Values only running code produces (live relocated pointers,
+    runtime state) come only when the queue shows that happening.
+- Environment, collected by the loader where it can: a debugger on the loader, host or game;
+  hardware breakpoints on our threads; kernel debugging; test signing or driver signature
+  enforcement off; the virtual machine vendor; the Windows build; modules in our own processes by
+  signer class (Microsoft, other signer, unsigned), with the file hash of up to four unsigned ones.
+- Signals ride the lease renewal in a fixed-size field, at session start and on change. Weights
+  live on the server; combinations carry the score.
+- `debug` sends health events and no integrity signals.
+- Identity is the device key, TPM-backed or software-backed (a mark staff see, not a score
+  component). No TPM endorsement key. The loader also sends the system disk serial and board id,
+  stored as keyed hashes: a low-weight hint for linking accounts.
+- The scoring job fills a review queue. Each item has a risk score (how likely a violation) and an
+  urgency score (how fast the harm grows) and names its contributing signals for staff. Members
+  never see per-signal detail, appeals included. People act; nothing bans or revokes on its own,
+  and no delay is imposed on acting.
+- Retention: integrity signals, review evidence and raw IP addresses 365 days; health events 30.
+
+## Keys and seeds
+
+- Offline, on hardware, with a written signing ceremony: the code key (releases; cold) and the
+  facts key (fact sets; used on every game update, and held by a second trusted person too, since
+  it can't run code). A lost or stolen offline key is replaced through a new loader on the member
+  site.
+- Online: the lease key (leases, the session key exchange) and the override key (kill switches,
+  per-account data). Their public halves ship inside the signed release, so rotating one costs a
+  release; they are backed up.
+- One 256-bit master seed per release and channel, generated at build, archived with the PDBs,
+  never in git and never on the server. Subkeys per purpose: fact keys, event ids, API hashes, link
+  order, later the instruction set.
+- Identifier hashes are a keyed function. Kit's FNV-1a is invertible: a guessed name and its
+  shipped hash give back the seed.
+- The server gets a release pack: the fact and event manifests and what it needs to encode
+  bundles. Rows are tagged with a release id, never a seed.
+- Fact keys differ per release, so each release has the current game builds' sets signed again for
+  it, per channel.
+- Identifiers and link order rotate from the first release. Public values can be matched back to
+  names by value whatever the hash; seeded identifiers protect the non-public facts and keep a
+  cracker's notes from carrying over.
+
+## Server inputs
 
 - The lease and game data travel on separate channels.
 - Game data keys and types are declared in game code (see Facts in `wishlist.md`).
@@ -27,50 +141,31 @@ land. Facts' own seams for this work stay in `wishlist.md` under Facts.
 - The release module discovers nothing. `libs/probe` (sig, schema, RTTI) is tooling and dev only,
   banned from release presets. Gate schema offsets too, so there's one rule.
 - Every server value is validated. A bad value makes a requirement unavailable; it never crashes.
-- Bundles are encrypted per session (key from the lease), expire with the lease, and are
-  decrypted, used and wiped.
+- Bundles are encrypted under the session key, expire with the lease, and are decrypted, used and
+  wiped.
 - Entitlement is enforced by withholding data. Data is delivered lazily, per feature.
 - Public fact values (cs2 schema offsets, interfaces) are dumped by the community within hours of
   an update, so they are worth little on their own. The weight sits on what isn't public: recipes,
   integrity regions, session key material, and a bundle format that changes per release.
-- No labeled tables:
+- No labeled tables. Kit's fact section is one today (kind, width, bound and the plain value per
+  record, writable):
   - recipes (load-time derivation bytecode);
   - plans (copy plans run by a native executor).
-- Per-release format rotation from the release seed:
-  - recipe opcodes;
-  - plan encoding;
-  - key derivation;
-  - struct field order;
-  - the bundle carries no descriptive data (names, types, lengths a decoder could do without),
-    and entry order follows the seeded key hashes, so it differs per release.
-
-  A cracker with public values still has to encode a bundle this release accepts, which means
-  getting past the signature, then the format. The server encoder and the module decoders come
-  from the same seed, with a contract test between them.
-- Per-session watermarking: equivalent but distinct bundles.
-- Canary facts: one fake, harmless fact per session. Seen in another session's telemetry, it
-  marks a replayed bundle.
+- Per-release bundle layout rotation (recipe opcodes, plan encoding, key derivation, field and
+  entry order, no descriptive data) waits for the virtualizer discussion: with replay accepted it
+  mostly buys a generated encoder and decoder pair in two languages.
+- No per-session watermarks or decoy facts while the machinery settles. A decoy would be a
+  declared, unused fact whose per-session value the online key signs (a forged one is harmless), so
+  a leaked fact table names its account.
 - Configs and scripts can live in the cloud only, fetched per session with no release cache, and
   signed by the server, so swapping scripts is no way to tamper with the module. Cracked users keep
   what they grabbed and lose everything after.
-- Integrity as key material:
-  - `measure`/`mix`/`derive` ops, with regions chosen by the server per session;
-  - the runner measures itself;
-  - server-side challenge/response;
-  - measurement that a pristine copy can't answer: besides hashing bytes, values only the running
-    code produces (live relocated pointers, the module's runtime state), so a fake has to emulate
-    running code, not keep a file.
-- Measurement accounts for relocations and fixups. A contract test checks the expected hashes, and
-  mismatch telemetry is tagged with the release seed.
-- Debugger and VM checks are signals only: risk scoring on the server, acted on later. Never a
-  local gate, and never gate on hypervisor detection (VBS).
-- Never respond where a tamper is detected. Responses are delayed and decoupled.
 - Dev: `loader-dev` takes local bundles signed with a dev key that release builds reject.
 - The loader is the first target: it holds the device key, does PKCE/DPoP and starts the module.
-  Its handoff and device-key code get integrity-as-key and virtualization like the module's.
+  Its handoff and device-key code are measured and virtualized like the module's.
 - Later:
   - fixups into code immediates;
-  - per-user diversified builds (on top of the mutation backend).
+  - per-user diversified builds would need an online key that signs code, so they stay out.
 
 ## Strings and diagnostics
 
@@ -221,26 +316,29 @@ walls, so the goal there is fewer clues and releases that don't diff.
 
 ## Operating it
 
-- The release seed is key material: it drives fact key hashes, the bundle format, the VM
-  instruction set, event ids and link order, so a leaked seed undoes that release's rotation.
-  Generated per release, stored with the offline release key, never in git. The instruction-set
-  description and the event manifest stay server-side, which makes the server's release store a
-  target.
-- The offline release key lives on hardware (YubiKey or HSM), with a written signing ceremony. A
-  stolen release key is the one failure the design can't recover from.
-- An internal channel gets fully protected builds, and CI runs the differential tests on protected
-  binaries, since VM, mutation and rewriter bugs appear only in release. `products/*.toml` already
-  has channels.
-- Antivirus false positives: virtualized and mutated code, runtime imports and a manual mapper all
-  match antivirus heuristics. The loader gets an EV code-signing certificate, each release goes to
-  Microsoft for analysis, and its own protection stays lighter than the module's.
-- A response playbook for a crack: a forced release with rotated seeds, revocation and replay
-  detection through watermarks and canaries, then delayed bans.
-- Metrics: time from a release to its first cracked or replayed sessions, per release. Without it
-  there's no telling whether a wall pays for itself.
+- A release: build with a fresh seed, sign with the code key, regenerate and sign the fact sets for
+  it with the facts key, publish staged, promote. `alpha` is where a protected build meets real
+  machines first, and CI runs the differential tests on protected binaries, since VM, mutation and
+  rewriter bugs appear only in release.
+- A game update: ingest, generate, probe, sign with the facts key, publish. Until then members see
+  "not yet supported".
+- A deploy restarts inside the lease's 60 seconds, at worst inside the resume window.
+- Antivirus false positives: with no certificate, SmartScreen and antivirus heuristics will fire on
+  the loader, and virtualized code, runtime imports and a manual mapper add to it. Members are told
+  to expect it; the loader's own protection stays lighter than the module's.
+- Responding: staff act on an account (suspend, remove a device, strike the inviter) and it takes
+  effect at the next renewal; an override turns a capability or feature off for every session at
+  the next renewal; a crack ends with a new release. A serverless crack is found in the wild, never
+  by the server.
+- Metrics: the release pipeline's duration; game update to facts published, per module; review
+  items per signal and how many were real; time from a release to its first known crack.
 
 ## Open
 
+- What the `debug` channel contains, which decides how it is signed.
+- A name for a release's signed artifact list (`release manifest` is the capability manifest).
+- The local dependence behind the fact accessor seam, in the virtualizer and obfuscation
+  discussion; a re-seeded release per game update, with it.
 - Lab C++ infrastructure first, or the virtualizer straight into `native/tools/` as a dev-only tool.
 - Names: the virtualizer project and tool, its runtime library, and the shared decoding and
   semantics library.

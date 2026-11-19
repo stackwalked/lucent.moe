@@ -362,7 +362,8 @@ Still to land, in order:
   degrades on its own.
 - The modules that matter are the ones the manifest's facts name. No hand-kept module list anywhere.
 - A set has a revision per module build; the revision and the finders' commit are signed. The server
-  serves the latest enabled revision for each reported module build.
+  serves the current revision for each reported module build: the latest promoted, with no
+  falling back to an older one.
 - Steam's `buildid` and `PatchVersion` are labels for display, telemetry and update-day detection.
   They never select facts.
 - Source 2 knowledge is its own layer, `native/engines/source2/`. `libs/probe` stays generic (PE,
@@ -408,19 +409,19 @@ Still to land, in order:
 - Live semantic probes: capabilities declare dev-only probes (value ranges, handle serials); the
   update-day pipeline runs them in a real game before sign-off.
 - Three documents, two keys:
-  - fact set, per manifest digest, module build and revision, signed with the offline release key
+  - fact set, per manifest digest, module build and revision, signed with the offline facts key
     after sign-off. Header: format, game, module build key, revision, finders commit, manifest
     digest. Entries are `(key hash, payload)` leaves sorted by key under a Merkle root; the
     signature covers the header and the root. Payloads are opaque bytes (a value now, a recipe
-    later). Releases sharing a manifest share sets.
+    later). Fact keys differ per release, so a set is signed for one release.
   - overrides (force features or capabilities off), signed with an online server key: a kill switch
     needs no offline key, and the worst a stolen online key does is what withholding already can.
   - session bundle: the entitled entries with their Merkle proofs plus the overrides, bound to the
-    session and encrypted with a key from the lease. Watermarking belongs here, never in values.
+    session and encrypted under the session key.
 - A compromised server can withhold facts, never forge one: values are trusted only through the
   offline key.
 - Delivery:
-  - the loader sends the module build keys; per module build the server picks the latest enabled
+  - the loader sends the module build keys; per module build the server picks the current
     revision for the release's manifest and drops entries the session isn't entitled to;
   - a module with no set is "not yet supported" and its capabilities are unavailable; the server
     refuses the session only when a `core` capability is uncovered;
@@ -439,8 +440,8 @@ Still to land, in order:
   app 730's `buildid` changes (a one-time login the human sets up).
 - The update-day pipeline, as moon tasks: ingest, generate (values, changes against the last
   published set, finder warnings), harvest and probe (both need a running game), then sign-off.
-  Agents may run everything before sign-off; signing with the offline key and publishing (disabled,
-  then enabled) are always the human's.
+  Agents may run everything before sign-off; signing with the facts key and publishing (staged,
+  then promoted) are always a person's.
 - A broken finder makes its facts fail and its capabilities unavailable. A partial set may be
   published when no `core` capability is affected; the finder fix lands as the next revision.
 - Metrics: update-day latency per module and per step; load failures reported from the field.
@@ -449,8 +450,9 @@ Still to land, in order:
     by changing one function (and decoding stays about a load and an XOR);
   - a payload carries a tag: a literal now, a recipe later, evaluated by one resolve function, and
     validated on what it yields;
-  - key hashes are `H(release seed, name)` from the first release, the seed from the generated
-    `lucent::build` header (fixed in dev). Telemetry keys are per release; the server maps them
+  - key hashes are a keyed function of the release's fact subkey and the name from the first
+    release (not FNV-1a, which gives the key back), the subkey from the generated `lucent::build`
+    header (fixed in dev). Telemetry keys are per release; the server maps them
     back through that release's manifest;
   - a post-link check fails a release build whose image contains any declared fact name.
 
@@ -482,16 +484,17 @@ live in `wishlist/protection.md`.
     operator entry point (`bootstrap-superadmin`, `transfer-superadmin`, `publish-release`,
     `publish-loader`, `publish-fact-set`, `replay-removals`). Zero HTML, CSS or UI copy.
   - `web/`: every browser HTML surface under one design system (public door, waitlist, all auth
-    and handoff flows, member area, admin area including online fact-revision toggles and override
-    kill switches). Replaces the old service's handwritten `pages.ts` and `den gen auth-tokens`.
+    and handoff flows, member area, admin area including promotion of staged releases and fact
+    revisions and override kill switches). Replaces the old service's handwritten `pages.ts` and
+    `den gen auth-tokens`.
   - `contracts/`: cross-runtime wire and binary container schemas and golden vectors only.
   - `products/`: checked-in product catalog (`products/<id>.toml`: `id`, `kind`, ordered release
     `channels`, default device/slot policy), read by `platform/`, `web/` and build tooling.
 - Scope changes from old `lucent`:
   - Invite and waitlist admission with manual licenses only; no cohorts, no billing or checkout.
   - No repo-wide `den` CLI; no `@anthropic-ai/sdk` agent in `connectors/discord`.
-  - Fact sets stay signed by the offline release key (`Facts`); `web/` admin handles online revision
-    enable/disable and online-key overrides with passkey step-up.
+  - Fact sets stay signed by the offline facts key (`Facts`); `web/` admin promotes staged
+    revisions and manages online-key overrides with passkey step-up.
   - Reviewed `.lpkg` extension packages, `/sdk/v1` and WebSocket `Rooms` wait past the initial five
     slices until the value-only Luau script host settles; cloud sync still carries `.luau` scripts
     and `resources` serves admin-curated files.
@@ -505,10 +508,10 @@ live in `wishlist/protection.md`.
        locked out by hardware;
      - when a product slot is full, the newest session takes it: the old session's next renewal is
        refused and it lapses within the lease TTL, so a crashed loader never blocks a restart;
-     - open: who renews the lease. The loader (holds the device key and the only network stack,
-       relays signed leases to the module over the session pipe) or the module itself (the pipe is
-       one more channel to protect, and the module talks to the server for bundles anyway, but it
-       then needs a key it can sign with inside the game process).
+     - the loader renews the lease as a relay and the module holds an end-to-end session key;
+       delivery, running conditions, signals and keys are in `wishlist/protection.md`;
+     - channels are `stable`, `alpha` and `debug`: `beta` leaves `products/*.toml` and `debug`
+       joins, and `releases:toggle` becomes a promote action.
   3. fact sets, session bundles, live revisions and integrity/risk scoring;
   4. cloud sync, crash reports, tickets/appeals, review queue + DB-IP geo, waitlist and resources;
   5. profiles, avatar codec, comments, shouts, inbox + SSE presence/events, guides and
@@ -678,19 +681,20 @@ live in `wishlist/protection.md`.
     Zod schemas, and committed golden `.bin`/`.json` vectors verified by both `ctest` and
     `bun test`. Zero codegen until hand-mirroring hurts.
   - Key split: **Ed25519** over raw canonical bytes for server and offline authorities
-    (`RELEASE_TRUSTED_KEYS`, `LEASE_SIGNING_KEY`, `OVERRIDE_SIGNING_KEY`), including a fixed-layout
-    binary Ed25519 runtime lease (dropping `lucent-lease+jwt` so the mapped module needs no JSON or
+    (the offline code and facts keys, `LEASE_SIGNING_KEY`, `OVERRIDE_SIGNING_KEY`), including a
+    fixed-layout binary Ed25519 runtime lease (dropping `lucent-lease+jwt` so the mapped module needs no JSON or
     JWS parser); **ECDSA P-256** for client Windows TPM 2.0 / CNG installation and session keys.
   - Separate `/v1` channels: `POST /v1/sessions/:id/lease` (15s cadence / 60s TTL, carries
-    `bundle_revision_tag` + measurement regions, never game data) and
+    `bundle_revision_tag` + a hash challenge, never game data) and
     `POST /v1/sessions/:id/bundles` (lazy per-feature and per-module AEAD-encrypted session bundles
-    with Merkle proofs + online overrides + per-session watermarks).
-  - No immediate `INTEGRITY_REFUSED` oracle on `/handoff` or `/lease`: mismatches feed key-material
-    derivation (`measure`/`mix`/`derive`) and append `risk_signal` rows (tagged with `release_seed`)
-    for asynchronous risk scoring, review items and delayed decoupled actions.
+    with Merkle proofs + online overrides).
+  - No `INTEGRITY_REFUSED` on `/handoff` or `/lease`: a mismatch changes nothing the client sees.
+    It appends `risk_signal` rows (tagged with a release id) for risk scoring and review items
+    that staff act on.
   - `ops publish-release` / `publish-loader` / `publish-fact-set` verify offline signatures,
-    manifest digests, revision monotonicity and `core` coverage; `web` admin toggles enabled state,
-    manages online-signed overrides, and tracks update-day latency per `module_build_key`.
+    manifest digests, revision monotonicity and `core` coverage; `web` admin promotes staged
+    releases and revisions, manages online-signed overrides, and tracks update-day latency per
+    `module_build_key`.
 - Connectors, jobs and untrusted boundaries:
   - `platform/connectors/discord` (`discord`, Slice 5): outbound-only worker on
     `@discordjs/core@2.6.0` + `@discordjs/rest@2.6.3` + `@discordjs/ws@2.0.4`, calling
