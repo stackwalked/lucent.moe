@@ -40,8 +40,8 @@ auto fixture_path() -> std::filesystem::path {
     return std::filesystem::path{LUCENT_FIXTURE_SCHEMA_GAME};
 }
 
-auto fixture() -> probe::module_file {
-    const result<std::vector<std::byte>> file = os::read_file(fixture_path());
+auto fixture(const std::filesystem::path& path) -> probe::module_file {
+    const result<std::vector<std::byte>> file = os::read_file(path);
     REQUIRE(file.has_value());
     result<probe::module_file> loaded = probe::module_file::load(*file);
     REQUIRE(loaded.has_value());
@@ -67,8 +67,8 @@ struct read_fixture {
     module_schema schema;
 };
 
-auto read_fixture_schema() -> read_fixture {
-    probe::module_file module = fixture();
+auto read_fixture_at(const std::filesystem::path& path) -> read_fixture {
+    probe::module_file module = fixture(path);
     probe::code_index index = probe::code_index::build(module);
     result<module_schema> schema = read_schema(module, index);
     REQUIRE(schema.has_value());
@@ -77,6 +77,10 @@ auto read_fixture_schema() -> read_fixture {
         .index = std::move(index),
         .schema = std::move(*schema),
     };
+}
+
+auto read_fixture_schema() -> read_fixture {
+    return read_fixture_at(fixture_path());
 }
 
 auto class_named(const module_schema& schema, std::string_view name) -> const declared_class& {
@@ -451,6 +455,15 @@ TEST_CASE("the offline reading is what the module registers when SchemaSystem ru
 
     CHECK(by_name(read.schema.classes) == by_name(registered));
     FreeLibrary(loaded);
+}
+
+TEST_CASE("the reader reads the same schema however far the optimizer inlined registration") {
+    const read_fixture read = read_fixture_schema();
+    const read_fixture outlined = read_fixture_at(LUCENT_FIXTURE_SCHEMA_GAME_OUTLINED);
+    const read_fixture inlined = read_fixture_at(LUCENT_FIXTURE_SCHEMA_GAME_INLINED);
+
+    CHECK(by_name(outlined.schema.classes) == by_name(read.schema.classes));
+    CHECK(by_name(inlined.schema.classes) == by_name(read.schema.classes));
 }
 
 }

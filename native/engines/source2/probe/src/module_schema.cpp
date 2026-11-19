@@ -166,7 +166,8 @@ auto unknown() -> detail::value {
     return detail::unknown_value{};
 }
 
-// Where InstallSchemaBindings keeps ISchemaSystem, and the functions it hands it to.
+// Where InstallSchemaBindings keeps ISchemaSystem, and the functions that may walk the registrars:
+// itself and those it hands ISchemaSystem to.
 struct installation {
     u64 system_global = 0;
     std::vector<u32> installers;
@@ -187,7 +188,10 @@ auto installation_of(const probe::module_file& module, u32 install) -> result<in
     if (!global) {
         return std::unexpected(error{.code = error_code::not_found});
     }
-    installation found{.system_global = *global, .installers = {}};
+    // The export itself walks the registrars where the optimizer inlined the installer into it.
+    // found: cs2's client.dll (1.41.9.9) calls the installer; a Release build of the fixture
+    // inlined it (schema_game_inlined keeps that shape)
+    installation found{.system_global = *global, .installers = {install}};
     for (const detail::call_event& call : seen.calls) {
         const std::optional<u64> target = detail::number_in(call.target);
         const std::optional<u32> rva = target ? module.rva_of(*target) : std::nullopt;

@@ -30,8 +30,9 @@ public:
         return m_next;
     }
 
-    // Newest first, as the game's static initializers leave them.
-    auto link(registration*& head) -> void {
+    // Newest first, as the game's static initializers leave them. Inlined or not per fixture
+    // (CMakeLists.txt).
+    [[SCHEMA_GAME_LINK]] auto link(registration*& head) -> void {
         m_next = head;
         head = this;
     }
@@ -509,7 +510,8 @@ public:
 entity_registration entity_registrar{};
 client_registration client_registrar{};
 
-auto install_all(schema_system* system) -> void {
+// Inlined into InstallSchemaBindings or not per fixture (CMakeLists.txt).
+[[SCHEMA_GAME_INSTALLER]] auto install_all(schema_system* system) -> void {
     for (int phase = 0; phase < 4; ++phase) {
         for (registration* each = registrations; each != nullptr; each = each->next()) {
             each->install(system, phase, nullptr);

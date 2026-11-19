@@ -109,4 +109,7 @@ as above. Nothing in the game runs.
   SchemaSystem reports bitfields at offset 0 as the records hold them.
 - The installer's head is found by an instruction pattern over the optimized loop; an
   unoptimized build of the same source doesn't match it (the fixture is built with /O2 for that
-  reason).
+  reason). The reader looks for the loop in `InstallSchemaBindings` itself as well as in the
+  functions it hands `ISchemaSystem`, since an optimizer may inline the installer; the registrars'
+  links may also go through a helper. cs2 does neither on the builds above. The fixture is built
+  in all three shapes, and the same in every build configuration.
