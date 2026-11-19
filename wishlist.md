@@ -51,14 +51,21 @@ product, one feature. Built end to end, native and server together.
 - Native: the release loader at its smallest (sign-in, device key, self-update, verify, map,
   relay); the module container; the release boot path; kit's lease client and session key;
   `boot_info` with the lease and build ids.
-- Render: the menu usable mid-match (cs2 captures the cursor: release it or draw our own) and
+- Render: the menu usable mid-match, by toggling cs2's own relative-mouse mode through its input
+  system while the menu is open (a method fact; it frees the cursor and stops the camera), and
   input the window procedure can't block (raw input read elsewhere, key polling). The per-session
   menu catalog from the server; release builds show placeholders until it arrives.
 - cs2: the world built at the game's frame stage (a method fact for it) instead of on Present; a
-  class check on controllers (vtable facts in capabilities) instead of indices 1..64.
+  class check on controllers instead of indices 1..64 (capabilities may hold vtable facts).
+- Kit: a refused start tells the release host why, as one code from the curated user-facing
+  catalog (never a capability name), through a new session message kind and a `boot_info`
+  version bump. A `core` capability whose module isn't loaded at start waits: the start proceeds,
+  its features stay unavailable, and only a failure once the module loads ends the session with
+  that code.
 - Release tooling: the offline code and facts keys with their signing tools and ceremony, the
-  release's signed artifact list, the master seed's generation and archiving, and the production
-  facts key list the release guard compares against (today it only refuses the dev key).
+  release seal (a release's offline-signed list of its artifacts and digests), the master seed's
+  generation and archiving, and the production facts key list the release guard compares against
+  (today it only refuses the dev key).
 - The download page tells members what SmartScreen and antivirus will say.
 - `infra/`: compose, Caddy, backups with an off-machine copy, the uptime ping from a second
   machine. Old lucent left the last two unchosen.
@@ -447,8 +454,8 @@ Still to land, in order:
 - the rest of the finder language: operand alternation, steps in either order, sequences across
   `.pdata` chunk splits, facts depending on facts (ordered, cycles an error), the cached per-build
   index, changes against the last published set;
-- the read-only section between safe points; what a `core` capability in a late-loaded module
-  means at start (today it counts as unavailable and refuses);
+- the read-only section between safe points; a `core` capability in a late-loaded module waiting
+  rather than refusing the start (decided; see phase 1's Kit entry);
 - release key handling: the production facts key list the release guard compares against (it
   refuses only the dev key today).
 
@@ -583,7 +590,7 @@ Still to land, in order:
     a `core` capability needs, or whose revision isn't newer. It knows the release's facts and
     core capabilities from the release manifest (`contracts/release-manifest/v1`, written by
     `facts manifest`), which `publish-release` uploads; the server side of both is still to land,
-    and whether the manifest's game id is the Steam app or a product id is open.
+    and the manifest's game id is the product id (`products/<id>.toml`); Steam's app id stays a label.
   - load: bundle signature, format and module keys; the per-kind checks against the loaded image
     (`RtlLookupFunctionEntry` for methods), header reads through `contain()`. A failed fact makes
     its capabilities unavailable; telemetry reports its key and module build.
@@ -690,9 +697,8 @@ live in `wishlist/protection.md`.
        - `POST /v1/enrollments`: proven by the candidate device key; approved in the browser
          after a recent sign-in, with a match code from the key's thumbprint; the loader polls;
        - `POST /v1/starts` (loader): product, channel, loader release id, module builds; every
-         start check in one transaction; returns a start id, the release's offline-signed
-         artifact list and a fresh per-start key that opens the module container; the start
-         expires unused after 60 s;
+         start check in one transaction; returns a start id, the release seal and a fresh
+         per-start key that opens the module container; the start expires unused after 60 s;
        - `POST /v1/starts/:id/session`: the module's X25519 hello, relayed opaquely by the
          loader; binds the key, consumes the start, takes the slot; returns the server's half
          and the first lease, signed by the lease key;
@@ -701,7 +707,7 @@ live in `wishlist/protection.md`.
          the last lease expires;
        - DPoP freshness by clock window as old (`iat` at most 5 s ahead, 300 s behind, the
          client's offset from `Date`, one retry, a `jti` replay table); no server nonces;
-       - each loader artifact list carries a number, and the loader refuses any not above the
+       - each loader release seal carries a number, and the loader refuses any not above the
          highest it has seen signed;
      - one slice built end to end, native and server together, not split like slice 1;
      - without a usable TPM 2.0 the device key falls back to a non-exportable CNG software key,

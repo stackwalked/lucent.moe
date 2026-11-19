@@ -36,7 +36,9 @@ spec: entries leave as they land. Facts' own seams for this work stay in `wishli
   selection; when it isn't the latest it does nothing but update itself.
 - Channels are `stable`, `alpha` and `debug`: product tiers. `alpha` has fresher features and
   `stable`'s integrity posture. `debug` is for a handful of vetted people and drops integrity
-  measures for performance.
+  measures for performance: the release build of the same source with refract's VM and mutation
+  passes and the integrity signals off, signed by the offline code key like any release. No dev
+  channel and never the dev key: those stay dev-only.
 - One current release per product and channel, and one current fact-set revision per release and
   module build. Publishing is staged, then promoted; promotion replaces. Going back means signing
   the old code under a new number: a client accepts only the highest number it has seen signed. A
@@ -64,7 +66,7 @@ spec: entries leave as they land. Facts' own seams for this work stay in `wishli
   - LZ4 before encryption (a new dependency, for the loader and the build tool);
   - encrypted per start in 64 KiB XChaCha20-Poly1305 chunks under the start's key, each chunk's
     index and a last-chunk flag in its associated data; the loader verifies while downloading;
-  - the offline-signed artifact list carries the plaintext container's digest; the loader decrypts,
+  - the release seal carries the plaintext container's digest; the loader decrypts,
     checks it, and only then parses.
 - `lucent-host` is its own small executable, shipped with the loader and signed by the code key.
   The loader verifies it through a handle held against writes, spawns it, and maps the module into
@@ -218,7 +220,9 @@ emulate in bulk, and the decrypted strings then label the functions that use the
   no printable run over about 6 characters outside an explicit allowlist. A failure fails the
   build. Fact names are checked today; feature and setting names are not, and they leak: an
   invariant records its enclosing function's name, which for templates over a feature (`entry_of`)
-  spells the feature's type. Release invariants and faults need a location without text.
+  spells the feature's type. Decided: release faults record only the failing check's RVA (PDBs
+  archived per release symbolize them), and the post-link check also refuses feature and setting
+  names.
 
 ## Virtualizer
 
@@ -358,8 +362,6 @@ walls, so the goal there is fewer clues and releases that don't diff.
 
 ## Open
 
-- What the `debug` channel contains, which decides how it is signed.
-- A name for a release's signed artifact list (`release manifest` is the capability manifest).
 - The local dependence behind the fact accessor seam, in the virtualizer and obfuscation
   discussion; a re-seeded release per game update, with it.
 - Names: `refract`'s runtime library, and the shared decoding and semantics library.
