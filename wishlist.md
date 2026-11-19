@@ -62,13 +62,13 @@ product, one feature. Built end to end, native and server together.
   version bump. A `core` capability whose module isn't loaded at start waits: the start proceeds,
   its features stay unavailable, and only a failure once the module loads ends the session with
   that code.
-- Release tooling: the offline code and facts keys with their signing tools and ceremony, the
+- Release tooling: the offline code and facts keys as passphrase-encrypted files with their
+  signing tools, the
   release seal (a release's offline-signed list of its artifacts and digests), the master seed's
   generation and archiving, and the production facts key list the release guard compares against
   (today it only refuses the dev key).
 - The download page tells members what SmartScreen and antivirus will say.
-- `infra/`: compose, Caddy, backups with an off-machine copy, the uptime ping from a second
-  machine. Old lucent left the last two unchosen.
+- `infra/`: compose and Caddy. Backups and uptime monitoring are the owner's, outside this plan.
 
 Gate: on a PC that has never seen us, a member downloads the loader from the member area, signs
 in, enrolls, starts cs2 on `alpha` and sees the feature. Suspending the account ends it within the

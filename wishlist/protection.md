@@ -135,10 +135,10 @@ spec: entries leave as they land. Facts' own seams for this work stay in `wishli
 
 ## Keys and seeds
 
-- Offline, on hardware, with a written signing ceremony: the code key (releases; cold) and the
-  facts key (fact sets; used on every game update, and held by a second trusted person too, since
-  it can't run code). A lost or stolen offline key is replaced through a new loader on the member
-  site.
+- Offline: the code key (releases; cold) and the facts key (fact sets; used on every game update).
+  Each is a passphrase-encrypted file on the owner's computer, never on the server or in git; the
+  signing tools decrypt it only for the moment they sign. No hardware key. A lost or stolen
+  offline key is replaced through a new loader on the member site.
 - Online: the lease key (leases, the session key exchange) and the override key (kill switches,
   per-account data). Their public halves ship inside the signed release, so rotating one costs a
   release; they are backed up.
