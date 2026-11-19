@@ -100,4 +100,12 @@ auto read_remote(const process& owner, remote_range range) -> result<std::vector
     return bytes;
 }
 
+auto read_remote(const process& owner, uptr address, std::span<std::byte> into) -> result<void> {
+    const void* const from = std::bit_cast<const void*>(address);
+    if (ReadProcessMemory(owner.native(), from, into.data(), into.size(), nullptr) == 0) {
+        return std::unexpected(last_system_error());
+    }
+    return {};
+}
+
 }

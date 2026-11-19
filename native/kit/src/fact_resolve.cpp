@@ -5,14 +5,17 @@
 #include <cstddef>
 #include <expected>
 #include <optional>
+#include <ranges>
 #include <span>
-#include <tuple>
 #include <vector>
 
 #include <Windows.h>
 
 #include <lucent/core/contain.hpp>
 #include <lucent/core/fault.hpp>
+#include <lucent/core/narrow.hpp>
+#include <lucent/foreign/foreign_ptr.hpp>
+#include <lucent/foreign/memory_source.hpp>
 #include <lucent/kit/fact.hpp>
 #include <lucent/os/address_range.hpp>
 #include <lucent/pe/image_view.hpp>
@@ -63,23 +66,18 @@ auto is_function_start(const module_image& image, uptr address) -> bool {
     return owner == image.base && owner + function->BeginAddress == address;
 }
 
-// A vtable's entries are foreign memory: read under contain(). Counting stops at the first entry
-// that isn't code, at a fault, or at the sanity bound.
+// Counting stops at the first entry that isn't code, at one that can't be read, or at the sanity
+// bound.
 auto vtable_length(const module_image& image, uptr vtable) -> usize {
-    usize length = 0;
-    std::ignore = contain([&] {
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wunsafe-buffer-usage-in-container" // stops at the first non-code
-        const std::span<const u64> entries{std::bit_cast<const u64*>(vtable), max_vtable_length};
-#pragma clang diagnostic pop
-        for (const u64 entry : entries) {
-            if (!is_code(image, entry)) {
-                return;
-            }
-            ++length;
+    const foreign::memory_source own = foreign::memory_source::this_process();
+    const foreign::foreign_ptr<u64> first{.address = vtable};
+    for (const usize index : std::views::iota(usize{0}, max_vtable_length)) {
+        const result<u64> entry = foreign::read(own, foreign::element(first, narrow<isize>(index)));
+        if (!entry || !is_code(image, *entry)) {
+            return index;
         }
-    });
-    return length;
+    }
+    return max_vtable_length;
 }
 
 // The address kinds' checks against their module's image; the absolute address when one passes.

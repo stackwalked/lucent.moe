@@ -54,4 +54,8 @@ private:
 
 auto read_remote(const process& owner, remote_range range) -> result<std::vector<std::byte>>;
 
+// Fills `into` from `address` in the other process, allocating nothing: the host's reads of its
+// target run at the input domain's rate.
+auto read_remote(const process& owner, uptr address, std::span<std::byte> into) -> result<void>;
+
 }

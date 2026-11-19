@@ -1,0 +1,7 @@
+project:
+  description: "Foreign memory as values: typed foreign pointers, read through a memory source that is this process, another process, or laid-out bytes."
+
+language: "cpp"
+layer: "library"
+
+dependsOn: ["core", "os"]

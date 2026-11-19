@@ -20,7 +20,7 @@ lucent_library(kit
         src/session.cpp
         src/session_message.cpp
         src/time_date_stamp.cpp
-    DEPS lucent::bundle lucent::crypto lucent::os lucent::pe safetyhook::safetyhook
+    DEPS lucent::bundle lucent::crypto lucent::foreign lucent::os lucent::pe safetyhook::safetyhook
 )
 
 lucent_test(kit

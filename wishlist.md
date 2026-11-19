@@ -83,7 +83,8 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
     checking `vtable[slot] == method` when both are facts;
   - `hook_access` created per call.
 - Access boundary:
-  - `read_access`/`write_access` tokens, `foreign_ptr` and `field`;
+  - `read_access`/`write_access` tokens and `field`, over `libs/foreign`'s memory source and
+    foreign pointers;
   - a feature touching foreign memory directly is a compile error.
 - A `raw` escape hatch: explicit, findable with grep, counted in `:check`. Uses get promoted into proper APIs.
 - Error model:
@@ -719,21 +720,21 @@ live in `wishlist/protection.md`.
   - CI stays in `.github/workflows`, toolchains in `.prototools`/`tools/proto/`, and migrations and
     DB operator verbs in `platform/server/`.
 
-## osu (Tamaki)
+## osu
 
 Tamaki (github.com/gorelace/tamaki: a standalone exe reading osu! from outside, SendInput, its own
-DX11 overlay window; lazer and stable) is rewritten here as a second product.
+DX11 overlay window; lazer and stable) is rewritten here as a second product, the osu project.
+`libs/foreign` (memory source, `foreign_ptr`, `foreign_ptr32`) has landed.
 
-- Decided (names still open: the osu target, the two halves of the kit split):
+- Decided:
   - one product format (a module plus fact bundles) with two placements: mapped into the game
     (cs2), or into a `lucent-host` process the loader spawns per product (osu: remote reads, an
     overlay window, an input domain); same lease, session, lifecycle and protection;
-  - a memory source under `read_access` (local under `contain()`, remote through a process handle,
-    fixture bytes in tests), so domains and features don't change between placements;
-  - `foreign_ptr32<T>` for 32-bit stable, read by the x64 host;
-  - `kit` split by placement: facts, registry, context, settings and session shared; hooks and
-    in-game Present injected-only; attach loop, remote reads, overlay window and input injection
-    host-only;
+  - `read_access` carries the memory source, so domains and features don't change between
+    placements; the source the host-side fact resolve reads images and vtables through;
+  - `kit` split by placement: facts, registry, context, settings and session stay in `kit`; hooks
+    and in-game Present go to `kit-internal`; attach loop, remote reads, overlay window and input
+    injection go to `kit-external`;
   - two domain loops: play state at the game's rate, input at about 1 kHz (aim proposes cursor
     corrections, relax and tap propose key events, the input domain applies them once per pump).
 - .NET facts come from a layout harvest: `tools/dotnet-layout` (C#) loads the target's assemblies
@@ -754,8 +755,9 @@ DX11 overlay window; lazer and stable) is rewritten here as a second product.
 - A live probe in dev (Tamaki's `ChainCheck`) walks every chain in a running game with the
   candidate facts before sign-off.
 - Out of scope: anything around osu!'s own client authentication.
-- Order, after the facts machinery: memory source and kit split; `engines/dotnet` and lazer's
-  foreign layer; host placement; features (relax, tap assist, aim assist, autobot and replay, with
+- Order: the access tokens (`read_access`, `write_access`, `field`), shared with cs2; the kit
+  split; `lucent-host` and its attach loop; the .NET harvest; `engines/dotnet` and lazer's
+  foreign layer; the osu domains (play state, input, overlay window); features (relax, tap assist, aim assist, autobot and replay, with
   `humanize` as a library); stable; the `products/` entry.
 
 ## Open
