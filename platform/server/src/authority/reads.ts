@@ -153,6 +153,7 @@ export type AccountFilter = {
 };
 
 const NewestKey = z.tuple([EpochMs, AccountId]);
+const createdMs = sql`date_trunc('milliseconds', a.created_at)`;
 const UsernameKey = z.tuple([z.boolean(), z.string(), AccountId]);
 
 function escapeLike(text: string): string {
@@ -179,12 +180,14 @@ export async function listAccounts(
                   and (ar.expires_at is null or ar.expires_at > ${toTimestamptz(txNow)}::timestamptz)))
             and (${prefix}::text is null or a.username like ${prefix} or a.email like ${prefix})`;
 
-        // Byte order ("C"), so pages don't depend on the database's locale.
+        // Byte order ("C"), so pages don't depend on the database's locale; created_at at the
+        // cursor's precision (milliseconds), or a row a few microseconds past it could be skipped
+        // or repeated across a page boundary.
         let after = sql`true`;
         if (params.cursor !== null && params.sort === "newest") {
             const key = fromCursor(NewestKey, params.cursor);
             if (!key.ok) return key;
-            after = sql`(a.created_at, a.id collate "C") < (${toTimestamptz(key.value[0])}::timestamptz, ${key.value[1]})`;
+            after = sql`(${createdMs}, a.id collate "C") < (${toTimestamptz(key.value[0])}::timestamptz, ${key.value[1]})`;
         }
         if (params.cursor !== null && params.sort === "username") {
             const key = fromCursor(UsernameKey, params.cursor);
@@ -194,7 +197,7 @@ export async function listAccounts(
         }
         const order =
             params.sort === "newest"
-                ? sql`order by a.created_at desc, a.id collate "C" desc`
+                ? sql`order by ${createdMs} desc, a.id collate "C" desc`
                 : sql`order by a.username is null, coalesce(a.username, '') collate "C", a.id collate "C"`;
 
         const rows = await queryAll(

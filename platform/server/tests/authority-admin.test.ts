@@ -62,17 +62,18 @@ describe("admin reads", () => {
         await cluster.withTestDb(async ({ nativeDb }) => {
             const rng = createSeededRng(601);
             const rootId = await seedRootOnce(nativeDb, rng);
-            // Ties on created_at, and accounts without a username, are where keysets slip.
+            // Ties on created_at, microseconds inside one millisecond (a cursor holds only
+            // milliseconds), and accounts without a username are where keysets slip.
             for (let i = 0; i < PAGE_SIZE + 12; i++) {
                 const id = await seedAccount(nativeDb, rng, `user${i}@lucent.test`);
-                if (i % 3 !== 0) {
-                    await execute(
-                        nativeDb,
-                        sql`update account set username = ${`user_${(i * 7) % 61}`},
-                                created_at = '2026-01-01T00:00:00Z'
-                            where id = ${id}`,
-                    );
-                }
+                const micros = String((i * 37) % 1_000).padStart(3, "0");
+                await execute(
+                    nativeDb,
+                    sql`update account set
+                            username = ${i % 3 === 0 ? null : `user_${(i * 7) % 61}`},
+                            created_at = ${`2026-01-01T00:00:00.000${micros}Z`}::timestamptz
+                        where id = ${id}`,
+                );
             }
             const total = PAGE_SIZE + 13;
 
