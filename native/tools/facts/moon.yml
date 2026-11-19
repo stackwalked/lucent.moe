@@ -1,0 +1,14 @@
+project:
+  description: "The fact generator: snapshots the installed game's modules into the binaries cache and derives a module's facts from them with the target's finders. Signs nothing."
+
+language: "cpp"
+layer: "tool"
+
+dependsOn: ["bundle", "cs2-finders", "finder", "kit", "os", "pe", "probe"]
+
+# Run by hand from the build tree (.moon/cache/cmake/dev/tools/facts/facts.exe), with no
+# arguments for its usage. What it derives is checked by its report against real game binaries,
+# which never enter git; the finder language it runs is tested in libs/probe.
+workspace:
+  inheritedTasks:
+    exclude: ["test"]

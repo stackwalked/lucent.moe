@@ -30,7 +30,8 @@ auto usage() -> error {
         "usage: devkey header <out.hpp>\n"
         "       devkey sign <module.dll> <game-module.dll> <out.bundle> <name>=<value>|@<file>...\n"
         "values are decimal, 0x-prefixed hex, or negative decimal; an address is its RVA.\n"
-        "@<file> reads name=value lines from a file, as factgen writes them; # starts a comment"
+        "@<file> reads name=value lines from a file, as the facts tool writes them; # starts a "
+        "comment"
     );
     return error{.code = error_code::malformed};
 }

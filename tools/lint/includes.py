@@ -4,8 +4,10 @@
 # ///
 """C++ include layering under native/.
 
-A native project is a directory holding a moon.yml; its name is the directory name, which is
-also the `lucent/<name>/` include prefix (lucent_library(<name>) puts public headers there).
+A native project is a directory holding a moon.yml; its name is the moon.yml's `id` or, without
+one, the directory name, as moon names it. The name is also the `lucent/<name>/` include prefix
+(lucent_library(<name>) puts public headers there). A project nested under another
+(targets/cs2/finders) owns its own subtree and needs an `id`, since folder names repeat.
 
 1. `#include <lucent/X/...>` needs X to be the file's own project, one of its direct moon
    `dependsOn` entries, or core (lucent.cmake links core into every target). Transitive
@@ -128,6 +130,12 @@ def parse_depends_on(text: str) -> dict[str, str]:
     return {}
 
 
+def parse_id(text: str) -> str | None:
+    """Read a top-level `id:`, which overrides the directory name."""
+    match = re.search(r"^id:\s*[\"']?(?P<id>[\w.-]+)[\"']?\s*(?:#.*)?$", text, re.MULTILINE)
+    return match.group("id") if match else None
+
+
 def project_of(path: str, projects: list[Project]) -> Project | None:
     owners = [p for p in projects if path.startswith(p.root + "/")]
     return max(owners, key=lambda p: len(p.root), default=None)
@@ -200,10 +208,12 @@ def load_projects(files: list[str]) -> list[Project]:
         root = posixpath.dirname(name)
         if root == NATIVE:
             continue
-        deps = parse_depends_on(Path(name).read_text(encoding="utf-8"))
+        text = Path(name).read_text(encoding="utf-8")
+        deps = parse_depends_on(text)
         production = frozenset(i for i, scope in deps.items() if scope != TEST_SCOPE)
         development = frozenset(i for i, scope in deps.items() if scope == TEST_SCOPE)
-        projects.append(Project(posixpath.basename(root), root, production, development))
+        project_name = parse_id(text) or posixpath.basename(root)
+        projects.append(Project(project_name, root, production, development))
     return projects
 
 

@@ -1,5 +1,5 @@
 import pytest
-from includes import Project, parse_depends_on, scan
+from includes import Project, parse_depends_on, parse_id, scan
 
 PROJECTS = [
     Project("core", "native/core", frozenset()),
@@ -25,6 +25,33 @@ def test_reads_plain_and_object_dependencies_in_flow_and_block_form() -> None:
     plain = "dependsOn:\n  - 'pe'\n  - { id: os }\ntasks: {}\n"
     assert parse_depends_on(plain) == {"pe": "production", "os": "production"}
     assert parse_depends_on('language: "cpp"\n') == {}
+
+
+def test_a_moon_id_names_the_project_and_only_a_top_level_one() -> None:
+    assert parse_id('id: "cs2-finders"\n\nlanguage: "cpp"\n') == "cs2-finders"
+    assert parse_id("id: cs2-modules # shared table\n") == "cs2-modules"
+    assert parse_id('dependsOn: [{ id: "os" }]\n') is None
+    assert parse_id("tasks:\n  build:\n    id: x\n") is None
+
+
+def test_a_nested_project_owns_its_subtree_under_its_id() -> None:
+    projects = [
+        *PROJECTS,
+        Project("cs2", "native/targets/cs2", frozenset({"kit"})),
+        Project("cs2-finders", "native/targets/cs2/finders", frozenset({"cs2-modules"})),
+        Project("cs2-modules", "native/targets/cs2/modules", frozenset({"kit"})),
+    ]
+    text = ["#include <lucent/cs2-modules/game_modules.hpp>"]
+    assert scan("native/targets/cs2/finders/src/a.cpp", text, projects) == []
+    found = scan("native/targets/cs2/src/a.cpp", text, projects)
+    assert [f.message for f in found] == [
+        "<lucent/cs2-modules/game_modules.hpp> but cs2 does not depend on cs2-modules in moon.yml"
+    ]
+    quoted = ['#include "../../src/foreign/view.hpp"']
+    found = scan("native/targets/cs2/finders/src/a.cpp", quoted, projects)
+    assert [f.message for f in found] == [
+        '"../../src/foreign/view.hpp" reaches into the private src/ of cs2'
+    ]
 
 
 def test_development_dependency_counts_from_tests_only() -> None:

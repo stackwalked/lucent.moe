@@ -253,11 +253,11 @@ delivery: `tools/devkey`, kit's `fact_apply.hpp` and `boot_info` v3, `loader-dev
 
 Still to land, in order:
 
-- left over from delivery and the first generator (`tools/factgen`, `targets/cs2-finders`, four
+- left over from delivery and the first generator (`tools/facts`, `targets/cs2/finders`, four
   cs2 facts): a late-loaded module resolving when it appears; the facts log line kept out of
   release strings; TimeDateStamp read by `pe::image_view`, not kit; one fact-section reader for
-  devkey and factgen; finders naming their fact by symbol once the foreign layer is a library
-  they may include; a layering check that no module links a `*-finders` project; the four facts
+  devkey and the facts tool; finders naming their fact by symbol once the foreign layer is a library
+  they may include; a layering check that no module links a `<target>-finders` project; the four facts
   confirmed in a running game;
 - the rest of the finder language: operand alternation, steps in either order, sequences across
   `.pdata` chunk splits, facts depending on facts (ordered, cycles an error), the cached per-build
