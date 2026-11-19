@@ -1,7 +1,20 @@
 project:
-  description: "The primitives the fact bundle signs and hashes with: Ed25519 and BLAKE2b."
+  description: "The primitives the platform signs, hashes and seals with: Ed25519, BLAKE2b, X25519 and XChaCha20-Poly1305."
 
 language: "cpp"
 layer: "library"
 
-dependsOn: ["core"]
+dependsOn: ["core", "os"]
+
+tasks:
+  # Rewrites contracts/ed25519 from its constructions. Review the diff before committing: a
+  # changed vector is a changed promise about what verification refuses.
+  vectors:
+    command: "ctest --test-dir $workspaceRoot/.moon/cache/cmake/dev -L ^crypto$ -R golden --output-on-failure"
+    deps: ["native:build"]
+    env:
+      LUCENT_WRITE_VECTORS: "1"
+    options:
+      cache: false
+      runInCI: false
+      mutex: "ctest"
