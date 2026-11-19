@@ -169,10 +169,14 @@ auto overlay::draw_contained(IDXGISwapChain& swap_chain, ID3D11Device& device) -
 }
 
 auto overlay::collect_build() -> void {
-    if (m_build == nullptr || !m_build->has_landed()) {
+    if (m_build == nullptr) {
         return;
     }
-    m_renderer = m_build->take();
+    std::optional<d3d11::renderer> landed = m_build->take();
+    if (!landed) {
+        return;
+    }
+    m_renderer = std::move(landed);
     m_build.reset();
     m_state.landed(outcome_of(m_renderer->state()));
 }
