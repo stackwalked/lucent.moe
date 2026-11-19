@@ -1,0 +1,16 @@
+{
+  "name": "@lucent/wire",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./*": "./src/*.ts"
+  },
+  "dependencies": {
+    "@lucent/bundle": "workspace:*",
+    "@lucent/core": "workspace:*",
+    "@noble/ciphers": "2.4.0"
+  },
+  "devDependencies": {
+    "zod": "4.6.7"
+  }
+}

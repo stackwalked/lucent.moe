@@ -1,0 +1,20 @@
+# `wire` is the native wire library's id; this is its TypeScript side.
+id: "platform-wire"
+
+project:
+  description: "The native /v1 messages in TypeScript, byte for byte with native/libs/wire: session hello and exchange, frames, leases, starts, enrollments and refusals."
+
+language: "typescript"
+layer: "library"
+
+dependsOn:
+  - "platform-bundle"
+  - "platform-core"
+
+tasks:
+  # The golden vectors are the other half of what the tests check.
+  test:
+    inputs:
+      - "**/*"
+      - "/contracts/wire/**/*"
+      - "/contracts/ed25519/**/*"

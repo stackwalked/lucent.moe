@@ -57,6 +57,17 @@
         "zod": "4.6.7",
       },
     },
+    "platform/packages/wire": {
+      "name": "@lucent/wire",
+      "dependencies": {
+        "@lucent/bundle": "workspace:*",
+        "@lucent/core": "workspace:*",
+        "@noble/ciphers": "2.4.0",
+      },
+      "devDependencies": {
+        "zod": "4.6.7",
+      },
+    },
     "platform/server": {
       "name": "@lucent/server",
       "dependencies": {
@@ -193,7 +204,11 @@
 
     "@lucent/web": ["@lucent/web@workspace:web"],
 
+    "@lucent/wire": ["@lucent/wire@workspace:platform/packages/wire"],
+
     "@napi-rs/wasm-runtime": ["@napi-rs/wasm-runtime@1.2.6", "", { "dependencies": { "@tybys/wasm-util": "^0.10.3" }, "peerDependencies": { "@emnapi/core": "^1.7.1 || 2.0.0-beta.2", "@emnapi/runtime": "^1.7.1 || 2.0.0-beta.2" } }, "sha512-mRyDmEw9/fCDXCGfL1sbgIw/GUK0PVxRW4YwgPN61F3LQ+fSyoBFarJVzgGyhF6kRzEQZ0FejDqm4WLXSeqQmw=="],
+
+    "@noble/ciphers": ["@noble/ciphers@2.4.0", "", {}, "sha512-AnjFn0Jv92laAkvMrghlFZq4qQCIN/4DxFV/eooqtC2YTjB7kBeLMS2T9KJX4Dn+ZVXLOwK0lSgqDtx9gvxtiw=="],
 
     "@oozcitak/dom": ["@oozcitak/dom@2.0.2", "", { "dependencies": { "@oozcitak/infra": "^2.0.2", "@oozcitak/url": "^3.0.0", "@oozcitak/util": "^10.0.0" } }, "sha512-GjpKhkSYC3Mj4+lfwEyI1dqnsKTgwGy48ytZEhm4A/xnH/8z9M3ZVXKr/YGQi3uCLs1AEBS+x5T2JPiueEDW8w=="],
 
