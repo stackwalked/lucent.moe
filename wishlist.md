@@ -263,13 +263,13 @@ Landed in kit (`fact.hpp`, `fact_resolve.hpp`): the fact section, the six typed 
 accessor, resolve with every per-kind load check, and capabilities. Landed for the bundle:
 `libs/crypto` (Monocypher 4.0.2 through an overlay port in `native/cmake/ports`: vcpkg has none;
 standard Ed25519, BLAKE2b-256), `libs/bundle` (the format, RFC 6962 Merkle with multiproofs,
-canonical decoding, verification) and its golden vectors in `contracts/fact-bundle/v1`.
+canonical decoding, verification) and its golden vectors in `contracts/fact-bundle/v1`. Landed for
+delivery: `tools/devkey`, kit's `fact_apply.hpp` and `boot_info` v3, `loader-dev --bundle`.
 
 Still to land, in order:
 
-- the dev key (`tools/devkey`: the seed under `%LOCALAPPDATA%\lucent\dev`, the public key as a
-  generated header), the module applying a bundle (signature, manifest digest, module keys, then
-  resolve) and `boot_info` v3 carrying it, with `libs/probe`, the generator and cs2 finders;
+- the generator and cs2 finders on `libs/probe`; a late-loaded module resolving when it appears;
+  the facts log line kept out of release strings; TimeDateStamp read by `pe::image_view`, not kit;
 - the first real facts end to end;
 - the read-only section between safe points, the per-release key seed, `core` capabilities
   refusing the start;
