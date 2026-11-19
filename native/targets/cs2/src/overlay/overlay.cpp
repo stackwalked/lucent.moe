@@ -9,7 +9,6 @@
 #include <span>
 #include <tuple>
 #include <utility>
-#include <vector>
 
 #include <Windows.h>
 
@@ -37,7 +36,6 @@
 #include <lucent/kit/registry.hpp>
 #include <lucent/kit/view_set.hpp>
 #include <lucent/menu/settings_menu.hpp>
-#include <lucent/text/glyph_atlas.hpp>
 #include <lucent/text/system_font.hpp>
 #include <lucent/text/text_layout.hpp>
 #include <lucent/text/text_system.hpp>
@@ -58,7 +56,8 @@ struct typed_view {
 };
 
 // A typeless back buffer needs a typed view; these are the typeless formats a swap chain may use.
-// The renderer refuses the HDR ones (10-bit and float) for now, and the overlay stays off on them.
+// The renderer draws the float one as scRGB; it refuses the 10-bit one until cs2 is known to give
+// it HDR10 or SDR, and the overlay then draws nothing.
 constexpr std::array typeless_views{
     typed_view{.stored = DXGI_FORMAT_R8G8B8A8_TYPELESS, .view = DXGI_FORMAT_R8G8B8A8_UNORM},
     typed_view{.stored = DXGI_FORMAT_B8G8R8A8_TYPELESS, .view = DXGI_FORMAT_B8G8R8A8_UNORM},
@@ -131,22 +130,6 @@ auto outcome_of(d3d11::renderer_state built) -> build_outcome {
         LUCENT_UNREACHABLE();
     }
     LUCENT_UNREACHABLE();
-}
-
-// The text system's patches and the renderer's uploads match field for field until draw gives
-// them one type.
-auto to_uploads(std::span<const text::atlas_patch> patches) -> std::vector<d3d11::atlas_upload> {
-    std::vector<d3d11::atlas_upload> uploads;
-    uploads.reserve(patches.size());
-    for (const text::atlas_patch& patch : patches) {
-        uploads.push_back({
-            .page = patch.page,
-            .area = patch.area,
-            .coverage = patch.coverage,
-            .row_pitch = patch.row_pitch,
-        });
-    }
-    return uploads;
 }
 
 // Empty when the window has none to give: the cursor is then left unscaled.
@@ -225,7 +208,7 @@ auto overlay::draw_contained(const game_frame& frame) -> void {
         break;
     case frame_action::draw_with_atlas:
         LUCENT_INVARIANT(m_renderer.has_value() && m_text.has_value());
-        m_renderer->upload_atlas(to_uploads(m_text->every_page()));
+        m_renderer->upload_atlas(m_text->every_page());
         render(frame);
         break;
     case frame_action::draw:
@@ -269,7 +252,7 @@ auto overlay::start_over(ID3D11Device& device) -> void {
         m_menu.emplace(
             *m_text,
             menu::menu_appearance{
-                .tokens = menu::menu_theme(*face, ui::theme_preset::dark),
+                .theme = menu::menu_theme_inputs(*face, ui::theme_preset::dark),
                 .text = &m_menu_text,
             },
             *m_configs
@@ -277,6 +260,7 @@ auto overlay::start_over(ID3D11Device& device) -> void {
         if constexpr (kit::is_dev_build) {
             add_dev_text(m_menu_text);
             m_demo.emplace(*face);
+            m_stats.emplace(m_clock->now());
         }
     }
     ComPtr<ID3D11DeviceContext> context;
@@ -341,6 +325,7 @@ auto overlay::render(const game_frame& frame) -> void {
         .format = static_cast<u32>(view_description.Format),
         .sample_count = stored.SampleDesc.Count,
     };
+    const kit::clock::time_point recording = m_clock->now();
     m_text->begin_frame();
     m_list.reset({.size = target.size, .pixels_per_unit = 1.0F});
     if constexpr (kit::is_dev_build) {
@@ -360,9 +345,28 @@ auto overlay::render(const game_frame& frame) -> void {
         return;
     }
     LUCENT_INVARIANT(m_renderer.has_value() && m_text.has_value());
-    m_renderer->upload_atlas(to_uploads(m_text->take_patches()));
+    m_renderer->upload_atlas(m_text->take_patches());
+    if constexpr (kit::is_dev_build) {
+        // A device without timestamp queries is timed by the CPU alone.
+        std::ignore = m_renderer->time_gpu();
+    }
+    const kit::clock::time_point submitting = m_clock->now();
     const result<void> rendered = m_renderer->render(m_list.frame(), target);
-    // Unsupported is a target the renderer refuses as designed (HDR): nothing is drawn on it.
+    if constexpr (kit::is_dev_build) {
+        LUCENT_INVARIANT(m_stats.has_value());
+        const kit::clock::time_point submitted = m_clock->now();
+        m_stats->add(
+            {
+                .record = submitting - recording,
+                .submit = submitted - submitting,
+                .renderer = m_renderer->stats(),
+                .evictions = m_text->evictions(),
+            },
+            submitted
+        );
+    }
+    // Unsupported is a target the renderer refuses as designed (10-bit, HDR10 or not): nothing is
+    // drawn on it.
     if (!rendered && rendered.error().code != error_code::unsupported) {
         m_state.turn_off();
     }
@@ -418,8 +422,16 @@ auto overlay::draw_menu(HWND window, draw::vec2 viewport) -> result<void> {
         );
     }
     m_consumed = taken.consumed;
+    LUCENT_INVARIANT(m_renderer.has_value());
     const ui::frame_report wanted = LUCENT_TRY(m_menu->draw(
-        {.input = std::move(taken.input), .viewport = viewport, .pixels_per_unit = 1.0F}, m_list
+        {
+            .input = std::move(taken.input),
+            .viewport = viewport,
+            .pixels_per_unit = 1.0F,
+            .backdrop = m_renderer->sampled_light(menu::menu_light),
+            .system_clipboard = &m_clipboard,
+        },
+        m_list
     ));
     m_input.report({
         .consumed = m_consumed,

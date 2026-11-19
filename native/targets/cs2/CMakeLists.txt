@@ -4,11 +4,12 @@ add_subdirectory(overlay)
 add_subdirectory(domains)
 add_subdirectory(features)
 
-# The dev entry point and the dev demo are compiled into dev builds only.
+# The dev entry point, the dev demo and the frame stats are compiled into dev builds only.
 lucent_module(cs2
     SOURCES
         $<$<CONFIG:Debug>:src/dev_boot.cpp>
         $<$<CONFIG:Debug>:src/overlay/dev_demo.cpp>
+        $<$<CONFIG:Debug>:src/overlay/dev_stats.cpp>
         src/attach.cpp
         src/overlay/dxgi_present.cpp
         src/overlay/overlay.cpp

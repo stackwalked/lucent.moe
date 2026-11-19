@@ -1,15 +1,22 @@
 #include <lucent/cs2-overlay/window_input.hpp>
 
+#include <algorithm>
 #include <atomic>
 #include <bit>
 #include <chrono>
 #include <expected>
 #include <limits>
+#include <string>
+#include <string_view>
 #include <tuple>
 
 #include <Windows.h>
 
+#include <imm.h>
+
 #include <lucent/core/contain.hpp>
+#include <lucent/core/narrow.hpp>
+#include <lucent/core/text.hpp>
 #include <lucent/cs2-overlay/input_collector.hpp>
 #include <lucent/cs2-overlay/input_feed.hpp>
 #include <lucent/kit/published.hpp>
@@ -59,6 +66,7 @@ auto system_click_rules() -> click_rules {
 auto is_input_message(u32 id) -> bool {
     return (id >= WM_MOUSEFIRST && id <= WM_MOUSELAST)
            || (id >= WM_KEYFIRST && id <= WM_KEYLAST)
+           || (id >= WM_IME_STARTCOMPOSITION && id <= WM_IME_KEYLAST)
            || id == WM_KILLFOCUS
            || id == WM_ACTIVATEAPP;
 }
@@ -105,6 +113,33 @@ auto raw_input_kind(u64 wparam, i64 lparam) -> message_kind {
 }
 
 // NOLINTEND(cppcoreguidelines-pro-type-union-access)
+
+struct ime_strings {
+    std::wstring units;
+    // GCS_CURSORPOS: UTF-16 units into the composition; zero for the result string.
+    isize caret = 0;
+};
+
+// One of the input method's strings (GCS_COMPSTR, GCS_RESULTSTR); empty when it has none.
+auto ime_string(HWND window, DWORD kind) -> ime_strings {
+    HIMC context = ImmGetContext(window);
+    if (context == nullptr) {
+        return {};
+    }
+    ime_strings read;
+    const LONG bytes = ImmGetCompositionStringW(context, kind, nullptr, 0);
+    if (bytes > 0) {
+        read.units.resize(narrow<usize>(bytes) / sizeof(wchar_t));
+        std::ignore =
+            ImmGetCompositionStringW(context, kind, read.units.data(), narrow<DWORD>(bytes));
+        if (kind == GCS_COMPSTR) {
+            const LONG caret = ImmGetCompositionStringW(context, GCS_CURSORPOS, nullptr, 0);
+            read.caret = std::clamp<isize>(caret, 0, std::ssize(read.units));
+        }
+    }
+    std::ignore = ImmReleaseContext(window, context);
+    return read;
+}
 
 }
 
@@ -191,7 +226,7 @@ auto window_input::handle(window_id window, const window_message& message) -> i6
     const counted_call counted{m_in_flight};
     bool is_kept = false;
     // A fault in our part passes the message on untouched; the game's procedure runs outside.
-    std::ignore = contain([&] { is_kept = take(message); });
+    std::ignore = contain([&] { is_kept = take(window, message); });
     auto* const handle = std::bit_cast<HWND>(window);
     const auto id = static_cast<UINT>(message.id);
     if (is_kept) {
@@ -202,7 +237,29 @@ auto window_input::handle(window_id window, const window_message& message) -> i6
     return CallWindowProcW(original, handle, id, message.wparam, message.lparam);
 }
 
-auto window_input::take(const window_message& message) -> bool {
+auto window_input::take_composition(window_id window, const window_message& message) -> void {
+    auto* const handle = std::bit_cast<HWND>(window);
+    const auto changed = static_cast<DWORD>(message.lparam);
+    if ((changed & GCS_RESULTSTR) != 0) {
+        m_collector.record_commit(to_utf8(ime_string(handle, GCS_RESULTSTR).units));
+    }
+    if ((changed & GCS_COMPSTR) != 0) {
+        const ime_strings composing = ime_string(handle, GCS_COMPSTR);
+        const std::wstring_view before =
+            std::wstring_view{composing.units}.substr(0, narrow<usize>(composing.caret));
+        m_collector.record_composition({
+            .utf8 = to_utf8(composing.units),
+            .caret = std::ssize(to_utf8(before)),
+        });
+    }
+}
+
+auto window_input::take(window_id window, const window_message& message) -> bool {
+    if (message.id == WM_IME_COMPOSITION) {
+        take_composition(window, message);
+    } else if (message.id == WM_IME_ENDCOMPOSITION) {
+        m_collector.record_composition({});
+    }
     m_collector.record(message);
     const message_kind kind =
         message.id == WM_INPUT ? raw_input_kind(message.wparam, message.lparam) : kind_of(message);

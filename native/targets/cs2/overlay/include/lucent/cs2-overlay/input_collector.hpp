@@ -3,9 +3,11 @@
 #include <array>
 #include <chrono>
 #include <optional>
+#include <string>
 
 #include <lucent/cs2-overlay/input_feed.hpp>
 #include <lucent/draw/vec2.hpp>
+#include <lucent/ui/input_snapshot.hpp>
 
 namespace lucent::cs2::overlay {
 
@@ -59,6 +61,10 @@ public:
     explicit input_collector(click_rules rules);
 
     auto record(const window_message& message) -> void;
+    // What the input method holds, read on the window's thread: its composition as it stands
+    // (empty once it ends), and what it committed, if anything, which reaches the UI as typing.
+    auto record_composition(const ui::composition& update) -> void;
+    auto record_commit(std::string utf8) -> void;
     // Drops the events the presenting thread consumed. What the UI wants is taken only from a
     // report on a frame of this opening of the menu.
     auto acknowledge(const menu_report& report) -> void;

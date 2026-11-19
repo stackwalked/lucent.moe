@@ -9,6 +9,7 @@
 
 #include <lucent/cs2-domains/world_domain.hpp>
 #include <lucent/cs2-overlay/overlay_state.hpp>
+#include <lucent/cs2-overlay/system_clipboard.hpp>
 #include <lucent/cs2-overlay/window_input.hpp>
 #include <lucent/d3d11/renderer.hpp>
 #include <lucent/draw/draw_list.hpp>
@@ -21,6 +22,7 @@
 #include <lucent/text/text_system.hpp>
 
 #include "dev_demo.hpp"
+#include "dev_stats.hpp"
 #include "renderer_build.hpp"
 
 namespace lucent::cs2::overlay {
@@ -103,10 +105,13 @@ private:
     // The dev names in a dev build; empty in a release until the server delivers the session's
     // catalog, so every label is its placeholder. The menu borrows it.
     menu::table_catalog m_menu_text;
+    // The menu's text fields copy and paste through it.
+    system_clipboard m_clipboard;
     // Borrows the text system and the menu text, so it is dropped first.
     std::optional<menu::settings_menu> m_menu;
     // Dev builds only.
     std::optional<dev_demo> m_demo;
+    std::optional<dev_stats> m_stats;
 };
 
 }

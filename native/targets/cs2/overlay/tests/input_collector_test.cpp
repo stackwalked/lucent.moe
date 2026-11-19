@@ -204,7 +204,7 @@ TEST_CASE("keys come pressed, repeated and released, in order; unmapped keys add
     collector.record(key(WM_KEYUP, VK_LEFT));
 
     CHECK(
-        frame_of(collector, 0).input.keys
+        ui::keys_of(frame_of(collector, 0).input)
         == std::vector<ui::key_event>{
             {.code = ui::key_code::left, .action = ui::key_action::pressed},
             {.code = ui::key_code::left, .action = ui::key_action::repeated},
@@ -223,7 +223,14 @@ TEST_CASE("characters become UTF-8, surrogate pairs joined and control character
     collector.record(character(0x08U));
     collector.record(character(0xde00U));
 
-    CHECK(frame_of(collector, 0).input.text == "a\xC3\xA9\xF0\x9F\x98\x80");
+    CHECK(
+        frame_of(collector, 0).input.keyboard
+        == std::vector<ui::keyboard_event>{
+            ui::typed_text{.utf8 = "a"},
+            ui::typed_text{.utf8 = "\xC3\xA9"},
+            ui::typed_text{.utf8 = "\xF0\x9F\x98\x80"},
+        }
+    );
 }
 
 TEST_CASE("shift, control and alt are held between their down and up") {
@@ -245,7 +252,10 @@ TEST_CASE("a frame takes only events after the last one it consumed") {
     const frame_snapshot first = frame_of(collector, 0);
     collector.record(character(u'b'));
 
-    CHECK(frame_of(collector, first.consumed).input.text == "b");
+    CHECK(
+        frame_of(collector, first.consumed).input.keyboard
+        == std::vector<ui::keyboard_event>{ui::typed_text{.utf8 = "b"}}
+    );
     collector.acknowledge(wanting(collector, wanted::nothing));
     CHECK(collector.feed().events.empty());
 }
@@ -363,6 +373,25 @@ TEST_CASE("losing focus lets go of every key binds see, and keeps their press co
     CHECK_FALSE(keys.is_down.at('F'));
     CHECK_FALSE(keys.is_down.at(VK_XBUTTON1));
     CHECK(keys.presses.at('F') == 1);
+}
+
+TEST_CASE("the input method's composition and commit reach the UI in order with the keys") {
+    input_collector collector{rules};
+    open_menu(collector);
+    collector.record_composition({.utf8 = "ni", .caret = 2});
+    collector.record(key(WM_KEYDOWN, VK_DELETE));
+    collector.record_composition({});
+    collector.record_commit("\xE4\xBD\xA0");
+
+    CHECK(
+        frame_of(collector, 0).input.keyboard
+        == std::vector<ui::keyboard_event>{
+            ui::composition{.utf8 = "ni", .caret = 2},
+            ui::key_event{.code = ui::key_code::forward_delete, .action = ui::key_action::pressed},
+            ui::composition{},
+            ui::typed_text{.utf8 = "\xE4\xBD\xA0"},
+        }
+    );
 }
 
 }

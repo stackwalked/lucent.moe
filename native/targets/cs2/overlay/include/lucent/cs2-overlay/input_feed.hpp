@@ -33,12 +33,13 @@ struct wheel_turn {
     draw::vec2 notches;
 };
 
-struct typed_text {
-    std::string utf8;
-};
-
-using input_event =
-    std::variant<button_press, button_release, wheel_turn, ui::key_event, typed_text>;
+using input_event = std::variant<
+    button_press,
+    button_release,
+    wheel_turn,
+    ui::key_event,
+    ui::typed_text,
+    ui::composition>;
 
 struct sequenced_event {
     // The feed's serial when it was recorded.

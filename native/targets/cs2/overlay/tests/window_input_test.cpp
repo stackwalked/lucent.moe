@@ -158,9 +158,10 @@ TEST_CASE("typing the open menu wants is kept from the game, but the key's relea
 
     // The report is taken on the next message; this one isn't kept.
     send(window.handle(), WM_NULL, 0);
-    send(window.handle(), WM_KEYDOWN, 'A');
-    send(window.handle(), WM_CHAR, 'a');
-    send(window.handle(), WM_KEYUP, 'A');
+    // B is no key the UI takes, so only its character reaches the feed.
+    send(window.handle(), WM_KEYDOWN, 'B');
+    send(window.handle(), WM_CHAR, 'b');
+    send(window.handle(), WM_KEYUP, 'B');
     CHECK_FALSE(has_seen(log, WM_KEYDOWN));
     CHECK_FALSE(has_seen(log, WM_CHAR));
     CHECK(has_seen(log, WM_KEYUP));

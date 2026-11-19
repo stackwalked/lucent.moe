@@ -25,10 +25,6 @@ auto add_phrases(menu::table_catalog& text) -> void {
     text.add(menu::phrase_text{menu::phrases::unentitled}, "Not in your plan");
     text.add(menu::phrase_text{menu::phrases::failed}, "Failed");
     text.add(menu::phrase_text{menu::phrases::reset}, "Reset");
-    text.add(menu::phrase_text{menu::phrases::red}, "Red");
-    text.add(menu::phrase_text{menu::phrases::green}, "Green");
-    text.add(menu::phrase_text{menu::phrases::blue}, "Blue");
-    text.add(menu::phrase_text{menu::phrases::alpha}, "Alpha");
     text.add(menu::phrase_text{menu::phrases::lapsed}, "Offline");
     text.add(menu::phrase_text{menu::phrases::bind}, "Bind");
     text.add(menu::phrase_text{menu::phrases::always}, "Always");

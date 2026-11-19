@@ -52,7 +52,9 @@ private:
     // The window's thread: the message's result, from the window's own procedure unless kept.
     auto handle(window_id window, const window_message& message) -> i64;
     // Records the message and publishes the feed; whether the game is kept from it.
-    auto take(const window_message& message) -> bool;
+    auto take(window_id window, const window_message& message) -> bool;
+    // The input method's composition and commit, which only its context on this thread holds.
+    auto take_composition(window_id window, const window_message& message) -> void;
 
     // The window's thread only.
     input_collector m_collector;

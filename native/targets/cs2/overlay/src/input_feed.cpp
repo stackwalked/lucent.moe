@@ -55,8 +55,9 @@ auto add_event(ui::input_snapshot& input, const input_event& event) -> void {
             button_of(input, release.button).is_released = true;
         },
         [&input](const wheel_turn& turn) { input.wheel = input.wheel + turn.notches; },
-        [&input](const ui::key_event& key) { input.keys.push_back(key); },
-        [&input](const typed_text& typed) { input.text += typed.utf8; }
+        [&input](const ui::key_event& key) { input.keyboard.emplace_back(key); },
+        [&input](const ui::typed_text& typed) { input.keyboard.emplace_back(typed); },
+        [&input](const ui::composition& update) { input.keyboard.emplace_back(update); }
     );
 }
 

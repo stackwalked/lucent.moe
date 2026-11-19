@@ -39,6 +39,7 @@ constexpr std::array mapped_keys{
     mapped_key{.virtual_key = VK_SPACE, .code = ui::key_code::space},
     mapped_key{.virtual_key = VK_ESCAPE, .code = ui::key_code::escape},
     mapped_key{.virtual_key = VK_BACK, .code = ui::key_code::backspace},
+    mapped_key{.virtual_key = VK_DELETE, .code = ui::key_code::forward_delete},
     mapped_key{.virtual_key = VK_LEFT, .code = ui::key_code::left},
     mapped_key{.virtual_key = VK_RIGHT, .code = ui::key_code::right},
     mapped_key{.virtual_key = VK_UP, .code = ui::key_code::up},
@@ -47,6 +48,13 @@ constexpr std::array mapped_keys{
     mapped_key{.virtual_key = VK_END, .code = ui::key_code::end},
     mapped_key{.virtual_key = VK_PRIOR, .code = ui::key_code::page_up},
     mapped_key{.virtual_key = VK_NEXT, .code = ui::key_code::page_down},
+    // Letter keys' virtual codes are their upper case ASCII.
+    mapped_key{.virtual_key = 'A', .code = ui::key_code::letter_a},
+    mapped_key{.virtual_key = 'C', .code = ui::key_code::letter_c},
+    mapped_key{.virtual_key = 'V', .code = ui::key_code::letter_v},
+    mapped_key{.virtual_key = 'X', .code = ui::key_code::letter_x},
+    mapped_key{.virtual_key = 'Y', .code = ui::key_code::letter_y},
+    mapped_key{.virtual_key = 'Z', .code = ui::key_code::letter_z},
 };
 
 auto key_code_of(u64 virtual_key) -> std::optional<ui::key_code> {
@@ -150,6 +158,10 @@ auto kind_of(const window_message& message) -> message_kind {
         return message.id == WM_KEYDOWN ? message_kind::keyboard : message_kind::other;
     case WM_CHAR:
     case WM_DEADCHAR:
+    case WM_IME_STARTCOMPOSITION:
+    case WM_IME_COMPOSITION:
+    case WM_IME_ENDCOMPOSITION:
+    case WM_IME_CHAR:
         return message_kind::keyboard;
     default:
         return message_kind::other;
@@ -217,6 +229,16 @@ auto input_collector::record(const window_message& message) -> void {
         return;
     default:
         return;
+    }
+}
+
+auto input_collector::record_composition(const ui::composition& update) -> void {
+    add_event(update);
+}
+
+auto input_collector::record_commit(std::string utf8) -> void {
+    if (!utf8.empty()) {
+        add_event(ui::typed_text{.utf8 = std::move(utf8)});
     }
 }
 
@@ -326,7 +348,7 @@ auto input_collector::type(u16 unit) -> void {
     }
     m_high_surrogate.reset();
     if (!units.empty()) {
-        add_event(typed_text{.utf8 = to_utf8(units)});
+        add_event(ui::typed_text{.utf8 = to_utf8(units)});
     }
 }
 
