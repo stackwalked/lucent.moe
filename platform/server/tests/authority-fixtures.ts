@@ -1,9 +1,6 @@
 import { expect } from "bun:test";
-import {
-    loadProductCatalog,
-    type ProductCatalog,
-    type ProductDefinition,
-} from "@lucent/catalog/catalog";
+import { loadProductCatalog, type ProductCatalog } from "@lucent/catalog/catalog";
+import type { ProductDefinition } from "@lucent/catalog/product";
 import { invariant } from "@lucent/core/contain";
 import type { SeededRng } from "@lucent/core/rng";
 import { type AccountId, EpochMs, newAccountId, ProductId, RoleId } from "@lucent/core/scalars";

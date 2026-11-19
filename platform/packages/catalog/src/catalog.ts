@@ -4,6 +4,7 @@ import { describeUnknownError, trySync } from "@lucent/core/contain";
 import { err, ok, type Result } from "@lucent/core/result";
 import { ChannelId, ProductId } from "@lucent/core/scalars";
 import { z } from "zod";
+import type { ProductDefinition } from "./product.ts";
 
 const DEFAULT_PRODUCTS_DIR = join(import.meta.dir, "../../../../products");
 
@@ -16,17 +17,6 @@ const ProductFile = z.strictObject({
         concurrent_slots: z.number().int().min(1).max(16),
     }),
 });
-
-export const ProductDefinition = z
-    .strictObject({
-        id: ProductId,
-        name: z.string().min(1).max(64),
-        kind: z.enum(["module", "standalone"]),
-        channels: z.array(ChannelId).min(1).max(16).readonly(),
-        concurrentSlots: z.number().int().min(1).max(16),
-    })
-    .readonly();
-export type ProductDefinition = z.output<typeof ProductDefinition>;
 
 export type ProductCatalog = ReadonlyMap<ProductId, ProductDefinition>;
 

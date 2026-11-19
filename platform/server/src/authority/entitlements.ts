@@ -1,4 +1,4 @@
-import type { ProductDefinition } from "@lucent/catalog/catalog";
+import type { ProductDefinition } from "@lucent/catalog/product";
 import { ok, type Result } from "@lucent/core/result";
 import {
     type AccountId,

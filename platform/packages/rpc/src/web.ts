@@ -1,4 +1,4 @@
-import { ProductDefinition } from "@lucent/catalog/catalog";
+import { ProductDefinition } from "@lucent/catalog/product";
 import {
     AccountId,
     BearerToken,
