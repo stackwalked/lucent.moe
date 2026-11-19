@@ -4,6 +4,7 @@ import { describeUnknownError, ignoreErrorsSync, trySync } from "@lucent/core/co
 import { err, ok, type Result } from "@lucent/core/result";
 import { systemCryptoRng } from "@lucent/core/rng";
 import { createAuthDeps } from "./auth/deps.ts";
+import { expiredAuthJob } from "./auth/expiry.ts";
 import { createArgon2idHasher, type PasswordHasher } from "./auth/password.ts";
 import { createTotpKeyring } from "./auth/totp.ts";
 import type { ListenAddress, ServerConfig } from "./config.ts";
@@ -13,6 +14,7 @@ import type { MigrationError, MigrationFile } from "./db/migrate.ts";
 import { verifySchemaCurrent } from "./db/migrate.ts";
 import { openPool } from "./db/pool.ts";
 import { createInternalWebApp } from "./internal/app.ts";
+import { type Every, startJobs } from "./jobs/runner.ts";
 
 // How long a superseded instance keeps answering before it notices; the handover window.
 const EPOCH_POLL_INTERVAL_MS = 2_000;
@@ -76,6 +78,7 @@ export async function startServer(params: {
     readonly migrations?: readonly MigrationFile[];
     readonly epochPollIntervalMs?: number;
     readonly passwords?: PasswordHasher;
+    readonly every?: Every;
 }): Promise<Result<RunningServer, BootFailure>> {
     const { config, logger } = params;
     const db = openPool({
@@ -145,6 +148,12 @@ export async function startServer(params: {
         webInternalKey: config.webInternalKey,
         logger,
     }).fetch;
+    const jobs = startJobs({
+        jobs: [expiredAuthJob(db)],
+        logger,
+        isSuperseded: epochGuard.isSuperseded,
+        ...(params.every === undefined ? {} : { every: params.every }),
+    });
     const { address } = listening.value;
     logger.write("info", "listening", {
         origin: "boot",
@@ -155,6 +164,7 @@ export async function startServer(params: {
         internalAddress: address,
         stop: async () => {
             await listening.value.stop();
+            await jobs.stop();
             epochGuard.close();
             await db.close();
         },
