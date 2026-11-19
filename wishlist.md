@@ -20,11 +20,12 @@ checked piece of work. Old lucent's features and platform are the floor, not the
 
 Where it stands (2026-11-19, four days in): slice 1 (authority, credentials, sessions, the web
 shell and admin), the fact pipeline (kit facts and capabilities, the bundle format in C++ and TS,
-probe, the generator, four cs2 facts, late-loaded modules), the render stack drawing in cs2, `ui`,
-`menu`, kit's registry, settings and safe point, keyed identifier hashes with the release guard
-and post-link name check, `refract`'s phase 1 and `integrity` are built. `:check` runs every native
-test in Debug and Release. Not started: slices 2 to 5, any `/v1` route, the release loader, the cs2
-game layer. No CI, and none planned soon: the commit hook's `:check` is the gate.
+probe, the generator, the offline Source 2 schema reader, 21 cs2 facts, late-loaded modules, the
+update-day pipeline), the render stack, `ui` and `menu` drawing in cs2 behind Insert, kit's
+registry, settings, safe point and draw dispatch, cs2's `world` and a player box, keyed identifier
+hashes with the release guard and post-link name check, `refract`'s phase 1 and `integrity` are
+built. `:check` runs every native test in Debug and Release. Not started: slices 2 to 5, any `/v1`
+route, the release loader, the rest of the cs2 game layer. No CI, and none planned soon: the commit hook's `:check` is the gate.
 
 ### Phase 0: rails
 
@@ -50,19 +51,17 @@ product, one feature. Built end to end, native and server together.
 - Native: the release loader at its smallest (sign-in, device key, self-update, verify, map,
   relay); the module container; the release boot path; kit's lease client and session key;
   `boot_info` with the lease and build ids.
-- Render: the Present glue as designed, showing `menu`'s generated page in the game. Menu text
-  arrives as the per-session catalog keyed by hashed ids, so the string gate holds from the first
-  release.
-- cs2: `engines/source2/probe`'s offline schema reader, for the fields one feature needs; `world`
-  (snapshot, triple buffer) and `draw_context`; the feature, a player box with name, extending
-  the `entities` and `view` capabilities.
+- Render: the menu usable mid-match (cs2 captures the cursor: release it or draw our own) and
+  input the window procedure can't block (raw input read elsewhere, key polling). The per-session
+  menu catalog from the server; release builds show placeholders until it arrives.
+- cs2: the world built at the game's frame stage (a method fact for it) instead of on Present; a
+  class check on controllers (vtable facts in capabilities) instead of indices 1..64.
 - Release tooling: the offline code and facts keys with their signing tools and ceremony, the
   release's signed artifact list, the master seed's generation and archiving, and the production
   facts key list the release guard compares against (today it only refuses the dev key).
 - The download page tells members what SmartScreen and antivirus will say.
 - `infra/`: compose, Caddy, backups with an off-machine copy, the uptime ping from a second
   machine. Old lucent left the last two unchosen.
-- The update-day pipeline as moon tasks, with its latency recorded per module from the first run.
 
 Gate: on a PC that has never seen us, a member downloads the loader from the member area, signs
 in, enrolls, starts cs2 on `alpha` and sees the feature. Suspending the account ends it within the

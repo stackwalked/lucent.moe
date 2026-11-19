@@ -198,7 +198,9 @@ emulate in bulk, and the decrypted strings then label the functions that use the
     material inside a virtualized function, so a static emulation of the routine yields garbage.
 - A release gate after the link: no declared fact, event, feature or setting name in the image, and
   no printable run over about 6 characters outside an explicit allowlist. A failure fails the
-  build.
+  build. Fact names are checked today; feature and setting names are not, and they leak: an
+  invariant records its enclosing function's name, which for templates over a feature (`entry_of`)
+  spells the feature's type. Release invariants and faults need a location without text.
 
 ## Virtualizer
 
