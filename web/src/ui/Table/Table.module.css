@@ -1,0 +1,85 @@
+@layer components {
+    /* Both axes scroll here, so the sticky header sticks to this box and the page never scrolls
+       sideways. */
+    .scroller {
+        max-block-size: 75dvh;
+        overflow: auto;
+        border: 1px solid var(--line);
+        border-radius: var(--r);
+    }
+
+    .table {
+        inline-size: 100%;
+        border-collapse: separate;
+        border-spacing: 0;
+        font-size: var(--size-13);
+        line-height: var(--lh-snug);
+    }
+
+    /* The label is for screen readers; the page's own heading says it for everyone else. */
+    .caption {
+        position: absolute;
+        inline-size: 1px;
+        block-size: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+    }
+
+    .head {
+        position: sticky;
+        inset-block-start: 0;
+        z-index: 1;
+        padding: var(--s-2) var(--s-3);
+        border-block-end: 1px solid var(--line-2);
+        background: var(--raised);
+        color: var(--ink-2);
+        font-weight: var(--w-medium);
+        text-align: start;
+        white-space: nowrap;
+    }
+
+    .cell {
+        padding: var(--s-2) var(--s-3);
+        border-block-end: 1px solid var(--line);
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+    }
+
+    .row:last-child > .cell {
+        border-block-end: 0;
+    }
+
+    .head[data-align="end"],
+    .cell[data-align="end"] {
+        text-align: end;
+    }
+
+    .row {
+        position: relative;
+    }
+
+    .row[data-linked]:hover {
+        background: var(--hover);
+    }
+
+    /* The first cell's link covers the whole row. */
+    .row[data-linked] > :first-child a::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+    }
+
+    .row[data-linked] > :first-child a:focus-visible {
+        outline: none;
+    }
+
+    .row[data-linked]:has(a:focus-visible) {
+        outline: 2px solid var(--focus-ring);
+        outline-offset: -2px;
+    }
+
+    /* Anything else clickable in a linked row paints above the cover. */
+    .row[data-linked] > :not(:first-child) :is(a, button) {
+        position: relative;
+    }
+}

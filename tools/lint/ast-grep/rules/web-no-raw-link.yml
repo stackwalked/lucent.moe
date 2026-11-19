@@ -7,7 +7,8 @@ message: "no <a href>: use the router's Link, or ExternalLink for other sites"
 files:
   - "web/**/*.tsx"
 ignores:
-  - "web/src/ui/external-link.tsx"
+  - "web/src/ui/ExternalLink/ExternalLink.tsx"
+  - "web/src/ui/SkipLink/SkipLink.tsx"
 rule:
   any:
     - kind: jsx_opening_element

@@ -1,0 +1,89 @@
+@layer components {
+    /* No display here: the UA keeps a closed dialog at display none, and the exit runs before it
+       goes (transition-behavior allow-discrete on display and overlay). The reset's `margin: 0`
+       would un-centre a modal, so margin is auto again. */
+    .dialog {
+        margin: auto;
+        inline-size: min(var(--form), calc(100vw - 2 * var(--s-4)));
+        max-block-size: calc(100dvh - 2 * var(--s-4));
+        border: 1px solid var(--floating-edge);
+        border-radius: var(--r);
+        background: var(--floating);
+        box-shadow: 0 var(--s-5) var(--s-8) var(--shadow);
+        color: var(--ink);
+        opacity: 0;
+        translate: 0 var(--s-2);
+        transition:
+            opacity var(--t-exit) var(--ease-in),
+            translate var(--t-exit) var(--ease-in),
+            overlay var(--t-exit) allow-discrete,
+            display var(--t-exit) allow-discrete;
+    }
+
+    .dialog[open] {
+        opacity: 1;
+        translate: 0 0;
+        transition-duration: var(--t-enter);
+        transition-timing-function: var(--ease);
+    }
+
+    @starting-style {
+        .dialog[open] {
+            opacity: 0;
+            translate: 0 var(--s-2);
+        }
+    }
+
+    .dialog::backdrop {
+        z-index: var(--z-dialog);
+        background: var(--scrim);
+        opacity: 0;
+        transition:
+            opacity var(--t-exit) var(--ease-in),
+            overlay var(--t-exit) allow-discrete,
+            display var(--t-exit) allow-discrete;
+    }
+
+    .dialog[open]::backdrop {
+        opacity: 1;
+        transition-duration: var(--t-enter);
+    }
+
+    @starting-style {
+        .dialog[open]::backdrop {
+            opacity: 0;
+        }
+    }
+
+    .panel {
+        display: grid;
+        gap: var(--s-4);
+        padding: var(--s-4);
+    }
+
+    .head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--s-3);
+    }
+
+    .title {
+        font-size: var(--size-17);
+        line-height: var(--lh-tight);
+    }
+
+    .body {
+        min-inline-size: 0;
+        overflow-wrap: anywhere;
+        font-size: var(--size-14);
+        line-height: var(--lh-body);
+    }
+
+    .actions {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: var(--s-2);
+    }
+}

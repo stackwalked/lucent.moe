@@ -1,0 +1,31 @@
+/* Element defaults; the base layer. */
+body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-size: var(--size-15);
+    line-height: var(--lh-body);
+    font-weight: var(--w-regular);
+}
+
+h1,
+h2,
+h3 {
+    font-weight: var(--w-medium);
+    line-height: var(--lh-tight);
+}
+
+code,
+kbd,
+samp {
+    font-family: var(--font-mono);
+}
+
+:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+}
+
+::selection {
+    background: var(--pink-wash);
+}

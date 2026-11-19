@@ -1,0 +1,33 @@
+@layer components {
+    .region {
+        position: fixed;
+        inset-block-end: var(--s-4);
+        inset-inline-end: var(--s-4);
+        z-index: var(--z-toast);
+        display: grid;
+        gap: var(--s-2);
+        inline-size: min(var(--form), calc(100vw - 2 * var(--s-4)));
+        pointer-events: none;
+    }
+
+    .toast {
+        padding: var(--s-3) var(--s-4);
+        border: 1px solid var(--floating-edge);
+        border-radius: var(--r);
+        background: var(--floating);
+        box-shadow: 0 var(--s-2) var(--s-5) var(--shadow);
+        color: var(--ink);
+        font-size: var(--size-14);
+        line-height: var(--lh-snug);
+        transition:
+            opacity var(--t-enter) var(--ease),
+            translate var(--t-enter) var(--ease);
+    }
+
+    @starting-style {
+        .toast {
+            opacity: 0;
+            translate: 0 var(--s-2);
+        }
+    }
+}

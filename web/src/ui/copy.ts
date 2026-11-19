@@ -1,0 +1,23 @@
+// Words the building blocks show on their own. Feature words live in each feature's copy.ts.
+export const UI_COPY = {
+    skipToContent: "Skip to content",
+    opensElsewhere: "opens in a new tab",
+    close: "Close",
+    copy: "Copy",
+    copied: "Copied",
+    showPassword: "Show password",
+    hidePassword: "Hide password",
+    nextPage: "Next page",
+    loading: "Working",
+    justNow: "just now",
+    ago: "ago",
+    reference: "Reference",
+    required: "Required.",
+    tooShort: (min: number) => `At least ${min} characters.`,
+    tooLong: (max: number) => `At most ${max} characters.`,
+    badFormat: "Doesn't match the expected format.",
+    passwordRange: (min: number, max: number) => `${min} to ${max} characters.`,
+    passwordShort: (count: number, min: number) => `${count} of ${min} characters.`,
+    passwordCount: (count: number) => `${count} characters.`,
+    passwordLong: (count: number, max: number) => `${count} characters, ${max} at most.`,
+} as const;

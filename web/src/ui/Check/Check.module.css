@@ -1,0 +1,53 @@
+@layer components {
+    .check {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--s-2);
+        min-block-size: var(--control-sm);
+        font-size: var(--size-15);
+        line-height: var(--lh-snug);
+    }
+
+    .box {
+        appearance: none;
+        position: relative;
+        flex: none;
+        inline-size: var(--s-4);
+        block-size: var(--s-4);
+        margin: 0;
+        border: 1px solid var(--line-2);
+        border-radius: var(--r-inner);
+        background: var(--raised);
+        transition:
+            background-color var(--t-hover) var(--ease),
+            border-color var(--t-hover) var(--ease);
+    }
+
+    .box:hover:not(:disabled) {
+        border-color: var(--ink-2);
+    }
+
+    /* ink means on */
+    .box:checked {
+        border-color: var(--ink);
+        background: var(--ink);
+    }
+
+    .box:checked::after {
+        content: "";
+        position: absolute;
+        inset-inline-start: 50%;
+        inset-block-start: 50%;
+        inline-size: var(--s-1);
+        block-size: var(--s-2);
+        border: solid var(--ground);
+        border-width: 0 2px 2px 0;
+        translate: -50% -60%;
+        rotate: 45deg;
+    }
+
+    .box:disabled,
+    .box:disabled + span {
+        opacity: 0.5;
+    }
+}

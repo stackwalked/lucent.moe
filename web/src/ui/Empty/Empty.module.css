@@ -1,0 +1,15 @@
+@layer components {
+    .empty {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: var(--s-3);
+        padding-block: var(--s-6);
+        text-align: center;
+    }
+
+    .line {
+        color: var(--ink-2);
+        font-size: var(--size-14);
+    }
+}

@@ -1,0 +1,58 @@
+@layer components {
+    .field {
+        display: grid;
+        gap: var(--s-1);
+        min-inline-size: 0;
+    }
+
+    .label {
+        color: var(--ink-2);
+        font-size: var(--size-13);
+        font-weight: var(--w-medium);
+        line-height: var(--lh-tight);
+    }
+
+    .hint,
+    .error {
+        font-size: var(--size-12);
+        line-height: var(--lh-snug);
+    }
+
+    .hint {
+        color: var(--ink-2);
+    }
+
+    .error {
+        color: var(--shu-ink);
+    }
+
+    .input {
+        inline-size: 100%;
+        block-size: var(--control-h);
+        padding-inline: var(--s-3);
+        border: 1px solid var(--line-2);
+        border-radius: var(--r);
+        background: var(--raised);
+        color: var(--ink);
+        font-size: var(--size-15);
+        transition:
+            background-color var(--t-hover) var(--ease),
+            border-color var(--t-hover) var(--ease);
+    }
+
+    .input::placeholder {
+        color: var(--ink-2);
+    }
+
+    .input:hover:not(:disabled) {
+        background: var(--floating);
+    }
+
+    .input[aria-invalid="true"] {
+        border-color: var(--shu);
+    }
+
+    .input:disabled {
+        color: var(--ink-3);
+    }
+}

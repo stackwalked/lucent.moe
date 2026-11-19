@@ -1,0 +1,47 @@
+@layer components {
+    .host {
+        display: inline-flex;
+        anchor-scope: --anchor;
+    }
+
+    .target {
+        display: inline-flex;
+        anchor-name: --anchor;
+    }
+
+    /* No margin between the tip and its trigger, so the pointer can move onto the tip without
+       leaving the host (WCAG 1.4.13: hoverable). */
+    .tip {
+        position: fixed;
+        inset: auto;
+        margin: 0;
+        position-anchor: --anchor;
+        position-area: block-end;
+        position-try-fallbacks: flip-block;
+        max-inline-size: calc(100vw - 2 * var(--s-4));
+        padding: var(--s-1) var(--s-2);
+        border: 1px solid var(--floating-edge);
+        border-radius: var(--r-inner);
+        background: var(--floating);
+        color: var(--ink);
+        font-size: var(--size-12);
+        line-height: var(--lh-snug);
+        opacity: 0;
+        transition:
+            opacity var(--t-exit) var(--ease-in),
+            overlay var(--t-exit) allow-discrete,
+            display var(--t-exit) allow-discrete;
+    }
+
+    .tip:popover-open {
+        opacity: 1;
+        transition-duration: var(--t-enter);
+        transition-timing-function: var(--ease);
+    }
+
+    @starting-style {
+        .tip:popover-open {
+            opacity: 0;
+        }
+    }
+}

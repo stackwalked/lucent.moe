@@ -1,0 +1,52 @@
+@layer layout {
+    .page {
+        container-type: inline-size;
+        inline-size: 100%;
+        max-inline-size: var(--page);
+        margin-inline: auto;
+        padding: var(--s-6) var(--gutter) var(--s-8);
+    }
+
+    .page:focus {
+        outline: none;
+    }
+
+    .page[data-width="narrow"] > * {
+        max-inline-size: var(--page-narrow);
+    }
+
+    .trail {
+        display: flex;
+        align-items: center;
+        gap: var(--s-2);
+        min-block-size: var(--s-5);
+        margin-block-end: var(--s-2);
+        color: var(--ink-2);
+        font-size: var(--size-13);
+    }
+
+    .head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--s-3);
+        margin-block-end: var(--s-6);
+    }
+
+    .title {
+        font-size: var(--size-24);
+    }
+
+    .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--s-2);
+    }
+
+    .body {
+        display: flex;
+        flex-direction: column;
+        gap: var(--s-7);
+    }
+}

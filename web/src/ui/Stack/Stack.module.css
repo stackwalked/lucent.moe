@@ -1,0 +1,50 @@
+@layer components {
+    .stack {
+        display: flex;
+        flex-direction: column;
+        gap: var(--_gap);
+        --_gap: var(--s-3);
+    }
+
+    .stack[data-direction="row"] {
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: center;
+    }
+
+    .stack[data-align="start"] {
+        align-items: start;
+    }
+
+    .stack[data-align="center"] {
+        align-items: center;
+    }
+
+    .stack[data-align="end"] {
+        align-items: end;
+    }
+
+    .stack[data-align="baseline"] {
+        align-items: baseline;
+    }
+
+    .stack[data-gap="1"] {
+        --_gap: var(--s-1);
+    }
+
+    .stack[data-gap="2"] {
+        --_gap: var(--s-2);
+    }
+
+    .stack[data-gap="4"] {
+        --_gap: var(--s-4);
+    }
+
+    .stack[data-gap="5"] {
+        --_gap: var(--s-5);
+    }
+
+    .stack[data-gap="6"] {
+        --_gap: var(--s-6);
+    }
+}

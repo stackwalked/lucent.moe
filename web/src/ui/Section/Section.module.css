@@ -1,0 +1,26 @@
+@layer components {
+    .section {
+        display: flex;
+        flex-direction: column;
+        gap: var(--s-4);
+    }
+
+    .caption {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--s-3);
+        block-size: var(--caption-h);
+        border-block-end: 1px solid var(--line);
+    }
+
+    .label {
+        color: var(--ink-2);
+        font-size: var(--size-13);
+    }
+
+    .actions {
+        display: flex;
+        gap: var(--s-2);
+    }
+}

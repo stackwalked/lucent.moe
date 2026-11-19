@@ -1,0 +1,36 @@
+@layer components {
+    .menu {
+        display: grid;
+        gap: var(--s-1);
+        padding: var(--s-1);
+    }
+
+    .item {
+        display: flex;
+        align-items: center;
+        gap: var(--s-2);
+        min-block-size: var(--control-h);
+        padding-inline: var(--s-3);
+        border: 0;
+        border-radius: var(--r-inner);
+        background: transparent;
+        color: var(--ink);
+        font-size: var(--size-13);
+        text-align: start;
+        white-space: nowrap;
+        transition: background-color var(--t-hover) var(--ease);
+    }
+
+    .item:hover,
+    .item:focus-visible {
+        background: var(--hover);
+    }
+
+    .item:focus-visible {
+        outline-offset: -2px;
+    }
+
+    .item[data-tone="danger"] {
+        color: var(--shu-ink);
+    }
+}

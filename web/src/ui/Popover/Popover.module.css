@@ -1,0 +1,62 @@
+@layer components {
+    .root {
+        display: inline-flex;
+        anchor-scope: --anchor;
+    }
+
+    .anchor {
+        display: inline-flex;
+        anchor-name: --anchor;
+    }
+
+    /* No display here: a class's display would beat the UA's hiding of a closed popover. */
+    .panel {
+        position: fixed;
+        inset: auto;
+        margin: 0;
+        margin-block-start: var(--s-1);
+        position-anchor: --anchor;
+        position-area: block-end span-inline-end;
+        position-try-fallbacks: flip-block;
+        min-inline-size: 12rem;
+        max-inline-size: calc(100vw - 2 * var(--s-4));
+        max-block-size: 60dvh;
+        block-size: max-content;
+        overflow: auto;
+        padding: var(--s-3);
+        border: 1px solid var(--floating-edge);
+        border-radius: var(--r);
+        background: var(--floating);
+        box-shadow: 0 var(--s-2) var(--s-5) var(--shadow);
+        color: var(--ink);
+        opacity: 0;
+        translate: 0 calc(-1 * var(--s-1));
+        transition:
+            opacity var(--t-exit) var(--ease-in),
+            translate var(--t-exit) var(--ease-in),
+            overlay var(--t-exit) allow-discrete,
+            display var(--t-exit) allow-discrete;
+    }
+
+    .panel[data-align="end"] {
+        position-area: block-end span-inline-start;
+    }
+
+    .panel[data-flush="true"] {
+        padding: 0;
+    }
+
+    .panel:popover-open {
+        opacity: 1;
+        translate: 0 0;
+        transition-duration: var(--t-enter);
+        transition-timing-function: var(--ease);
+    }
+
+    @starting-style {
+        .panel:popover-open {
+            opacity: 0;
+            translate: 0 calc(-1 * var(--s-1));
+        }
+    }
+}

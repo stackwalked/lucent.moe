@@ -1,0 +1,17 @@
+@layer components {
+    .skip {
+        position: absolute;
+        inset-block-start: var(--s-2);
+        inset-inline-start: var(--s-2);
+        z-index: var(--z-toast);
+        padding: var(--s-2) var(--s-3);
+        border-radius: var(--r);
+        background: var(--floating);
+        color: var(--ink);
+        translate: 0 -200%;
+    }
+
+    .skip:focus-visible {
+        translate: 0 0;
+    }
+}

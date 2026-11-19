@@ -1,0 +1,36 @@
+@layer components {
+    .pairs {
+        display: grid;
+        grid-template-columns: max-content minmax(0, 1fr);
+        gap: var(--s-2) var(--s-5);
+        font-size: var(--size-14);
+        line-height: var(--lh-snug);
+    }
+
+    .pair {
+        display: grid;
+        grid-column: 1 / -1;
+        grid-template-columns: subgrid;
+        align-items: baseline;
+    }
+
+    .label {
+        color: var(--ink-2);
+    }
+
+    .value {
+        min-inline-size: 0;
+        overflow-wrap: anywhere;
+    }
+
+    @media (max-width: 480px) {
+        .pairs {
+            grid-template-columns: minmax(0, 1fr);
+        }
+
+        .pair {
+            grid-template-columns: minmax(0, 1fr);
+            gap: var(--s-1);
+        }
+    }
+}

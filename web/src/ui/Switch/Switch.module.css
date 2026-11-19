@@ -1,0 +1,56 @@
+@layer components {
+    .switch {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--s-3);
+        min-block-size: var(--control-sm);
+        font-size: var(--size-15);
+        line-height: var(--lh-snug);
+    }
+
+    .track {
+        appearance: none;
+        position: relative;
+        flex: none;
+        inline-size: var(--s-6);
+        block-size: var(--s-5);
+        margin: 0;
+        border: 1px solid var(--line-2);
+        border-radius: var(--r-round);
+        background: var(--raised);
+        transition:
+            background-color var(--t-enter) var(--ease),
+            border-color var(--t-enter) var(--ease);
+    }
+
+    .track::before {
+        content: "";
+        position: absolute;
+        inset-inline-start: 2px;
+        inset-block: 0;
+        margin-block: auto;
+        inline-size: var(--s-4);
+        block-size: var(--s-4);
+        border-radius: var(--r-round);
+        background: var(--ink-2);
+        transition:
+            translate var(--t-enter) var(--ease),
+            background-color var(--t-enter) var(--ease);
+    }
+
+    /* ink means on */
+    .track:checked {
+        border-color: var(--ink);
+        background: var(--ink);
+    }
+
+    .track:checked::before {
+        translate: calc(var(--s-6) - var(--s-4) - 2px * 3) 0;
+        background: var(--ground);
+    }
+
+    .track:disabled,
+    .track:disabled + span {
+        opacity: 0.5;
+    }
+}

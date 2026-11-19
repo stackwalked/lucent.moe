@@ -1,0 +1,8 @@
+@layer components {
+    .code {
+        max-inline-size: calc(var(--s-8) * 2);
+        font-family: var(--font-mono);
+        letter-spacing: 0.3em;
+        text-align: center;
+    }
+}

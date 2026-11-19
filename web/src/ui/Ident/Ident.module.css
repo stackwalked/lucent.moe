@@ -1,0 +1,12 @@
+@layer components {
+    .ident {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--s-1);
+    }
+
+    .value {
+        font-size: var(--size-13);
+        white-space: nowrap;
+    }
+}

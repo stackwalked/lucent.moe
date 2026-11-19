@@ -20,11 +20,35 @@ tasks:
       - "vite.config.ts"
     outputs:
       - "src/routeTree.gen.ts"
+  # The icon sprite (from the vendored Lucide SVGs) and each CSS module's class types; gitignored
+  # like the route tree.
+  generate:
+    command: "bun dev/generate.ts"
+    inputs:
+      - "src/**/*.module.css"
+      - "src/ui/icons/lucide/*.svg"
+      - "dev/generate.ts"
+      - "dev/icons.ts"
+      - "dev/css-types.ts"
+    outputs:
+      - "src/ui/icons/sprite.gen.svg"
+      - "src/**/*.module.d.css.ts"
+  # Module CSS uses tokens only, inside its layer (dev/css-lint.ts).
+  css:
+    command: "bun dev/css-lint.ts"
+    inputs:
+      - "src/**/*.css"
+      - "src/ui/tokens.ts"
+      - "dev/css-lint.ts"
+  check:
+    deps: ["~:css"]
   typecheck:
-    deps: ["~:routes"]
+    deps: ["~:routes", "~:generate"]
+  test:
+    deps: ["~:generate"]
   build:
     command: "bun vite build"
-    deps: ["~:routes"]
+    deps: ["~:routes", "~:generate"]
     inputs:
       - "src/**/*"
       - "vite.config.ts"
@@ -33,7 +57,7 @@ tasks:
   # Vite with hot reload on :4710, beside the platform it calls.
   dev:
     command: "bun vite"
-    deps: ["~:routes", "server:dev"]
+    deps: ["~:routes", "~:generate", "server:dev"]
     preset: "server"
     options:
       envFile: "/.config/dev.env"

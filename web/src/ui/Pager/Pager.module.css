@@ -1,0 +1,6 @@
+@layer components {
+    .pager {
+        display: flex;
+        justify-content: flex-end;
+    }
+}

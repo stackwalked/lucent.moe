@@ -1,0 +1,31 @@
+@layer components {
+    .refusal {
+        display: flex;
+        align-items: flex-start;
+        gap: var(--s-3);
+        padding: var(--s-3) var(--s-4);
+        border-radius: var(--r);
+        background: var(--shu-wash);
+        color: var(--ink);
+        font-size: var(--size-14);
+        line-height: var(--lh-snug);
+    }
+
+    .mark {
+        display: inline-flex;
+        flex: none;
+        padding-block: var(--s-1);
+        color: var(--shu-ink);
+    }
+
+    .text {
+        display: grid;
+        gap: var(--s-1);
+        min-inline-size: 0;
+    }
+
+    .reference {
+        font-size: var(--size-13);
+        overflow-wrap: anywhere;
+    }
+}

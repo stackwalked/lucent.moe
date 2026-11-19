@@ -1,0 +1,39 @@
+@layer features {
+    .themes {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--form)), 1fr));
+        gap: var(--s-5);
+    }
+
+    .pane {
+        padding: var(--s-5);
+        border: 1px solid var(--line);
+        border-radius: var(--r);
+        background: var(--ground);
+        color: var(--ink);
+    }
+
+    .theme {
+        margin-block-end: var(--s-4);
+        color: var(--ink-2);
+        font-size: var(--size-13);
+    }
+
+    .form {
+        max-inline-size: var(--form);
+    }
+
+    .icons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--s-2);
+    }
+
+    .icon {
+        display: inline-grid;
+        place-items: center;
+        inline-size: var(--control-h);
+        block-size: var(--control-h);
+        color: var(--ink-2);
+    }
+}

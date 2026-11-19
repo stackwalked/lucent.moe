@@ -1,0 +1,10 @@
+@layer components {
+    .link {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--s-1);
+        color: var(--pink-ink);
+        text-decoration: underline;
+        text-underline-offset: 2px;
+    }
+}

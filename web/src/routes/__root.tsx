@@ -6,11 +6,17 @@ import {
 } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { isUnavailable } from "../failure.ts";
+import { currentTheme } from "../theme.ts";
+import "../ui/global.css";
+import "virtual:lucent/tokens.css";
+import plex400 from "../ui/fonts/ibm-plex-sans-400.woff2?url";
+import plex500 from "../ui/fonts/ibm-plex-sans-500.woff2?url";
 
 // The document every page renders in, error and not-found pages included.
 function Document({ children }: { readonly children: ReactNode }) {
+    const theme = currentTheme();
     return (
-        <html lang="en">
+        <html lang="en" {...(theme === "system" ? {} : { "data-theme": theme })}>
             <head>
                 <HeadContent />
             </head>
@@ -45,6 +51,14 @@ export const Route = createRootRoute({
             { name: "viewport", content: "width=device-width, initial-scale=1" },
             { title: "lucent.moe" },
         ],
+        // Plex only: Geist Mono loads the first time a page shows monospaced text.
+        links: [plex400, plex500].map((href) => ({
+            rel: "preload",
+            href,
+            as: "font",
+            type: "font/woff2",
+            crossOrigin: "anonymous" as const,
+        })),
     }),
     shellComponent: Document,
     notFoundComponent: NotFound,

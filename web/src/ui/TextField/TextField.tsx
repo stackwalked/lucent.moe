@@ -1,0 +1,54 @@
+import { Field } from "../Field/Field.tsx";
+
+type TextFieldProps = {
+    readonly name: string;
+    readonly label: string;
+    readonly type?: "text" | "email" | "search";
+    readonly hint?: string;
+    readonly error?: string;
+    readonly required?: boolean;
+    readonly minLength?: number;
+    readonly maxLength?: number;
+    readonly pattern?: string;
+    readonly autoComplete?: string;
+    readonly inputMode?: "text" | "email" | "search" | "numeric";
+    readonly defaultValue?: string;
+};
+
+export function TextField({
+    name,
+    label,
+    type = "text",
+    hint,
+    error,
+    required = false,
+    minLength,
+    maxLength,
+    pattern,
+    autoComplete,
+    inputMode,
+    defaultValue,
+}: TextFieldProps) {
+    return (
+        <Field
+            label={label}
+            {...(hint === undefined ? {} : { hint })}
+            {...(error === undefined ? {} : { error })}
+        >
+            {(control) => (
+                <input
+                    {...control}
+                    name={name}
+                    type={type}
+                    required={required}
+                    {...(minLength === undefined ? {} : { minLength })}
+                    {...(maxLength === undefined ? {} : { maxLength })}
+                    {...(pattern === undefined ? {} : { pattern })}
+                    {...(autoComplete === undefined ? {} : { autoComplete })}
+                    {...(inputMode === undefined ? {} : { inputMode })}
+                    {...(defaultValue === undefined ? {} : { defaultValue })}
+                />
+            )}
+        </Field>
+    );
+}

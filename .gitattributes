@@ -4,3 +4,6 @@
 # Golden vectors are bytes, compared exactly.
 contracts/**/*.bin binary
 native/**/tests/fixtures/**/*.png binary
+
+# Product assets: fonts web serves as they are.
+web/src/ui/fonts/*.woff2 binary
