@@ -388,9 +388,10 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
   - published to the render thread through a triple buffer;
   - built on demand only once a profile shows it matters.
 - `static_world`: collision data kept for the life of a map.
-- `command`: createmove in stages (movement, aim_view, aim_shot, trigger, scripts).
-  - One owner per stage.
-  - Stage tokens for writes only one stage may make.
+- `command` (stages, one owner each, stage tokens, `emit`, `rapid_fire` landed). Its rule, kept by
+  the human: a button belongs for the tick to the earliest stage asking, and the player's own steps
+  for it give way. Still: async command send turned off while we write (decided, as old lucent
+  did), since a remote server may otherwise get an earlier copy.
 - `prediction`: a what-if repredict owned by the game layer (scratch write, then restore). The
   riskiest code in the layer. Decided with the human: we run the command ourselves (multi-tick),
   not the game's one-tick `ClientSidePredict` path, saving and restoring through the game's own
@@ -413,10 +414,10 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
   - game thread only, between the movement stage and command apply, behind a phase token, with a
     budget per command; features never call it; aim gets "self after movement" as a view;
   - one final repredict per command after apply, so the pawn matches the command sent.
-- `view`: the mouse model.
-  - The view is set through the game's own setter at frame stage.
-  - The matching counts are owed to and settled into the next command.
-  - Requests add up.
+- `view` (the mouse model, owed counts, adding requests, `quick_turn` landed). The setter is a
+  leaf without unwind data, so `view` writes the two places it writes, offsets read off the
+  setter by finders (decided over relaxing the method check). Still: counts at the current zoom
+  scale, `mouse_inverty`, the sv_cheats pitch path.
 - `scene_draw`:
   - restyle per primitive, chosen by precedence;
   - a material override scoped to one call;
