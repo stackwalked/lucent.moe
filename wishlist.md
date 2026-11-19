@@ -1,6 +1,208 @@
 # Wishlist
 
 Everything discussed so far that isn't built yet. A backlog, not a spec: entries leave as they land.
+The roadmap orders it; the sections after it hold the detail.
+
+## Roadmap
+
+The aim: a game update, a new feature, a new game and a new product each cost one bounded,
+checked piece of work. Old lucent's features and platform are the floor, not the target.
+
+- A phase is its gate: what is true when it is done. Work in different roots (native, platform
+  and web, research) overlaps freely.
+- A phase leaves this list when its gate holds. Nothing here has a date: the measured numbers
+  (update-day latency, release pipeline duration) are the schedule.
+- Breadth waits for rails. No feature family is ported before the layer it sits on has one
+  feature through it, tested without a game.
+- Parity means every old capability is either here or cut in writing ("Cut", below), never
+  silently missing.
+- Entries marked (proposed) have not been discussed; they are this roadmap's own suggestions.
+
+Where it stands (2026-11-19, four days in): slice 1 (authority, credentials, sessions, the web
+shell and admin) and the fact pipeline (kit facts and capabilities, the bundle format, probe, the
+generator, four cs2 facts) are built, with the render stack (`draw`, `text`, `d3d11`) built and not
+yet linked into cs2. Not started: slices 2 to 5, any `/v1` route, the release loader, the cs2 game
+layer, `ui` and `menu`, the feature registry, all of protection, CI.
+
+### Phase 0: rails
+
+What is owed before more weight lands on it.
+
+- CI: `.github/workflows` calling `moon run :check` (none exists; the commit hook is the only gate).
+- `contracts:test` in `bun test` over the committed vectors (only `ctest` reads them today).
+- `products/*.toml` on `stable`, `alpha`, `debug`.
+- Generated code's marker and freshness check; core's `flags<E>`, `fixed_string` and the generated
+  `lucent::build` header with the per-release subkeys (fixed in dev).
+- Kit: the dev channel, the injectable clock, named workers.
+- cs2 draws through `draw`, `text` and `d3d11` instead of the proof-of-life rectangle.
+- The facts leftovers: the four facts confirmed in a running game; a late-loaded module; the facts
+  log line out of release strings; the layering check against `<target>-finders`.
+- Where the virtualizer starts (`research/lab/` with shared C++ config, or `native/tools/`: open
+  in `wishlist/protection.md`), decided and set up.
+
+Gate: every push runs `:check` in CI; `loader-dev` maps cs2 with a dev-signed bundle and the
+module draws shaped text over the game through our renderer.
+
+### Phase 1: the licensed vertical slice
+
+The spine. The thinnest path through every layer on a real release: one member, one PC, one
+product, one feature. Built end to end, native and server together.
+
+- Platform, slice 2: `device`, `device_change_window`, `product_slot`; the native `/v1` listener;
+  pushed auth requests with PKCE and DPoP; start checks in one transaction; leases; release
+  tables; `ops publish-release` and `publish-loader`.
+- Platform, the thin part of slice 3: fact-set storage, `ops publish-fact-set` with the release
+  manifest's core coverage, session bundle assembly. Scoring, live revisions and overrides wait.
+- Web: device approval, member devices, the loader download, a product page that says "not yet
+  supported"; admin for entitlements, devices, and promotion of staged releases and fact revisions.
+- Native: the release loader at its smallest (sign-in, device key, self-update, verify, map,
+  relay); the module container; the release boot path; kit's lease client and session key;
+  `boot_info` with the lease and build ids.
+- Kit, at its smallest: the feature registry with entitlement states, settings `describe()`, the
+  safe point, `contain()` around dispatch, `core` capabilities refusing the start.
+- Render: enough of `ui` and `menu` to show one generated page; the Present glue as designed.
+  Menu text arrives as the per-session catalog keyed by hashed ids, so the string gate holds from
+  the first release.
+- cs2: `engines/source2/probe`'s offline schema reader, for the fields one feature needs; `world`
+  (snapshot, triple buffer) and `draw_context`; the feature, a player box with name, extending
+  the `entities` and `view` capabilities.
+- Release tooling: the offline code and facts keys with their signing tools and ceremony, the
+  release's signed artifact list, the master seed, keyed identifier hashes, the release guard and
+  the post-link name check.
+- The download page tells members what SmartScreen and antivirus will say.
+- `infra/`: compose, Caddy, backups with an off-machine copy, the uptime ping from a second
+  machine. Old lucent left the last two unchosen.
+- The update-day pipeline as moon tasks, with its latency recorded per module from the first run.
+
+Gate: on a PC that has never seen us, a member downloads the loader from the member area, signs
+in, enrolls, starts cs2 on `alpha` and sees the feature. Suspending the account ends it within the
+lease TTL. A second PC takes the slot. A game update shows "not yet supported" until a signed
+fact set is promoted, and the time that took is on record.
+
+### Phase 2: the layers, complete
+
+Every layer the features need, each proven by one feature, before any family is ported.
+
+- Kit: the rest of Kit below (lifecycle resolve stage, `hook_object`, hooks from facts, the access
+  boundary, the error model, the registry's lapse policy and failed state, config store, binds).
+- Render: `ui`, `menu`, theme and animation in full; HUD windows on plate; `tools/menu-shot`; the
+  text and D3D11 leftovers (one atlas patch type, HDR targets, device rebuild, dev stats, the
+  `frame_data` fuzz target).
+- cs2 domains: `world`, `static_world`, `queries`, `events`, `targeting`, `view`, `command` with
+  its stages, `prediction`, movement (simulator, planner, arbiter), `scene_draw`, `removals`,
+  `inventory`. One exemplar feature per domain, tested without a game.
+- The rest of `engines/source2/` (harvest, the interface finder) and of the finder language.
+- Dev fault injection and live semantic probes; SteamCMD ingest.
+- Finders for old lucent's 225 `methods.json` entries arrive with the domain that needs them, not
+  ahead of it. Its hand-kept `*_layout.hpp` files become size and field facts.
+- Health telemetry: fact and capability outcomes, failed features, crash reports with the last
+  events.
+
+Gate: a feature author writes views in and intents out and cannot reach foreign memory; each
+domain has a feature on `alpha`; breaking one fact in dev turns off exactly the features behind
+its capability and nothing else.
+
+### Phase 3: cs2 parity
+
+The families in "cs2 features" below, in the order their domains settled: visuals first (world and
+scene), then aim and trigger (targeting, view, command), movement last (it leans on `prediction`,
+the riskiest code in the layer, and its planner is redesigned from scratch). Presets, share
+codes, scenarios and the benchmark come with the families they exercise.
+
+Gate: every family old cs2 0.8.3 shipped is on `alpha` or listed under "Cut"; the owner plays on
+the new module only.
+
+### Phase 4: platform parity
+
+Beside phases 2 and 3; nothing native waits on it except cutover.
+
+- Slice 3, the rest: licensing and health signals, the scoring job and review queue, live
+  revisions over the session, online overrides, the retention tiers.
+- `ops transfer-superadmin` and `replay-removals`; the mail adapter.
+- Slice 4: cloud-held configs and inventory (old lucent's `userdata-cloud` design: account-held
+  items, no file mirror), crash reports, tickets and appeals, review rules with DB-IP geo, the
+  waitlist, resources.
+- Slice 5: profiles, avatars, comments, shouts, inbox, presence, guides, `connectors/discord`.
+- The public record: product status, known issues, the changelog, recovery time per game update,
+  refusal-code pages, legal pages. Old lucent had no privacy or terms page.
+- Member docs.
+
+Gate: every surface of the old service, panel and bot is here or under "Cut".
+
+### Phase 5: cutover
+
+- Accounts, usernames, credentials where they can move (passkeys are bound to the RP ID
+  `lucent.moe`, which is kept), licenses as entitlements, devices re-enrolled, cloud items.
+- The old loader's last release points members at the new one. The old service goes read-only,
+  then off.
+
+Gate: no member depends on the old repo; it is archived.
+
+### Phase 6: the walls
+
+Research starts in phase 0 and runs beside everything; this is where it enters the pipeline.
+Order follows what a wall costs a cracker per hour of ours.
+
+1. From the first release (phase 1): keyed identifiers, no shipped names, the release gate on
+   strings, link order shuffled per release.
+2. Events replace logging (to confirm: open in `wishlist/protection.md`); APIs resolve by seeded
+   hash.
+3. Hash challenges, the loader's independent answer, environment signals: integrity joins the
+   scoring phase 4 built.
+4. The virtualizer, phases 1 to 5, then recipes and plans in place of the labeled fact table.
+5. The mutation backend; the local dependence behind the fact accessor seam; a re-seeded release
+   per game update.
+
+Gate: `alpha` ships virtualized builds with the differential tests in CI; the release pipeline's
+duration and the red team's numbers are tracked per release.
+
+### Phase 7: scripts and extensions
+
+See "Scripts and extensions" below. The value-only script host first, on cloud-delivered signed
+scripts; then packages, review, the SDK and the directory; then rooms.
+
+Gate: a member who is not staff has published an extension that others run.
+
+### Phase 8: the second placement
+
+osu, in the order "osu" gives. The loader becomes the app of "Loader" below: several products,
+one session each.
+
+Gate: osu runs on `alpha` under the same lease, bundle and protection as cs2, and landing it
+changed no line of `kit` proper after the split.
+
+### Phase 9: seed and launch
+
+See "Community and launch". Cutover brings old lucent's members; the seed widens them, free, on
+manual entitlements. Payments only after the seed's gates hold.
+
+Gate (seed, from old lucent's M2): two game updates survived with the recovery time published,
+weekly use holds, members have written extensions, the bug queue is under control. Gate (launch):
+the seed converts, and a paid entitlement is issued with no staff action.
+
+### Phase 10: engines
+
+See "Engines and targets". Deadlock, then TF2, then one engine that isn't Valve's.
+
+Gate, per target: it landed as a foreign layer, finders, domains and a `products/` entry. Kit, the
+loader, the platform and the release pipeline changed only where an engine layer was extracted,
+and the commit that extracted it says why.
+
+### Always running: research
+
+See "Research labs". Not gated; a lab graduates or is deleted.
+
+### Cut
+
+Decided against, so parity doesn't bring them back:
+
+- Cohorts before launch, a repo-wide TypeScript CLI, `better-auth`, the staff AI agent in the
+  Discord connector, `auth.lucent.moe`, the in-process bot.
+- Runtime schema resolution and pattern scanning in the release module; stack-XOR strings.
+- Dear ImGui; file-mirror cloud sync.
+- `INTEGRITY_REFUSED`: integrity is never a reason shown to a client.
+- Head surf and texture bug (old lucent's probe measured no hold); clantag (the game no longer
+  allows it; the name prefix replaced it).
 
 ## Gate and tooling
 
@@ -34,8 +236,7 @@ Everything discussed so far that isn't built yet. A backlog, not a spec: entries
 - MSVC STL, not libc++. Language gaps (reflection, contracts, `template for`) are clang's either way, and
   the library delta at 23.1.5 vs STL 14.51 is mixed. Revisit when clang ships P2996: `<meta>` is
   expected to come with libc++ (unverified).
-- `lucent_module()` and `lucent_executable()` join `lucent_library()`/`lucent_test()` with their first
-  users. A lint bans raw `add_library`, `add_executable` and `target_compile_options` outside
+- A lint bans raw `add_library`, `add_executable` and `target_compile_options` outside
   `native/cmake/`.
 - vcpkg overlay ports instead of vendored source, once a port needs patching.
 - Verify luau and tracy build under clang-cl with `/GR-` (Catch2 3.16.1, safetyhook 0.7.0 and
@@ -60,9 +261,10 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
 
 ## Kit
 
-- `boot_info` grows (v2 carries the session ends, the image kind and the mapper's trampolines):
+- `boot_info` grows (v3 carries the session ends, the image kind, the mapper's trampolines and the
+  bundle):
   - host and build ids;
-  - the lease blob and the game-data blob.
+  - the lease blob.
 - A release boot path: dev starts the module through its `lucent_boot` export after either loader;
   release needs its own way in.
 - No static TLS in mapped modules: `lucent_module()` fails the build on a TLS directory, ast-grep bans
@@ -778,6 +980,152 @@ DX11 overlay window; lazer and stable) is rewritten here as a second product, th
 - Order: the kit split; `lucent-host` and its attach loop; the .NET harvest; `engines/dotnet` and lazer's
   foreign layer; the osu domains (play state, input, overlay window); features (relax, tap assist, aim assist, autobot and replay, with
   `humanize` as a library); stable; the `products/` entry.
+
+## cs2 features
+
+What old cs2 0.8.3 shipped, by family, with the domain each waits on. The old menu schema
+(`modules/cs2/src/ui/menu/schema.cpp` in old lucent) is the full list of options; this is the
+checklist of families. A family leaves when it is on `alpha`.
+
+- Rules carried over: no netvar is written to get an effect; nothing forged goes to Steam or the
+  game coordinator; aim output is whole mouse counts under a real mouse's rate (8 kHz).
+- Scopes: aim settings per weapon, falling back through the weapon's class; player visuals per
+  team. Every switch takes a bind (hold, toggle, always).
+- Players (`world`, `scene_draw`): esp parts with the drag-to-side layout editor, flags, distance
+  fade, legit sync; off-screen arrows, sound rings, radar; chams layers and looks; our own glow;
+  xray from baked collision (`static_world`).
+- Self (`view`, `removals`, `scene_draw`): fov, aspect, third person, spectate anyone; viewmodel
+  offsets; first-person chams; the removals set; scope lines.
+- World, weapons, post (`scene_draw`, `events`, `queries`): night, weather, custom sky, world
+  colours; bomb and dropped-weapon esp; hit feedback, tracers, impacts, sounds; grenade path,
+  warning and timers; the post-process chain.
+- Aim (`targeting`, `view`, `command`): assist and lock, the shared target stage, recoil control,
+  trigger with hit chance, zeus and knife bots, auto stop and scope.
+- Movement (the movement domain): strafing, the jump set, jump bug, edge bug, pixel surf with
+  spots and chaining, the helpers, route practice, effects on triggers. Requirements old lucent
+  learned late: the target surf is locked at the jump even when not drawn; always-on and key-held
+  behave the same; a second smart key per feature for chains.
+- HUD windows (`ui` on plate): watermark, keybinds, spectators, bomb timer, team damage, damage
+  and event logs, velocity, key display, jump stats, indicators; the layout editor.
+- Inventory (`inventory`): the changer and loadouts, custom paints, the coordinator firewall.
+- Misc: auto accept, vote reveal, name prefix, config share codes, autoload.
+- Restricted features (nospread, optimal strafe, null strafe) become an entitlement feature tag,
+  not a menu switch.
+- Decide before porting, each a product call:
+  - the Scaleform 2018 HUD (17 Panorama scripts, 10k lines, art that was hard to recreate):
+    port, rethink as an extension, or cut;
+  - the music library and audio engine: kit service, or an extension over `@lucent/media`;
+  - which features `stable` lacks. Products strip features at compile time; old lucent's
+    `features.toml` design was never built.
+- Never built in old lucent, still wanted or undecided: backtrack, grenade throw helpers, ledge
+  grab in the simulator, rank reveal, fake lag, kill dissolve.
+- Carry over as `research/kb/` pages, re-verified against the current build as each domain needs
+  them: old lucent's 22 `docs/re/` notes (process-movement, subtick, prediction, command-send,
+  world-collision, pixel-surf, shaders, panorama).
+
+## Loader
+
+The release loader appears in phase 1 at its smallest and grows into old lucent's app. Its trust
+rules are in `wishlist/protection.md`.
+
+- Phase 1: system-browser sign-in, device key with the match code on the approval page,
+  self-update with a way back, verify before parse, map, relay, the reason for a refusal.
+- The app (phase 8): products as rows, one session each; tray and background; start with Windows;
+  auto-load per product (attach to a running game, never launch it); a rotating log; crash report
+  review and send on a click, the dump never leaving the PC; `forget` and `uninstall`.
+- Its window runs on `libs/render` in a standalone window, the same stack as the menu.
+- Refusal messages are the curated error catalog, explained on the site.
+- Open: whether targets stay compiled in or a product's host and module are all the loader needs
+  to know (the placement model suggests the second).
+
+## Scripts and extensions
+
+Old lucent had Luau in the module, 27 `@lucent/*` libraries, `.lpkg` packages, review and signing,
+`lucent-sdk` with an MCP server, a DAP debugger, rooms. The new host changes the contract: values,
+not live handles.
+
+- Order:
+  1. the script host as designed under "cs2 game layer": a script is a feature, with `needs` and
+     `wants`, budgets, and the registry's failed state;
+  2. cloud-held scripts, server-signed, fetched per session;
+  3. `.lpkg` in `contracts/`, the publish checks, staff review with step-up, the install set over
+     the session, takedown and the stop list;
+  4. the SDK (`check`, `pack`, `watch`, `publish`, definitions per release) and the analyzer in a
+     child process; the MCP server; the debugger and compile-first reload in developer mode;
+  5. the directory: search, installs, author profiles;
+  6. rooms, with the install check at join that old lucent never built.
+- The library surface is rebuilt per domain: a library exists when its domain can hand out values
+  under a stated conflict rule. Rendering (2D recordings, 3D scenes, materials) rides `draw` and
+  `scene_draw`.
+- Permissions stay manifest-declared (`command`, `settings`, `http` with hosts, `rooms`, `sync`,
+  `cvars`, `media`).
+- Old lucent's unbuilt list: library dependencies, private packages, an input library,
+  deprecation shims, fuzzing the host before anyone but staff publishes.
+- (proposed) Ratings and comments on directory items, reusing profile comments.
+- (proposed) A settings tool on the MCP server, so an agent can read and propose config changes
+  without `eval`.
+- (proposed) Extensions declare the products they run on, so the directory spans games.
+
+## Community and launch
+
+- Admission: invites from an admin-granted allowance, waves, strikes one level up, the invite
+  tree; the waitlist as a state machine with a handler. A vouch fast-tracks an applicant; whether
+  the vouch is the invite or a field is still open from old lucent.
+- The seed: 30 to 50 people approached directly, free, a `founding` mark kept afterwards.
+- The public record is the marketing: status with a named staff contact, the changelog, recovery
+  time per update. Never "undetected", never feature-list comparisons, no resellers.
+- Config sharing: share links, import as a new item, history and restore, a config editor on the
+  site from the release's settings manifest, support reading a config with per-ticket consent.
+- Payments (after the seed's gates): old lucent's design stands as the starting point, to be
+  re-decided when it starts: stablecoins, self-hosted, a derived address per account, a watcher
+  with two providers, a spend-only ledger, plans and renewal as entitlements with an end, the
+  founding rate, staff adjustments with step-up, books. One offering, no tiers, no lifetime keys.
+  Its open items (chains at launch, refunds, cash-out, the accountant's and lawyer's answers) are
+  blockers, not details.
+- Launch, after the seed: applications in capped cohorts (the one place cohorts return), growth
+  by vouching.
+- (proposed) Guides written by members, with the same review as extensions.
+- (proposed) Jump-stat and route boards per map, opt-in, from values the module already computes.
+- (proposed) Staff below admin: a support role in `can()` for tickets only.
+
+## Engines and targets
+
+A target is a foreign layer, finders, domains and features. An engine's probe is its own layer
+from the first target; its foreign mirrors and domains are extracted when the second arrives.
+
+- Deadlock: the second Source 2 target. Moves the Source 2 foreign mirrors to
+  `engines/source2/foreign/` and settles which cs2 domains were Source 2 domains all along
+  (`world`, `view`, `scene_draw` likely; `command` and movement not). Old lucent's research called
+  it the first choice; Valve's anti-cheat there is the stated risk.
+- TF2: `engines/source1/`. No schema system: fields come from datatables and RTTI, so the engine's
+  probe needs its own derivation and harvest. Needs a render backend for whatever the game
+  presents through, decided by measurement at the start (unverified: Direct3D 9, 64-bit).
+- One engine that isn't Valve's, as a lab first: Unreal (the reflection tables as the schema
+  analogue) or Unity IL2CPP (metadata as the harvest, close to `engines/dotnet`). A `kb/` page per
+  engine before any code. Which game is open.
+- Each target states its own rules the way cs2 does (what is never written, what never leaves).
+- What must not change per target: kit, the bundle and release formats, the loader, the platform
+  beyond a `products/` entry. If it does, that is the finding.
+
+## Research labs
+
+`research/lab/` projects, held to full code rules, graduating into the product tree or deleted.
+
+- The virtualizer (`wishlist/protection.md`): the first lab, phases 1 to 5.
+- rikai (the decompiler, its own repo): the natural red team for the virtualizer, and a question
+  to settle early: whether the lifter and IR are shared or deliberately independent, so the
+  attack isn't written against its own front end.
+- Interlocked protection: `kb/` pages on the published work (self-checksumming, oblivious hashing,
+  guard networks) before the local dependence behind the fact accessor seam is designed. Nothing
+  of ours exists yet.
+- Leak attribution: the want is every served build identifiable. Old lucent's fixed set of link
+  order variants per release doesn't scale to that, and per-user code breaks the rule that only
+  the offline key signs code. Open research: marks carried in online-signed data.
+- Kernel and hypervisor: exploratory only, no product decision. A lab would need its own signing
+  lane and a test VM; the product never gates on hypervisor detection.
+- Toolchain: the modules trial; reflection when clang ships P2996.
+- Old lucent's goal that members aren't put at risk by how the module loads, hooks or talks has
+  no home in the protection model, which covers licensing only. Where it lives is open.
 
 ## Open
 
