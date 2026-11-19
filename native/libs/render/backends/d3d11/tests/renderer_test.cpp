@@ -7,6 +7,7 @@
 #include <optional>
 #include <ranges>
 #include <span>
+#include <thread>
 #include <utility>
 
 #include <d3d11.h>
@@ -38,6 +39,18 @@ auto spec_of(DXGI_FORMAT format) -> target_spec {
         .view_format = static_cast<u32>(format),
         .sample_count = 1,
     };
+}
+
+// Blocks until the GPU has finished everything submitted so far, through an event query.
+auto finish_gpu_work(const warp_device& device) -> void {
+    const D3D11_QUERY_DESC described{.Query = D3D11_QUERY_EVENT, .MiscFlags = 0};
+    Microsoft::WRL::ComPtr<ID3D11Query> fence;
+    REQUIRE(SUCCEEDED(device.device()->CreateQuery(&described, &fence)));
+    device.context()->End(fence.Get());
+    BOOL is_done = FALSE;
+    while (device.context()->GetData(fence.Get(), &is_done, sizeof(is_done), 0) != S_OK) {
+        std::this_thread::yield();
+    }
 }
 
 // A device, a cleared 32x32 target and a built renderer.
@@ -174,10 +187,12 @@ TEST_CASE("a layer's sampled light is reported once a later frame finds its read
     list.pop_layer();
 
     std::optional<draw::color> light;
-    // The readback never waits, so it lands some frames later; WARP finishes within a few.
-    for (i32 frame = 0; frame < 20 && !light; ++frame) {
+    // The readback never waits, so it lands a frame or more later. Each frame is finished on the
+    // GPU before the next, so when it lands depends on the renderer, not on how busy WARP's
+    // threads were: counting frames alone flaked under load.
+    for (i32 frame = 0; frame < 8 && !light; ++frame) {
         REQUIRE(made->drawer.render(list.frame(), made->target.as_render_target()).has_value());
-        made->device.context()->Flush();
+        finish_gpu_work(made->device);
         light = made->drawer.sampled_light(key);
     }
 

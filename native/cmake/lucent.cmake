@@ -101,6 +101,9 @@ function(lucent_module name)
     cmake_parse_arguments(PARSE_ARGV 1 arg "" "" "SOURCES;DEPS")
     set(target lucent_${name})
     add_library(${target} MODULE ${arg_SOURCES})
+    # A fixture links the same in every configuration: a Release link without /DEBUG gets lld's
+    # /OPT:ICF, folding functions the tests count, find or emulate one by one.
+    target_link_options(${target} PRIVATE /OPT:NOICF)
     target_link_libraries(${target} PRIVATE lucent::core ${arg_DEPS})
     add_custom_command(
         TARGET ${target}
@@ -280,6 +283,9 @@ function(lucent_fixture name fixture)
     cmake_parse_arguments(PARSE_ARGV 2 arg "RTTI" "" "SOURCES")
     set(target lucent_${name}_${fixture}_fixture)
     add_library(${target} MODULE ${arg_SOURCES})
+    # A fixture links the same in every configuration: a Release link without /DEBUG gets lld's
+    # /OPT:ICF, folding functions the tests count, find or emulate one by one.
+    target_link_options(${target} PRIVATE /OPT:NOICF)
     if(arg_RTTI)
         target_compile_options(${target} PRIVATE /GR)
     endif()

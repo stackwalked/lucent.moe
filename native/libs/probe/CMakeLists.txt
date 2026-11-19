@@ -35,6 +35,3 @@ lucent_test(probe
     DEPS lucent::os
 )
 lucent_fixture(probe game SOURCES tests/fixtures/game.cpp RTTI)
-# A release link folds identical functions (lld's default /OPT:ICF without /DEBUG), merging the
-# fixture's twin accessors into one export the tests expect to find twice.
-target_link_options(lucent_probe_game_fixture PRIVATE /OPT:NOICF)

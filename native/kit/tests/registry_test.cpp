@@ -284,6 +284,11 @@ TEST_CASE("readers on another thread see each batch whole or not at all") {
                 seen.fetch_add(1, std::memory_order_relaxed);
             }
         }};
+        // Writing starts once the reader has read, so a busy machine that schedules it late can't
+        // leave the test with nothing seen.
+        while (seen.load(std::memory_order_relaxed) == 0) {
+            std::this_thread::yield();
+        }
         for (isize round = 0; round < 5000; ++round) {
             const bool is_on = round % 2 == 0;
             features.request({
