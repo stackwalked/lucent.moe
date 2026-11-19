@@ -286,9 +286,7 @@ auto is_shown(const ui::context& frame, ui::element_id id) -> bool {
 }
 
 auto typed(std::string text) -> ui::input_snapshot {
-    ui::input_snapshot input;
-    input.text = std::move(text);
-    return input;
+    return ui::testing::typed(std::move(text));
 }
 
 auto changed(kit::setting_id setting, kit::setting_value value)
@@ -331,7 +329,7 @@ TEST_CASE("a choice setting is a dropdown of its options' catalog text, sending 
     CHECK(run.changes() == changed(shape, kit::setting_value{isize{1}}));
 }
 
-TEST_CASE("a colour setting is a swatch whose popup sets each channel") {
+TEST_CASE("a colour setting is a picker whose popup sends the colour picked") {
     ui::testing::fixture_text fixture = ui::testing::plex_text();
     table_catalog words;
     add_english(words);
@@ -341,10 +339,15 @@ TEST_CASE("a colour setting is a swatch whose popup sets each channel") {
     run.click(control_of(tint));
     REQUIRE(run.frame().is_popup_open(control_of(tint)));
     run.idle();
-    run.press_track_end(ui::child_id(ui::popup_id(control_of(tint)), ui::key<"green">()));
+    const draw::rect square = ui::testing::rect_of(
+        run.frame(), ui::child_id(ui::popup_id(control_of(tint)), ui::key<"square">())
+    );
+    // Dragged past the square's top right: the hue's own colour, full strength.
+    run.step(ui::testing::press(ui::testing::centre(square)));
+    run.step(ui::testing::hold({.x = square.max.x + 50.0F, .y = square.min.y - 50.0F}));
     CHECK(
         run.changes()
-        == changed(tint, kit::setting_value{kit::color{.r = 200, .g = 255, .b = 40, .a = 255}})
+        == changed(tint, kit::setting_value{kit::color{.r = 255, .g = 0, .b = 0, .a = 255}})
     );
 }
 

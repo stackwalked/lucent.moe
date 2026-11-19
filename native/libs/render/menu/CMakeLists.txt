@@ -7,9 +7,7 @@ lucent_library(menu
         include/lucent/menu/text_key.hpp
     SOURCES
         src/catalog.cpp
-        src/color_swatch.cpp
         src/page.cpp
-        src/search_field.cpp
         src/settings_menu.cpp
         src/table_catalog.cpp
         src/text_key.cpp

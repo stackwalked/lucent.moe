@@ -22,16 +22,15 @@
 #include <lucent/text/text_layout.hpp>
 #include <lucent/ui/box_style.hpp>
 #include <lucent/ui/button.hpp>
+#include <lucent/ui/color_picker.hpp>
 #include <lucent/ui/context.hpp>
 #include <lucent/ui/dropdown.hpp>
 #include <lucent/ui/element_id.hpp>
 #include <lucent/ui/interaction.hpp>
 #include <lucent/ui/slider.hpp>
+#include <lucent/ui/text_field.hpp>
 #include <lucent/ui/theme.hpp>
 #include <lucent/ui/toggle.hpp>
-
-#include "color_swatch.hpp"
-#include "search_field.hpp"
 
 namespace lucent::menu {
 namespace {
@@ -278,23 +277,16 @@ auto choice_control(ui::context& frame, const catalog& text, const shown_setting
     );
 }
 
-auto color_control(ui::context& frame, const catalog& text, const shown_setting& setting)
-    -> std::optional<kit::color> {
-    const std::array<std::string, 4> channels{
-        text_of(text, phrase_text{phrases::red}),
-        text_of(text, phrase_text{phrases::green}),
-        text_of(text, phrase_text{phrases::blue}),
-        text_of(text, phrase_text{phrases::alpha}),
-    };
+auto color_control(ui::context& frame, const shown_setting& setting) -> std::optional<kit::color> {
+    const auto value = value_as<kit::color>(setting);
     line_text(frame, setting.label, frame.tokens().colors.ink);
-    return detail::color_swatch(
-        frame,
-        ui::key<"control">(),
-        {
-            .value = value_as<kit::color>(setting),
-            .channels = {channels[0], channels[1], channels[2], channels[3]},
-        }
+    const std::optional<draw::color> picked = ui::color_picker(
+        frame, ui::key<"control">(), {.r = value.r, .g = value.g, .b = value.b, .a = value.a}
     );
+    if (!picked) {
+        return std::nullopt;
+    }
+    return kit::color{.r = picked->r, .g = picked->g, .b = picked->b, .a = picked->a};
 }
 
 template <std::copyable T>
@@ -332,13 +324,13 @@ auto setting_control(ui::context& frame, const catalog& text, const shown_settin
     case kit::setting_kind::choice:
         return as_setting_value(choice_control(frame, text, setting));
     case kit::setting_kind::color:
-        return as_setting_value(color_control(frame, text, setting));
+        return as_setting_value(color_control(frame, setting));
     }
     LUCENT_UNREACHABLE();
 }
 
-// Toggles and sliders lay out their own caption; a dropdown or a swatch sits beside the label the
-// row draws, padded as a toggle pads its caption.
+// Toggles and sliders lay out their own caption; a dropdown or a colour picker sits beside the
+// label the row draws, padded as a toggle pads its caption.
 auto setting_row_style(const ui::theme& tokens, kit::setting_kind kind) -> ui::box_style {
     const bool is_labelled_by_row =
         kind == kit::setting_kind::choice || kind == kit::setting_kind::color;
@@ -444,8 +436,17 @@ auto settings_page(ui::context& frame, ui::local_key key, const page_input& inpu
     };
     frame.box(key, page, [&] {
         const std::string hint = text_of(*input.text, phrase_text{phrases::search});
-        build.query =
-            detail::search_field(frame, ui::key<"search">(), {.query = input.query, .hint = hint});
+        const ui::text_field_outcome typed = ui::text_field(
+            frame,
+            ui::key<"search">(),
+            {
+                .utf8 = input.query,
+                .hint = hint,
+                .lines = ui::text_lines::single,
+                .visible_lines = 1,
+            }
+        );
+        build.query = typed.edited.value_or(std::string{input.query});
         for (const kit::feature_snapshot& shown : input.snapshot->features) {
             feature_section(frame, build, shown);
         }
