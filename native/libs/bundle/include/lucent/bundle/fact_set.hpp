@@ -66,6 +66,8 @@ struct fact_set {
 struct manifest_entry {
     u64 key = 0;
     u8 kind = 0;
+
+    auto operator==(const manifest_entry&) const -> bool = default;
 };
 
 // BLAKE2b-256 over each entry's key and kind, sorted by key. The module computes it from its own

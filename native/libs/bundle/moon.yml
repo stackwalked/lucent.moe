@@ -7,7 +7,8 @@ layer: "library"
 dependsOn: ["core", "crypto", "os"]
 
 tasks:
-  # Rewrites contracts/fact-bundle's golden vectors from the encoder. Review the diff before
+  # Rewrites the golden vectors in contracts/fact-bundle and contracts/release-manifest from the
+  # encoders. Review the diff before
   # committing: a changed vector is a changed wire format.
   vectors:
     command: "ctest --test-dir $workspaceRoot/.moon/cache/cmake/dev -L ^bundle$ -R golden --output-on-failure"
