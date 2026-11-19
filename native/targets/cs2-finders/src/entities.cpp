@@ -5,6 +5,7 @@
 #include <lucent/cs2-modules/game_modules.hpp>
 #include <lucent/finders/fact_search.hpp>
 #include <lucent/kit/fact.hpp>
+#include <lucent/pe/image_view.hpp>
 #include <lucent/pe/runtime_functions.hpp>
 #include <lucent/probe/code_index.hpp>
 #include <lucent/probe/finder.hpp>
@@ -16,7 +17,6 @@
 #include <lucent/probe/strings.hpp>
 
 #include "code.hpp"
-#include "lucent/pe/image_view.hpp"
 #include "searches.hpp"
 
 // Every finder here was written against one build and checked on it by the generator:
