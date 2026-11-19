@@ -42,6 +42,9 @@ export type NativeListenAddress =
 
 export type OpsConfig = {
     readonly databaseUrl: string;
+    // The offline code key's public half (Ed25519, 32 bytes): every seal ops publishes must verify
+    // under it. Null when LUCENT_CODE_PUBLIC_KEY is absent; ops then refuses to publish.
+    readonly codePublicKey: Uint8Array | null;
 };
 
 // Names the variables and what's wrong with them, never their values: some of them are secrets.
@@ -63,6 +66,7 @@ export type Environment = {
     readonly LUCENT_NATIVE_LISTEN?: string | undefined;
     readonly LUCENT_NATIVE_ORIGIN?: string | undefined;
     readonly LUCENT_LEASE_SIGNING_KEY?: string | undefined;
+    readonly LUCENT_CODE_PUBLIC_KEY?: string | undefined;
 };
 
 const POSTGRES_URL = /^postgres(?:ql)?:\/\/./;
@@ -263,13 +267,24 @@ export function readServerConfig(env: Environment): Result<ServerConfig, ConfigE
     });
 }
 
+// 32 bytes in base64url, as `codekey public` prints it.
+function parseCodePublicKey(raw: string): Uint8Array | null {
+    if (!/^[A-Za-z0-9_-]{43}$/.test(raw)) return null;
+    return Uint8Array.fromBase64(raw, { alphabet: "base64url" });
+}
+
 export function readOpsConfig(env: Environment): Result<OpsConfig, ConfigError> {
     const problems: string[] = [];
     const databaseUrl = readDatabaseUrl(env, problems);
+    const rawCodeKey = env.LUCENT_CODE_PUBLIC_KEY;
+    const codePublicKey = rawCodeKey === undefined ? null : parseCodePublicKey(rawCodeKey);
+    if (rawCodeKey !== undefined && codePublicKey === null) {
+        problems.push("LUCENT_CODE_PUBLIC_KEY must be a 32-byte Ed25519 public key in base64url");
+    }
     if (problems.length > 0) {
         return err({ code: "CONFIG_INVALID", problems });
     }
-    return ok({ databaseUrl });
+    return ok({ databaseUrl, codePublicKey });
 }
 
 // The one read of the process environment (ast-grep: ts-no-ambient-env).
@@ -287,6 +302,7 @@ export function processEnvironment(): Environment {
         LUCENT_NATIVE_LISTEN,
         LUCENT_NATIVE_ORIGIN,
         LUCENT_LEASE_SIGNING_KEY,
+        LUCENT_CODE_PUBLIC_KEY,
     } = process.env;
     return {
         LUCENT_DATABASE_URL,
@@ -301,5 +317,6 @@ export function processEnvironment(): Environment {
         LUCENT_NATIVE_LISTEN,
         LUCENT_NATIVE_ORIGIN,
         LUCENT_LEASE_SIGNING_KEY,
+        LUCENT_CODE_PUBLIC_KEY,
     };
 }

@@ -2,9 +2,9 @@ import { expect, test } from "bun:test";
 import { invariant } from "@lucent/core/contain";
 import { createSeededRng } from "@lucent/core/rng";
 import { newOperationId, newSessionId } from "@lucent/core/scalars";
+import { CONTAINER_CHUNK_SIZE } from "@lucent/wire/container-stream";
 import { parseStartReply } from "@lucent/wire/start";
 import { execute, sql } from "../src/db/pool.ts";
-import { CONTAINER_CHUNK_SIZE } from "../src/native/container.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 import {
     createNativeHarness,

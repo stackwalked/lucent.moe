@@ -103,7 +103,9 @@ export async function createStart(
                 tx,
                 StartRowSchema,
                 sql`select s.container_key, s.expires_at, s.consumed_at, r.seal
-                    from session_start s join release r on r.id = s.release_id
+                    from session_start s
+                    join release_seal r on r.product_id = s.product_id and r.channel = s.channel
+                                       and r.number = s.release_number
                     where s.id = ${id}`,
             );
             if (!row.ok) return row;
@@ -143,10 +145,11 @@ export async function createStart(
         const inserted = await execute(
             tx,
             sql`insert into session_start
-                    (id, account_id, device_id, product_id, channel, release_id, container_key,
-                     created_at, expires_at)
+                    (id, account_id, device_id, product_id, channel, release_id, release_number,
+                     container_key, created_at, expires_at)
                 values (${startId}, ${accountId}, ${device.value.id}, ${product.id}, ${channel},
-                        ${release.value.id}, ${containerKey}, ${toTimestamptz(txNow)}::timestamptz,
+                        ${release.value.id}, ${release.value.number}, ${containerKey},
+                        ${toTimestamptz(txNow)}::timestamptz,
                         ${toTimestamptz(EpochMs.parse(txNow + START_TTL_MS))}::timestamptz)`,
         );
         if (!inserted.ok) return inserted;

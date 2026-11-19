@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { type Environment, readServerConfig } from "../src/config.ts";
+import { type Environment, readOpsConfig, readServerConfig } from "../src/config.ts";
 
 const KEY = "k".repeat(43);
 
@@ -173,4 +173,23 @@ test("the published dev lease key is refused unless browsers reach the server fr
         }),
     );
     expect(local.ok).toBe(true);
+});
+
+test("ops publishes only under a configured code key, and refuses a malformed one", () => {
+    const key = new Uint8Array(32).fill(7);
+    const encoded = key.toBase64({ alphabet: "base64url", omitPadding: true });
+
+    const absent = readOpsConfig(env({}));
+    const present = readOpsConfig(env({ LUCENT_CODE_PUBLIC_KEY: encoded }));
+    const malformed = readOpsConfig(env({ LUCENT_CODE_PUBLIC_KEY: `${encoded}A` }));
+
+    expect(absent.ok && absent.value.codePublicKey).toBeNull();
+    expect(present.ok && present.value.codePublicKey).toEqual(key);
+    expect(malformed).toEqual({
+        ok: false,
+        error: {
+            code: "CONFIG_INVALID",
+            problems: ["LUCENT_CODE_PUBLIC_KEY must be a 32-byte Ed25519 public key in base64url"],
+        },
+    });
 });

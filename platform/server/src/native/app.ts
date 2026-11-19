@@ -4,6 +4,7 @@ import { containBoundary } from "@lucent/core/contain";
 import { err, ok, type Result } from "@lucent/core/result";
 import type { CryptoRng } from "@lucent/core/rng";
 import { BearerToken } from "@lucent/core/scalars";
+import { encryptedSize, toEncryptedContainerStream } from "@lucent/wire/container-stream";
 import { parseEnrollmentRequest, toEnrollmentStatusBytes } from "@lucent/wire/enrollment";
 import { parseLeaseRequest } from "@lucent/wire/lease-exchange";
 import type { RefusalCode } from "@lucent/wire/refusal";
@@ -12,7 +13,6 @@ import { parseStartRequest, toStartReplyBytes } from "@lucent/wire/start";
 import { type Context, Hono } from "hono";
 import type { Logger } from "../core/log.ts";
 import type { Db, DbFailure } from "../db/pool.ts";
-import { encryptedSize, toEncryptedContainerStream } from "./container.ts";
 import { readEnrollment, requestEnrollment } from "./devices.ts";
 import { acceptFresh, type DpopProof, verifyProof } from "./dpop.ts";
 import {

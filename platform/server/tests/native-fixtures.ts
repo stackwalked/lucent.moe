@@ -15,6 +15,12 @@ import {
     toBase64Url,
     toHex,
 } from "@lucent/core/scalars";
+import {
+    CHUNK_NONCE_SIZE,
+    CHUNK_TAG_SIZE,
+    CONTAINER_CHUNK_SIZE,
+    toChunkAssociatedData,
+} from "@lucent/wire/container-stream";
 import { parseEnrollmentStatus, toEnrollmentRequestBytes } from "@lucent/wire/enrollment";
 import { openFrame, sealFrame } from "@lucent/wire/frame";
 import {
@@ -43,12 +49,6 @@ import { z } from "zod";
 import { issueEntitlement } from "../src/authority/writers.ts";
 import { type Db, execute, sql } from "../src/db/pool.ts";
 import { createNativeApp, DEFAULT_RATE_LIMITS } from "../src/native/app.ts";
-import {
-    CHUNK_NONCE_SIZE,
-    CHUNK_TAG_SIZE,
-    CONTAINER_CHUNK_SIZE,
-    toChunkAssociatedData,
-} from "../src/native/container.ts";
 import { approveEnrollment } from "../src/native/devices.ts";
 import { createLeaseSigner, type LeaseSigner } from "../src/native/lease-key.ts";
 import type { RateRule } from "../src/native/rate-limit.ts";
@@ -346,7 +346,8 @@ export const FEATURES = [
 
 export type PublishedRelease = { readonly id: Uint8Array; readonly seal: Uint8Array };
 
-// Inserted directly: `ops publish-release` and the seal's format come later.
+// Inserted directly and promoted at once, with a random seal and container: what the start and
+// session tests need. native-publish.test.ts goes through publishing with real ones.
 export async function publishRelease(
     db: Db,
     rng: SeededRng,
@@ -370,15 +371,24 @@ export async function publishRelease(
     const container = isModule ? (params.container ?? rng.fillBytes(new Uint8Array(1_000))) : null;
     const inserted = await execute(
         db,
-        sql`insert into release (id, product_id, channel, seal, container, manifest)
-            values (${id}, ${params.product}, ${params.channel}, ${seal}, ${container}, ${manifest})`,
+        sql`insert into release (id, product_id, channel, container, manifest)
+            values (${id}, ${params.product}, ${params.channel}, ${container}, ${manifest})`,
     );
     invariant(inserted.ok, `inserting the release failed: ${JSON.stringify(inserted)}`);
+    const sealed = await execute(
+        db,
+        sql`insert into release_seal (product_id, channel, number, release_id, seal)
+            select ${params.product}, ${params.channel}, coalesce(max(number), 0) + 1, ${id}, ${seal}
+            from release_seal where product_id = ${params.product} and channel = ${params.channel}`,
+    );
+    invariant(sealed.ok, `inserting the seal failed: ${JSON.stringify(sealed)}`);
     const promoted = await execute(
         db,
-        sql`insert into current_release (product_id, channel, release_id)
-            values (${params.product}, ${params.channel}, ${id})
-            on conflict (product_id, channel) do update set release_id = excluded.release_id`,
+        sql`insert into current_release (product_id, channel, number)
+            select product_id, channel, max(number) from release_seal
+            where product_id = ${params.product} and channel = ${params.channel}
+            group by product_id, channel
+            on conflict (product_id, channel) do update set number = excluded.number`,
     );
     invariant(promoted.ok, "promoting the release failed");
     return { id, seal };

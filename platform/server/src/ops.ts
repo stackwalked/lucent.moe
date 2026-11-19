@@ -1,4 +1,7 @@
+import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
 import { parseArgs } from "node:util";
+import { blake2b256 } from "@lucent/bundle/crypto";
 import { trySync } from "@lucent/core/contain";
 import { systemCryptoRng } from "@lucent/core/rng";
 import { setupPath } from "./auth/setup.ts";
@@ -6,6 +9,7 @@ import { bootstrapRootAccount, recoverRootAccount } from "./authority/writers.ts
 import { processEnvironment, readOpsConfig } from "./config.ts";
 import { migrateDatabase, verifySchemaCurrent } from "./db/migrate.ts";
 import { openPool } from "./db/pool.ts";
+import { describePublished, publishLoaderRelease, publishModuleRelease } from "./native/publish.ts";
 
 // Operator verbs, run against the database the server uses. Exit 1 on any refusal; the reason
 // goes to stderr as one JSON object.
@@ -13,10 +17,21 @@ const USAGE = `usage:
   ops migrate
   ops bootstrap-superadmin --email <email> --username <username>
   ops recover-root
+  ops publish-release --seal <file> --container <file> --manifest <file>
+  ops publish-loader --seal <file> --loader <file> --host <file> --artifact-dir <dir>
 `;
 
+// Publishing reads its artifacts whole: a container is a few MiB, the seal bounds the rest.
+async function readArtifact(path: string): Promise<Uint8Array> {
+    return await Bun.file(path).bytes();
+}
+
 function report(stream: "stdout" | "stderr", value: unknown): void {
-    process[stream].write(`${JSON.stringify(value)}\n`);
+    // Release numbers are u64s: bigints, written as decimal strings.
+    const text = JSON.stringify(value, (_, field: unknown) =>
+        typeof field === "bigint" ? field.toString() : field,
+    );
+    process[stream].write(`${text}\n`);
 }
 
 function usage(): never {
@@ -35,7 +50,16 @@ const args = trySync(
         parseArgs({
             args: process.argv.slice(2),
             allowPositionals: true,
-            options: { email: { type: "string" }, username: { type: "string" } },
+            options: {
+                email: { type: "string" },
+                username: { type: "string" },
+                seal: { type: "string" },
+                container: { type: "string" },
+                manifest: { type: "string" },
+                loader: { type: "string" },
+                host: { type: "string" },
+                "artifact-dir": { type: "string" },
+            },
         }),
     () => null,
 );
@@ -43,6 +67,8 @@ if (!args.ok) usage();
 const { positionals, values } = args.value;
 const [verb, ...extra] = positionals;
 if (extra.length > 0) usage();
+
+const { codePublicKey } = config.value;
 
 const db = openPool({
     databaseUrl: config.value.databaseUrl,
@@ -92,6 +118,65 @@ async function run(): Promise<number> {
                 accountId: root.value.accountId,
                 setupPath: setupPath(root.value.setupToken),
             });
+            return 0;
+        }
+        case "publish-release": {
+            const { seal, container, manifest } = values;
+            if (seal === undefined || container === undefined || manifest === undefined) usage();
+            if (codePublicKey === null) {
+                report("stderr", { code: "NO_CODE_KEY" });
+                return 1;
+            }
+            const published = await publishModuleRelease(db, {
+                codeKey: codePublicKey,
+                artifacts: {
+                    seal: await readArtifact(seal),
+                    container: await readArtifact(container),
+                    manifest: await readArtifact(manifest),
+                },
+            });
+            if (!published.ok) {
+                report("stderr", published.error);
+                return 1;
+            }
+            report("stdout", { staged: describePublished(published.value) });
+            return 0;
+        }
+        case "publish-loader": {
+            const { seal, loader, host } = values;
+            const artifactDir = values["artifact-dir"];
+            if (
+                seal === undefined ||
+                loader === undefined ||
+                host === undefined ||
+                artifactDir === undefined
+            ) {
+                usage();
+            }
+            if (codePublicKey === null) {
+                report("stderr", { code: "NO_CODE_KEY" });
+                return 1;
+            }
+            const artifacts = {
+                seal: await readArtifact(seal),
+                loader: await readArtifact(loader),
+                host: await readArtifact(host),
+            };
+            // Kept by digest before the release is recorded: a recorded release always has its
+            // bytes, and a refused one leaves only content-addressed files a later publish reuses.
+            await mkdir(artifactDir, { recursive: true });
+            for (const bytes of [artifacts.loader, artifacts.host]) {
+                await Bun.write(join(artifactDir, blake2b256(bytes).toHex()), bytes);
+            }
+            const published = await publishLoaderRelease(db, {
+                codeKey: codePublicKey,
+                artifacts,
+            });
+            if (!published.ok) {
+                report("stderr", published.error);
+                return 1;
+            }
+            report("stdout", { staged: describePublished(published.value) });
             return 0;
         }
         default:

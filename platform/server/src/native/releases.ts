@@ -9,7 +9,9 @@ const Bytes = z.instanceof(Uint8Array);
 
 export type CurrentRelease = {
     readonly id: Uint8Array;
+    // The promoted seal and its number.
     readonly seal: Uint8Array;
+    readonly number: bigint;
     // A module's release carries one; the loader's doesn't.
     readonly hasContainer: boolean;
 };
@@ -21,9 +23,12 @@ export async function findCurrentRelease(
 ): Promise<Result<CurrentRelease | null, DbFailure>> {
     const row = await queryOne(
         q,
-        z.object({ id: Bytes, seal: Bytes, has_container: z.boolean() }),
-        sql`select r.id, r.seal, r.container is not null as has_container
-            from current_release c join release r on r.id = c.release_id
+        z.object({ id: Bytes, seal: Bytes, number: z.coerce.bigint(), has_container: z.boolean() }),
+        sql`select r.id, s.seal, s.number, r.container is not null as has_container
+            from current_release c
+            join release_seal s on s.product_id = c.product_id and s.channel = c.channel
+                               and s.number = c.number
+            join release r on r.id = s.release_id
             where c.product_id = ${params.productId} and c.channel = ${params.channel}`,
     );
     if (!row.ok) return row;
@@ -31,7 +36,12 @@ export async function findCurrentRelease(
     return ok(
         found === null
             ? null
-            : { id: found.id, seal: found.seal, hasContainer: found.has_container },
+            : {
+                  id: found.id,
+                  seal: found.seal,
+                  number: found.number,
+                  hasContainer: found.has_container,
+              },
     );
 }
 
