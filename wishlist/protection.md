@@ -98,6 +98,9 @@ spec: entries leave as they land. Facts' own seams for this work stay in `wishli
   hardware breakpoints on our threads; kernel debugging; test signing or driver signature
   enforcement off; the virtual machine vendor; the Windows build; modules in our own processes by
   signer class (Microsoft, other signer, unsigned), with the file hash of up to four unsigned ones.
+- The hash and the probes are one library, `native/libs/integrity`, linked by the module and the
+  loader, so the loader's independent answer runs the same code; the server's copy of the hash
+  matches it through golden vectors in `contracts/`.
 - Signals ride the lease renewal in a fixed-size field, at session start and on change. Weights
   live on the server; combinations carry the score.
 - `debug` sends health events and no integrity signals.
@@ -283,11 +286,11 @@ rewriter on the final linked image.
   4. hardening: rolling operand keys, key-dependent handlers, encoded registers;
   5. into the pipeline: release-only, cold-code checks, the recipe VM on the shared generator.
 - Where it lives:
-  - phases 1 to 5 in `research/lab/`, the first C++ lab project. That needs lab C++ config sharing
-    (see C++ dialect in `wishlist.md`): a small CMake root that includes `native/cmake/lucent.cmake`
-    and links `pe` and `core`, with generated copies of the format and tidy configs;
-  - graduation: decoding, semantics and IR into a native library shared with probe; the rewriter
-    into `native/tools/`, banned from release presets like `libs/probe`; the runtime (stubs and
+  - `native/tools/refract` from phase 1, banned from release presets like `libs/probe`. It is the
+    bin2bin rewriter, not only a VM: the mutation backend and later passes share its decode, lift
+    and rewrite;
+  - extracted as code needs it: decoding, semantics and IR into a native library shared with
+    probe; the runtime (stubs and
     generated handlers) linked into the module under the kit's mapped-module rules; `LUCENT_VIRT`
     in `kit` through a linker section like facts; generated handler C++ in the build tree only,
     like the shader headers;
@@ -318,8 +321,8 @@ walls, so the goal there is fewer clues and releases that don't diff.
 
 - A release: build with a fresh seed, sign with the code key, regenerate and sign the fact sets for
   it with the facts key, publish staged, promote. `alpha` is where a protected build meets real
-  machines first, and CI runs the differential tests on protected binaries, since VM, mutation and
-  rewriter bugs appear only in release.
+  machines first, and the release pipeline runs the differential tests on protected binaries,
+  since VM, mutation and rewriter bugs appear only in release.
 - A game update: ingest, generate, probe, sign with the facts key, publish. Until then members see
   "not yet supported".
 - A deploy restarts inside the lease's 60 seconds, at worst inside the resume window.
@@ -339,9 +342,7 @@ walls, so the goal there is fewer clues and releases that don't diff.
 - A name for a release's signed artifact list (`release manifest` is the capability manifest).
 - The local dependence behind the fact accessor seam, in the virtualizer and obfuscation
   discussion; a re-seeded release per game update, with it.
-- Lab C++ infrastructure first, or the virtualizer straight into `native/tools/` as a dev-only tool.
-- Names: the virtualizer project and tool, its runtime library, and the shared decoding and
-  semantics library.
+- Names: `refract`'s runtime library, and the shared decoding and semantics library.
 - Cooperative bin2bin with a generated C++ interpreter: confirm.
 - The VM's performance budget for cold code.
 - Events replace the logging API entirely, with no free-text log calls even in dev.

@@ -22,13 +22,13 @@ Where it stands (2026-11-19, four days in): slice 1 (authority, credentials, ses
 shell and admin) and the fact pipeline (kit facts and capabilities, the bundle format, probe, the
 generator, four cs2 facts) are built, with the render stack (`draw`, `text`, `d3d11`) built and not
 yet linked into cs2. Not started: slices 2 to 5, any `/v1` route, the release loader, the cs2 game
-layer, `ui` and `menu`, the feature registry, all of protection, CI.
+layer, `ui` and `menu`, the feature registry, all of protection. No CI, and none planned soon:
+the commit hook's `:check` is the gate.
 
 ### Phase 0: rails
 
 What is owed before more weight lands on it.
 
-- CI: `.github/workflows` calling `moon run :check` (none exists; the commit hook is the only gate).
 - `contracts:test` in `bun test` over the committed vectors (only `ctest` reads them today).
 - `products/*.toml` on `stable`, `alpha`, `debug`.
 - Generated code's marker and freshness check; core's `flags<E>`, `fixed_string` and the generated
@@ -37,11 +37,17 @@ What is owed before more weight lands on it.
 - cs2 draws through `draw`, `text` and `d3d11` instead of the proof-of-life rectangle.
 - The facts leftovers: the four facts confirmed in a running game; a late-loaded module; the facts
   log line out of release strings; the layering check against `<target>-finders`.
-- Where the virtualizer starts (`research/lab/` with shared C++ config, or `native/tools/`: open
-  in `wishlist/protection.md`), decided and set up.
+- `native/tools/refract`, the bin2bin rewriter (a VM backend, then mutation): set up as a dev-only
+  tool, banned from release presets like `libs/probe`, with its first code (protection's phase 1:
+  decode, lift, interpret in-process, CPU differential tests).
+- `native/libs/integrity`, linked by the module and the loader: the seeded range hash for hash
+  challenges, the code-page writability check, and the environment probes (debugger, hardware
+  breakpoints, kernel debugging, test signing, VM vendor, module signer classes) as bits and small
+  enums. Tested without a server or a game.
 
-Gate: every push runs `:check` in CI; `loader-dev` maps cs2 with a dev-signed bundle and the
-module draws shaped text over the game through our renderer.
+Gate: `loader-dev` maps cs2 with a dev-signed bundle and the module draws shaped text over the game
+through our renderer; `refract` interprets lifted functions in-process and agrees with the CPU on
+its differential tests; `integrity` answers a hash challenge over a fixture image.
 
 ### Phase 1: the licensed vertical slice
 
@@ -149,11 +155,12 @@ Order follows what a wall costs a cracker per hour of ours.
    hash.
 3. Hash challenges, the loader's independent answer, environment signals: integrity joins the
    scoring phase 4 built.
-4. The virtualizer, phases 1 to 5, then recipes and plans in place of the labeled fact table.
+4. `refract`'s VM, phases 2 to 5 (phase 1 lands in phase 0), then recipes and plans in place of
+   the labeled fact table.
 5. The mutation backend; the local dependence behind the fact accessor seam; a re-seeded release
    per game update.
 
-Gate: `alpha` ships virtualized builds with the differential tests in CI; the release pipeline's
+Gate: `alpha` ships virtualized builds with the differential tests in the release pipeline; its
 duration and the red team's numbers are tracked per release.
 
 ### Phase 7: scripts and extensions
