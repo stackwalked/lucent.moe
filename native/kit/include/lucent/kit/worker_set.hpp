@@ -1,7 +1,5 @@
 #pragma once
 
-#include <algorithm>
-#include <array>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -11,33 +9,10 @@
 #include <vector>
 
 #include <lucent/core/fault.hpp>
+#include <lucent/core/fixed_string.hpp>
 #include <lucent/kit/dev_build.hpp>
 
 namespace lucent::kit {
-
-// A worker's name, written as a string literal template argument: `workers.start<"name">(...)`.
-// Dev builds name the thread with it; release builds never instantiate the code that reads it, so
-// the name never reaches their image.
-template <usize Size>
-class worker_name final {
-public:
-    // NOLINTNEXTLINE(google-explicit-constructor,cppcoreguidelines-explicit-constructor,misc-explicit-constructor,cppcoreguidelines-avoid-c-arrays,modernize-avoid-c-arrays): converts the literal at the call site.
-    consteval worker_name(const char (&literal)[Size]) {
-        std::ranges::copy(literal, chars.begin());
-    }
-
-    constexpr auto view() const -> std::string_view {
-        return std::string_view{chars.data(), Size - 1};
-    }
-
-    // Public: a class used as a template argument may have no private data.
-    std::array<char, Size> chars{};
-};
-
-// NOLINTBEGIN(cppcoreguidelines-avoid-c-arrays,modernize-avoid-c-arrays): deduces Size from the literal.
-template <usize Size>
-worker_name(const char (&literal)[Size]) -> worker_name<Size>;
-// NOLINTEND(cppcoreguidelines-avoid-c-arrays,modernize-avoid-c-arrays)
 
 namespace detail {
 
@@ -60,11 +35,12 @@ public:
 
     // Starts a thread running body once, inside contain(), with a token that stop() trips. A fault
     // ends only that worker: dev builds report it as an incident, stop() returns it. Any thread;
-    // fails with error_code::closed once stop() has begun.
-    template <worker_name Name>
+    // fails with error_code::closed once stop() has begun. Dev builds name the thread `Name`;
+    // release builds never instantiate the branch that reads it, so it never reaches their image.
+    template <fixed_string Name>
     auto start(std::move_only_function<void(const std::stop_token&)> body) -> result<void> {
         if constexpr (is_dev_build) {
-            return start_named(Name.view(), std::move(body));
+            return start_named(Name.as_view(), std::move(body));
         } else {
             return start_named({}, std::move(body));
         }
