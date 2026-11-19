@@ -4,9 +4,9 @@ project:
 language: "cpp"
 layer: "application"
 
-dependsOn: ["crypto", "cs2-modules", "devkey", "kit"]
+dependsOn: ["crypto", "cs2-modules", "cs2-overlay", "d3d11", "devkey", "draw", "kit", "text"]
 
-# Nothing here is testable off-target yet; behavior in the game gets manual test lists.
+# What is testable off-target lives in cs2-overlay; behavior in the game gets manual test lists.
 workspace:
   inheritedTasks:
     exclude: ["test"]

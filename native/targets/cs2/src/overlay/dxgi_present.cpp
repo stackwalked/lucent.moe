@@ -1,6 +1,5 @@
 #include "dxgi_present.hpp"
 
-#include <bit>
 #include <expected>
 
 #include <Windows.h>
@@ -10,6 +9,8 @@
 
 #include <wrl/client.h>
 
+#include "hresult.hpp"
+
 namespace lucent::cs2::overlay {
 namespace {
 
@@ -18,11 +19,6 @@ namespace {
 //        IDXGIDeviceSubObject's GetDevice, then Present
 // breaks: the hook lands on another swap-chain method; the game misbehaves on its next frame
 constexpr usize present_slot = 8;
-
-auto failed_with(HRESULT code) -> error {
-    // An HRESULT, not a GetLastError() value; both are Windows' codes for what went wrong.
-    return error{.code = error_code::system, .system_code = std::bit_cast<u32>(code)};
-}
 
 // A window that is never shown, only so the throwaway swap chain has an output.
 class hidden_window final {
@@ -70,7 +66,7 @@ auto dxgi_present_address() -> result<uptr> {
     description.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
     Microsoft::WRL::ComPtr<IDXGISwapChain> swap_chain;
     Microsoft::WRL::ComPtr<ID3D11Device> device;
-    const HRESULT created = D3D11CreateDeviceAndSwapChain(
+    LUCENT_TRY(checked(D3D11CreateDeviceAndSwapChain(
         nullptr,
         D3D_DRIVER_TYPE_HARDWARE,
         nullptr,
@@ -83,10 +79,7 @@ auto dxgi_present_address() -> result<uptr> {
         &device,
         nullptr,
         nullptr
-    );
-    if (FAILED(created)) {
-        return std::unexpected(failed_with(created));
-    }
+    )));
     // A COM object starts with its vtable pointer; DXGI's own object, which we just created.
     const void* const object = swap_chain.Get();
     const uptr* const vtable = *static_cast<const uptr* const*>(object);

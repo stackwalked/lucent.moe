@@ -1,0 +1,9 @@
+id: "cs2-overlay"
+
+project:
+  description: "When the cs2 overlay draws: its build, rebuild and off states, apart from the module so they are tested without a GPU."
+
+language: "cpp"
+layer: "library"
+
+dependsOn: ["core"]
