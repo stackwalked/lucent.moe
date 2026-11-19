@@ -4,6 +4,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <span>
 #include <variant>
 #include <vector>
 
@@ -76,13 +77,14 @@ struct feature_stats {
     auto operator==(const feature_stats&) const -> bool = default;
 };
 
+// No ==: descriptions is a span, and two snapshots are told apart by their revision.
 struct feature_snapshot {
     feature_id id{};
     feature_state state = feature_state::off;
-    // In its settings' describe() order.
+    // Its settings as describe() lists them: static data, valid as long as the module is loaded.
+    std::span<const setting_description> descriptions;
+    // One per description, in the same order.
     std::vector<setting_value> settings;
-
-    auto operator==(const feature_snapshot&) const -> bool = default;
 };
 
 // The registry as one safe point left it, for readers on any thread.
@@ -91,8 +93,6 @@ struct registry_snapshot {
     u64 revision = 0;
     // In wiring order.
     std::vector<feature_snapshot> features;
-
-    auto operator==(const registry_snapshot&) const -> bool = default;
 };
 
 // The wired features, their states and settings, and their dispatch.

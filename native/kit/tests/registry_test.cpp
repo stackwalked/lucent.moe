@@ -12,6 +12,7 @@
 #include <catch2/matchers/catch_matchers.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
+#include <lucent/core/narrow.hpp>
 #include <lucent/kit/clock.hpp>
 #include <lucent/kit/fact.hpp>
 #include <lucent/kit/fact_resolve.hpp>
@@ -108,6 +109,25 @@ TEST_CASE("a wired feature starts off and turns on and off only at a safe point"
     run_tick(features, tick_with(log, 1));
     CHECK(features.state(tracker) == feature_state::off);
     CHECK(log.size() == 1);
+}
+
+TEST_CASE("a snapshot pairs each feature's settings with their descriptions, in describe() order") {
+    resolve_capabilities(sound_fact::resolved);
+    const test_clock time;
+    registry features{both_features(), everything(), time};
+    features.request({change_setting{.feature = tracker, .setting = scale, .value = 3.0F}});
+    features.safe_point();
+
+    const feature_snapshot tracked = snapshot_of(features, tracker);
+    REQUIRE(tracked.descriptions.size() == tracked.settings.size());
+    CHECK(tracked.descriptions.data() == descriptions_of<fixtures::tracker_settings>.data());
+    const auto scale_at = std::ranges::find(tracked.descriptions, scale, &setting_description::id);
+    REQUIRE(scale_at != tracked.descriptions.end());
+    CHECK(
+        tracked.settings.at(narrow<usize>(scale_at - tracked.descriptions.begin()))
+        == setting_value{3.0F}
+    );
+    CHECK(snapshot_of(features, listener).descriptions.empty());
 }
 
 TEST_CASE("a feature is unavailable while a needed capability is, until a safe point sees it") {

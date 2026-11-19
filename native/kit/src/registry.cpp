@@ -222,6 +222,7 @@ auto registry::snapshot(u64 revision) const -> registry_snapshot {
             feature_snapshot{
                 .id = wired.entry->id(),
                 .state = state_of(wired),
+                .descriptions = wired.entry->descriptions(),
                 .settings = wired.entry->values(),
             }
         );
