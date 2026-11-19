@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <source_location>
 #include <span>
 #include <string_view>
@@ -112,10 +113,20 @@ consteval auto make_record(std::string_view name, fact_shape shape) noexcept -> 
     };
 }
 
+}
+
+// A fact's status as resolve last published it, from any thread. Acquire pairs with resolve's
+// release store: a reader that sees resolved also sees the value written before it.
+inline auto status_of(const fact_record& record) -> fact_status {
+    return std::atomic_ref<fact_status>{record.status}.load(std::memory_order_acquire);
+}
+
+namespace detail {
+
 // The one way any fact's value is read. Reading a fact that didn't resolve is our own bug: the
 // feature reading it didn't require the capability that holds it.
 inline auto read(const fact_record& record) -> u64 {
-    LUCENT_INVARIANT(record.status == fact_status::resolved);
+    LUCENT_INVARIANT(status_of(record) == fact_status::resolved);
     return record.value;
 }
 

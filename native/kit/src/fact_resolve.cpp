@@ -1,12 +1,14 @@
 #include <lucent/kit/fact_resolve.hpp>
 
 #include <algorithm>
+#include <atomic>
 #include <bit>
 #include <cstddef>
 #include <expected>
 #include <optional>
 #include <ranges>
 #include <span>
+#include <utility>
 #include <vector>
 
 #include <Windows.h>
@@ -14,6 +16,7 @@
 #include <lucent/core/contain.hpp>
 #include <lucent/core/fault.hpp>
 #include <lucent/core/narrow.hpp>
+#include <lucent/core/stdx/function_ref.hpp>
 #include <lucent/foreign/foreign_ptr.hpp>
 #include <lucent/foreign/memory_source.hpp>
 #include <lucent/kit/fact.hpp>
@@ -30,9 +33,18 @@ constexpr u64 max_field_offset = u64{1} << 20U;
 constexpr usize max_vtable_length = 4096;
 constexpr u64 pointer_alignment = 8;
 
-struct keyed {
+// What a resolve decides for one fact before any reader can see it.
+struct decision {
+    fact_status status = fact_status::unresolved;
+    u64 value = 0;
+};
+
+// One linked fact, whether this resolve may write it, and what it decided for it.
+struct entry {
     u64 key = 0;
     const fact_record* record = nullptr;
+    bool is_writable = false;
+    std::optional<decision> decided;
 };
 
 auto find_module(std::span<const module_image> modules, u8 index) -> const module_image* {
@@ -137,52 +149,130 @@ auto checked_value(const fact_record& record, u64 raw, std::span<const module_im
     return std::nullopt;
 }
 
-auto find_record(std::span<const keyed> index, u64 key) -> const fact_record* {
-    const auto found = std::ranges::lower_bound(index, key, {}, &keyed::key);
-    return found == index.end() || found->key != key ? nullptr : found->record;
+auto find_entry(std::span<const entry> index, u64 key) -> const entry* {
+    const auto found = std::ranges::lower_bound(index, key, {}, &entry::key);
+    return found == index.end() || found->key != key ? nullptr : &*found;
+}
+
+// The resolving thread is the only writer, so it reads what's published without ordering.
+auto published(const fact_record& record) -> decision {
+    return decision{.status = record.status, .value = record.value};
+}
+
+// What a fact will be once this resolve publishes: what it decided, or else what's published.
+auto outcome_of(const entry& fact) -> decision {
+    return fact.decided.value_or(published(*fact.record));
 }
 
 // The checks that need another fact: a field against its owner's size, a slot against its vtable.
 // A bound naming no fact is a declaration typo: our own bug.
 auto passes_bound(
-    const fact_record& record, std::span<const keyed> index, std::span<const module_image> modules
+    const entry& checked, std::span<const entry> index, std::span<const module_image> modules
 ) -> bool {
+    const fact_record& record = *checked.record;
     if (record.bound == 0 || (record.kind != fact_kind::field && record.kind != fact_kind::slot)) {
         return true;
     }
-    const fact_record* const bound = find_record(index, record.bound);
+    const entry* const bound = find_entry(index, record.bound);
     LUCENT_INVARIANT(bound != nullptr);
-    if (bound->status != fact_status::resolved) {
+    const decision limit = outcome_of(*bound);
+    if (limit.status != fact_status::resolved) {
         return false;
     }
+    const u64 value = outcome_of(checked).value;
     if (record.kind == fact_kind::field) {
-        return record.value + record.width <= bound->value;
+        return value + record.width <= limit.value;
     }
-    const module_image* const image = find_module(modules, bound->module);
-    return image != nullptr && record.value < vtable_length(*image, bound->value);
+    const module_image* const image = find_module(modules, bound->record->module);
+    return image != nullptr && value < vtable_length(*image, limit.value);
 }
 
-auto index_by_key(std::span<const fact_record> records) -> std::vector<keyed> {
-    std::vector<keyed> index;
+auto index_by_key(
+    std::span<const fact_record> records, stdx::function_ref<bool(const fact_record&)> is_writable
+) -> std::vector<entry> {
+    std::vector<entry> index;
     index.reserve(records.size());
     for (const fact_record& record : records) {
         if (record.key != 0) {
-            index.push_back(keyed{.key = record.key, .record = &record});
+            index.push_back(
+                entry{
+                    .key = record.key,
+                    .record = &record,
+                    .is_writable = is_writable(record),
+                    .decided = std::nullopt,
+                }
+            );
         }
     }
-    std::ranges::sort(index, {}, &keyed::key);
-    const bool has_duplicate = std::ranges::adjacent_find(index, {}, &keyed::key) != index.end();
+    std::ranges::sort(index, {}, &entry::key);
+    const bool has_duplicate = std::ranges::adjacent_find(index, {}, &entry::key) != index.end();
     LUCENT_INVARIANT(!has_duplicate);
     return index;
 }
 
-auto count(std::span<const fact_record> records) -> resolve_report {
-    resolve_report report;
-    for (const fact_record& record : records) {
-        if (record.key == 0) {
+struct decisions {
+    std::vector<entry> index;
+    // Values for facts this image doesn't link.
+    u32 unknown = 0;
+};
+
+// Decides every writable fact a value arrived for, without publishing anything.
+auto decide(
+    std::vector<entry> index,
+    std::span<const fact_value> values,
+    std::span<const module_image> modules
+) -> decisions {
+    u32 unknown = 0;
+    for (const fact_value& given : values) {
+        const auto found = std::ranges::lower_bound(index, given.key, {}, &entry::key);
+        if (found == index.end() || found->key != given.key) {
+            ++unknown;
             continue;
         }
-        switch (record.status) {
+        if (!found->is_writable) {
+            continue;
+        }
+        const std::optional<u64> stored = checked_value(*found->record, given.value, modules);
+        found->decided = decision{
+            .status = stored ? fact_status::resolved : fact_status::rejected,
+            .value = stored.value_or(0),
+        };
+    }
+    // Bounds only after every first check: a bound may be declared after what it bounds.
+    for (entry& fact : index) {
+        const bool is_resolved = fact.decided && fact.decided->status == fact_status::resolved;
+        if (is_resolved && !passes_bound(fact, index, modules)) {
+            fact.decided = decision{.status = fact_status::rejected, .value = 0};
+        }
+    }
+    return decisions{.index = std::move(index), .unknown = unknown};
+}
+
+// Value before status, the status with release: a reader that loads the status with acquire
+// (status_of) and sees resolved sees this value. Only a fact no reader may use yet is written: an
+// unresolved one, or any before attach. Safe points will replace this: values staged off to the
+// side and published only between ticks, with the section read-only otherwise.
+auto publish(const fact_record& record, decision decided) -> void {
+    record.value = decided.value;
+    std::atomic_ref<fact_status>{record.status}.store(decided.status, std::memory_order_release);
+}
+
+auto publish_all(std::span<const entry> index) -> void {
+    for (const entry& fact : index) {
+        if (fact.decided) {
+            publish(*fact.record, *fact.decided);
+        }
+    }
+}
+
+// Counts the writable facts only, as they are once published.
+auto count(std::span<const entry> index) -> resolve_report {
+    resolve_report report;
+    for (const entry& fact : index) {
+        if (!fact.is_writable) {
+            continue;
+        }
+        switch (outcome_of(fact).status) {
         case fact_status::resolved:
             ++report.resolved;
             break;
@@ -194,6 +284,13 @@ auto count(std::span<const fact_record> records) -> resolve_report {
             break;
         }
     }
+    return report;
+}
+
+auto resolve_decided(decisions decided) -> resolve_report {
+    resolve_report report = count(decided.index);
+    report.unknown = decided.unknown;
+    publish_all(decided.index);
     return report;
 }
 
@@ -251,32 +348,19 @@ auto resolve(
     std::span<const fact_value> values,
     std::span<const module_image> modules
 ) -> resolve_report {
-    const std::vector<keyed> index = index_by_key(records);
     for (const fact_record& record : records) {
-        record.status = fact_status::unresolved;
-        record.value = 0;
+        publish(record, decision{.status = fact_status::unresolved, .value = 0});
     }
-    u32 unknown = 0;
-    for (const fact_value& given : values) {
-        const fact_record* const record = find_record(index, given.key);
-        if (record == nullptr) {
-            ++unknown;
-            continue;
-        }
-        const std::optional<u64> stored = checked_value(*record, given.value, modules);
-        record->status = stored ? fact_status::resolved : fact_status::rejected;
-        record->value = stored.value_or(0);
-    }
-    // Bounds only after every first check: a bound may be declared after what it bounds.
-    for (const fact_record& record : records) {
-        if (record.status == fact_status::resolved && !passes_bound(record, index, modules)) {
-            record.status = fact_status::rejected;
-            record.value = 0;
-        }
-    }
-    resolve_report report = count(records);
-    report.unknown = unknown;
-    return report;
+    std::vector<entry> index = index_by_key(records, [](const fact_record&) { return true; });
+    return resolve_decided(decide(std::move(index), values, modules));
+}
+
+auto resolve_late(const late_resolve_request& request) -> resolve_report {
+    std::vector<entry> index = index_by_key(request.records, [&](const fact_record& record) {
+        return record.status == fact_status::unresolved
+               && std::ranges::find(request.late, record.module) != request.late.end();
+    });
+    return resolve_decided(decide(std::move(index), request.values, request.modules));
 }
 
 }

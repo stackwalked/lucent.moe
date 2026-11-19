@@ -53,11 +53,25 @@ struct resolve_report {
 // - field: aligned for its type, inside its owner's size when that size is a fact;
 // - value: within its range.
 // Every fact starts unresolved; one that fails is rejected and keeps no value. Two records with one
-// key are our own bug.
+// key are our own bug. Before anything reads facts: it rewrites every one.
 auto resolve(
     std::span<const fact_record> records,
     std::span<const fact_value> values,
     std::span<const module_image> modules
 ) -> resolve_report;
+
+struct late_resolve_request {
+    std::span<const fact_record> records;
+    std::span<const fact_value> values;
+    // Every game module loaded now: a late fact's bound may be a fact of a module loaded earlier.
+    std::span<const module_image> modules;
+    // The modules that loaded late, whose unresolved facts this resolve may write.
+    std::span<const u8> late;
+};
+
+// Resolves the facts of modules that loaded after the rest resolved, with resolve's checks, while
+// other threads may be reading facts: it writes only the late modules' unresolved facts and leaves
+// every other fact as it is. The report counts only the facts it could write. One thread at a time.
+auto resolve_late(const late_resolve_request& request) -> resolve_report;
 
 }

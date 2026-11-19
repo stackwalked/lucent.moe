@@ -29,6 +29,7 @@ lucent_library(kit
         src/fact_section.cpp
         src/game_module.cpp
         src/hook.cpp
+        src/late_modules.cpp
         src/lifecycle.cpp
         src/release.cpp
         src/session.cpp
@@ -50,10 +51,12 @@ lucent_test(kit
         tests/fact_section_other.cpp
         tests/fact_section_test.cpp
         tests/hook_test.cpp
+        tests/late_modules_test.cpp
         tests/session_message_test.cpp
         tests/unmap_stub_test.cpp
         tests/worker_set_test.cpp
 )
+lucent_fixture(kit late SOURCES tests/fixtures/late.cpp)
 
 # Proves the ban: a source using the dev channel, compiled as a release build compiles kit's users,
 # must fail with the channel's own refusal. Built only by the test, and kept out of

@@ -51,6 +51,22 @@ auto loaded_by_name(std::span<const loaded_module> modules, u64 name_hash) -> co
     return found == modules.end() ? nullptr : &*found;
 }
 
+// A loaded module of another build refuses the set before an absent one makes it wait: waiting
+// can't change a build that's already loaded.
+auto keyed_outcome(const bundle::delivered_set& set, std::span<const loaded_module> modules)
+    -> set_outcome {
+    bool is_waiting = false;
+    for (const bundle::module_key& wanted : set.header.modules) {
+        const loaded_module* const loaded = loaded_by_name(modules, wanted.name_hash);
+        if (loaded == nullptr) {
+            is_waiting = true;
+        } else if (loaded->build != wanted) {
+            return set_outcome::other_build;
+        }
+    }
+    return is_waiting ? set_outcome::module_absent : set_outcome::applied;
+}
+
 auto judge(
     const bundle::delivered_set& set, const apply_request& request, const crypto::digest& manifest
 ) -> set_outcome {
@@ -60,16 +76,7 @@ auto judge(
     if (set.header.manifest_digest != manifest) {
         return set_outcome::other_manifest;
     }
-    for (const bundle::module_key& wanted : set.header.modules) {
-        const loaded_module* const loaded = loaded_by_name(request.modules, wanted.name_hash);
-        if (loaded == nullptr) {
-            return set_outcome::module_absent;
-        }
-        if (loaded->build != wanted) {
-            return set_outcome::other_build;
-        }
-    }
-    return set_outcome::applied;
+    return keyed_outcome(set, request.modules);
 }
 
 // The module indices a set vouches for: those of the loaded modules it's keyed by.
@@ -117,6 +124,57 @@ auto values_of(
     return taken;
 }
 
+auto images_of(std::span<const loaded_module> modules) -> std::vector<module_image> {
+    std::vector<module_image> images;
+    images.reserve(modules.size());
+    for (const loaded_module& loaded : modules) {
+        images.push_back(loaded.image);
+    }
+    return images;
+}
+
+}
+
+waiting_sets::waiting_sets(std::vector<bundle::delivered_set> sets)
+    : m_sets{std::move(sets)} {}
+
+auto waiting_sets::is_empty() const -> bool {
+    return m_sets.empty();
+}
+
+auto waiting_sets::apply_loaded(const late_request& request) -> late_report {
+    const std::vector<owner> owners = owners_of(request.records);
+    late_report report;
+    std::vector<fact_value> values;
+    std::vector<u8> late;
+    std::vector<bundle::delivered_set> still_waiting;
+    for (bundle::delivered_set& set : m_sets) {
+        const set_outcome outcome = keyed_outcome(set, request.modules);
+        if (outcome == set_outcome::module_absent) {
+            still_waiting.push_back(std::move(set));
+            continue;
+        }
+        report.sets.push_back(outcome);
+        if (outcome != set_outcome::applied) {
+            continue;
+        }
+        const set_values taken = values_of(set, owners, request.modules);
+        values.insert(values.end(), taken.values.begin(), taken.values.end());
+        report.misplaced += taken.misplaced;
+        const std::vector<u8> vouched = vouched_modules(set, request.modules);
+        late.insert(late.end(), vouched.begin(), vouched.end());
+    }
+    m_sets = std::move(still_waiting);
+    const std::vector<module_image> images = images_of(request.modules);
+    report.facts = resolve_late(
+        late_resolve_request{
+            .records = request.records,
+            .values = values,
+            .modules = images,
+            .late = late,
+        }
+    );
+    return report;
 }
 
 auto manifest_of(std::span<const fact_record> records) -> crypto::digest {
@@ -134,13 +192,8 @@ auto manifest_of(std::span<const fact_record> records) -> crypto::digest {
 }
 
 auto apply(const apply_request& request) -> result<apply_report> {
-    std::vector<module_image> images;
-    images.reserve(request.modules.size());
-    for (const loaded_module& loaded : request.modules) {
-        images.push_back(loaded.image);
-    }
-    const result<std::vector<bundle::delivered_set>> decoded =
-        bundle::decode_bundle(request.bundle);
+    const std::vector<module_image> images = images_of(request.modules);
+    result<std::vector<bundle::delivered_set>> decoded = bundle::decode_bundle(request.bundle);
     if (!decoded) {
         std::ignore = resolve(request.records, {}, images);
         return std::unexpected(decoded.error());
@@ -149,9 +202,14 @@ auto apply(const apply_request& request) -> result<apply_report> {
     const std::vector<owner> owners = owners_of(request.records);
     apply_report report;
     std::vector<fact_value> values;
-    for (const bundle::delivered_set& set : *decoded) {
+    std::vector<bundle::delivered_set> waiting;
+    for (bundle::delivered_set& set : *decoded) {
         const set_outcome outcome = judge(set, request, manifest);
         report.sets.push_back(outcome);
+        if (outcome == set_outcome::module_absent) {
+            waiting.push_back(std::move(set));
+            continue;
+        }
         if (outcome != set_outcome::applied) {
             continue;
         }
@@ -160,6 +218,7 @@ auto apply(const apply_request& request) -> result<apply_report> {
         report.misplaced += taken.misplaced;
     }
     report.facts = resolve(request.records, values, images);
+    report.waiting = waiting_sets{std::move(waiting)};
     return report;
 }
 

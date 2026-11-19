@@ -49,7 +49,7 @@ inline constexpr bool is_part_of<Fact, capability<Facts...>> =
 // Available when every one of its facts resolved.
 template <const auto&... Facts>
 auto is_available(capability<Facts...> /*required*/) -> bool {
-    return ((Facts.record().status == fact_status::resolved) && ...);
+    return ((status_of(Facts.record()) == fact_status::resolved) && ...);
 }
 
 enum class capability_level : u8 {

@@ -4,6 +4,7 @@
 #include <expected>
 #include <memory>
 #include <span>
+#include <stop_token>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -23,6 +24,7 @@
 #include <lucent/os/unique_handle.hpp>
 
 #include "dev.hpp"
+#include "late_modules.hpp"
 #include "release.hpp"
 
 namespace lucent::kit {
@@ -63,16 +65,17 @@ struct start_request {
 };
 
 // The resolve stage: every linked fact gets its value from the bundle, or stays unresolved. Dev
-// builds report the outcome over the dev channel; a release module says nothing.
-auto apply_bundle(const start_request& request) -> void {
+// builds report the outcome over the dev channel; a release module says nothing. Returns the sets
+// that wait for a module the game hasn't loaded yet.
+auto apply_bundle(const start_request& request) -> waiting_sets {
     if (request.bundle.empty()) {
         if constexpr (is_dev_build) {
             detail::report_no_bundle();
         }
-        return;
+        return {};
     }
     const std::vector<loaded_module> modules = loaded_game_modules(request.started.modules);
-    const result<apply_report> applied = apply(
+    result<apply_report> applied = apply(
         apply_request{
             .bundle = request.bundle,
             .trusted = request.started.trusted,
@@ -83,6 +86,23 @@ auto apply_bundle(const start_request& request) -> void {
     if constexpr (is_dev_build) {
         detail::report_facts(applied);
     }
+    if (!applied) {
+        return {};
+    }
+    return std::move(applied->waiting);
+}
+
+// Late modules resolve on a kit worker, not on the lifecycle thread, which blocks on the host from
+// attach on; workers stop before detach, so no late fact resolves while attach is undone.
+auto start_late_worker(
+    worker_set& workers, const detail::load_signal& signal, detail::late_facts late
+) -> void {
+    // Refused only once the set is stopping, and then nothing is left to resolve for.
+    std::ignore = workers.start<"late facts">(
+        [&signal, waiting = std::move(late)](const std::stop_token& stop) mutable {
+            detail::resolve_late_modules(stop, signal, std::move(waiting));
+        }
+    );
 }
 
 auto copy_bundle(const boot_info& info) -> result<std::vector<std::byte>> {
@@ -103,10 +123,29 @@ auto copy_bundle(const boot_info& info) -> result<std::vector<std::byte>> {
 // again.
 auto run_stages(session& channel, const start_request& request) -> bool {
     report(channel, stage::boot);
-    apply_bundle(request);
+    // Watching before the boot resolve, so a module that loads while it runs still wakes the late
+    // worker. Outlives the workers, which wait on it.
+    const result<detail::load_signal> signal = detail::load_signal::watch();
+    waiting_sets waiting = apply_bundle(request);
+    if constexpr (is_dev_build) {
+        if (!signal && !waiting.is_empty()) {
+            detail::report_no_load_signal(signal.error());
+        }
+    }
     bool is_detached = true;
     {
         worker_set workers;
+        if (signal && !waiting.is_empty()) {
+            start_late_worker(
+                workers,
+                *signal,
+                detail::late_facts{
+                    .waiting = std::move(waiting),
+                    .modules = request.started.modules,
+                    .records = linked_fact_records(),
+                }
+            );
+        }
         // A target that fails to attach skips straight to detach: the host sees no attach stage.
         const result<std::unique_ptr<attachment>> attached = request.started.attach(workers);
         if (attached) {

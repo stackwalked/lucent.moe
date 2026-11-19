@@ -20,6 +20,9 @@ auto withdraw_dev_session() -> void;
 // The resolve stage's outcome, as dev text.
 auto report_facts(const result<apply_report>& applied) -> void;
 auto report_no_bundle() -> void;
+// A late module's sets decided (late_modules.cpp), or no way to learn of late modules at all.
+auto report_late_facts(const late_report& report) -> void;
+auto report_no_load_signal(const error& failure) -> void;
 
 // Worker threads (worker_set.cpp): the name shows in debuggers, the fault as an incident.
 auto name_thread(void* thread, std::string_view name) -> void;
