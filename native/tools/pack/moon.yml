@@ -1,0 +1,12 @@
+project:
+  description: "The release build's post-link step: writes a module's container from its linked DLL, refusing what the mapper can't carry."
+
+language: "cpp"
+layer: "tool"
+
+dependsOn: ["crypto", "kit", "os", "pe", "wire"]
+
+# lucent_module() runs it after linking each module in Release builds (cmake/lucent.cmake).
+workspace:
+  inheritedTasks:
+    exclude: ["test"]
