@@ -29,6 +29,7 @@
 #include <lucent/d3d11/renderer.hpp>
 #include <lucent/draw/draw_list.hpp>
 #include <lucent/draw/vec2.hpp>
+#include <lucent/kit/bind.hpp>
 #include <lucent/kit/canvas.hpp>
 #include <lucent/kit/clock.hpp>
 #include <lucent/kit/dev_build.hpp>
@@ -165,10 +166,15 @@ auto client_size_of(HWND window) -> draw::vec2 {
 overlay::overlay(overlay_parts parts)
     : m_workers{parts.workers}
     , m_features{parts.features}
+    , m_configs{parts.configs}
     , m_world{parts.world}
     , m_clock{parts.time} {
     LUCENT_INVARIANT(
-        m_workers != nullptr && m_features != nullptr && m_world != nullptr && m_clock != nullptr
+        m_workers != nullptr
+        && m_features != nullptr
+        && m_configs != nullptr
+        && m_world != nullptr
+        && m_clock != nullptr
     );
 }
 
@@ -201,7 +207,9 @@ auto overlay::draw_contained(const game_frame& frame) -> void {
     // exists (it needs a method fact for the frame stage call, which no finder derives yet). Until
     // then the game window's frames are the registry's ticks and the world's frames: this one,
     // before the menu reads the snapshot, publishes what the menu asked for last frame, then reads
-    // the players the features draw.
+    // the players the features draw. The keys go first, so the binds the safe point publishes are
+    // this frame's.
+    feed_keys();
     m_features->safe_point();
     m_world->update();
     m_has_taken_input = false;
@@ -264,7 +272,7 @@ auto overlay::start_over(ID3D11Device& device) -> void {
                 .tokens = menu::menu_theme(*face, ui::theme_preset::dark),
                 .text = &m_menu_text,
             },
-            *m_features
+            *m_configs
         );
         if constexpr (kit::is_dev_build) {
             add_dev_text(m_menu_text);
@@ -420,6 +428,21 @@ auto overlay::draw_menu(HWND window, draw::vec2 viewport) -> result<void> {
     });
     m_has_taken_input = true;
     return {};
+}
+
+auto overlay::feed_keys() -> void {
+    kit::key_input keys;
+    bool is_menu_open = false;
+    {
+        const kit::published<input_feed>::reading feed = m_input.read();
+        keys = key_input_of(feed->keys, m_keys_taken);
+        m_keys_taken = feed->keys;
+        is_menu_open = feed->is_menu_open;
+    }
+    m_features->feed(is_menu_open ? releases_of(keys) : keys);
+    if (m_menu) {
+        m_menu->take_keys(std::move(keys));
+    }
 }
 
 auto overlay::release_input() -> void {

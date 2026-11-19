@@ -117,6 +117,11 @@ auto held_flags(const std::array<bool, modifier_count>& held) -> flags<ui::modif
     return modifiers;
 }
 
+// The high word of an X button message's wparam names the button.
+auto side_button_of(const window_message& message) -> u64 {
+    return ((message.wparam >> 16U) & 0xffffU) == XBUTTON2 ? VK_XBUTTON2 : VK_XBUTTON1;
+}
+
 auto index_of(mouse_button button) -> usize {
     return std::to_underlying(button);
 }
@@ -155,6 +160,7 @@ input_collector::input_collector(click_rules rules)
     : m_rules{rules} {}
 
 auto input_collector::record(const window_message& message) -> void {
+    tally(message);
     switch (message.id) {
     case WM_MOUSEMOVE:
         m_feed.cursor = cursor_of(message);
@@ -324,7 +330,64 @@ auto input_collector::type(u16 unit) -> void {
     }
 }
 
+auto input_collector::tally(const window_message& message) -> void {
+    switch (message.id) {
+    case WM_KEYDOWN:
+    case WM_SYSKEYDOWN:
+        if (!is_repeat(message)) {
+            press_key(message.wparam);
+        }
+        return;
+    case WM_KEYUP:
+    case WM_SYSKEYUP:
+        release_key(message.wparam);
+        return;
+    case WM_LBUTTONDOWN:
+    case WM_LBUTTONDBLCLK:
+        press_key(VK_LBUTTON);
+        return;
+    case WM_RBUTTONDOWN:
+    case WM_RBUTTONDBLCLK:
+        press_key(VK_RBUTTON);
+        return;
+    case WM_MBUTTONDOWN:
+    case WM_MBUTTONDBLCLK:
+        press_key(VK_MBUTTON);
+        return;
+    case WM_XBUTTONDOWN:
+    case WM_XBUTTONDBLCLK:
+        press_key(side_button_of(message));
+        return;
+    case WM_LBUTTONUP:
+        release_key(VK_LBUTTON);
+        return;
+    case WM_RBUTTONUP:
+        release_key(VK_RBUTTON);
+        return;
+    case WM_MBUTTONUP:
+        release_key(VK_MBUTTON);
+        return;
+    case WM_XBUTTONUP:
+        release_key(side_button_of(message));
+        return;
+    default:
+        return;
+    }
+}
+
+auto input_collector::press_key(u64 virtual_key) -> void {
+    const usize code = virtual_key & 0xffU;
+    m_feed.keys.is_down.at(code) = true;
+    ++m_feed.keys.presses.at(code);
+}
+
+auto input_collector::release_key(u64 virtual_key) -> void {
+    m_feed.keys.is_down.at(virtual_key & 0xffU) = false;
+}
+
 auto input_collector::lose_focus() -> void {
+    // Nothing stays held for binds once the window can't see it let go.
+    m_feed.keys.is_down = {};
     for (const mouse_button button :
         {mouse_button::left, mouse_button::right, mouse_button::middle}) {
         release(button);

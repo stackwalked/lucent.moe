@@ -2,16 +2,21 @@
 
 #include <array>
 #include <memory>
+#include <string>
 #include <tuple>
 #include <utility>
 
 #include <lucent/cs2-domains/world_domain.hpp>
 #include <lucent/cs2-features/all.hpp>
+#include <lucent/cs2-modules/game_modules.hpp>
 #include <lucent/foreign/memory_source.hpp>
 #include <lucent/kit/clock.hpp>
+#include <lucent/kit/config_store.hpp>
 #include <lucent/kit/domain_token.hpp>
+#include <lucent/kit/game_module.hpp>
 #include <lucent/kit/hook.hpp>
 #include <lucent/kit/lifecycle.hpp>
+#include <lucent/kit/memory_storage.hpp>
 #include <lucent/kit/registry.hpp>
 #include <lucent/kit/wiring.hpp>
 #include <lucent/kit/worker_set.hpp>
@@ -27,6 +32,10 @@ struct attached_parts {
     std::unique_ptr<kit::monotonic_clock> time;
     // Ticked by the present hook for now (overlay::draw), until a hook at the game's frame stage.
     std::unique_ptr<kit::registry> features;
+    // In memory until the cloud holds configs (phase 4).
+    std::unique_ptr<kit::memory_storage> kept;
+    // Used on the presenting thread, by the menu.
+    std::unique_ptr<kit::config_store> configs;
     // Updated by the present hook too (overlay::draw), for the same reason.
     std::unique_ptr<world_domain> world;
     std::unique_ptr<overlay::overlay> drawn;
@@ -61,12 +70,25 @@ private:
     auto abandon() -> void {
         std::ignore = m_parts.drawn.release();
         std::ignore = m_parts.world.release();
+        std::ignore = m_parts.configs.release();
+        std::ignore = m_parts.kept.release();
         std::ignore = m_parts.features.release();
         std::ignore = m_parts.time.release();
     }
 
     attached_parts m_parts;
 };
+
+// The builds a failing feature records, taken once at attach. A module the game loads later (the
+// resolve stage lets attach run before it) is missing from them until something feeds the
+// registry again.
+auto loaded_builds() -> kit::replace_module_builds {
+    kit::replace_module_builds loaded_now;
+    for (const kit::loaded_module& loaded : kit::loaded_game_modules(game_modules)) {
+        loaded_now.builds.push_back(loaded.build);
+    }
+    return loaded_now;
+}
 
 }
 
@@ -77,11 +99,16 @@ auto attach(kit::worker_set& workers, const kit::domain_token& opens)
     auto time = std::make_unique<kit::monotonic_clock>();
     auto features =
         std::make_unique<kit::registry>(std::move(wired), kit::default_entitlements(), *time);
+    features->request({loaded_builds()});
+    auto kept = std::make_unique<kit::memory_storage>();
+    // The first profile's name is the person's to change; until then the menu shows it empty.
+    auto configs = std::make_unique<kit::config_store>(*features, *kept, std::string{});
     auto world =
         std::make_unique<world_domain>(opens, lucent::foreign::memory_source::this_process());
     auto drawn = std::make_unique<overlay::overlay>(overlay::overlay_parts{
         .workers = &workers,
         .features = features.get(),
+        .configs = configs.get(),
         .world = world.get(),
         .time = time.get(),
     });
@@ -90,6 +117,8 @@ auto attach(kit::worker_set& workers, const kit::domain_token& opens)
     return std::make_unique<attached>(attached_parts{
         .time = std::move(time),
         .features = std::move(features),
+        .kept = std::move(kept),
+        .configs = std::move(configs),
         .world = std::move(world),
         .drawn = std::move(drawn),
         .hooks = std::move(hooks),

@@ -17,6 +17,7 @@ lucent_library(cs2-overlay
 lucent_test(cs2-overlay
     SOURCES
         tests/input_collector_test.cpp
+        tests/input_feed_test.cpp
         tests/overlay_state_test.cpp
         tests/window_input_test.cpp
 )

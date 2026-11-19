@@ -76,6 +76,10 @@ private:
     };
 
     auto add_event(input_event event) -> void;
+    // Every key and button into the feed's tally, whatever the menu does.
+    auto tally(const window_message& message) -> void;
+    auto press_key(u64 virtual_key) -> void;
+    auto release_key(u64 virtual_key) -> void;
     auto press(mouse_button button, const window_message& message) -> void;
     auto release(mouse_button button) -> void;
     auto key_down(const window_message& message) -> void;

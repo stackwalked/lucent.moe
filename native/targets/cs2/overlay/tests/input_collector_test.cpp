@@ -325,5 +325,45 @@ TEST_CASE("losing focus releases held buttons, clears modifiers and forgets the 
     CHECK_FALSE(input.cursor.has_value());
 }
 
+auto side_button(u32 id, u16 button) -> window_message {
+    return {.id = id, .wparam = u64{button} << 16U, .lparam = 0, .time = 0};
+}
+
+TEST_CASE("binds see every key and mouse button, with the menu closed or open") {
+    input_collector collector{rules};
+    collector.record(key(WM_KEYDOWN, 'F'));
+    collector.record(repeat('F'));
+    collector.record(side_button(WM_XBUTTONDOWN, XBUTTON2));
+    collector.record(mouse(WM_RBUTTONDOWN, 1, 1));
+    collector.record(mouse(WM_RBUTTONUP, 1, 1));
+    collector.record(key(WM_SYSKEYDOWN, VK_MENU));
+    open_menu(collector);
+    collector.record(mouse(WM_LBUTTONDOWN, 1, 1));
+
+    const key_tally& keys = collector.feed().keys;
+    // A repeat is no press.
+    CHECK(keys.presses.at('F') == 1);
+    CHECK(keys.is_down.at('F'));
+    CHECK(keys.is_down.at(VK_XBUTTON2));
+    CHECK_FALSE(keys.is_down.at(VK_XBUTTON1));
+    CHECK(keys.presses.at(VK_RBUTTON) == 1);
+    CHECK_FALSE(keys.is_down.at(VK_RBUTTON));
+    CHECK(keys.is_down.at(VK_MENU));
+    CHECK(keys.is_down.at(VK_LBUTTON));
+    CHECK(keys.presses.at(VK_INSERT) == 1);
+}
+
+TEST_CASE("losing focus lets go of every key binds see, and keeps their press counts") {
+    input_collector collector{rules};
+    collector.record(key(WM_KEYDOWN, 'F'));
+    collector.record(side_button(WM_XBUTTONDOWN, XBUTTON1));
+
+    collector.record({.id = WM_KILLFOCUS, .wparam = 0, .lparam = 0, .time = 0});
+    const key_tally& keys = collector.feed().keys;
+    CHECK_FALSE(keys.is_down.at('F'));
+    CHECK_FALSE(keys.is_down.at(VK_XBUTTON1));
+    CHECK(keys.presses.at('F') == 1);
+}
+
 }
 }

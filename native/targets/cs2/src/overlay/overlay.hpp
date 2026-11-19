@@ -13,6 +13,7 @@
 #include <lucent/d3d11/renderer.hpp>
 #include <lucent/draw/draw_list.hpp>
 #include <lucent/kit/clock.hpp>
+#include <lucent/kit/config_store.hpp>
 #include <lucent/kit/registry.hpp>
 #include <lucent/kit/worker_set.hpp>
 #include <lucent/menu/settings_menu.hpp>
@@ -28,6 +29,8 @@ namespace lucent::cs2::overlay {
 struct overlay_parts {
     kit::worker_set* workers = nullptr;
     kit::registry* features = nullptr;
+    // Over features: the menu edits through it.
+    kit::config_store* configs = nullptr;
     world_domain* world = nullptr;
     const kit::clock* time = nullptr;
 };
@@ -74,14 +77,20 @@ private:
     // Tells the window's procedure the menu takes nothing this frame, so the game gets its input
     // while the menu isn't drawn.
     auto release_input() -> void;
+    // The keys since the last frame into the registry's binds (only releases while the menu is
+    // open) and into the menu.
+    auto feed_keys() -> void;
 
     kit::worker_set* m_workers;
     kit::registry* m_features;
+    kit::config_store* m_configs;
     world_domain* m_world;
     const kit::clock* m_clock;
     window_input m_input;
     // The feed's serial the last snapshot took everything up to.
     u64 m_consumed = 0;
+    // The key tally the last frame took.
+    key_tally m_keys_taken;
     bool m_has_taken_input = false;
     overlay_state m_state;
     std::optional<text::text_system> m_text;
