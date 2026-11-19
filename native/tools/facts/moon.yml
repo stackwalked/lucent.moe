@@ -6,9 +6,26 @@ layer: "tool"
 
 dependsOn: ["bundle", "crypto", "cs2-finders", "finder", "kit", "os", "pe", "probe"]
 
-# Run by hand from the build tree (.moon/cache/cmake/dev/tools/facts/facts.exe), with no
-# arguments for its usage. What it derives is checked by its report against real game binaries,
-# which never enter git; the finder language it runs is tested in libs/probe.
-workspace:
-  inheritedTasks:
-    exclude: ["test"]
+# `facts` with no arguments prints its usage. What it derives is checked by its report against
+# real game binaries, which never enter git; the finder language it runs is tested in libs/probe.
+# The update-day tasks read the installed game and write the per-user binaries cache, so neither
+# is cached by moon, and check runs neither.
+tasks:
+  # Ingest, then generate, for the dev build of the cs2 module: everything before sign-off. Each
+  # step's latency per module goes to the cache's update-day.jsonl.
+  update-day:
+    command: "$workspaceRoot/.moon/cache/cmake/dev/tools/facts/facts.exe update-day --target cs2 $workspaceRoot/.moon/cache/cmake/dev/targets/cs2/lucent_cs2.dll"
+    deps: ["native:build"]
+    options:
+      cache: false
+      runInCI: false
+      # Through pwsh, the quoted exe path followed by an argument parses as an expression.
+      shell: false
+  # The latest update-day run per module, from the log.
+  latency:
+    command: "$workspaceRoot/.moon/cache/cmake/dev/tools/facts/facts.exe latency"
+    deps: ["native:build"]
+    options:
+      cache: false
+      runInCI: false
+      shell: false

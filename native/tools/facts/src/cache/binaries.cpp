@@ -39,22 +39,9 @@ auto lowercase(std::string_view text) -> std::string {
     return lowered;
 }
 
-auto module_directory(std::string_view module) -> result<std::filesystem::path> {
-    const DWORD size = GetEnvironmentVariableW(L"LOCALAPPDATA", nullptr, 0);
-    if (size == 0) {
-        return std::unexpected(error{.code = error_code::not_found});
-    }
-    std::wstring local(size, L'\0');
-    const DWORD written = GetEnvironmentVariableW(L"LOCALAPPDATA", local.data(), size);
-    if (written == 0 || written >= size) {
-        return std::unexpected(error{.code = error_code::not_found});
-    }
-    local.resize(written);
-    return std::filesystem::path{local} / L"lucent" / L"binaries" / to_wide(lowercase(module));
-}
-
-auto build_folder(const bundle::module_key& build) -> std::string {
-    return std::format("{:08x}-{:x}", build.time_date_stamp, build.size_of_image);
+auto module_directory(const binaries_cache& cache, std::string_view module)
+    -> std::filesystem::path {
+    return cache.root / to_wide(lowercase(module));
 }
 
 auto sha256_of(std::span<const std::byte> bytes) -> result<std::string> {
@@ -156,13 +143,32 @@ auto snapshot_in(const std::filesystem::path& directory, std::string_view module
 
 }
 
-auto ingest(const module_source& source, std::string_view module) -> result<ingested> {
+auto user_binaries_cache() -> result<binaries_cache> {
+    const DWORD size = GetEnvironmentVariableW(L"LOCALAPPDATA", nullptr, 0);
+    if (size == 0) {
+        return std::unexpected(error{.code = error_code::not_found});
+    }
+    std::wstring local(size, L'\0');
+    const DWORD written = GetEnvironmentVariableW(L"LOCALAPPDATA", local.data(), size);
+    if (written == 0 || written >= size) {
+        return std::unexpected(error{.code = error_code::not_found});
+    }
+    local.resize(written);
+    return binaries_cache{.root = std::filesystem::path{local} / L"lucent" / L"binaries"};
+}
+
+auto build_name(const bundle::module_key& build) -> std::string {
+    return std::format("{:08x}-{:x}", build.time_date_stamp, build.size_of_image);
+}
+
+auto ingest(const binaries_cache& cache, const module_source& source, std::string_view module)
+    -> result<ingested> {
     const std::vector<std::byte> bytes = LUCENT_TRY(os::read_file(source.file));
     const pe::image_view image = LUCENT_TRY(pe::image_view::parse(bytes, pe::layout::file));
     const bundle::module_key build = LUCENT_TRY(kit::module_build_of(image, module));
 
-    const std::filesystem::path root = LUCENT_TRY(module_directory(module));
-    const std::string folder = build_folder(build);
+    const std::filesystem::path root = module_directory(cache, module);
+    const std::string folder = build_name(build);
     const std::filesystem::path directory = root / to_wide(folder);
     const std::filesystem::path file = directory / to_wide(module);
     std::error_code failure;
@@ -185,14 +191,29 @@ auto ingest(const module_source& source, std::string_view module) -> result<inge
     };
 }
 
-auto latest_snapshot(std::string_view module) -> result<snapshot> {
-    const std::filesystem::path root = LUCENT_TRY(module_directory(module));
+auto latest_snapshot(const binaries_cache& cache, std::string_view module) -> result<snapshot> {
+    const std::filesystem::path root = module_directory(cache, module);
     const std::optional<std::string> latest = read_text(root / L"latest");
     if (!latest) {
         std::println(stderr, "facts: no build of {} in the cache; run `facts ingest`", module);
         return std::unexpected(error{.code = error_code::not_found});
     }
     return snapshot_in(root / to_wide(*latest), module);
+}
+
+auto previous_build_directory(const binaries_cache& cache, std::string_view module)
+    -> std::optional<std::filesystem::path> {
+    const std::filesystem::path root = module_directory(cache, module);
+    const std::optional<std::string> previous = read_text(root / L"previous");
+    if (!previous) {
+        return std::nullopt;
+    }
+    std::filesystem::path directory = root / to_wide(*previous);
+    std::error_code failure;
+    if (!std::filesystem::is_directory(directory, failure)) {
+        return std::nullopt;
+    }
+    return directory;
 }
 
 }

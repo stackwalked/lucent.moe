@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdio>
+#include <cwchar>
 #include <expected>
 #include <filesystem>
 #include <format>
@@ -21,10 +22,35 @@
 namespace lucent::facts {
 namespace {
 
-// build: Steam client, 2026-11 (libraryfolders.vdf and appmanifest_<app>.acf as KeyValues text)
-// found: the files on this machine; Steam writes `"key"<tabs>"value"`, backslashes doubled
+// build: Steam client, 2026-11 (HKCU\Software\Valve\Steam, SteamPath; libraryfolders.vdf and
+// appmanifest_<app>.acf as KeyValues text)
+// found: this machine's registry, where SteamPath is the client's folder with forward slashes,
+// and its files, where Steam writes `"key"<tabs>"value"`, backslashes doubled
 // breaks: the install isn't found; set LUCENT_<TARGET> to the game's folder instead
-constexpr std::string_view steam_default = "C:\\Program Files (x86)\\Steam";
+constexpr std::wstring_view steam_key = L"Software\\Valve\\Steam";
+constexpr std::wstring_view steam_path_value = L"SteamPath";
+
+// Where the Steam client is installed, as the client itself records it for the user.
+auto steam_folder() -> std::optional<std::filesystem::path> {
+    const std::wstring key{steam_key};
+    const std::wstring value{steam_path_value};
+    DWORD size = 0;
+    LSTATUS status = RegGetValueW(
+        HKEY_CURRENT_USER, key.c_str(), value.c_str(), RRF_RT_REG_SZ, nullptr, nullptr, &size
+    );
+    if (status != ERROR_SUCCESS || size == 0) {
+        return std::nullopt;
+    }
+    std::wstring folder(size / sizeof(wchar_t), L'\0');
+    status = RegGetValueW(
+        HKEY_CURRENT_USER, key.c_str(), value.c_str(), RRF_RT_REG_SZ, nullptr, folder.data(), &size
+    );
+    if (status != ERROR_SUCCESS) {
+        return std::nullopt;
+    }
+    folder.resize(std::wcslen(folder.c_str()));
+    return std::filesystem::path{folder}.make_preferred();
+}
 
 auto text_of(const std::filesystem::path& path) -> std::optional<std::string> {
     const result<std::vector<std::byte>> bytes = os::read_file(path);
@@ -131,10 +157,14 @@ auto find_install(std::string_view target, u32 app) -> result<game_install> {
     if (const std::optional<std::wstring> given = environment(to_wide(variable).c_str())) {
         return game_install{.directory = std::filesystem::path{*given}, .build_id = {}};
     }
-    const std::filesystem::path steam{to_wide(steam_default)};
-    std::vector<std::filesystem::path> libraries{steam};
+    const std::optional<std::filesystem::path> steam = steam_folder();
+    if (!steam) {
+        std::println(stderr, "facts: Steam isn't installed for this user; set {}", variable);
+        return std::unexpected(error{.code = error_code::not_found});
+    }
+    std::vector<std::filesystem::path> libraries{*steam};
     if (const std::optional<std::string> folders =
-            text_of(steam / L"steamapps" / L"libraryfolders.vdf")) {
+            text_of(*steam / L"steamapps" / L"libraryfolders.vdf")) {
         for (const std::string& path : values_of({.text = *folders}, "path")) {
             libraries.emplace_back(to_wide(path));
         }

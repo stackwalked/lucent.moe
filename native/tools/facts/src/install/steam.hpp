@@ -14,7 +14,7 @@ struct game_install {
 };
 
 // The target's game where LUCENT_<TARGET> (uppercased) says, or else in whichever Steam library
-// holds the app, looked up in Steam's default folder.
+// holds the app, as the Steam client installed for this user lists its libraries.
 auto find_install(std::string_view target, u32 app) -> result<game_install>;
 
 // The module file in that directory under the install.
