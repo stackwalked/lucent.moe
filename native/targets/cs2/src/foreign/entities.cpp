@@ -1,4 +1,5 @@
 #include <lucent/cs2-modules/game_modules.hpp>
+#include <lucent/kit/capability.hpp>
 #include <lucent/kit/fact.hpp>
 
 // The entity list as client.dll keeps it. Nothing reads these yet, hence `used`: the compiler emits
@@ -26,6 +27,13 @@ LUCENT_FACT kit::fact::value<i32> entity_identity_size [[gnu::used]]{
     "entity_identity_size",
     client_module,
     {.min = 0x40, .max = 0x100},
+};
+
+// Walking the entity list from the local player. Optional until the product decides what's core.
+using entities = kit::capability<entity_system, entity_identity_size, local_player_controller>;
+LUCENT_CAPABILITY kit::capability_record<entities> entities_record [[gnu::used]]{
+    "entities",
+    kit::capability_level::optional,
 };
 
 }
