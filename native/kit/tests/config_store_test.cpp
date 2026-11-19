@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <flat_set>
 #include <optional>
 #include <thread>
 #include <tuple>
@@ -408,6 +409,7 @@ TEST_CASE("a stored profile from another build is completed against what is wire
             },
         .overrides = {{{.scope = rifle, .place = scale_place}, setting_value{9.0F}}},
         .binds = {{feature_id_of<"gone">, held_bind}, {tracker, held_bind}},
+        .enabled = {feature_id_of<"gone">, tracker},
     });
     const config_store configs{features, kept, "unused"};
 
@@ -421,13 +423,14 @@ TEST_CASE("a stored profile from another build is completed against what is wire
     CHECK(completed.values.contains({.feature = tracker, .setting = setting_key("tracker/tint")}));
     CHECK(completed.overrides.empty());
     CHECK(completed.binds.size() == 2);
+    CHECK(completed.enabled == std::flat_set<feature_id>{tracker});
     CHECK(
         running_after_safe_point(features)
         == running{.is_loud = setting_value{false}, .scale = setting_value{2.0F}, .bind = held_bind}
     );
 }
 
-TEST_CASE("feature switches pass through the store to the registry without an undo step") {
+TEST_CASE("a feature switch goes into the active profile as one undo step") {
     resolve_capabilities();
     const test_clock time;
     registry features{both_features(), everything(), time};
@@ -437,7 +440,34 @@ TEST_CASE("feature switches pass through the store to the registry without an un
     features.safe_point();
 
     CHECK(features.state(tracker) == feature_state::on);
-    CHECK_FALSE(configs.has_undo());
+    CHECK(configs.profiles().front().enabled.contains(tracker));
+    configs.undo();
+    features.safe_point();
+    CHECK(features.state(tracker) == feature_state::off);
+    CHECK_FALSE(configs.profiles().front().enabled.contains(tracker));
+}
+
+TEST_CASE("a profile switch turns on and off what each profile has on, at one safe point") {
+    resolve_capabilities();
+    const test_clock time;
+    registry features{both_features(), everything(), time};
+    memory_storage kept;
+    config_store configs{features, kept, "first"};
+    const profile_id first = configs.active();
+    configs.edit({enable_feature{.feature = tracker}});
+    const profile_id second = configs.create("second");
+    std::ignore = configs.switch_to(second);
+    configs.edit({enable_feature{.feature = fixtures::listener::id}});
+    features.safe_point();
+    CHECK(features.state(tracker) == feature_state::off);
+    CHECK(features.state(fixtures::listener::id) == feature_state::on);
+
+    std::ignore = configs.switch_to(first);
+    CHECK(features.state(tracker) == feature_state::off);
+    features.safe_point();
+
+    CHECK(features.state(tracker) == feature_state::on);
+    CHECK(features.state(fixtures::listener::id) == feature_state::off);
 }
 
 }

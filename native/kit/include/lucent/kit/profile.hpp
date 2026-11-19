@@ -1,6 +1,7 @@
 #pragma once
 
 #include <flat_map>
+#include <flat_set>
 #include <string>
 
 #include <lucent/kit/bind.hpp>
@@ -33,7 +34,8 @@ struct scoped_place {
 };
 
 // One full config: a value for every setting of every wired feature, a bind for every feature,
-// and the overrides scopes make. A plain value, so a store keeps it however it likes.
+// the overrides scopes make, and which features are on. A plain value, so a store keeps it however
+// it likes.
 struct profile {
     profile_id id{};
     // The person's name for it, UTF-8.
@@ -42,6 +44,8 @@ struct profile {
     // Sparse: a scope overrides only what a person set in it.
     std::flat_map<scoped_place, setting_value> overrides;
     std::flat_map<feature_id, bind_slot> binds;
+    // The person's switches: a feature not listed is off.
+    std::flat_set<feature_id> enabled;
 
     auto operator==(const profile&) const -> bool = default;
 };

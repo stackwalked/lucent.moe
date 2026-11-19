@@ -48,6 +48,12 @@ struct sound_view {
     i32 steps = 0;
 };
 
+// A stage only one feature may own.
+struct steering_stage {
+    using backing = radar;
+    static constexpr bool is_exclusive = true;
+};
+
 // Declared by no feature.
 struct clock_view {
     using backing = timing;
@@ -129,6 +135,18 @@ public:
 
 private:
     i32 m_frames = 0;
+};
+
+// Owns the steering stage.
+class steerer {
+public:
+    static constexpr feature_id id = feature_id_of<"steerer">;
+    static constexpr feature_tag tag{"aim"};
+    using needs = kit::needs<radar_view, steering_stage>;
+    using wants = kit::wants<>;
+    using settings = no_settings;
+
+    auto tick(const context<steerer>& /*parts*/) -> void {}
 };
 
 // Needs sound, so it is unavailable while sound's fact is unresolved.

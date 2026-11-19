@@ -80,6 +80,30 @@ enum class direction : u8 {
     back,
 };
 
+enum class power : u8 { off, on };
+
+auto set_switch(profile& config, feature_id feature, power wanted) -> void {
+    switch (wanted) {
+    case power::on:
+        config.enabled.insert(feature);
+        return;
+    case power::off:
+        config.enabled.erase(feature);
+        return;
+    }
+}
+
+// Turns the feature on or off in the profile, and says what it was.
+auto switched(profile& config, feature_id feature, power wanted) -> switch_edit {
+    const switch_edit made{
+        .feature = feature,
+        .was_on = config.enabled.contains(feature),
+        .is_on = wanted == power::on,
+    };
+    set_switch(config, feature, wanted);
+    return made;
+}
+
 auto apply_step(profile& config, const edit_step& step, direction way) -> void {
     const bool is_forward = way == direction::forward;
     const auto apply_value = [&](const value_edit& edit) {
@@ -88,13 +112,19 @@ auto apply_step(profile& config, const edit_step& step, direction way) -> void {
     const auto apply_bind = [&](const bind_edit& edit) {
         config.binds.insert_or_assign(edit.feature, is_forward ? edit.after : edit.before);
     };
+    const auto apply_switch = [&](const switch_edit& edit) {
+        const bool is_on = is_forward ? edit.is_on : edit.was_on;
+        set_switch(config, edit.feature, is_on ? power::on : power::off);
+    };
     if (is_forward) {
         std::ranges::for_each(step.values, apply_value);
         std::ranges::for_each(step.binds, apply_bind);
+        std::ranges::for_each(step.switches, apply_switch);
     } else {
         // Back in reverse, so two edits of one setting in a step undo to the first one's before.
         std::ranges::for_each(step.values | std::views::reverse, apply_value);
         std::ranges::for_each(step.binds | std::views::reverse, apply_bind);
+        std::ranges::for_each(step.switches | std::views::reverse, apply_switch);
     }
 }
 
@@ -228,6 +258,12 @@ auto config_store::edit(const std::vector<registry_change>& batch) -> void {
                 config.binds.insert_or_assign(made.feature, made.after);
                 step.binds.push_back(made);
             },
+            [&](const enable_feature& enabled) {
+                step.switches.push_back(switched(config, enabled.feature, power::on));
+            },
+            [&](const disable_feature& disabled) {
+                step.switches.push_back(switched(config, disabled.feature, power::off));
+            },
             [&passed](const auto& other) { passed.emplace_back(other); }
         );
     }
@@ -247,7 +283,7 @@ auto config_store::revert(setting_place place) -> void {
     const profile was = config;
     const value_edit made{.scope = m_edited, .place = place, .before = overridden, .after = {}};
     set_layer_value(config, made, made.after);
-    commit(edit_step{.values = {made}, .binds = {}});
+    commit(edit_step{.values = {made}, .binds = {}, .switches = {}});
     request_moves(was, m_selected, {});
 }
 
@@ -318,7 +354,14 @@ auto config_store::description(setting_place place) const -> const setting_descr
 }
 
 auto config_store::defaults(profile_id id, std::string name) const -> profile {
-    profile made{.id = id, .name = std::move(name), .values = {}, .overrides = {}, .binds = {}};
+    profile made{
+        .id = id,
+        .name = std::move(name),
+        .values = {},
+        .overrides = {},
+        .binds = {},
+        .enabled = {},
+    };
     for (const described_feature& feature : m_described) {
         for (const setting_description& setting : feature.descriptions) {
             made.values.insert_or_assign(
@@ -351,6 +394,11 @@ auto config_store::completed(const profile& loaded) const -> profile {
             made.binds.insert_or_assign(feature, bind);
         }
     }
+    for (const feature_id feature : loaded.enabled) {
+        if (is_described(feature)) {
+            made.enabled.insert(feature);
+        }
+    }
     return made;
 }
 
@@ -369,16 +417,20 @@ auto config_store::is_editable(const registry_change& change) const -> bool {
                 description({.feature = changed.feature, .setting = changed.setting});
             return setting != nullptr && is_valid(*setting, changed.value);
         },
-        [this](const change_bind& changed) {
-            return std::ranges::contains(m_described, changed.feature, &described_feature::id);
-        },
+        [this](const change_bind& changed) { return is_described(changed.feature); },
+        [this](const enable_feature& enabled) { return is_described(enabled.feature); },
+        [this](const disable_feature& disabled) { return is_described(disabled.feature); },
         // The registry judges the rest.
         [](const auto&) { return true; }
     );
 }
 
+auto config_store::is_described(feature_id feature) const -> bool {
+    return std::ranges::contains(m_described, feature, &described_feature::id);
+}
+
 auto config_store::commit(edit_step step) -> void {
-    if (step.values.empty() && step.binds.empty()) {
+    if (step.values.empty() && step.binds.empty() && step.switches.empty()) {
         return;
     }
     history& steps = m_histories[m_active];
@@ -407,6 +459,16 @@ auto config_store::request_moves(
     for (const auto [feature, bind] : now.binds) {
         if (bind_of(was, feature) != bind) {
             batch.emplace_back(change_bind{.feature = feature, .bind = bind});
+        }
+    }
+    for (const feature_id feature : now.enabled) {
+        if (!was.enabled.contains(feature)) {
+            batch.emplace_back(enable_feature{.feature = feature});
+        }
+    }
+    for (const feature_id feature : was.enabled) {
+        if (!now.enabled.contains(feature)) {
+            batch.emplace_back(disable_feature{.feature = feature});
         }
     }
     std::ranges::move(extra, std::back_inserter(batch));

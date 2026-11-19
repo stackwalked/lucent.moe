@@ -34,18 +34,28 @@ struct bind_edit {
     auto operator==(const bind_edit&) const -> bool = default;
 };
 
+// A feature turned on or off in a profile.
+struct switch_edit {
+    feature_id feature{};
+    bool was_on = false;
+    bool is_on = false;
+
+    auto operator==(const switch_edit&) const -> bool = default;
+};
+
 // What one undo takes back: one edit() batch, or one revert().
 struct edit_step {
     std::vector<value_edit> values;
     std::vector<bind_edit> binds;
+    std::vector<switch_edit> switches;
 
     auto operator==(const edit_step&) const -> bool = default;
 };
 
-// The person's configs: profiles, each a full set of every wired feature's settings and binds,
-// with scope overrides, and each with its own undo history. The registry runs the active
-// profile: every change here that moves an effective value reaches it as one request, applied
-// whole at its next safe point, so a switch never shows a tick half of each profile.
+// The person's configs: profiles, each a full set of every wired feature's settings, binds and
+// on/off switch, with scope overrides, and each with its own undo history. The registry runs the
+// active profile: every change here that moves an effective value reaches it as one request,
+// applied whole at its next safe point, so a switch never shows a tick half of each profile.
 //
 // An effective value is the first override found along the selected scopes (most specific
 // first: a weapon, then its class), else the base value. Edits go into the edited scope's layer,
@@ -72,7 +82,7 @@ public:
     auto profiles() const -> std::span<const profile>;
     auto active() const -> profile_id;
 
-    // Every setting at its default, every bind always.
+    // Every setting at its default, every bind always, every feature off.
     auto create(std::string name) -> profile_id;
     // Empty when source isn't a profile.
     auto duplicate(profile_id source, std::string name) -> std::optional<profile_id>;
@@ -88,10 +98,10 @@ public:
     // The layer edits go into: a scope's overrides, or the base values when empty.
     auto edit_in(std::optional<scope_id> layer) -> void;
 
-    // A batch as the menu makes it. Settings and binds go into the active profile as one undo
-    // step; every change goes on to the registry, settings only where the effective value moved.
-    // Applies none of it when any setting or bind names something the registry hasn't wired or a
-    // value its setting refuses, as the registry would.
+    // A batch as the menu makes it. Settings, binds and feature switches go into the active
+    // profile as one undo step; every change goes on to the registry, settings only where the
+    // effective value moved. Applies none of it when any setting, bind or switch names something
+    // the registry hasn't wired or a value its setting refuses, as the registry would.
     auto edit(const std::vector<registry_change>& batch) -> void;
     // Drops the edited scope's override of a setting, as one undo step; nothing for the base
     // layer, which has no override to drop.
@@ -121,6 +131,7 @@ private:
     auto defaults(profile_id id, std::string name) const -> profile;
     auto completed(const profile& loaded) const -> profile;
     auto mint() const -> profile_id;
+    auto is_described(feature_id feature) const -> bool;
     auto is_editable(const registry_change& change) const -> bool;
     auto commit(edit_step step) -> void;
     // Requests what moved from the effective state the registry was given last (was, under

@@ -153,15 +153,46 @@ public:
             "every setting path distinct, every default one its setting accepts"
         );
         LUCENT_INVARIANT(!std::ranges::contains(m_entries, F::id, &detail::feature_entry::id));
+        claim_all<F>(typename F::needs{});
+        claim_all<F>(typename F::wants{});
         // Naming the record is what places it in the feature section.
         [[maybe_unused]] const feature_record* const record = &feature_record_of<F>;
         m_entries.push_back(std::make_unique<detail::entry_of<F>>());
     }
 
+    // The feature that declared an exclusive part, if one was added.
+    template <exclusive Part>
+    auto owner_of() const -> std::optional<feature_id> {
+        constexpr u64 key = detail::type_key<Part>();
+        const auto found = std::ranges::find(m_claims, key, &claim::part);
+        return found == m_claims.end() ? std::nullopt : std::optional{found->owner};
+    }
+
 private:
     friend class registry;
 
+    struct claim {
+        u64 part = 0;
+        feature_id owner{};
+    };
+
+    template <feature_like F, template <typename...> typename List, typename... Parts>
+    auto claim_all(List<Parts...> /*declared*/) -> void {
+        (claim_one<F, Parts>(), ...);
+    }
+
+    // One owner per exclusive part: a second is a wiring mistake, caught at attach.
+    template <feature_like F, typename Part>
+    auto claim_one() -> void {
+        if constexpr (exclusive<Part>) {
+            constexpr u64 key = detail::type_key<Part>();
+            LUCENT_INVARIANT(!std::ranges::contains(m_claims, key, &claim::part));
+            m_claims.push_back(claim{.part = key, .owner = F::id});
+        }
+    }
+
     std::vector<std::unique_ptr<detail::feature_entry>> m_entries;
+    std::vector<claim> m_claims;
 };
 
 }

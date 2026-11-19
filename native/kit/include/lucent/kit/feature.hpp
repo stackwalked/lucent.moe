@@ -81,6 +81,14 @@ enum class feature_state : u8 {
 template <typename T>
 concept backed = capability_like<typename T::backing>;
 
+// A part only one wired feature may declare, needed or wanted: a stage token for writes a stage
+// makes for a single owner. The part says so with `static constexpr bool is_exclusive = true;`.
+template <typename T>
+concept exclusive = backed<T> && requires {
+    requires std::same_as<std::remove_cv_t<decltype(T::is_exclusive)>, bool>;
+    requires T::is_exclusive;
+};
+
 // The parts a feature can't run without: it is unavailable while any one's capability is.
 template <backed... Parts>
 struct needs {};

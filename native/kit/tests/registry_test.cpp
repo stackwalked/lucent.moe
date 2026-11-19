@@ -124,6 +124,16 @@ auto module_build(u64 name, u32 stamp) -> bundle::module_key {
 
 }
 
+TEST_CASE("wiring records the one feature that owns each exclusive stage") {
+    wiring wired;
+    wired.add<fixtures::tracker>();
+    CHECK_FALSE(wired.owner_of<fixtures::steering_stage>().has_value());
+
+    wired.add<fixtures::steerer>();
+
+    CHECK(wired.owner_of<fixtures::steering_stage>() == fixtures::steerer::id);
+}
+
 TEST_CASE("a wired feature starts off and turns on and off only at a safe point") {
     resolve_capabilities(sound_fact::resolved);
     const test_clock time;
