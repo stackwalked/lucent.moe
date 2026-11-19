@@ -1,8 +1,14 @@
+import type { ProductDefinition } from "@lucent/catalog/catalog";
+import { ok, type Result } from "@lucent/core/result";
+import {
+    type AccountId,
+    ChannelId,
+    type EpochMs,
+    FeatureTag,
+    ProductId,
+} from "@lucent/core/scalars";
 import { z } from "zod";
-import { ok, type Result } from "../core/result.ts";
-import { type AccountId, ChannelId, type EpochMs, FeatureTag, ProductId } from "../core/scalars.ts";
 import { type DbFailure, type Queryable, queryAll, sql, toTimestamptz } from "../db/pool.ts";
-import type { ProductDefinition } from "../products/catalog.ts";
 
 export type FeatureSelection = "*" | readonly FeatureTag[];
 

@@ -1,4 +1,4 @@
-import { err, ok, type Result } from "../core/result.ts";
+import { err, ok, type Result } from "@lucent/core/result";
 
 export type PasswordHasher = {
     readonly hash: (password: string) => Promise<string>;

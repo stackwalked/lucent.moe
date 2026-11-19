@@ -1,6 +1,6 @@
+import { err, ok, type Result } from "@lucent/core/result";
+import { type OperationId, sha256Base64Url } from "@lucent/core/scalars";
 import { z } from "zod";
-import { err, ok, type Result } from "../core/result.ts";
-import { type OperationId, sha256Base64Url } from "../core/scalars.ts";
 import { type DbFailure, execute, queryOne, sql, type Tx } from "./pool.ts";
 
 export type OperationKey = {

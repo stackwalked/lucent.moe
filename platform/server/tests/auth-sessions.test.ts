@@ -1,14 +1,14 @@
 import { expect, test } from "bun:test";
+import { invariant } from "@lucent/core/contain";
+import { err, ok } from "@lucent/core/result";
+import { createSeededRng } from "@lucent/core/rng";
+import { ClientInfo, EpochMs, newSessionId } from "@lucent/core/scalars";
 import { z } from "zod";
 import { setPassword } from "../src/auth/credentials.ts";
 import { listSessions, signOutSession } from "../src/auth/sessions.ts";
 import { redeemSetupLink } from "../src/auth/setup.ts";
 import { hashToken } from "../src/auth/tokens.ts";
 import { resolveViewer } from "../src/auth/viewer.ts";
-import { invariant } from "../src/core/contain.ts";
-import { err, ok } from "../src/core/result.ts";
-import { createSeededRng } from "../src/core/rng.ts";
-import { ClientInfo, EpochMs, newSessionId } from "../src/core/scalars.ts";
 import { execute, sql } from "../src/db/pool.ts";
 import { memberSession, newMember, newSetupLink } from "./auth-fixtures.ts";
 import { grantRole, scalar, seedRole } from "./authority-fixtures.ts";

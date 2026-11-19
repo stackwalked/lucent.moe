@@ -1,3 +1,13 @@
+import { invariant, tryAsync } from "@lucent/core/contain";
+import { err, ok, type Result } from "@lucent/core/result";
+import type { AccountId } from "@lucent/core/scalars";
+import { toBase64Url } from "@lucent/core/scalars";
+import {
+    type AuthenticationResponse,
+    CreationOptions,
+    type RegistrationResponse,
+    RequestOptions,
+} from "@lucent/rpc/webauthn";
 import {
     type AuthenticationResponseJSON,
     generateAuthenticationOptions,
@@ -7,16 +17,6 @@ import {
     verifyRegistrationResponse,
 } from "@simplewebauthn/server";
 import type { z } from "zod";
-import {
-    type AuthenticationResponse,
-    CreationOptions,
-    type RegistrationResponse,
-    RequestOptions,
-} from "../contract/webauthn.ts";
-import { invariant, tryAsync } from "../core/contain.ts";
-import { err, ok, type Result } from "../core/result.ts";
-import type { AccountId } from "../core/scalars.ts";
-import { toBase64Url } from "../core/scalars.ts";
 
 // Who the passkeys are for: `rpId` is the registrable domain they bind to, `origin` the web
 // origin browsers report signing from. Both come from config; nothing a client sends sets them.

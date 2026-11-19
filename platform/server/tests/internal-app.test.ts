@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
-import { invariant } from "../src/core/contain.ts";
-import { err } from "../src/core/result.ts";
-import { createSeededRng } from "../src/core/rng.ts";
+import { invariant } from "@lucent/core/contain";
+import { err } from "@lucent/core/result";
+import { createSeededRng } from "@lucent/core/rng";
 import { claimServiceEpoch, openEpochGuard } from "../src/db/epoch-guard.ts";
 import { createInternalWebApp } from "../src/internal/app.ts";
 import { createTestAuthDeps } from "./harness/auth.ts";

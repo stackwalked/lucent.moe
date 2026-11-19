@@ -1,6 +1,6 @@
+import { systemClock } from "@lucent/core/clock";
 import { startServer } from "./boot.ts";
 import { processEnvironment, readServerConfig } from "./config.ts";
-import { systemClock } from "./core/clock.ts";
 import { createJsonlLogger, writeToStdout } from "./core/log.ts";
 
 // Exit codes a supervisor can act on: 1 is bad configuration or an unreachable dependency (fix

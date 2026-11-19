@@ -1,4 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { invariant } from "@lucent/core/contain";
+import { err, ok } from "@lucent/core/result";
+import { createSeededRng } from "@lucent/core/rng";
+import { type AccountId, newOperationId, RoleId } from "@lucent/core/scalars";
 import { z } from "zod";
 import {
     type AccountSummary,
@@ -15,10 +19,6 @@ import {
     unassignAccountRole,
     upsertRole,
 } from "../src/authority/writers.ts";
-import { invariant } from "../src/core/contain.ts";
-import { err, ok } from "../src/core/result.ts";
-import { createSeededRng } from "../src/core/rng.ts";
-import { type AccountId, newOperationId, RoleId } from "../src/core/scalars.ts";
 import { type Db, execute, sql } from "../src/db/pool.ts";
 import { newMember, seedRootOnce } from "./auth-fixtures.ts";
 import {

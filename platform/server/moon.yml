@@ -4,6 +4,12 @@ project:
 language: "typescript"
 layer: "application"
 
+dependsOn:
+  - "platform-core"
+  - "policy"
+  - "catalog"
+  - "rpc"
+
 tasks:
   # The server against a persistent local cluster under .moon/cache/dev, migrated on start.
   dev:

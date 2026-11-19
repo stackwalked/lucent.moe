@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { ok } from "@lucent/core/result";
+import { createSeededRng } from "@lucent/core/rng";
 import { z } from "zod";
 import { parseUsername, usernameSkeleton } from "../src/authority/usernames.ts";
-import { ok } from "../src/core/result.ts";
-import { createSeededRng } from "../src/core/rng.ts";
 import { execute, queryOne, sql } from "../src/db/pool.ts";
 import { withTx } from "../src/db/tx.ts";
 import { scalar, seedRoot } from "./authority-fixtures.ts";

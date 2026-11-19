@@ -1,9 +1,9 @@
 import { parseArgs } from "node:util";
+import { trySync } from "@lucent/core/contain";
+import { systemCryptoRng } from "@lucent/core/rng";
 import { setupPath } from "./auth/setup.ts";
 import { bootstrapRootAccount, recoverRootAccount } from "./authority/writers.ts";
 import { processEnvironment, readOpsConfig } from "./config.ts";
-import { trySync } from "./core/contain.ts";
-import { systemCryptoRng } from "./core/rng.ts";
 import { migrateDatabase, verifySchemaCurrent } from "./db/migrate.ts";
 import { openPool } from "./db/pool.ts";
 

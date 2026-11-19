@@ -1,16 +1,11 @@
 import { expect, test } from "bun:test";
+import { containBoundary, invariant } from "@lucent/core/contain";
+import { err, ok } from "@lucent/core/result";
+import { BearerToken, ClientInfo } from "@lucent/core/scalars";
 import { z } from "zod";
-import { containBoundary, invariant } from "../src/core/contain.ts";
-import { err, ok } from "../src/core/result.ts";
-import {
-    createRpcClient,
-    defineContract,
-    implement,
-    mountInternalRpc,
-    RequestId,
-    type UnhandledFailure,
-} from "../src/core/rpc.ts";
-import { BearerToken, ClientInfo } from "../src/core/scalars.ts";
+import { createRpcClient } from "../src/client.ts";
+import { defineContract, RequestId } from "../src/contract.ts";
+import { implement, mountInternalRpc, type UnhandledFailure } from "../src/mount.ts";
 
 const PEER_KEY = "test-peer-key-0123456789abcdefghijklmnopqrstuvwxyz";
 const ENDPOINT = "http://localhost/internal/web/rpc";

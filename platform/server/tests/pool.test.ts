@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
+import { invariant } from "@lucent/core/contain";
+import { ok } from "@lucent/core/result";
+import { EpochMs } from "@lucent/core/scalars";
 import { z } from "zod";
-import { invariant } from "../src/core/contain.ts";
-import { ok } from "../src/core/result.ts";
-import { EpochMs } from "../src/core/scalars.ts";
 import {
     compileSql,
     execute,

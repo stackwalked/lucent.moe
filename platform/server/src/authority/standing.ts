@@ -1,6 +1,8 @@
+import { err, ok, type Result } from "@lucent/core/result";
+import { type AccountId, ChannelId, type EpochMs, ProductId, RoleId } from "@lucent/core/scalars";
+import { type Action, ActionSchema } from "@lucent/policy/actions";
+import type { AccountStanding, AuthzRefusal, Caller, Subject } from "@lucent/policy/policy";
 import { z } from "zod";
-import { err, ok, type Result } from "../core/result.ts";
-import { type AccountId, ChannelId, type EpochMs, ProductId, RoleId } from "../core/scalars.ts";
 import {
     type DbFailure,
     type Queryable,
@@ -10,8 +12,6 @@ import {
     type Tx,
     toTimestamptz,
 } from "../db/pool.ts";
-import { type Action, ActionSchema } from "./actions.ts";
-import type { AccountStanding, AuthzRefusal, Caller, Subject } from "./policy.ts";
 
 // Stored roles outlive the Action union: a permission dropped from code stays in old rows. It
 // grants nothing and is kept apart so an admin can see and clean it up.

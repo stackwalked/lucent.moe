@@ -1,8 +1,8 @@
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { ignoreErrorsSync, invariant } from "@lucent/core/contain";
 import { z } from "zod";
-import { ignoreErrorsSync, invariant } from "../src/core/contain.ts";
 import { execute, openPool, queryOne, sql } from "../src/db/pool.ts";
 
 export const WORKSPACE_ROOT = join(import.meta.dir, "../../..");

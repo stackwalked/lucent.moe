@@ -1,6 +1,6 @@
-import type { AuditOperation } from "../authority/operations.ts";
-import { ok, type Result } from "../core/result.ts";
-import type { ClientInfo, EpochMs } from "../core/scalars.ts";
+import { ok, type Result } from "@lucent/core/result";
+import type { ClientInfo, EpochMs } from "@lucent/core/scalars";
+import type { AuditOperation } from "@lucent/policy/operations";
 import { type DbFailure, execute, sql, type Tx, toTimestamptz } from "./pool.ts";
 
 // Append-only and never locked, so it's written last in a transaction (platform/AGENTS.md).

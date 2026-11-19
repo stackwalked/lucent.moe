@@ -1,4 +1,13 @@
 import { expect } from "bun:test";
+import { invariant } from "@lucent/core/contain";
+import type { SeededRng } from "@lucent/core/rng";
+import {
+    type AccountId,
+    type BearerToken,
+    type ClientInfo,
+    newOperationId,
+} from "@lucent/core/scalars";
+import { RegistrationResponse } from "@lucent/rpc/webauthn";
 import {
     beginPasskeyRegistration,
     beginTotpEnrollment,
@@ -11,15 +20,6 @@ import { mintSession } from "../src/auth/sessions.ts";
 import { chooseUsername, redeemSetupLink } from "../src/auth/setup.ts";
 import { totpCode, totpStepAt } from "../src/auth/totp.ts";
 import { createAccount } from "../src/authority/writers.ts";
-import { RegistrationResponse } from "../src/contract/webauthn.ts";
-import { invariant } from "../src/core/contain.ts";
-import type { SeededRng } from "../src/core/rng.ts";
-import {
-    type AccountId,
-    type BearerToken,
-    type ClientInfo,
-    newOperationId,
-} from "../src/core/scalars.ts";
 import type { Db } from "../src/db/pool.ts";
 import { withTx } from "../src/db/tx.ts";
 import { dbNow, seedRoot, steppedUp } from "./authority-fixtures.ts";

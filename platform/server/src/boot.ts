@@ -1,18 +1,18 @@
 import { rmSync } from "node:fs";
+import { loadProductCatalog } from "@lucent/catalog/catalog";
+import { describeUnknownError, ignoreErrorsSync, trySync } from "@lucent/core/contain";
+import { err, ok, type Result } from "@lucent/core/result";
+import { systemCryptoRng } from "@lucent/core/rng";
 import { createAuthDeps } from "./auth/deps.ts";
 import { createArgon2idHasher, type PasswordHasher } from "./auth/password.ts";
 import { createTotpKeyring } from "./auth/totp.ts";
 import type { ListenAddress, ServerConfig } from "./config.ts";
-import { describeUnknownError, ignoreErrorsSync, trySync } from "./core/contain.ts";
 import type { Logger } from "./core/log.ts";
-import { err, ok, type Result } from "./core/result.ts";
-import { systemCryptoRng } from "./core/rng.ts";
 import { claimServiceEpoch, openEpochGuard } from "./db/epoch-guard.ts";
 import type { MigrationError, MigrationFile } from "./db/migrate.ts";
 import { verifySchemaCurrent } from "./db/migrate.ts";
 import { openPool } from "./db/pool.ts";
 import { createInternalWebApp } from "./internal/app.ts";
-import { loadProductCatalog } from "./products/catalog.ts";
 
 // How long a superseded instance keeps answering before it notices; the handover window.
 const EPOCH_POLL_INTERVAL_MS = 2_000;

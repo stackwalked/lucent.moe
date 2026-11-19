@@ -1,4 +1,4 @@
-import type { CryptoRng } from "../core/rng.ts";
+import type { CryptoRng } from "@lucent/core/rng";
 import type { Db } from "../db/pool.ts";
 import type { RelyingParty } from "./passkeys.ts";
 import { createPasswordVerifier, type PasswordHasher } from "./password.ts";

@@ -1,7 +1,7 @@
+import { invariant } from "@lucent/core/contain";
+import { systemCryptoRng } from "@lucent/core/rng";
 import { setupPath } from "../src/auth/setup.ts";
 import { bootstrapRootAccount, recoverRootAccount } from "../src/authority/writers.ts";
-import { invariant } from "../src/core/contain.ts";
-import { systemCryptoRng } from "../src/core/rng.ts";
 import { migrateDatabase } from "../src/db/migrate.ts";
 import { openPool } from "../src/db/pool.ts";
 import { openDevCluster } from "./postgres.ts";

@@ -1,7 +1,7 @@
-import { invariant, tryAsync } from "../core/contain.ts";
-import { err, ok, type Result } from "../core/result.ts";
-import type { CryptoRng } from "../core/rng.ts";
-import type { AccountId, EpochMs } from "../core/scalars.ts";
+import { invariant, tryAsync } from "@lucent/core/contain";
+import { err, ok, type Result } from "@lucent/core/result";
+import type { CryptoRng } from "@lucent/core/rng";
+import type { AccountId, EpochMs } from "@lucent/core/scalars";
 
 // RFC 6238 with the parameters every authenticator app defaults to: HMAC-SHA1, 6 digits, 30 s.
 const STEP_MS = 30_000;

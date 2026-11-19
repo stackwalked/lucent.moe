@@ -10,10 +10,44 @@
         "typescript": "7.0.2",
       },
     },
+    "platform/packages/catalog": {
+      "name": "@lucent/catalog",
+      "dependencies": {
+        "@lucent/core": "workspace:*",
+        "zod": "4.6.7",
+      },
+    },
+    "platform/packages/core": {
+      "name": "@lucent/core",
+      "dependencies": {
+        "zod": "4.6.7",
+      },
+    },
+    "platform/packages/policy": {
+      "name": "@lucent/policy",
+      "dependencies": {
+        "@lucent/core": "workspace:*",
+        "zod": "4.6.7",
+      },
+    },
+    "platform/packages/rpc": {
+      "name": "@lucent/rpc",
+      "dependencies": {
+        "@lucent/catalog": "workspace:*",
+        "@lucent/core": "workspace:*",
+        "@lucent/policy": "workspace:*",
+        "hono": "4.13.19",
+        "zod": "4.6.7",
+      },
+    },
     "platform/server": {
       "name": "@lucent/server",
       "dependencies": {
         "@hono/standard-validator": "0.4.1",
+        "@lucent/catalog": "workspace:*",
+        "@lucent/core": "workspace:*",
+        "@lucent/policy": "workspace:*",
+        "@lucent/rpc": "workspace:*",
         "@simplewebauthn/server": "14.1.0",
         "hono": "4.13.19",
         "pg": "8.23.1",
@@ -52,6 +86,14 @@
     "@hono/standard-validator": ["@hono/standard-validator@0.4.1", "", { "peerDependencies": { "@standard-schema/spec": "^1.0.0", "hono": ">=4.11.2" } }, "sha512-Q0+1dgMKAXEvsmJ5FNoamwnfrf/I5JNnKn7WzfynH8nJlNe1lNOW1+vlKpEQZbrBLEgmxIeys6HjRotDvZzq+A=="],
 
     "@levischuck/tiny-cbor": ["@levischuck/tiny-cbor@0.2.11", "", {}, "sha512-llBRm4dT4Z89aRsm6u2oEZ8tfwL/2l6BwpZ7JcyieouniDECM5AqNgr/y08zalEIvW3RSK4upYyybDcmjXqAow=="],
+
+    "@lucent/catalog": ["@lucent/catalog@workspace:platform/packages/catalog"],
+
+    "@lucent/core": ["@lucent/core@workspace:platform/packages/core"],
+
+    "@lucent/policy": ["@lucent/policy@workspace:platform/packages/policy"],
+
+    "@lucent/rpc": ["@lucent/rpc@workspace:platform/packages/rpc"],
 
     "@lucent/server": ["@lucent/server@workspace:platform/server"],
 

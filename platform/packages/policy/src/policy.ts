@@ -1,5 +1,5 @@
-import { err, ok, type Result } from "../core/result.ts";
-import { type AccountId, type ClientInfo, type EpochMs, Seconds } from "../core/scalars.ts";
+import { err, ok, type Result } from "@lucent/core/result";
+import { type AccountId, type ClientInfo, type EpochMs, Seconds } from "@lucent/core/scalars";
 import { ACTION_POLICY, type Action } from "./actions.ts";
 
 export const STEP_UP_WINDOW_SECONDS = Seconds.parse(1_800);

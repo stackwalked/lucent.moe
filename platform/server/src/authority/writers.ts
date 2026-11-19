@@ -1,7 +1,6 @@
-import { z } from "zod";
-import { clearCredentials, issueSetupToken } from "../auth/setup.ts";
-import { err, ok, type Result } from "../core/result.ts";
-import type { CryptoRng } from "../core/rng.ts";
+import type { ProductCatalog } from "@lucent/catalog/catalog";
+import { err, ok, type Result } from "@lucent/core/result";
+import type { CryptoRng } from "@lucent/core/rng";
 import {
     AccountId,
     type BearerToken,
@@ -13,15 +12,16 @@ import {
     type OperationId,
     type ProductId,
     RoleId,
-} from "../core/scalars.ts";
+} from "@lucent/core/scalars";
+import type { Action } from "@lucent/policy/actions";
+import { type AuthzRefusal, authorize, type Caller } from "@lucent/policy/policy";
+import { z } from "zod";
+import { clearCredentials, issueSetupToken } from "../auth/setup.ts";
 import { appendAudit } from "../db/audit.ts";
 import { type Db, type DbFailure, execute, queryOne, sql, toTimestamptz } from "../db/pool.ts";
 import { type ReceiptRefusal, readReplay, recordReceipt, toOperationKey } from "../db/receipt.ts";
 import { withTx } from "../db/tx.ts";
-import type { ProductCatalog } from "../products/catalog.ts";
-import type { Action } from "./actions.ts";
 import type { FeatureSelection } from "./entitlements.ts";
-import { type AuthzRefusal, authorize, type Caller } from "./policy.ts";
 import {
     type ChannelGrant,
     lockCallerWith,

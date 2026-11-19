@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import { invariant } from "../src/core/contain.ts";
-import { err, ok } from "../src/core/result.ts";
+import { invariant } from "@lucent/core/contain";
+import { err, ok } from "@lucent/core/result";
 import {
     loadMigrations,
     type MigrationFile,

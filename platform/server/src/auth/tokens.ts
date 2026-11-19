@@ -1,5 +1,5 @@
-import type { CryptoRng } from "../core/rng.ts";
-import { BearerToken, toBase64Url } from "../core/scalars.ts";
+import type { CryptoRng } from "@lucent/core/rng";
+import { BearerToken, toBase64Url } from "@lucent/core/scalars";
 
 // Only a token's SHA-256 is stored, so a database read never yields a usable token.
 export type IssuedToken = {

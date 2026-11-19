@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadProductCatalog } from "../src/products/catalog.ts";
+import { loadProductCatalog } from "../src/catalog.ts";
 
 const tempDirs: string[] = [];
 

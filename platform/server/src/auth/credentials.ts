@@ -1,20 +1,20 @@
-import { z } from "zod";
-import type { AuditOperation } from "../authority/operations.ts";
-import type {
-    AuthenticationResponse,
-    CreationOptions,
-    RegistrationResponse,
-    RequestOptions,
-} from "../contract/webauthn.ts";
-import { invariant } from "../core/contain.ts";
-import { err, ok, type Result } from "../core/result.ts";
+import { invariant } from "@lucent/core/contain";
+import { err, ok, type Result } from "@lucent/core/result";
 import {
     type AccountId,
     type BearerToken,
     type ClientInfo,
     EpochMs,
     toBase64Url,
-} from "../core/scalars.ts";
+} from "@lucent/core/scalars";
+import type { AuditOperation } from "@lucent/policy/operations";
+import type {
+    AuthenticationResponse,
+    CreationOptions,
+    RegistrationResponse,
+    RequestOptions,
+} from "@lucent/rpc/webauthn";
+import { z } from "zod";
 import { appendAudit } from "../db/audit.ts";
 import { type DbFailure, execute, queryAll, queryOne, sql, type Tx } from "../db/pool.ts";
 import { errCommit, withTx } from "../db/tx.ts";

@@ -1,0 +1,12 @@
+{
+  "name": "@lucent/policy",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./*": "./src/*.ts"
+  },
+  "dependencies": {
+    "@lucent/core": "workspace:*",
+    "zod": "4.6.7"
+  }
+}

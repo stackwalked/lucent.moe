@@ -1,6 +1,6 @@
+import { err, ok, type Result } from "@lucent/core/result";
+import { ServiceEpoch } from "@lucent/core/scalars";
 import { z } from "zod";
-import { err, ok, type Result } from "../core/result.ts";
-import { ServiceEpoch } from "../core/scalars.ts";
 import { type Db, type DbFailure, type Queryable, queryOne, sql } from "./pool.ts";
 
 const EpochRowSchema = z.object({

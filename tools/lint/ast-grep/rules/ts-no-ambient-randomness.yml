@@ -17,7 +17,7 @@ rule:
       inside:
         kind: member_expression
 ignores:
-  - "**/core/rng.ts"
+  - "**/packages/core/src/rng.ts"
 ---
 id: ts-no-ambient-randomness-tsx
 language: Tsx

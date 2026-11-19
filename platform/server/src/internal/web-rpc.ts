@@ -1,3 +1,10 @@
+import type { ProductCatalog } from "@lucent/catalog/catalog";
+import { invariant } from "@lucent/core/contain";
+import { err, ok, type Result } from "@lucent/core/result";
+import type { BearerToken, ClientInfo } from "@lucent/core/scalars";
+import type { Caller } from "@lucent/policy/policy";
+import { type Handlers, implement } from "@lucent/rpc/mount";
+import { type WebContract, webContract } from "@lucent/rpc/web";
 import {
     beginPasskeyRegistration,
     beginStepUp,
@@ -20,7 +27,6 @@ import {
     signInWithTotp,
 } from "../auth/sign-in.ts";
 import { resolveCaller, resolveViewer } from "../auth/viewer.ts";
-import type { Caller } from "../authority/policy.ts";
 import {
     listAccounts,
     listAudit,
@@ -38,13 +44,7 @@ import {
     unassignAccountRole,
     upsertRole,
 } from "../authority/writers.ts";
-import { type WebContract, webContract } from "../contract/web.ts";
-import { invariant } from "../core/contain.ts";
-import { err, ok, type Result } from "../core/result.ts";
-import { type Handlers, implement } from "../core/rpc.ts";
-import type { BearerToken, ClientInfo } from "../core/scalars.ts";
 import type { DbFailure } from "../db/pool.ts";
-import type { ProductCatalog } from "../products/catalog.ts";
 
 export type WebRpcContext = {
     readonly catalog: ProductCatalog;

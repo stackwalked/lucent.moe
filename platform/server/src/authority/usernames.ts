@@ -1,4 +1,4 @@
-import { err, ok, type Result } from "../core/result.ts";
+import { err, ok, type Result } from "@lucent/core/result";
 
 const USERNAME_PATTERN = /^[a-z][a-z0-9_]{2,23}$/;
 const MIN_ALPHANUMERIC = 3;

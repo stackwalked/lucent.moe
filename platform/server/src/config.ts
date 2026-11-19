@@ -1,6 +1,6 @@
+import { err, ok, type Result } from "@lucent/core/result";
+import { isStrongPeerKey, MIN_PEER_KEY_LENGTH } from "@lucent/rpc/contract";
 import type { RelyingParty } from "./auth/passkeys.ts";
-import { err, ok, type Result } from "./core/result.ts";
-import { isStrongPeerKey, MIN_PEER_KEY_LENGTH } from "./core/rpc.ts";
 
 // Only loopback or a Unix socket: the internal listener carries web's and connectors' calls, and
 // a peer key is the only thing standing between it and anyone who can reach it.

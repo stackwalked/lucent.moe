@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { invariant } from "../src/core/contain.ts";
+import { invariant } from "@lucent/core/contain";
 import { claimServiceEpoch, openEpochGuard } from "../src/db/epoch-guard.ts";
 import type { DbFailure } from "../src/db/pool.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";

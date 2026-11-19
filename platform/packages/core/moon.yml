@@ -1,0 +1,8 @@
+# `core` is the native core library's id.
+id: "platform-core"
+
+project:
+  description: "Result, contained failure, scalars, clock and randomness: what every TypeScript runtime shares."
+
+language: "typescript"
+layer: "library"

@@ -1,9 +1,9 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { describeUnknownError, trySync } from "@lucent/core/contain";
+import { err, ok, type Result } from "@lucent/core/result";
+import { ChannelId, ProductId } from "@lucent/core/scalars";
 import { z } from "zod";
-import { describeUnknownError, trySync } from "../core/contain.ts";
-import { err, ok, type Result } from "../core/result.ts";
-import { ChannelId, ProductId } from "../core/scalars.ts";
 
 const DEFAULT_PRODUCTS_DIR = join(import.meta.dir, "../../../../products");
 

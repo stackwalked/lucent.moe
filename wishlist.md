@@ -609,14 +609,10 @@ live in `wishlist/protection.md`.
   are provisional until their slice starts and checks them (TypeScript 7.0.2 was pinned before
   any tool needing its API was tried). Still to land:
   - `web/` workspace (`web` moon id), Vite caches under `.moon/cache/vite/<project>`;
-  - `contracts/*`, `platform/packages/*` and `platform/connectors/discord` (`discord`) as their
-    slices arrive;
-  - the packages split out of `platform/server` in the commit that adds `web` (its second
-    consumer): `platform/packages/core` (`Result`, `contain`, scalars), `rpc` (procedure builder,
-    contracts and client, including the web contract), `policy` (`actions.ts` and pure
-    `can()`) and `catalog` (the `products/*.toml` reader). `db/`, `standing`, the writers,
-    `receipt`, migrations and the internal app stay server-only. Declared package dependencies and
-    moon `dependsOn` then enforce the layering that dependency-cruiser couldn't;
+  - `contracts/*` and `platform/connectors/discord` (`discord`) as their slices arrive;
+  - `platform/packages/testing` (the cluster harness and software authenticator), with web's
+    HTTP-level integration tests, its second consumer. `core`, `rpc`, `policy` and `catalog`
+    landed in `platform/packages/` (`core`'s moon id is `platform-core`: native has `core`);
   - the native `/v1` listener and periodic jobs, in the slice that gives them routes and work
     (boot, the internal listener, `ops.ts` and `server:dev`/`server:seed` landed);
   - slice 1B pins, spiked on bun 1.4.4 + TypeScript 7.0.2 strict, all holding: TanStack Start and

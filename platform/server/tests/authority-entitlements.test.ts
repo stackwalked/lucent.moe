@@ -1,12 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { readEffectiveProductAccess } from "../src/authority/entitlements.ts";
-import type { Caller } from "../src/authority/policy.ts";
-import {
-    type EntitlementProductInput,
-    issueEntitlement,
-    upsertRole,
-} from "../src/authority/writers.ts";
-import { createSeededRng, type SeededRng } from "../src/core/rng.ts";
+import { createSeededRng, type SeededRng } from "@lucent/core/rng";
 import {
     type AccountId,
     ChannelId,
@@ -14,7 +7,14 @@ import {
     FeatureTag,
     newOperationId,
     RoleId,
-} from "../src/core/scalars.ts";
+} from "@lucent/core/scalars";
+import type { Caller } from "@lucent/policy/policy";
+import { readEffectiveProductAccess } from "../src/authority/entitlements.ts";
+import {
+    type EntitlementProductInput,
+    issueEntitlement,
+    upsertRole,
+} from "../src/authority/writers.ts";
 import { type Db, execute, sql } from "../src/db/pool.ts";
 import {
     catalog,

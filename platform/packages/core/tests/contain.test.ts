@@ -1,11 +1,5 @@
 import { expect, test } from "bun:test";
-import {
-    containBoundary,
-    invariant,
-    raiseInvariant,
-    tryAsync,
-    trySync,
-} from "../src/core/contain.ts";
+import { containBoundary, invariant, raiseInvariant, tryAsync, trySync } from "../src/contain.ts";
 
 test("an invariant defect passes through trySync to the boundary instead of becoming an err", async () => {
     const outcome = await containBoundary({

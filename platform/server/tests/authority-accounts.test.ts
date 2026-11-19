@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { createSeededRng } from "@lucent/core/rng";
+import { ChannelId, EpochMs, newOperationId } from "@lucent/core/scalars";
 import { z } from "zod";
 import { readEffectiveProductAccess } from "../src/authority/entitlements.ts";
 import {
@@ -7,8 +9,6 @@ import {
     issueEntitlement,
     suspendAccount,
 } from "../src/authority/writers.ts";
-import { createSeededRng } from "../src/core/rng.ts";
-import { ChannelId, EpochMs, newOperationId } from "../src/core/scalars.ts";
 import { execute, sql } from "../src/db/pool.ts";
 import {
     catalog,

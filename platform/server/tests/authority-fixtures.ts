@@ -1,10 +1,15 @@
 import { expect } from "bun:test";
+import {
+    loadProductCatalog,
+    type ProductCatalog,
+    type ProductDefinition,
+} from "@lucent/catalog/catalog";
+import { invariant } from "@lucent/core/contain";
+import type { SeededRng } from "@lucent/core/rng";
+import { type AccountId, EpochMs, newAccountId, ProductId, RoleId } from "@lucent/core/scalars";
+import type { Caller } from "@lucent/policy/policy";
 import { z } from "zod";
-import type { Caller } from "../src/authority/policy.ts";
 import { bootstrapRootAccount } from "../src/authority/writers.ts";
-import { invariant } from "../src/core/contain.ts";
-import type { SeededRng } from "../src/core/rng.ts";
-import { type AccountId, EpochMs, newAccountId, ProductId, RoleId } from "../src/core/scalars.ts";
 import {
     type Db,
     execute,
@@ -13,11 +18,6 @@ import {
     sql,
     toTimestamptz,
 } from "../src/db/pool.ts";
-import {
-    loadProductCatalog,
-    type ProductCatalog,
-    type ProductDefinition,
-} from "../src/products/catalog.ts";
 
 export function catalog(): ProductCatalog {
     const res = loadProductCatalog();

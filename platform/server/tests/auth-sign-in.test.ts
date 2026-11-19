@@ -1,4 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { invariant } from "@lucent/core/contain";
+import { err } from "@lucent/core/result";
+import { createSeededRng } from "@lucent/core/rng";
+import { AuthenticationResponse } from "@lucent/rpc/webauthn";
 import { createAuthDeps } from "../src/auth/deps.ts";
 import { createArgon2idHasher } from "../src/auth/password.ts";
 import {
@@ -9,10 +13,6 @@ import {
 } from "../src/auth/sign-in.ts";
 import { createTotpKeyring } from "../src/auth/totp.ts";
 import { resolveViewer } from "../src/auth/viewer.ts";
-import { AuthenticationResponse } from "../src/contract/webauthn.ts";
-import { invariant } from "../src/core/contain.ts";
-import { err } from "../src/core/result.ts";
-import { createSeededRng } from "../src/core/rng.ts";
 import { execute, sql } from "../src/db/pool.ts";
 import { codeAt, MEMBER_PASSWORD, newMember } from "./auth-fixtures.ts";
 import { createTestAuthDeps, TEST_TOTP_KEYS } from "./harness/auth.ts";

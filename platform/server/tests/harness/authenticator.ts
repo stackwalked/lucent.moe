@@ -1,14 +1,14 @@
-import type { z } from "zod";
-import type { RelyingParty } from "../../src/auth/passkeys.ts";
+import { invariant } from "@lucent/core/contain";
+import type { CryptoRng } from "@lucent/core/rng";
+import { toBase64Url } from "@lucent/core/scalars";
 import type {
     AuthenticationResponse,
     CreationOptions,
     RegistrationResponse,
     RequestOptions,
-} from "../../src/contract/webauthn.ts";
-import { invariant } from "../../src/core/contain.ts";
-import type { CryptoRng } from "../../src/core/rng.ts";
-import { toBase64Url } from "../../src/core/scalars.ts";
+} from "@lucent/rpc/webauthn";
+import type { z } from "zod";
+import type { RelyingParty } from "../../src/auth/passkeys.ts";
 
 export const TEST_RELYING_PARTY: RelyingParty = {
     rpId: "lucent.test",

@@ -1,0 +1,10 @@
+project:
+  description: "Internal RPC between platform and its peers: contracts, the client, the server mount, and the web contract."
+
+language: "typescript"
+layer: "library"
+
+dependsOn:
+  - "platform-core"
+  - "policy"
+  - "catalog"

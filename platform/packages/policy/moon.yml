@@ -1,0 +1,13 @@
+project:
+  description: "Actions, who may take them (can, authorize), and the audit operations they record."
+
+language: "typescript"
+layer: "library"
+
+dependsOn:
+  - "platform-core"
+
+# can() and authorize() are tested through the writers that call them, against a real database.
+workspace:
+  inheritedTasks:
+    exclude: ["test"]

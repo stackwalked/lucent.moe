@@ -1,12 +1,12 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
+import { invariant } from "@lucent/core/contain";
+import { err, ok } from "@lucent/core/result";
+import { createRpcClient } from "@lucent/rpc/client";
+import { webContract } from "@lucent/rpc/web";
 import { WORKSPACE_ROOT } from "../dev/postgres.ts";
 import { type RunningServer, startServer } from "../src/boot.ts";
 import type { ServerConfig } from "../src/config.ts";
-import { webContract } from "../src/contract/web.ts";
-import { invariant } from "../src/core/contain.ts";
-import { err, ok } from "../src/core/result.ts";
-import { createRpcClient } from "../src/core/rpc.ts";
 import { TEST_RELYING_PARTY } from "./harness/authenticator.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 

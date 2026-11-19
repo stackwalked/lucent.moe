@@ -1,6 +1,5 @@
-import { z } from "zod";
-import { err, ok, type Result } from "../core/result.ts";
-import type { CryptoRng } from "../core/rng.ts";
+import { err, ok, type Result } from "@lucent/core/result";
+import type { CryptoRng } from "@lucent/core/rng";
 import {
     AccountId,
     type BearerToken,
@@ -8,7 +7,8 @@ import {
     EpochMs,
     newSessionId,
     SessionId,
-} from "../core/scalars.ts";
+} from "@lucent/core/scalars";
+import { z } from "zod";
 import {
     type Db,
     type DbFailure,

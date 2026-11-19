@@ -2,7 +2,8 @@
   "name": "lucent.moe",
   "private": true,
   "workspaces": [
-    "platform/*"
+    "platform/*",
+    "platform/packages/*"
   ],
   "devDependencies": {
     "@biomejs/biome": "2.6.8",

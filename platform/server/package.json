@@ -4,6 +4,10 @@
   "type": "module",
   "dependencies": {
     "@hono/standard-validator": "0.4.1",
+    "@lucent/catalog": "workspace:*",
+    "@lucent/core": "workspace:*",
+    "@lucent/policy": "workspace:*",
+    "@lucent/rpc": "workspace:*",
     "@simplewebauthn/server": "14.1.0",
     "hono": "4.13.19",
     "pg": "8.23.1",

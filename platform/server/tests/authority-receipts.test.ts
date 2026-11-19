@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { ok } from "@lucent/core/result";
+import { createSeededRng } from "@lucent/core/rng";
+import { newOperationId, RoleId } from "@lucent/core/scalars";
 import { z } from "zod";
 import { suspendAccount, upsertRole } from "../src/authority/writers.ts";
-import { ok } from "../src/core/result.ts";
-import { createSeededRng } from "../src/core/rng.ts";
-import { newOperationId, RoleId } from "../src/core/scalars.ts";
 import { execute, sql } from "../src/db/pool.ts";
 import { withTx } from "../src/db/tx.ts";
 import {

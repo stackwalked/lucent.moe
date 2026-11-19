@@ -8,7 +8,8 @@ Checkable rules live in `/.biome.jsonc`, `/.config/tsconfig.base.json`, `tools/l
 They break ties between the rules below.
 
 1. Judge readability at the call site. Domain and route code is plain and imperative; type-level
-   machinery, foreign exception containment and wire framing live in `core/` and `db/`.
+   machinery, foreign exception containment and wire framing live in `packages/core`,
+   `packages/rpc` and the server's `db/`.
 2. One way to write each thing. Data is plain `readonly` objects with free functions; stateful
    handles are closure factories (`openX`/`createX`).
 3. Parse at the edge; types carry the rules. Untrusted bytes (HTTP, RPC, SQL rows, TOML, env) enter

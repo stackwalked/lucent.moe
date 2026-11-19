@@ -1,10 +1,10 @@
+import type { ProductCatalog } from "@lucent/catalog/catalog";
+import { err, ok } from "@lucent/core/result";
+import { mountInternalRpc } from "@lucent/rpc/mount";
 import type { Hono } from "hono";
 import type { AuthDeps } from "../auth/deps.ts";
 import type { Logger } from "../core/log.ts";
-import { err, ok } from "../core/result.ts";
-import { mountInternalRpc } from "../core/rpc.ts";
 import type { EpochGuard } from "../db/epoch-guard.ts";
-import type { ProductCatalog } from "../products/catalog.ts";
 import { webProcedures } from "./web-rpc.ts";
 
 export function createInternalWebApp(deps: {

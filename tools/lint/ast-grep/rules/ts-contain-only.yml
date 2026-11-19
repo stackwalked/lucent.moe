@@ -13,7 +13,7 @@ rule:
     - kind: try_statement
     - pattern: "$P.catch($$$)"
 ignores:
-  - "**/core/contain.ts"
+  - "**/packages/core/src/contain.ts"
   - "**/web/src/server/route-control.ts"
 ---
 id: ts-contain-only-tsx

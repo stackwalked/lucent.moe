@@ -1,61 +1,19 @@
+import { containBoundary, invariant, tryAsync, trySync } from "@lucent/core/contain";
+import { err, ok, type Result } from "@lucent/core/result";
+import { BearerToken, ClientInfo } from "@lucent/core/scalars";
 import { type Context, Hono } from "hono";
 import { z } from "zod";
-import { containBoundary, invariant, tryAsync, trySync } from "./contain.ts";
-import { err, ok, type Result } from "./result.ts";
-import { BearerToken, ClientInfo, toBase64Url } from "./scalars.ts";
+import {
+    type ContractMap,
+    isStrongPeerKey,
+    MIN_PEER_KEY_LENGTH,
+    type ProcedureContract,
+    RequestId,
+    RPC_HEADERS,
+    type TransportRefusal,
+} from "./contract.ts";
 
 export const DEFAULT_BODY_LIMIT_BYTES = 16 * 1024;
-
-// 43 base64url characters hold 256 bits, what `openssl rand -base64 32` produces; a shorter key
-// cannot carry that strength in any printable alphabet we would generate it in. Visible ASCII
-// only: HTTP trims header whitespace, so a key with an edge space could never match.
-export const MIN_PEER_KEY_LENGTH = 43;
-const PEER_KEY_ALPHABET = /^[\x21-\x7e]+$/;
-
-export function isStrongPeerKey(key: string): boolean {
-    return key.length >= MIN_PEER_KEY_LENGTH && PEER_KEY_ALPHABET.test(key);
-}
-
-const SESSION_HEADER = "lucent-session";
-const CLIENT_HEADER = "lucent-client";
-const REQUEST_HEADER = "lucent-request";
-
-// Names one browser request across web's and platform's logs; web shows it as the support
-// reference when something fails unexpectedly.
-export const RequestId = z
-    .string()
-    .regex(/^[A-Za-z0-9_-]{8,64}$/)
-    .brand<"RequestId">();
-export type RequestId = z.output<typeof RequestId>;
-
-export const TransportRefusal = z.discriminatedUnion("code", [
-    z.strictObject({ code: z.literal("AUTH_REQUIRED") }),
-    z.strictObject({ code: z.literal("PAYLOAD_TOO_LARGE") }),
-    z.strictObject({ code: z.literal("INVALID_REQUEST"), detail: z.string() }),
-    z.strictObject({ code: z.literal("UNKNOWN_PROCEDURE") }),
-    z.strictObject({ code: z.literal("SERVICE_UNAVAILABLE") }),
-]);
-export type TransportRefusal = z.output<typeof TransportRefusal>;
-
-// Which browser session a procedure runs for. The mount refuses a call that lacks the token
-// before any handler runs; the handler still locks and checks the session in its own
-// transaction, which is what decides.
-export type SessionNeed = "none" | "member" | "setup" | "either";
-
-export type ProcedureContract = {
-    readonly session: SessionNeed;
-    readonly input: z.ZodType;
-    readonly output: z.ZodType;
-    readonly error: z.ZodType;
-};
-export type ContractMap = Readonly<Record<string, ProcedureContract>>;
-
-export function defineContract<const Contracts extends ContractMap>(
-    contracts: Contracts,
-): Contracts {
-    return contracts;
-}
-
 type SessionFor<C extends ProcedureContract> = C["session"] extends "none" ? null : BearerToken;
 
 // What the request carried besides its input. `client` is trusted because only web holds the
@@ -159,10 +117,7 @@ export async function readBoundedJson(
     }
 
     return trySync(
-        () => {
-            const text = new TextDecoder("utf-8", { fatal: true }).decode(merged);
-            return JSON.parse(text) as unknown;
-        },
+        (): unknown => JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(merged)),
         () => ({ code: "INVALID_REQUEST" as const, detail: "malformed UTF-8 or JSON" }),
     );
 }
@@ -181,7 +136,7 @@ export type UnhandledFailure = {
 };
 
 function requestIdOf(req: Request): RequestId | null {
-    const parsed = RequestId.safeParse(req.headers.get(REQUEST_HEADER));
+    const parsed = RequestId.safeParse(req.headers.get(RPC_HEADERS.request));
     return parsed.success ? parsed.data : null;
 }
 
@@ -190,27 +145,22 @@ function sessionFor(
     req: Request,
 ): Result<BearerToken | null, TransportRefusal> {
     if (contract.session === "none") return ok(null);
-    const parsed = BearerToken.safeParse(req.headers.get(SESSION_HEADER));
+    const parsed = BearerToken.safeParse(req.headers.get(RPC_HEADERS.session));
     if (parsed.success) return ok(parsed.data);
     return err({ code: "INVALID_REQUEST", detail: "missing or malformed Lucent-Session" });
 }
 
-// base64url of `{ ip, userAgent }` as JSON: a user agent may hold characters a header can't.
-export function toClientHeader(client: ClientInfo): string {
-    return toBase64Url(new TextEncoder().encode(JSON.stringify(client)));
-}
-
 function clientFor(req: Request): Result<ClientInfo | null, TransportRefusal> {
-    const header = req.headers.get(CLIENT_HEADER);
+    const header = req.headers.get(RPC_HEADERS.client);
     if (header === null) return ok(null);
     const malformed = { code: "INVALID_REQUEST" as const, detail: "malformed Lucent-Client" };
     const decoded = trySync(
-        () =>
+        (): unknown =>
             JSON.parse(
                 new TextDecoder("utf-8", { fatal: true }).decode(
                     Uint8Array.fromBase64(header, { alphabet: "base64url" }),
                 ),
-            ) as unknown,
+            ),
         () => malformed,
     );
     if (!decoded.ok) return decoded;
@@ -321,97 +271,4 @@ export function mountInternalRpc<Ctx>(params: {
     });
 
     return app;
-}
-
-type CallOptions = {
-    readonly signal?: AbortSignal;
-    readonly requestId?: RequestId;
-    readonly client?: ClientInfo;
-};
-
-type CallOptionsFor<C extends ProcedureContract> = C["session"] extends "none"
-    ? [options?: CallOptions]
-    : [options: CallOptions & { readonly session: BearerToken }];
-
-type ReplyOf<C extends ProcedureContract> = Result<
-    z.output<C["output"]>,
-    z.output<C["error"]> | TransportRefusal
->;
-
-export type RpcClient<Contracts extends ContractMap> = {
-    readonly call: <K extends keyof Contracts & string>(
-        name: K,
-        input: z.input<Contracts[K]["input"]>,
-        ...options: CallOptionsFor<Contracts[K]>
-    ) => Promise<ReplyOf<Contracts[K]>>;
-};
-
-// A reply is untrusted bytes like any other: it is parsed against the procedure's schemas, and
-// anything that does not parse is the server being unavailable.
-export function createRpcClient<Contracts extends ContractMap>(
-    contracts: Contracts,
-    config: {
-        readonly endpointUrl: string;
-        readonly peerKey: string;
-        readonly defaultTimeoutMs?: number;
-        readonly fetcher?: (req: Request) => Promise<Response>;
-    },
-): RpcClient<Contracts> {
-    const timeoutMs = config.defaultTimeoutMs ?? 5_000;
-    const send = config.fetcher ?? ((req: Request) => fetch(req));
-    const unavailable = err<TransportRefusal>({ code: "SERVICE_UNAVAILABLE" });
-
-    const call = async (
-        name: string,
-        input: unknown,
-        options?: CallOptions & { readonly session?: BearerToken },
-    ): Promise<Result<unknown, unknown>> => {
-        const contract = contracts[name];
-        invariant(contract !== undefined, `no RPC contract for procedure ${name}`);
-        const session = options?.session;
-        invariant(
-            (contract.session === "none") === (session === undefined),
-            `${name} is called with a session exactly when its contract needs one`,
-        );
-        const Reply = z.union([
-            z.strictObject({ ok: z.literal(true), value: contract.output }),
-            z.strictObject({
-                ok: z.literal(false),
-                error: z.union([contract.error, TransportRefusal]),
-            }),
-        ]);
-
-        const timeoutSignal = AbortSignal.timeout(timeoutMs);
-        const signal =
-            options?.signal !== undefined
-                ? AbortSignal.any([options.signal, timeoutSignal])
-                : timeoutSignal;
-        const headers = new Headers({
-            accept: "application/json",
-            authorization: `Bearer ${config.peerKey}`,
-            "content-type": "application/json",
-        });
-        if (session !== undefined) headers.set(SESSION_HEADER, session);
-        if (options?.requestId !== undefined) headers.set(REQUEST_HEADER, options.requestId);
-        if (options?.client !== undefined)
-            headers.set(CLIENT_HEADER, toClientHeader(options.client));
-        const req = new Request(config.endpointUrl, {
-            method: "POST",
-            headers,
-            body: JSON.stringify({ procedure: name, input }),
-            signal,
-        });
-
-        const bodyRes = await tryAsync(
-            async (): Promise<unknown> => await (await send(req)).json(),
-            () => unavailable,
-        );
-        if (!bodyRes.ok) return unavailable;
-        const reply = Reply.safeParse(bodyRes.value);
-        if (!reply.success) return unavailable;
-        return reply.data;
-    };
-
-    // Parsed by the named procedure's own schemas; zod infers through the generic only as unknown.
-    return { call } as RpcClient<Contracts>;
 }

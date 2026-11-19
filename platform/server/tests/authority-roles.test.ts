@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { createSeededRng } from "@lucent/core/rng";
+import { EpochMs, newOperationId, RoleId } from "@lucent/core/scalars";
+import { STEP_UP_WINDOW_SECONDS } from "@lucent/policy/policy";
 import { z } from "zod";
-import { STEP_UP_WINDOW_SECONDS } from "../src/authority/policy.ts";
 import { readRole } from "../src/authority/standing.ts";
 import { assignAccountRole, upsertRole } from "../src/authority/writers.ts";
-import { createSeededRng } from "../src/core/rng.ts";
-import { EpochMs, newOperationId, RoleId } from "../src/core/scalars.ts";
 import { sql } from "../src/db/pool.ts";
 import {
     catalog,

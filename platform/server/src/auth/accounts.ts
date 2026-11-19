@@ -1,6 +1,6 @@
+import { ok, type Result } from "@lucent/core/result";
+import { AccountId } from "@lucent/core/scalars";
 import { z } from "zod";
-import { ok, type Result } from "../core/result.ts";
-import { AccountId } from "../core/scalars.ts";
 import { type DbFailure, queryAll, queryOne, sql, type Tx } from "../db/pool.ts";
 import type { StoredPasskey } from "./passkeys.ts";
 

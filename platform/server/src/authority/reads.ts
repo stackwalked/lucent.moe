@@ -1,7 +1,10 @@
+import { trySync } from "@lucent/core/contain";
+import { err, ok, type Result } from "@lucent/core/result";
+import { AccountId, EpochMs, RoleId, toBase64Url } from "@lucent/core/scalars";
+import { ACTIONS, type Action } from "@lucent/policy/actions";
+import { type Caller, can, type Subject } from "@lucent/policy/policy";
+import { AccountStatus } from "@lucent/rpc/web";
 import { z } from "zod";
-import { trySync } from "../core/contain.ts";
-import { err, ok, type Result } from "../core/result.ts";
-import { AccountId, EpochMs, RoleId, toBase64Url } from "../core/scalars.ts";
 import {
     type Db,
     type DbFailure,
@@ -13,8 +16,6 @@ import {
     toTimestamptz,
 } from "../db/pool.ts";
 import { withTx } from "../db/tx.ts";
-import { ACTIONS, type Action } from "./actions.ts";
-import { type Caller, can, type Subject } from "./policy.ts";
 import { readStanding } from "./standing.ts";
 
 // What staff read in the admin area. Reads take no locks and need no step-up: `can()` with the
@@ -86,11 +87,6 @@ async function readAs<T>(
         return await read(tx, txNow, subject.value);
     });
 }
-
-// "setup_pending": no way to sign in yet (no passkey, and not both a password and confirmed
-// TOTP), whether new or recovered.
-export const AccountStatus = z.enum(["active", "suspended", "locked", "setup_pending"]);
-export type AccountStatus = z.output<typeof AccountStatus>;
 
 const statusSql = sql`case
         when a.status = 'suspended' then 'suspended'

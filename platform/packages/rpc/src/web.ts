@@ -1,7 +1,4 @@
-import { z } from "zod";
-import { ActionSchema } from "../authority/actions.ts";
-import { AccountStatus } from "../authority/reads.ts";
-import { defineContract } from "../core/rpc.ts";
+import { ProductDefinition } from "@lucent/catalog/catalog";
 import {
     AccountId,
     BearerToken,
@@ -9,8 +6,10 @@ import {
     OperationId,
     RoleId,
     SessionId,
-} from "../core/scalars.ts";
-import { ProductDefinition } from "../products/catalog.ts";
+} from "@lucent/core/scalars";
+import { ActionSchema } from "@lucent/policy/actions";
+import { z } from "zod";
+import { defineContract } from "./contract.ts";
 import {
     AuthenticationResponse,
     CreationOptions,
@@ -84,6 +83,11 @@ const ReadRefusal = z.discriminatedUnion("code", [
 ]);
 // A receipt-backed write reused with different input: the form's operationId went stale.
 const Reused = refusal("IDEMPOTENCY_CONFLICT");
+
+// "setup_pending": no way to sign in yet (no passkey, and not both a password and confirmed
+// TOTP), whether new or recovered.
+export const AccountStatus = z.enum(["active", "suspended", "locked", "setup_pending"]);
+export type AccountStatus = z.output<typeof AccountStatus>;
 
 const Cursor = z.string().regex(/^[A-Za-z0-9_-]{1,512}$/);
 function pageOf<Item extends z.ZodType>(item: Item) {

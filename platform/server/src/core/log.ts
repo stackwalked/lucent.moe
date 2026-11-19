@@ -1,4 +1,4 @@
-import { type Clock, toIsoTimestamp } from "./clock.ts";
+import { type Clock, toIsoTimestamp } from "@lucent/core/clock";
 
 export type LogLevel = "info" | "warn" | "error";
 export type LogOrigin = "boot" | "epoch-guard" | "internal-web";

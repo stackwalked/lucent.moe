@@ -1,7 +1,7 @@
+import { systemClock } from "@lucent/core/clock";
+import { invariant } from "@lucent/core/contain";
 import { startServer } from "../src/boot.ts";
 import { processEnvironment, readServerConfig } from "../src/config.ts";
-import { systemClock } from "../src/core/clock.ts";
-import { invariant } from "../src/core/contain.ts";
 import { createJsonlLogger, writeToStdout } from "../src/core/log.ts";
 import { migrateDatabase } from "../src/db/migrate.ts";
 import { openPool } from "../src/db/pool.ts";

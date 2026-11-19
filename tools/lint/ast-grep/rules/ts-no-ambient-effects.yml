@@ -15,7 +15,7 @@ rule:
       regex: ^Buffer$
 # The one ambient clock, which everything else takes as a parameter.
 ignores:
-  - "**/core/clock.ts"
+  - "**/packages/core/src/clock.ts"
 ---
 id: ts-no-ambient-effects-tsx
 language: Tsx
@@ -31,4 +31,4 @@ rule:
     - kind: identifier
       regex: ^Buffer$
 ignores:
-  - "**/core/clock.ts"
+  - "**/packages/core/src/clock.ts"

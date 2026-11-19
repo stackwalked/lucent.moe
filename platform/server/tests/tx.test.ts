@@ -1,9 +1,9 @@
 import { expect, test } from "bun:test";
+import { containBoundary } from "@lucent/core/contain";
+import { err, ok } from "@lucent/core/result";
+import { createSeededRng } from "@lucent/core/rng";
+import { newAccountId } from "@lucent/core/scalars";
 import { z } from "zod";
-import { containBoundary } from "../src/core/contain.ts";
-import { err, ok } from "../src/core/result.ts";
-import { createSeededRng } from "../src/core/rng.ts";
-import { newAccountId } from "../src/core/scalars.ts";
 import { type Db, execute, queryOne, sql, toTimestamptz } from "../src/db/pool.ts";
 import { errCommit, withTx } from "../src/db/tx.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
