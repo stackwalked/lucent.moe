@@ -86,7 +86,7 @@ add_library(
     tests/dev_channel_in_release.cpp
 )
 target_include_directories(lucent_kit_dev_channel_in_release PRIVATE include)
-target_link_libraries(lucent_kit_dev_channel_in_release PRIVATE lucent::core)
+target_link_libraries(lucent_kit_dev_channel_in_release PRIVATE lucent::core lucent::build)
 target_compile_definitions(lucent_kit_dev_channel_in_release PRIVATE LUCENT_KIT_DEV_BUILD=0)
 set_target_properties(lucent_kit_dev_channel_in_release PROPERTIES EXPORT_COMPILE_COMMANDS OFF)
 add_test(
@@ -103,7 +103,7 @@ set_tests_properties(
 # concept that says so. Built only by the test, and kept out of compile_commands.json as above.
 add_library(lucent_kit_context_undeclared OBJECT EXCLUDE_FROM_ALL tests/context_undeclared.cpp)
 target_include_directories(lucent_kit_context_undeclared PRIVATE include)
-target_link_libraries(lucent_kit_context_undeclared PRIVATE lucent::core)
+target_link_libraries(lucent_kit_context_undeclared PRIVATE lucent::core lucent::build)
 target_compile_definitions(lucent_kit_context_undeclared PRIVATE LUCENT_KIT_DEV_BUILD=1)
 set_target_properties(lucent_kit_context_undeclared PROPERTIES EXPORT_COMPILE_COMMANDS OFF)
 add_test(
