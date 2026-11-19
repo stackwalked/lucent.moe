@@ -87,6 +87,23 @@ TEST_CASE("a signature verifies only for its own key, message and bytes") {
     CHECK_FALSE(verify(key.public_part(), message, flipped).has_value());
 }
 
+// The answers come from Python's hashlib.blake2b(digest_size=32, key=bytes(range(32))), an
+// implementation independent of Monocypher.
+TEST_CASE("keyed BLAKE2b-256 gives its known answers") {
+    const auto key =
+        bytes_of<32>("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");
+    const std::array abc{std::byte{'a'}, std::byte{'b'}, std::byte{'c'}};
+
+    CHECK(
+        keyed_hash(key, {})
+        == bytes_of<32>("4e51e7a913fc80137da52880fecca175bf81e117d5c68126dc2774033517ea0d")
+    );
+    CHECK(
+        keyed_hash(key, abc)
+        == bytes_of<32>("d63a32d3e44738d7907f964316c241adaba0abfeabc32349677578a15a203f7f")
+    );
+}
+
 TEST_CASE("BLAKE2b-256 gives its known answers") {
     const std::array abc{std::byte{'a'}, std::byte{'b'}, std::byte{'c'}};
 

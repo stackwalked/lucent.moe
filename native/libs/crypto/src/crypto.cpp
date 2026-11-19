@@ -67,4 +67,12 @@ auto hash(std::span<const std::byte> message) -> digest {
     return out;
 }
 
+auto keyed_hash(std::span<const std::byte, 32> key, std::span<const std::byte> message) -> digest {
+    digest out{};
+    crypto_blake2b_keyed(
+        writable_u8(out), out.size(), as_u8(key), key.size(), as_u8(message), message.size()
+    );
+    return out;
+}
+
 }

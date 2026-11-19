@@ -3,22 +3,16 @@
 #include <bit>
 #include <cstddef>
 #include <span>
-#include <vector>
 
 #include <lucent/crypto/crypto.hpp>
 #include <lucent/os/address_range.hpp>
 
 namespace lucent::integrity {
 
-// The nonce leads the message rather than keying BLAKE2b natively: lucent::crypto has no keyed
-// form, and BLAKE2b has no length extension, so a secret prefix keys it as well. The copy is the
-// cost; challenges cover small ranges.
+// BLAKE2b's own keyed mode: the standard construction every implementation the server might use
+// has, and the covered bytes are hashed where they lie.
 auto answer(const nonce& key, std::span<const std::byte> covered) -> crypto::digest {
-    std::vector<std::byte> message;
-    message.reserve(key.size() + covered.size());
-    message.append_range(key);
-    message.append_range(covered);
-    return crypto::hash(message);
+    return crypto::keyed_hash(key, covered);
 }
 
 auto answer(const nonce& key, os::address_range covered) -> crypto::digest {

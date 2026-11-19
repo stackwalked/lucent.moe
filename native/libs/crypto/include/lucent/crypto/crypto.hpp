@@ -48,4 +48,7 @@ auto verify(const public_key& signer, std::span<const std::byte> message, const 
 
 auto hash(std::span<const std::byte> message) -> digest;
 
+// BLAKE2b-256 in its own keyed mode (RFC 7693), so a message is never copied behind its key.
+auto keyed_hash(std::span<const std::byte, 32> key, std::span<const std::byte> message) -> digest;
+
 }

@@ -13,7 +13,7 @@ inline constexpr usize nonce_size = 32;
 
 using nonce = std::array<std::byte, nonce_size>;
 
-// BLAKE2b-256 over the nonce followed by the covered bytes, as the server computes it too.
+// BLAKE2b-256 of the covered bytes keyed by the nonce (RFC 7693), as the server computes it too.
 auto answer(const nonce& key, std::span<const std::byte> covered) -> crypto::digest;
 
 // The same over a range of this process's memory, read where it lies: the range must be readable
