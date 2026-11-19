@@ -5,24 +5,35 @@ lucent_library(kit
         include/lucent/kit/boot_info.hpp
         include/lucent/kit/capability.hpp
         include/lucent/kit/clock.hpp
+        include/lucent/kit/context.hpp
+        include/lucent/kit/core_capabilities.hpp
         include/lucent/kit/dev_build.hpp
         $<$<CONFIG:Debug>:include/lucent/kit/dev_channel.hpp>
         include/lucent/kit/fact.hpp
         include/lucent/kit/fact_apply.hpp
         include/lucent/kit/fact_resolve.hpp
+        include/lucent/kit/feature.hpp
         include/lucent/kit/game_module.hpp
+        include/lucent/kit/handoff.hpp
         include/lucent/kit/hook.hpp
         include/lucent/kit/lifecycle.hpp
+        include/lucent/kit/published.hpp
         include/lucent/kit/read_access.hpp
+        include/lucent/kit/registry.hpp
         include/lucent/kit/session.hpp
         include/lucent/kit/session_message.hpp
+        include/lucent/kit/settings.hpp
+        include/lucent/kit/view_set.hpp
+        include/lucent/kit/wiring.hpp
         include/lucent/kit/worker_set.hpp
         include/lucent/kit/write_access.hpp
     SOURCES
         src/capability_section.cpp
         src/clock.cpp
+        src/core_capabilities.cpp
         $<$<CONFIG:Debug>:src/dev_channel.cpp>
         $<$<CONFIG:Debug>:src/dev_facts.cpp>
+        $<$<CONFIG:Debug>:src/dev_features.cpp>
         $<$<CONFIG:Debug>:src/dev_workers.cpp>
         src/fact_apply.cpp
         src/fact_resolve.cpp
@@ -31,6 +42,7 @@ lucent_library(kit
         src/hook.cpp
         src/late_modules.cpp
         src/lifecycle.cpp
+        src/registry.cpp
         src/release.cpp
         src/session.cpp
         src/session_message.cpp
@@ -46,13 +58,19 @@ lucent_test(kit
         tests/access_test.cpp
         tests/capability_test.cpp
         tests/clock_test.cpp
+        tests/context_test.cpp
+        tests/core_capabilities_test.cpp
         tests/fact_apply_test.cpp
         tests/fact_resolve_test.cpp
         tests/fact_section_other.cpp
         tests/fact_section_test.cpp
+        tests/handoff_test.cpp
         tests/hook_test.cpp
         tests/late_modules_test.cpp
+        tests/published_test.cpp
+        tests/registry_test.cpp
         tests/session_message_test.cpp
+        tests/settings_test.cpp
         tests/unmap_stub_test.cpp
         tests/worker_set_test.cpp
 )
@@ -79,4 +97,23 @@ add_test(
 set_tests_properties(
     "kit: a release build that uses the dev channel fails to compile"
     PROPERTIES LABELS kit PASS_REGULAR_EXPRESSION "the dev channel is dev-only"
+)
+
+# Proves the context's refusal: a feature naming a part it never declared fails to compile, with the
+# concept that says so. Built only by the test, and kept out of compile_commands.json as above.
+add_library(lucent_kit_context_undeclared OBJECT EXCLUDE_FROM_ALL tests/context_undeclared.cpp)
+target_include_directories(lucent_kit_context_undeclared PRIVATE include)
+target_link_libraries(lucent_kit_context_undeclared PRIVATE lucent::core)
+target_compile_definitions(lucent_kit_context_undeclared PRIVATE LUCENT_KIT_DEV_BUILD=1)
+set_target_properties(lucent_kit_context_undeclared PROPERTIES EXPORT_COMPILE_COMMANDS OFF)
+add_test(
+    NAME "kit: a feature that uses a part it didn't declare fails to compile"
+    COMMAND "${CMAKE_COMMAND}" --build "${CMAKE_BINARY_DIR}" --target lucent_kit_context_undeclared
+)
+set_tests_properties(
+    "kit: a feature that uses a part it didn't declare fails to compile"
+    PROPERTIES
+        LABELS kit
+        PASS_REGULAR_EXPRESSION
+            "because 'needed_by<[^']*clock_view, [^']*tracker>' evaluated to false"
 )

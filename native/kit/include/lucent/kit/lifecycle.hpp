@@ -45,7 +45,8 @@ struct target {
 
 // Copies the boot_info's bundle, starts the module's lifecycle thread and returns at once. The
 // thread reports each stage to the host; after boot it applies the bundle to the linked facts (a
-// dev build reports the outcome over the dev channel), then attaches the target, runs until the
+// dev build reports the outcome over the dev channel), refuses to go on if a core capability is
+// left unavailable (no attach stage), then attaches the target, runs until the
 // host asks it to unload or goes away, detaches, and frees the module, unless detach failed: then
 // the host sees no unload stage and the module stays loaded, inert. Call once, on the thread the
 // host started the module with.

@@ -1,14 +1,17 @@
 #pragma once
 
+#include <span>
 #include <string_view>
 
 #include <lucent/core/fault.hpp>
 #include <lucent/kit/fact_apply.hpp>
+#include <lucent/kit/feature.hpp>
 #include <lucent/kit/session.hpp>
 
 // What kit's shared sources do in dev builds only. Defined in the dev-only sources
-// (dev_channel.cpp, dev_facts.cpp, dev_workers.cpp) and called only from discarded-in-release `if
-// constexpr (is_dev_build)` branches, so a release build neither compiles nor links any of it.
+// (dev_channel.cpp, dev_facts.cpp, dev_features.cpp, dev_workers.cpp) and called only from
+// discarded-in-release `if constexpr (is_dev_build)` branches, so a release build neither compiles
+// nor links any of it.
 
 namespace lucent::kit::detail {
 
@@ -27,5 +30,11 @@ auto report_no_load_signal(const error& failure) -> void;
 // Worker threads (worker_set.cpp): the name shows in debuggers, the fault as an incident.
 auto name_thread(void* thread, std::string_view name) -> void;
 auto report_worker_fault(std::string_view name, const fault& caught) -> void;
+
+// A feature's tick faulted (registry.cpp), as an incident naming its id.
+auto report_feature_fault(feature_id feature, const fault& caught) -> void;
+
+// The start was refused (lifecycle.cpp): these core capabilities are unavailable.
+auto report_refused_start(std::span<const u64> unavailable) -> void;
 
 }

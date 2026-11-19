@@ -14,6 +14,8 @@
 #include <lucent/core/match.hpp>
 #include <lucent/core/narrow.hpp>
 #include <lucent/kit/boot_info.hpp>
+#include <lucent/kit/capability.hpp>
+#include <lucent/kit/core_capabilities.hpp>
 #include <lucent/kit/dev_build.hpp>
 #include <lucent/kit/fact.hpp>
 #include <lucent/kit/fact_apply.hpp>
@@ -119,6 +121,27 @@ auto copy_bundle(const boot_info& info) -> result<std::vector<std::byte>> {
     return std::vector<std::byte>{given.begin(), given.end()};
 }
 
+// After resolve: a core capability left unavailable refuses the start. The host sees a start with
+// no attach stage; a dev build also says which capabilities, by key.
+auto check_core() -> result<void> {
+    const std::vector<declared_capability> declared =
+        LUCENT_TRY(declared_capabilities(linked_capability_section()));
+    const std::vector<u64> unavailable = unavailable_core(declared, linked_fact_records());
+    if (unavailable.empty()) {
+        return {};
+    }
+    if constexpr (is_dev_build) {
+        detail::report_refused_start(unavailable);
+    }
+    return std::unexpected(error{.code = error_code::unsupported});
+}
+
+auto attach_target(const start_request& request, worker_set& workers)
+    -> result<std::unique_ptr<attachment>> {
+    LUCENT_TRY(check_core());
+    return request.started.attach(workers);
+}
+
 // Whether the module may be freed: not when detach couldn't show that no thread will run its code
 // again.
 auto run_stages(session& channel, const start_request& request) -> bool {
@@ -146,8 +169,9 @@ auto run_stages(session& channel, const start_request& request) -> bool {
                 }
             );
         }
-        // A target that fails to attach skips straight to detach: the host sees no attach stage.
-        const result<std::unique_ptr<attachment>> attached = request.started.attach(workers);
+        // A refused start, or a target that fails to attach, skips straight to detach: the host
+        // sees no attach stage.
+        const result<std::unique_ptr<attachment>> attached = attach_target(request, workers);
         if (attached) {
             report(channel, stage::attach);
             report(channel, stage::run);
