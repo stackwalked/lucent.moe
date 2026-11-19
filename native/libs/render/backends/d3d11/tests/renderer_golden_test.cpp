@@ -16,6 +16,7 @@
 #include <catch2/generators/catch_generators_range.hpp>
 #include <dxgiformat.h>
 
+#include <lucent/d3d11/offscreen.hpp>
 #include <lucent/d3d11/renderer.hpp>
 #include <lucent/draw/arc.hpp>
 #include <lucent/draw/circle.hpp>

@@ -16,6 +16,7 @@
 #include <catch2/generators/catch_generators.hpp>
 #include <dxgiformat.h>
 
+#include <lucent/d3d11/offscreen.hpp>
 #include <lucent/draw/color.hpp>
 #include <lucent/draw/frame_data.hpp>
 

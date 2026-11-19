@@ -16,14 +16,13 @@
 #include <dxgiformat.h>
 #include <wrl/client.h>
 
+#include <lucent/d3d11/offscreen.hpp>
 #include <lucent/draw/color.hpp>
 #include <lucent/draw/draw_list.hpp>
 #include <lucent/draw/frame_data.hpp>
 #include <lucent/draw/layer.hpp>
 #include <lucent/draw/paint.hpp>
 #include <lucent/draw/rounded_rect.hpp>
-
-#include "golden.hpp"
 
 namespace lucent::d3d11::testing {
 namespace {

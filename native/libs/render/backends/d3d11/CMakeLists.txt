@@ -27,6 +27,12 @@ lucent_shaders(d3d11
         ../../draw/include/lucent/draw/quad_record.hlsli
 )
 
+# The WARP device, offscreen targets, readback and PNG files the goldens and menu-shot render through.
+# Its header sits with the renderer's, but it is a library of its own, so nothing the module links
+# carries WARP or WIC.
+add_library(lucent_offscreen STATIC src/offscreen.cpp)
+target_link_libraries(lucent_offscreen PUBLIC lucent::d3d11 PRIVATE d3d11 windowscodecs ole32)
+
 lucent_test(d3d11
     SOURCES
         tests/build_attempts_test.cpp
@@ -36,7 +42,7 @@ lucent_test(d3d11
         tests/renderer_golden_test.cpp
         tests/renderer_test.cpp
         tests/scratch_pool_test.cpp
-    DEPS lucent::os
+    DEPS lucent::os lucent_offscreen
 )
 target_link_libraries(
     lucent_d3d11_tests
