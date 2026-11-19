@@ -13,6 +13,7 @@ lucent_library(kit
         include/lucent/kit/session_message.hpp
         include/lucent/kit/write_access.hpp
     SOURCES
+        src/capability_section.cpp
         src/fact_apply.cpp
         src/fact_resolve.cpp
         src/fact_section.cpp
@@ -29,6 +30,7 @@ lucent_library(kit
 lucent_test(kit
     SOURCES
         tests/access_test.cpp
+        tests/capability_test.cpp
         tests/fact_apply_test.cpp
         tests/fact_resolve_test.cpp
         tests/fact_section_other.cpp

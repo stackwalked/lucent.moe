@@ -335,5 +335,7 @@ inline constexpr bool is_value_fact<fact::value<T>> = true;
 
 // Declares a fact at namespace scope: one object per fact in the whole image (an inline variable
 // folds to one copy), placed in the fact section, constant-initialized with its key. The object is
-// const; only its status and resolved value are mutable, written at resolve.
-#define LUCENT_FACT __declspec(allocate(".lfact$m")) inline constinit const
+// const; only its status and resolved value are mutable, written at resolve. constexpr rather
+// than constinit so a capability's consteval constructor can read its members' keys; the mutable
+// members stay out of constant evaluation and are never folded.
+#define LUCENT_FACT __declspec(allocate(".lfact$m")) inline constexpr
