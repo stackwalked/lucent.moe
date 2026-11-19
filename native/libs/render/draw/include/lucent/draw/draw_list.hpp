@@ -93,6 +93,8 @@ public:
 
     // Valid until the list records again. Every push must have been popped.
     auto frame() const -> frame_data;
+    // What reset() set: text laid out at another scale doesn't draw on this list.
+    auto pixels_per_unit() const -> f32;
 
 private:
     auto add_record(const quad_record& record, std::optional<image_handle> image) -> void;

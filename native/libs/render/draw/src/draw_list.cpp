@@ -542,6 +542,10 @@ auto draw_list::add_path(std::span<const path_vertex> vertices) -> void {
     );
 }
 
+auto draw_list::pixels_per_unit() const -> f32 {
+    return m_scale;
+}
+
 auto draw_list::to_pixels(vec2 point) const -> vec2 {
     return (point * m_scale) + m_translations.back();
 }

@@ -1,6 +1,7 @@
 lucent_library(draw
     HEADERS
         include/lucent/draw/arc.hpp
+        include/lucent/draw/atlas_patch.hpp
         include/lucent/draw/circle.hpp
         include/lucent/draw/color.hpp
         include/lucent/draw/draw_list.hpp
@@ -24,6 +25,8 @@ lucent_library(draw
         src/frame_data.cpp
         src/path_builder.cpp
 )
+
+lucent_fuzz(draw SOURCES fuzz/check.cpp)
 
 lucent_test(draw
     SOURCES
