@@ -6,6 +6,7 @@
 #include <lucent/crypto/crypto.hpp>
 #include <lucent/kit/boot_info.hpp>
 #include <lucent/kit/game_module.hpp>
+#include <lucent/kit/worker_set.hpp>
 
 namespace lucent::kit {
 
@@ -26,8 +27,11 @@ protected:
     attachment() = default;
 };
 
-// Runs on the lifecycle thread, once, between the boot and attach stages.
-using attach_fn = auto (*)() -> result<std::unique_ptr<attachment>>;
+// Runs on the lifecycle thread, once, between the boot and attach stages. Workers it starts on the
+// set (or that the attachment starts later) are stopped before detach, so they must not be needed
+// to undo attach. A failed attach drops what it made before the lifecycle stops its workers:
+// start them last.
+using attach_fn = auto (*)(worker_set& workers) -> result<std::unique_ptr<attachment>>;
 
 // What a target hands the kit to start. The spans are borrowed for the module's lifetime: static
 // data.

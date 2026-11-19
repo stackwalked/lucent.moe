@@ -6,6 +6,7 @@
 
 #include <lucent/kit/hook.hpp>
 #include <lucent/kit/lifecycle.hpp>
+#include <lucent/kit/worker_set.hpp>
 
 #include "overlay/present.hpp"
 
@@ -27,7 +28,7 @@ private:
 
 }
 
-auto attach() -> result<std::unique_ptr<kit::attachment>> {
+auto attach(kit::worker_set& /*workers*/) -> result<std::unique_ptr<kit::attachment>> {
     const std::array requests{LUCENT_TRY(overlay::present_hook())};
     kit::hook_set hooks = LUCENT_TRY(kit::hook_set::install(requests));
     return std::make_unique<attached>(std::move(hooks));

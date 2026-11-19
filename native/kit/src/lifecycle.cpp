@@ -19,6 +19,7 @@
 #include <lucent/kit/game_module.hpp>
 #include <lucent/kit/session.hpp>
 #include <lucent/kit/session_message.hpp>
+#include <lucent/kit/worker_set.hpp>
 #include <lucent/os/unique_handle.hpp>
 
 #include "dev.hpp"
@@ -105,12 +106,18 @@ auto run_stages(session& channel, const start_request& request) -> bool {
     apply_bundle(request);
     bool is_detached = true;
     {
+        worker_set workers;
         // A target that fails to attach skips straight to detach: the host sees no attach stage.
-        const result<std::unique_ptr<attachment>> attached = request.started.attach();
+        const result<std::unique_ptr<attachment>> attached = request.started.attach(workers);
         if (attached) {
             report(channel, stage::attach);
             report(channel, stage::run);
             wait_for_unload(channel);
+        }
+        // Before detach: hook removal must not race a worker, and counts a running one as busy.
+        // Dev builds reported each fault as it happened; release has nowhere to send one yet.
+        std::ignore = workers.stop();
+        if (attached) {
             is_detached = (*attached)->detach().has_value();
         }
         report(channel, stage::detach);
