@@ -42,7 +42,7 @@ tasks:
       - "src/ui/tokens.ts"
       - "dev/css-lint.ts"
   check:
-    deps: ["~:css", "~:integration"]
+    deps: ["~:css", "~:integration", "~:budget"]
   typecheck:
     deps: ["~:routes", "~:generate"]
   test:
@@ -67,6 +67,12 @@ tasks:
       - "vite.config.ts"
     outputs:
       - "dist"
+  # The first-load JavaScript budget, measured on the production build (dev/budget.ts).
+  budget:
+    command: "bun dev/budget.ts"
+    deps: ["~:build"]
+    inputs:
+      - "dev/budget.ts"
   # Vite with hot reload on :4710, beside the platform it calls. --bun runs Vite (and with it the
   # server code it loads) under Bun, as production runs; without it Vite's node shebang wins.
   dev:
