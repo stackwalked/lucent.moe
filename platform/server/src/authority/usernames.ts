@@ -1,7 +1,7 @@
 import { err, ok, type Result } from "@lucent/core/result";
+import { USERNAME_MIN_ALPHANUMERIC, USERNAME_PATTERN } from "@lucent/core/rules";
 
-const USERNAME_PATTERN = /^[a-z][a-z0-9_]{2,23}$/;
-const MIN_ALPHANUMERIC = 3;
+const USERNAME = new RegExp(`^${USERNAME_PATTERN}$`);
 
 // Every entry in Unicode confusables.txt 18.0.0 (UTS #39) whose source can appear in a username
 // once case is folded (usernames are case-insensitive, so a character confusable with either
@@ -36,13 +36,13 @@ export function usernameSkeleton(username: string): string {
 
 export function parseUsername(raw: string): Result<ParsedUsername, UsernameInvalid> {
     const username = raw.trim().toLowerCase();
-    if (!USERNAME_PATTERN.test(username)) {
+    if (!USERNAME.test(username)) {
         return err({
             code: "INVALID_USERNAME",
             detail: "username must be 3..24 chars of [a-z0-9_], starting with a letter",
         });
     }
-    if (username.replaceAll("_", "").length < MIN_ALPHANUMERIC) {
+    if (username.replaceAll("_", "").length < USERNAME_MIN_ALPHANUMERIC) {
         return err({
             code: "INVALID_USERNAME",
             detail: "username must contain at least 3 letters or digits",

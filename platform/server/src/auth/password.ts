@@ -1,4 +1,5 @@
 import { err, ok, type Result } from "@lucent/core/result";
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@lucent/core/rules";
 
 export type PasswordHasher = {
     readonly hash: (password: string) => Promise<string>;
@@ -27,16 +28,14 @@ export type PasswordRejected = {
     readonly reason: "too_short" | "too_long";
 };
 
-const MIN_LENGTH = 12;
-const MAX_LENGTH = 128;
-
 // NFKC so the same password typed on two keyboards is the same password; length counts code
 // points, since that's what a person counts.
 export function parseNewPassword(raw: string): Result<string, PasswordRejected> {
     const normalized = raw.normalize("NFKC");
     const length = [...normalized].length;
-    if (length < MIN_LENGTH) return err({ code: "PASSWORD_REJECTED", reason: "too_short" });
-    if (length > MAX_LENGTH) return err({ code: "PASSWORD_REJECTED", reason: "too_long" });
+    if (length < PASSWORD_MIN_LENGTH)
+        return err({ code: "PASSWORD_REJECTED", reason: "too_short" });
+    if (length > PASSWORD_MAX_LENGTH) return err({ code: "PASSWORD_REJECTED", reason: "too_long" });
     return ok(normalized);
 }
 
