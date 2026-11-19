@@ -1,5 +1,6 @@
 #include <lucent/crypto/crypto.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <span>
@@ -113,6 +114,37 @@ TEST_CASE("BLAKE2b-256 gives its known answers") {
     CHECK(
         hash(abc)
         == bytes_of<32>("bddd813c634239723171ef3fee98579b94964e3bb1cb3e427262c8c068d52319")
+    );
+}
+
+// RFC 9106, section 5.3: every input and parameter Argon2id takes, so a swapped lane count or a
+// dropped secret changes the tag.
+TEST_CASE("Argon2id gives RFC 9106's known answer") {
+    std::array<std::byte, 32> passphrase{};
+    passphrase.fill(std::byte{0x01});
+    std::array<std::byte, 16> salt{};
+    salt.fill(std::byte{0x02});
+    std::array<std::byte, 8> secret{};
+    secret.fill(std::byte{0x03});
+    std::array<std::byte, 12> associated{};
+    associated.fill(std::byte{0x04});
+
+    const result<secret_key> derived = argon2id(
+        argon2id_inputs{
+            .passphrase = passphrase,
+            .salt = salt,
+            .secret = secret,
+            .associated = associated,
+        },
+        argon2id_cost{.blocks = 32, .passes = 3, .lanes = 4}
+    );
+
+    REQUIRE(derived.has_value());
+    CHECK(
+        std::ranges::equal(
+            derived->as_bytes(),
+            bytes_of<32>("0d640df58d78766c08c037a34a8b53c9d01ef0452d75b65eb52520e96b01e659")
+        )
     );
 }
 

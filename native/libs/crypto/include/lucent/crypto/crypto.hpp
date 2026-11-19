@@ -150,4 +150,29 @@ auto open(
     std::span<const std::byte> sealed
 ) -> result<secret_bytes>;
 
+// Argon2id (RFC 9106), for keys derived from a passphrase. Monocypher runs every lane on the
+// calling thread, so lanes add no speed, only compatibility with other implementations.
+struct argon2id_cost {
+    // 1 KiB blocks of memory; at least 8 per lane.
+    u32 blocks = 0;
+    u32 passes = 0;
+    u32 lanes = 0;
+
+    auto operator==(const argon2id_cost&) const -> bool = default;
+};
+
+struct argon2id_inputs {
+    std::span<const std::byte> passphrase;
+    std::span<const std::byte> salt;
+    // RFC 9106's optional secret and associated data; empty for none.
+    std::span<const std::byte> secret;
+    std::span<const std::byte> associated;
+};
+
+// 4 GiB: more is refused as unsupported rather than allocated.
+inline constexpr u32 max_argon2id_blocks = u32{1} << 22U;
+
+// A 32-byte key. Allocates the cost's memory for the call.
+auto argon2id(const argon2id_inputs& inputs, argon2id_cost cost) -> result<secret_key>;
+
 }

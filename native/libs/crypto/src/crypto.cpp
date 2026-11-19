@@ -10,6 +10,8 @@
 #include <monocypher-ed25519.h>
 #include <monocypher.h>
 
+#include <lucent/core/narrow.hpp>
+
 namespace lucent::crypto {
 namespace {
 
@@ -478,6 +480,43 @@ auto open(
         return std::unexpected(error{.code = error_code::malformed});
     }
     return plain;
+}
+
+auto argon2id(const argon2id_inputs& inputs, argon2id_cost cost) -> result<secret_key> {
+    LUCENT_INVARIANT(cost.lanes >= 1 && cost.passes >= 1 && cost.blocks >= 8 * cost.lanes);
+    if (cost.blocks > max_argon2id_blocks) {
+        return std::unexpected(error{.code = error_code::unsupported});
+    }
+    constexpr usize block_size = 1024;
+    std::vector<std::byte> work_area(usize{cost.blocks} * block_size);
+    std::array<std::byte, secret_key_size> derived{};
+    crypto_argon2(
+        writable_u8(derived),
+        narrow<u32>(derived.size()),
+        work_area.data(),
+        crypto_argon2_config{
+            .algorithm = CRYPTO_ARGON2_ID,
+            .nb_blocks = cost.blocks,
+            .nb_passes = cost.passes,
+            .nb_lanes = cost.lanes,
+        },
+        crypto_argon2_inputs{
+            .pass = as_u8(inputs.passphrase),
+            .salt = as_u8(inputs.salt),
+            .pass_size = narrow<u32>(inputs.passphrase.size()),
+            .salt_size = narrow<u32>(inputs.salt.size()),
+        },
+        crypto_argon2_extras{
+            .key = inputs.secret.empty() ? nullptr : as_u8(inputs.secret),
+            .ad = inputs.associated.empty() ? nullptr : as_u8(inputs.associated),
+            .key_size = narrow<u32>(inputs.secret.size()),
+            .ad_size = narrow<u32>(inputs.associated.size()),
+        }
+    );
+    wipe(work_area);
+    secret_key out = secret_key::from_bytes(derived);
+    wipe(derived);
+    return out;
 }
 
 }
