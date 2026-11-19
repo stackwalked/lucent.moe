@@ -3,11 +3,13 @@
 lucent_library(kit
     HEADERS
         include/lucent/kit/boot_info.hpp
+        include/lucent/kit/canvas.hpp
         include/lucent/kit/capability.hpp
         include/lucent/kit/clock.hpp
         include/lucent/kit/context.hpp
         include/lucent/kit/core_capabilities.hpp
         include/lucent/kit/dev_build.hpp
+        include/lucent/kit/draw_context.hpp
         $<$<CONFIG:Debug>:include/lucent/kit/dev_channel.hpp>
         include/lucent/kit/fact.hpp
         include/lucent/kit/fact_apply.hpp
@@ -48,7 +50,7 @@ lucent_library(kit
         src/session_message.cpp
         src/time_date_stamp.cpp
         src/worker_set.cpp
-    DEPS lucent::build lucent::bundle lucent::crypto lucent::foreign lucent::os lucent::pe safetyhook::safetyhook
+    DEPS lucent::build lucent::bundle lucent::crypto lucent::draw lucent::foreign lucent::os lucent::pe safetyhook::safetyhook
 )
 # Read by <lucent/kit/dev_build.hpp>: 1 in dev builds, 0 in every other.
 target_compile_definitions(lucent_kit PUBLIC "LUCENT_KIT_DEV_BUILD=$<CONFIG:Debug>")
@@ -103,7 +105,7 @@ set_tests_properties(
 # concept that says so. Built only by the test, and kept out of compile_commands.json as above.
 add_library(lucent_kit_context_undeclared OBJECT EXCLUDE_FROM_ALL tests/context_undeclared.cpp)
 target_include_directories(lucent_kit_context_undeclared PRIVATE include)
-target_link_libraries(lucent_kit_context_undeclared PRIVATE lucent::core lucent::build)
+target_link_libraries(lucent_kit_context_undeclared PRIVATE lucent::core lucent::build lucent::draw)
 target_compile_definitions(lucent_kit_context_undeclared PRIVATE LUCENT_KIT_DEV_BUILD=1)
 set_target_properties(lucent_kit_context_undeclared PROPERTIES EXPORT_COMPILE_COMMANDS OFF)
 add_test(

@@ -6,6 +6,7 @@
 #include <span>
 #include <thread>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include <catch2/catch_test_macros.hpp>
@@ -13,6 +14,8 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
 #include <lucent/core/narrow.hpp>
+#include <lucent/draw/draw_list.hpp>
+#include <lucent/kit/canvas.hpp>
 #include <lucent/kit/clock.hpp>
 #include <lucent/kit/fact.hpp>
 #include <lucent/kit/fact_resolve.hpp>
@@ -221,6 +224,38 @@ TEST_CASE("a tick without a needed part skips the feature without failing it") {
     CHECK(features.state(tracker) == feature_state::on);
     CHECK(features.stats(tracker).value_or(feature_stats{}).skips == 1);
     CHECK(features.stats(tracker).value_or(feature_stats{}).runs == 0);
+}
+
+TEST_CASE(
+    "a feature that only draws runs at the draw, never at the tick, and a fault there fails it"
+) {
+    resolve_capabilities(sound_fact::resolved);
+    const test_clock time;
+    wiring wired;
+    wired.add<fixtures::painter>();
+    registry features{std::move(wired), everything(), time};
+    features.request({enable_feature{.feature = fixtures::painter::id}});
+    features.safe_point();
+    std::vector<fixtures::sighting> log;
+    draw::draw_list list;
+    canvas onto{list, {.x = 100.0F, .y = 100.0F}};
+
+    run_tick(features, tick_with(log, 2));
+    CHECK(onto.labels().empty());
+    CHECK(features.stats(fixtures::painter::id).value_or(feature_stats{}).runs == 0);
+
+    const fixtures::radar_view radar = tick_with(log, 2);
+    view_set parts;
+    parts.put(radar);
+    features.draw(parts, onto);
+    CHECK(onto.labels().size() == 2);
+    CHECK(features.stats(fixtures::painter::id).value_or(feature_stats{}).runs == 1);
+
+    const fixtures::radar_view broken = tick_with(log, -1);
+    view_set broken_parts;
+    broken_parts.put(broken);
+    features.draw(broken_parts, onto);
+    CHECK(features.state(fixtures::painter::id) == feature_state::failed);
 }
 
 TEST_CASE("a setting changes between ticks only, at the safe point") {

@@ -8,6 +8,8 @@
 #include <variant>
 #include <vector>
 
+#include <lucent/core/stdx/function_ref.hpp>
+#include <lucent/kit/canvas.hpp>
 #include <lucent/kit/clock.hpp>
 #include <lucent/kit/feature.hpp>
 #include <lucent/kit/published.hpp>
@@ -126,6 +128,11 @@ public:
     // fault turns that feature failed at once; readers see it from the next safe point.
     auto dispatch(const view_set& parts) -> void;
 
+    // The tick thread, which draws: the render thread while the overlay's frames are the ticks.
+    // Draws every feature that is on and draws, in wiring order, each inside contain(), with
+    // dispatch's fault rule. The parts are render-thread snapshots, not the tick's.
+    auto draw(const view_set& parts, canvas& onto) -> void;
+
     // The tick thread. Empty for a feature that isn't wired.
     auto state(feature_id feature) const -> std::optional<feature_state>;
     auto stats(feature_id feature) const -> std::optional<feature_stats>;
@@ -144,6 +151,7 @@ private:
     };
 
     static auto adopt(wiring wired) -> std::vector<wired_feature>;
+    auto run_each(stdx::function_ref<tick_outcome(detail::feature_entry&)> run) -> void;
     auto find(feature_id feature) -> wired_feature*;
     auto find(feature_id feature) const -> const wired_feature*;
     auto state_of(const wired_feature& wired) const -> feature_state;

@@ -6,22 +6,36 @@
 #include <span>
 #include <vector>
 
+#include <lucent/kit/canvas.hpp>
 #include <lucent/kit/context.hpp>
+#include <lucent/kit/draw_context.hpp>
 #include <lucent/kit/feature.hpp>
 #include <lucent/kit/settings.hpp>
 #include <lucent/kit/view_set.hpp>
 
 namespace lucent::kit {
 
-// A feature the registry can run: it declares itself, and ticks on its context.
+// A feature that does its work in the tick, on its context.
 template <typename F>
-concept runnable =
+concept ticking =
     feature_like<F> && requires(F& running, const context<F>& parts) { running.tick(parts); };
+
+// A feature that draws each frame on the render thread, on its draw context.
+template <typename F>
+concept drawing =
+    feature_like<F> && requires(F& running, const draw_context<F>& parts) { running.draw(parts); };
+
+// A feature the registry can run: it declares itself, and ticks, draws, or both.
+template <typename F>
+concept runnable = ticking<F> || drawing<F>;
 
 enum class tick_outcome : u8 {
     ran,
     // A part it needs wasn't built this tick.
     skipped,
+    // It has nothing to run there: a feature that only draws, at a tick, or one that only ticks,
+    // at a draw.
+    idle,
 };
 
 namespace detail {
@@ -44,6 +58,8 @@ public:
     virtual auto set(setting_id setting, const setting_value& value) -> void = 0;
     // Called inside contain(); a fault may leave the feature's own state broken.
     virtual auto tick(const view_set& parts) -> tick_outcome = 0;
+    // Called inside contain(), on the render thread, as tick.
+    virtual auto draw(const view_set& parts, canvas& onto) -> tick_outcome = 0;
     // Drops the feature's own state for a fresh one; its settings stay.
     virtual auto restart() -> void = 0;
 
@@ -89,12 +105,29 @@ public:
     }
 
     auto tick(const view_set& parts) -> tick_outcome override {
-        if (!has_needs<F>(parts)) {
-            return tick_outcome::skipped;
+        if constexpr (!ticking<F>) {
+            return tick_outcome::idle;
+        } else {
+            if (!has_needs<F>(parts)) {
+                return tick_outcome::skipped;
+            }
+            const context<F> running{parts, m_settings};
+            m_feature.tick(running);
+            return tick_outcome::ran;
         }
-        const context<F> running{parts, m_settings};
-        m_feature.tick(running);
-        return tick_outcome::ran;
+    }
+
+    auto draw(const view_set& parts, canvas& onto) -> tick_outcome override {
+        if constexpr (!drawing<F>) {
+            return tick_outcome::idle;
+        } else {
+            if (!has_needs<F>(parts)) {
+                return tick_outcome::skipped;
+            }
+            const draw_context<F> drawn{parts, m_settings, onto};
+            m_feature.draw(drawn);
+            return tick_outcome::ran;
+        }
     }
 
     auto restart() -> void override {

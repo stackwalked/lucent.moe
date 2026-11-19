@@ -10,6 +10,8 @@
 
 #include <lucent/core/contain.hpp>
 #include <lucent/core/match.hpp>
+#include <lucent/core/stdx/function_ref.hpp>
+#include <lucent/kit/canvas.hpp>
 #include <lucent/kit/clock.hpp>
 #include <lucent/kit/dev_build.hpp>
 #include <lucent/kit/feature.hpp>
@@ -104,13 +106,23 @@ auto registry::safe_point() -> void {
 }
 
 auto registry::dispatch(const view_set& parts) -> void {
+    run_each([&parts](detail::feature_entry& entry) { return entry.tick(parts); });
+}
+
+auto registry::draw(const view_set& parts, canvas& onto) -> void {
+    run_each([&parts, &onto](detail::feature_entry& entry) { return entry.draw(parts, onto); });
+}
+
+// A tick and a draw count alike in a feature's stats: a feature that both ticks and draws runs
+// twice a frame.
+auto registry::run_each(stdx::function_ref<tick_outcome(detail::feature_entry&)> run) -> void {
     for (wired_feature& wired : m_features) {
         if (state_of(wired) != feature_state::on) {
             continue;
         }
         const clock::time_point started = m_clock->now();
         tick_outcome outcome = tick_outcome::skipped;
-        const contained<void> ran = contain([&] { outcome = wired.entry->tick(parts); });
+        const contained<void> ran = contain([&] { outcome = run(*wired.entry); });
         wired.stats.busy += m_clock->now() - started;
         if (!ran) {
             wired.is_failed = true;
@@ -127,6 +139,8 @@ auto registry::dispatch(const view_set& parts) -> void {
             break;
         case tick_outcome::skipped:
             ++wired.stats.skips;
+            break;
+        case tick_outcome::idle:
             break;
         }
     }

@@ -3,8 +3,11 @@
 #include <array>
 #include <vector>
 
+#include <lucent/draw/color.hpp>
+#include <lucent/kit/canvas.hpp>
 #include <lucent/kit/capability.hpp>
 #include <lucent/kit/context.hpp>
+#include <lucent/kit/draw_context.hpp>
 #include <lucent/kit/fact.hpp>
 #include <lucent/kit/feature.hpp>
 #include <lucent/kit/settings.hpp>
@@ -97,6 +100,33 @@ public:
 
 private:
     i32 m_ticks = 0;
+};
+
+// Only draws: a label per blip; a radar showing negative blips surprises it into a fault.
+class painter {
+public:
+    static constexpr feature_id id = feature_id_of<"painter">;
+    using needs = kit::needs<radar_view>;
+    using wants = kit::wants<>;
+    using settings = no_settings;
+
+    auto draw(const draw_context<painter>& parts) -> void {
+        const auto& radar = parts.view<radar_view>();
+        LUCENT_ENSURE(radar.blips >= 0);
+        ++m_frames;
+        for (i32 blip = 0; blip < radar.blips; ++blip) {
+            const label blip_label{
+                .text = "blip",
+                .anchor = {.x = static_cast<f32>(blip), .y = static_cast<f32>(m_frames)},
+                .size = 10.0F,
+                .tint = draw::white,
+            };
+            parts.onto().add(blip_label);
+        }
+    }
+
+private:
+    i32 m_frames = 0;
 };
 
 // Needs sound, so it is unavailable while sound's fact is unresolved.
