@@ -4,7 +4,7 @@ project:
 language: "cpp"
 layer: "application"
 
-dependsOn: ["crypto", "devkey", "kit"]
+dependsOn: ["crypto", "cs2-modules", "devkey", "kit"]
 
 # Nothing here is testable off-target yet; behavior in the game gets manual test lists.
 workspace:

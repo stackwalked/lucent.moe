@@ -2,25 +2,14 @@
 #include <utility>
 
 #include <lucent/crypto/crypto.hpp>
+#include <lucent/cs2-modules/game_modules.hpp>
 #include <lucent/devkey/public_key.hpp>
 #include <lucent/kit/boot_info.hpp>
-#include <lucent/kit/fact.hpp>
 #include <lucent/kit/lifecycle.hpp>
 
 #include "attach.hpp"
 
 namespace lucent::cs2 {
-
-// A dev-only fact that carries the bundle path end to end before cs2 has real facts: devkey signs
-// a value for it (`dev_probe=<n>`), and the module's facts log shows it resolved. Nothing reads it,
-// hence `used`: the compiler emits an inline variable only where something names it, and an
-// unemitted fact is missing from the section and so from the manifest.
-LUCENT_FACT kit::fact::value<i32> dev_probe [[gnu::used]]{
-    "dev_probe",
-    client_module,
-    {.min = 0, .max = 1'000'000},
-};
-
 namespace {
 
 // Dev builds trust this machine's dev key and nothing else (tools/devkey).
