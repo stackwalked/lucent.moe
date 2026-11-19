@@ -9,6 +9,7 @@ projects:
     - "native/libs/*/moon.yml"
     - "native/libs/render/*/moon.yml"
     - "native/libs/render/backends/*/moon.yml"
+    - "native/engines/*/*/moon.yml"
     - "native/targets/*/moon.yml"
     - "native/targets/*/*/moon.yml"
     - "native/tools/*/moon.yml"

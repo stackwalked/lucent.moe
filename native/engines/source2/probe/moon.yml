@@ -1,0 +1,9 @@
+id: "source2-probe"
+
+project:
+  description: "Source 2 knowledge for the generator: the schema a module registers, read from its file, and schema fields as finders. Tooling only."
+
+language: "cpp"
+layer: "library"
+
+dependsOn: ["core", "pe", "probe", { id: "os", scope: "development" }]
