@@ -31,7 +31,7 @@ auto name_of(kit::stage reached) -> std::string_view {
 auto print_message(const kit::session_message& message) -> void {
     match(
         message,
-        [](const kit::log_line& line) { std::println("module: {}", line.text); },
+        [](const kit::dev_text& line) { std::println("dev: {}", line.text); },
         [](const kit::stage_reached& reached) {
             std::println("stage: {}", name_of(reached.reached));
         },

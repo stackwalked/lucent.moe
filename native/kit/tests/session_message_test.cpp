@@ -33,13 +33,18 @@ auto bytes_of(std::initializer_list<u8> values) -> std::vector<std::byte> {
 
 TEST_CASE("every message survives encoding and decoding") {
     const session_message message = GENERATE(
-        session_message{log_line{.text = "attached to cs2.exe"}},
-        session_message{log_line{.text = ""}},
+        session_message{dev_text{.text = "attached to cs2.exe"}},
+        session_message{dev_text{.text = ""}},
         session_message{stage_reached{.reached = stage::boot}},
         session_message{stage_reached{.reached = stage::unload}},
         session_message{unload_request{}}
     );
     CHECK(round_trip(message) == message);
+}
+
+// The bytes are boot_info v3's: dev text took over the log line's kind and payload unchanged.
+TEST_CASE("dev text is framed as kind 1 followed by its UTF-8 bytes") {
+    CHECK(encode(dev_text{.text = "hé"}) == bytes_of({4, 0, 0, 0, 1, 'h', 0xc3, 0xa9}));
 }
 
 TEST_CASE("a frame size of zero or above the bound is malformed") {

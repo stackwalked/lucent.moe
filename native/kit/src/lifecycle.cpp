@@ -2,11 +2,8 @@
 
 #include <cstddef>
 #include <expected>
-#include <format>
 #include <memory>
 #include <span>
-#include <string>
-#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -16,6 +13,7 @@
 #include <lucent/core/match.hpp>
 #include <lucent/core/narrow.hpp>
 #include <lucent/kit/boot_info.hpp>
+#include <lucent/kit/dev_build.hpp>
 #include <lucent/kit/fact.hpp>
 #include <lucent/kit/fact_apply.hpp>
 #include <lucent/kit/game_module.hpp>
@@ -23,6 +21,7 @@
 #include <lucent/kit/session_message.hpp>
 #include <lucent/os/unique_handle.hpp>
 
+#include "dev.hpp"
 #include "release.hpp"
 
 namespace lucent::kit {
@@ -31,7 +30,7 @@ namespace {
 auto is_unload(const session_message& message) -> bool {
     return match(
         message,
-        [](const log_line&) { return false; },
+        [](const dev_text&) { return false; },
         [](const stage_reached&) { return false; },
         [](const unload_request&) { return true; }
     );
@@ -62,47 +61,13 @@ struct start_request {
     std::vector<std::byte> bundle;
 };
 
-auto name_of(set_outcome outcome) -> std::string_view {
-    switch (outcome) {
-    case set_outcome::applied:
-        return "applied";
-    case set_outcome::unverified:
-        return "unverified";
-    case set_outcome::other_manifest:
-        return "other manifest";
-    case set_outcome::other_build:
-        return "other module build";
-    case set_outcome::module_absent:
-        return "module not loaded";
-    }
-    return "unknown";
-}
-
-auto describe(const apply_report& report) -> std::string {
-    std::string sets;
-    for (const set_outcome outcome : report.sets) {
-        sets += std::format("{}{}", sets.empty() ? "" : ", ", name_of(outcome));
-    }
-    return std::format(
-        "facts: sets [{}]; {} resolved, {} rejected, {} unresolved, {} unknown, {} misplaced",
-        sets,
-        report.facts.resolved,
-        report.facts.rejected,
-        report.facts.unresolved,
-        report.facts.unknown,
-        report.misplaced
-    );
-}
-
-auto log(session& channel, std::string text) -> void {
-    // As with stage reports, a failure means the host is gone.
-    std::ignore = channel.send(log_line{.text = std::move(text)});
-}
-
-// The resolve stage: every linked fact gets its value from the bundle, or stays unresolved.
-auto apply_bundle(session& channel, const start_request& request) -> void {
+// The resolve stage: every linked fact gets its value from the bundle, or stays unresolved. Dev
+// builds report the outcome over the dev channel; a release module says nothing.
+auto apply_bundle(const start_request& request) -> void {
     if (request.bundle.empty()) {
-        log(channel, "facts: no bundle, every fact unresolved");
+        if constexpr (is_dev_build) {
+            detail::report_no_bundle();
+        }
         return;
     }
     const std::vector<loaded_module> modules = loaded_game_modules(request.started.modules);
@@ -114,15 +79,9 @@ auto apply_bundle(session& channel, const start_request& request) -> void {
             .modules = modules,
         }
     );
-    if (!applied) {
-        log(channel,
-            std::format(
-                "facts: the bundle doesn't decode (error {}), every fact unresolved",
-                std::to_underlying(applied.error().code)
-            ));
-        return;
+    if constexpr (is_dev_build) {
+        detail::report_facts(applied);
     }
-    log(channel, describe(*applied));
 }
 
 auto copy_bundle(const boot_info& info) -> result<std::vector<std::byte>> {
@@ -141,13 +100,9 @@ auto copy_bundle(const boot_info& info) -> result<std::vector<std::byte>> {
 
 // Whether the module may be freed: not when detach couldn't show that no thread will run its code
 // again.
-auto run(const start_request& request) -> bool {
-    session channel{session_ends{
-        .inbound = os::unique_handle{request.info.from_host},
-        .outbound = os::unique_handle{request.info.to_host},
-    }};
+auto run_stages(session& channel, const start_request& request) -> bool {
     report(channel, stage::boot);
-    apply_bundle(channel, request);
+    apply_bundle(request);
     bool is_detached = true;
     {
         // A target that fails to attach skips straight to detach: the host sees no attach stage.
@@ -165,6 +120,22 @@ auto run(const start_request& request) -> bool {
     }
     report(channel, stage::unload);
     return true;
+}
+
+// Whether the module may be freed, as run_stages decides.
+auto run(const start_request& request) -> bool {
+    session channel{session_ends{
+        .inbound = os::unique_handle{request.info.from_host},
+        .outbound = os::unique_handle{request.info.to_host},
+    }};
+    if constexpr (is_dev_build) {
+        detail::publish_dev_session(channel);
+    }
+    const bool may_free = run_stages(channel, request);
+    if constexpr (is_dev_build) {
+        detail::withdraw_dev_session();
+    }
+    return may_free;
 }
 
 // A raw thread, the one exception to kit workers: it ends by freeing the module its own code lives

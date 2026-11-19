@@ -10,10 +10,12 @@ namespace lucent::kit {
 
 enum class stage : u8 { boot, attach, run, detach, unload };
 
-struct log_line {
+// The dev channel's message (lucent/kit/dev_channel.hpp): only dev builds send it, so a release
+// module sends stages and nothing else.
+struct dev_text {
     std::string text;
 
-    auto operator==(const log_line&) const -> bool = default;
+    auto operator==(const dev_text&) const -> bool = default;
 };
 
 struct stage_reached {
@@ -26,7 +28,7 @@ struct unload_request {
     auto operator==(const unload_request&) const -> bool = default;
 };
 
-using session_message = std::variant<log_line, stage_reached, unload_request>;
+using session_message = std::variant<dev_text, stage_reached, unload_request>;
 
 // On the wire a message is a frame: a little-endian u32 size, then that many bytes holding a kind
 // byte and the payload.
