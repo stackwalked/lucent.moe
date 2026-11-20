@@ -49,7 +49,7 @@ product, one feature. Built end to end, native and server together.
 - Web: device approval, member devices, the loader download, a product page that says "not yet
   supported"; admin for entitlements, devices, and promotion of staged releases and fact revisions.
 - Native: the release loader at its smallest (sign-in, device key, self-update, verify, map,
-  relay); the module container; the release boot path; kit's lease client and session key;
+  relay); the module container; kit's lease client and session key;
   `boot_info` with the lease and build ids.
 - Render: the menu usable mid-match, by toggling cs2's own relative-mouse mode through its input
   system while the menu is open (a method fact; it frees the cursor and stops the camera), and
@@ -57,11 +57,6 @@ product, one feature. Built end to end, native and server together.
   menu catalog from the server; release builds show placeholders until it arrives.
 - cs2: the world built at the game's frame stage (a method fact for it) instead of on Present; a
   class check on controllers instead of indices 1..64 (capabilities may hold vtable facts).
-- Kit: a refused start tells the release host why, as one code from the curated user-facing
-  catalog (never a capability name), through a new session message kind and a `boot_info`
-  version bump. A `core` capability whose module isn't loaded at start waits: the start proceeds,
-  its features stay unavailable, and only a failure once the module loads ends the session with
-  that code.
 - Release tooling: the offline code and facts keys as passphrase-encrypted files with their
   signing tools, the
   release seal (a release's offline-signed list of its artifacts and digests), the master seed's
@@ -256,12 +251,10 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
 
 ## Kit
 
-- `boot_info` grows (v3 carries the session ends, the image kind, the mapper's trampolines and the
-  bundle):
+- `boot_info` grows (v4 carries the session ends, the image kind, the mapper's trampolines, the
+  bundle, and a mapped image's entry and `.pdata`):
   - host and build ids;
   - the lease blob.
-- A release boot path: dev starts the module through its `lucent_boot` export after either loader;
-  release needs its own way in.
 - No static TLS in mapped modules: `lucent_module()` fails the build on a TLS directory, ast-grep bans
   `thread_local`/`__declspec(thread)`, and our code bans function-local statics. A dependency that
   needs TLS is a decision: build it with `/Zc:threadSafeInit-`, keep it out of the module, or implement
