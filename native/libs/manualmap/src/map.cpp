@@ -22,7 +22,6 @@
 #include <lucent/pe/image_view.hpp>
 #include <lucent/pe/imports.hpp>
 #include <lucent/pe/relocations.hpp>
-#include <lucent/pe/runtime_functions.hpp>
 #include <lucent/pe/tls.hpp>
 #include <lucent/wire/container.hpp>
 
@@ -35,9 +34,6 @@ namespace {
 
 constexpr error malformed{.code = error_code::malformed};
 constexpr error unsupported{.code = error_code::unsupported};
-
-// RUNTIME_FUNCTION: begin, end and unwind info, three u32s.
-constexpr u32 runtime_function_size = 12;
 
 // DllMain returned FALSE. The Windows loader reports this to its caller as this system code.
 constexpr u32 error_dll_init_failed = 1114;
@@ -210,16 +206,6 @@ auto container_rtl_pc_slots(const wire::container& image) -> std::vector<u32> {
     return slots;
 }
 
-// ntdll is at the same base in every process of a boot (ASLR picks it once per boot), just as
-// kernel32 is in os/src/remote_call.cpp: the address we read here is its address in the target too.
-auto ntdll_address(const char* name) -> result<uptr> {
-    const auto address = std::bit_cast<uptr>(GetProcAddress(GetModuleHandleW(L"ntdll.dll"), name));
-    if (address == 0) {
-        return std::unexpected(last_system_error());
-    }
-    return address;
-}
-
 }
 
 auto map(const os::process& target, std::span<const std::byte> image_file) -> result<mapped> {
@@ -242,15 +228,12 @@ auto map(const os::process& target, std::span<const std::byte> image_file) -> re
 
     const std::optional<pe::directory> exceptions =
         image.find_directory(pe::directory_kind::exceptions);
-    const uptr entry_absolute = image.entry_point() == 0 ? 0 : base + image.entry_point();
-    const uptr exception_absolute = exceptions.has_value() ? base + exceptions->rva : 0;
-    const u32 exception_entries = narrow<u32>(LUCENT_TRY(pe::runtime_functions_of(image)).size());
     return mapped{
         .image = std::move(image_region),
         .trampolines = std::move(trampolines),
-        .entry_point = entry_absolute,
-        .exception_table = exception_absolute,
-        .exception_count = exception_entries,
+        .entry_rva = image.entry_point(),
+        .pdata_rva = exceptions.has_value() ? exceptions->rva : 0,
+        .pdata_size = exceptions.has_value() ? exceptions->size : 0,
     };
 }
 
@@ -270,24 +253,20 @@ auto map_container(const os::process& target, const wire::container& image) -> r
     return mapped{
         .image = std::move(image_region),
         .trampolines = std::move(trampolines),
-        .entry_point = image.entry_rva == 0 ? 0 : base + image.entry_rva,
-        .exception_table = image.pdata_size == 0 ? 0 : base + image.pdata_rva,
-        .exception_count = image.pdata_size / runtime_function_size,
+        .entry_rva = image.entry_rva,
+        .pdata_rva = image.pdata_rva,
+        .pdata_size = image.pdata_size,
     };
 }
 
 auto attach(const os::process& target, const mapped& image, uptr reserved) -> result<void> {
     // The stub calls the entry point unconditionally; an image without one has nothing to attach.
-    if (image.entry_point == 0) {
+    if (image.entry_rva == 0) {
         return std::unexpected(unsupported);
     }
-    const uptr add_function_table = LUCENT_TRY(ntdll_address("RtlAddFunctionTable"));
     const detail::attach_args args{
-        .function_table = image.exception_table,
-        .function_count = image.exception_count,
         .image_base = image.image.base(),
-        .add_function_table = add_function_table,
-        .entry_point = image.entry_point,
+        .entry_point = image.image.base() + image.entry_rva,
         .reserved = reserved,
     };
     os::remote_region region = LUCENT_TRY(
@@ -317,8 +296,7 @@ auto attach(const os::process& target, const mapped& image, uptr reserved) -> re
             error{.code = error_code::system, .system_code = error_dll_init_failed}
         );
     default:
-        // 2 is RtlAddFunctionTable rejecting the exception table (no Windows code is set);
-        // anything else means the entry returned a non-BOOL or the stub was disturbed.
+        // The entry returned a non-BOOL, or the stub was disturbed.
         return std::unexpected(malformed);
     }
 }

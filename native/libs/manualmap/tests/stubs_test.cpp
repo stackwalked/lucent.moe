@@ -11,19 +11,14 @@
 #include <catch2/catch_test_macros.hpp>
 
 // Exercises the two stubs' bytes in this process: allocates an RWX page, writes the bytes to it,
-// calls them with recording fakes in place of RtlAddFunctionTable, the module entry point and the
-// real RtlPcToFileHeader.
+// calls them with recording fakes in place of the module entry point and the real
+// RtlPcToFileHeader.
 
 namespace lucent::manualmap {
 namespace {
 
 struct recording {
-    u64 function_table = 0;
-    u64 function_count = 0;
-    u64 add_image_base = 0;
-    i32 add_calls = 0;
-    u8 add_result = 1; // TRUE
-
+    BOOL entry_result = TRUE;
     u64 entry_instance = 0;
     u32 entry_reason = 0;
     u64 entry_reserved = 0;
@@ -56,19 +51,10 @@ public:
 
 extern "C" {
 // NOLINTBEGIN(bugprone-easily-swappable-parameters,readability-identifier-length): mirrors Win32 signatures.
-auto fake_add_function_table(void* table, DWORD count, DWORD64 image_base) -> BOOLEAN;
+
 auto fake_entry_point(HINSTANCE instance, DWORD reason, void* reserved) -> BOOL;
 auto fake_original_rtl_pc(void* pc, void** base_out) -> void*;
 // NOLINTEND(bugprone-easily-swappable-parameters,readability-identifier-length)
-}
-
-// NOLINTNEXTLINE(bugprone-easily-swappable-parameters,readability-identifier-length): mirrors Win32 signature.
-extern "C" auto fake_add_function_table(void* table, DWORD count, DWORD64 image_base) -> BOOLEAN {
-    ++active->add_calls;
-    active->function_table = std::bit_cast<u64>(table);
-    active->function_count = count;
-    active->add_image_base = image_base;
-    return active->add_result;
 }
 
 extern "C" auto fake_entry_point(HINSTANCE instance, DWORD reason, void* reserved) -> BOOL {
@@ -78,7 +64,7 @@ extern "C" auto fake_entry_point(HINSTANCE instance, DWORD reason, void* reserve
     active->entry_instance = std::bit_cast<u64>(instance);
     active->entry_reason = reason;
     active->entry_reserved = std::bit_cast<u64>(reserved);
-    return TRUE;
+    return active->entry_result;
 }
 
 // NOLINTNEXTLINE(readability-identifier-length): mirrors Win32 signature.
@@ -153,25 +139,18 @@ using pc_fn = void* (*)(void*, void**);
 
 }
 
-TEST_CASE("attach_stub registers the exception table and calls the entry point") {
+TEST_CASE("attach_stub calls the entry point for DLL_PROCESS_ATTACH and returns what it returned") {
     recording record;
     const active_recording guard{record};
     const rwx_page page;
     load_attach_stub(page);
     const detail::attach_args args{
-        .function_table = 0x1000,
-        .function_count = 3,
         .image_base = 0x7ff0'0000'0000ULL,
-        .add_function_table = std::bit_cast<u64>(&fake_add_function_table),
         .entry_point = std::bit_cast<u64>(&fake_entry_point),
         .reserved = 0xabc,
     };
 
     CHECK(function_at<attach_fn>(page)(&args) == 1);
-    CHECK(record.add_calls == 1);
-    CHECK(record.function_table == 0x1000);
-    CHECK(record.function_count == 3);
-    CHECK(record.add_image_base == 0x7ff0'0000'0000ULL);
     CHECK(record.entry_calls == 1);
     CHECK(record.entry_instance == 0x7ff0'0000'0000ULL);
     CHECK(record.entry_reason == DLL_PROCESS_ATTACH);
@@ -179,42 +158,19 @@ TEST_CASE("attach_stub registers the exception table and calls the entry point")
     CHECK(record.entry_rsp_on_entry % 16 == 8);
 }
 
-TEST_CASE("attach_stub skips registration when the exception table is empty") {
-    recording record;
+TEST_CASE("attach_stub returns 0 when the entry point refuses the attach") {
+    recording record{.entry_result = FALSE};
     const active_recording guard{record};
     const rwx_page page;
     load_attach_stub(page);
     const detail::attach_args args{
-        .function_table = 0,
-        .function_count = 0,
         .image_base = 0x7ff0'0000'0000ULL,
-        .add_function_table = std::bit_cast<u64>(&fake_add_function_table),
         .entry_point = std::bit_cast<u64>(&fake_entry_point),
         .reserved = 0,
     };
 
-    CHECK(function_at<attach_fn>(page)(&args) == 1);
-    CHECK(record.add_calls == 0);
+    CHECK(function_at<attach_fn>(page)(&args) == 0);
     CHECK(record.entry_calls == 1);
-}
-
-TEST_CASE("attach_stub returns 2 when RtlAddFunctionTable rejects the table") {
-    recording record{.add_result = 0};
-    const active_recording guard{record};
-    const rwx_page page;
-    load_attach_stub(page);
-    const detail::attach_args args{
-        .function_table = 0x1000,
-        .function_count = 3,
-        .image_base = 0x7ff0'0000'0000ULL,
-        .add_function_table = std::bit_cast<u64>(&fake_add_function_table),
-        .entry_point = std::bit_cast<u64>(&fake_entry_point),
-        .reserved = 0,
-    };
-
-    CHECK(function_at<attach_fn>(page)(&args) == 2);
-    CHECK(record.add_calls == 1);
-    CHECK(record.entry_calls == 0);
 }
 
 TEST_CASE("rtl_pc_trampoline answers inside the image's range") {

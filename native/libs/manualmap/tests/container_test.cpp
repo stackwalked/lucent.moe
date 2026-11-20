@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cstddef>
 #include <span>
 #include <string>
@@ -55,21 +56,31 @@ auto variable(const wchar_t* name) -> std::wstring {
     return std::wstring{value.data(), size};
 }
 
+// What the probe's boot entry reads (tests/fixtures/contained_probe.cpp).
+struct probe_boot {
+    u32 pdata_rva = 0;
+    u32 pdata_size = 0;
+};
+
 struct started {
     result<void> attached;
     result<u32> booted;
 };
 
-// Maps the probe into this process, runs its entry point, then its boot entry. The image's CRT
-// registered callbacks into it, so it stays mapped for the process's life.
+// Maps the probe into this process, runs its entry point, then its boot entry with the .pdata the
+// mapping reported. The image's CRT registered callbacks into it, so it stays mapped for the
+// process's life.
 auto map_and_start(const os::process& self, const wire::container& packed) -> started {
     result<mapped> image = map_container(self, packed);
     REQUIRE(image.has_value());
-    started out{
-        .attached = attach(self, *image, 0),
-        .booted =
-            os::run_remote(self, {.start = image->image.base() + packed.boot_rva, .argument = 0}),
-    };
+    const probe_boot boot{.pdata_rva = image->pdata_rva, .pdata_size = image->pdata_size};
+    started out{.attached = attach(self, *image, 0), .booted = 0U};
+    if (out.attached) {
+        out.booted = os::run_remote(
+            self,
+            {.start = image->image.base() + packed.boot_rva, .argument = std::bit_cast<uptr>(&boot)}
+        );
+    }
     std::ignore = image->image.release();
     if (image->trampolines) {
         std::ignore = image->trampolines->release();
@@ -77,20 +88,19 @@ auto map_and_start(const os::process& self, const wire::container& packed) -> st
     return out;
 }
 
-TEST_CASE("a mapped container's entry, then its boot entry, run with its imports and .pdata") {
+TEST_CASE("a mapped container's boot entry, given its .pdata, unwinds a raise() into contain()") {
     const result<os::process> self = os::process::open(GetCurrentProcessId());
     REQUIRE(self.has_value());
     SetEnvironmentVariableW(L"LUCENT_CONTAINED_PROBE", nullptr);
-    SetEnvironmentVariableW(L"LUCENT_CONTAINED_PROBE_BOOT", nullptr);
     const wire::container packed = probe();
     REQUIRE(packed.boot_rva != 0);
+    REQUIRE(packed.pdata_size != 0);
 
     const started ran = map_and_start(*self, packed);
 
     REQUIRE(ran.attached.has_value());
-    CHECK(variable(L"LUCENT_CONTAINED_PROBE") == L"contained");
     CHECK(ran.booted == 0U);
-    CHECK(variable(L"LUCENT_CONTAINED_PROBE_BOOT") == L"booted");
+    CHECK(variable(L"LUCENT_CONTAINED_PROBE") == L"contained");
 }
 
 TEST_CASE("a container importing an export no module has fails to map as not found") {

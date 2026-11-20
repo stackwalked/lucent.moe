@@ -21,9 +21,9 @@ TEST_CASE("attach refuses an image without an entry point instead of calling add
     const mapped image{
         .image = std::move(*region),
         .trampolines = std::nullopt,
-        .entry_point = 0,
-        .exception_table = 0,
-        .exception_count = 0,
+        .entry_rva = 0,
+        .pdata_rva = 0,
+        .pdata_size = 0,
     };
 
     const result<void> attached = attach(*self, image, 0);
