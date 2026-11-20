@@ -89,9 +89,10 @@ spec: entries leave as they land. Facts' own seams for this work stay in `wishli
   neither a recorded lease nor the system clock extends one. It binds session, device, product,
   release, entitled features and bundle revision. A slot is held by a live lease and frees itself
   when the lease expires.
-- No server, nothing runs. When the server is unreachable, features go off at the next safe point,
-  session keys and bundle data are wiped, and the module stays mapped and inert; a renewal within
-  5 minutes resumes it, otherwise it unloads.
+- No server, nothing runs. When the server is unreachable, features go off at the next safe point
+  and the module stays mapped and inert, still renewing; a renewal within 5 minutes resumes it.
+  Otherwise it unloads, and the session keys and bundle data are wiped with it (decided: wiping at
+  the lapse would leave nothing to seal the renewal that resumes).
 - A refusal (suspended, slot taken) unloads the module and the loader shows the reason. Integrity
   is never a reason.
 - An entitlement that ends lets its session finish, up to the session cap. Suspension cuts at the

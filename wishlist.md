@@ -26,8 +26,8 @@ registry, settings, safe point and draw dispatch, cs2's `world` and a player box
 hashes with the release guard and post-link name check, `refract`'s phase 1 and `integrity` are
 built. So are most of slice 2 (devices, the `/v1` listener, sign-in, starts, leases, publishing),
 the web pages that go with it, the module container, release seals under the offline code key,
-and kit's release boot path. `:check` runs every native test in Debug and Release. Not started:
-fact sets on the server, the release loader, kit's lease client, slices 4 and 5, the rest of the
+and kit's release boot path and lease client. `:check` runs every native test in Debug and
+Release. Not started: fact sets on the server, the release loader, slices 4 and 5, the rest of the
 cs2 game layer. No CI, and none planned soon: the commit hook's `:check` is the gate.
 
 ### Phase 0: rails
@@ -57,9 +57,10 @@ product, one feature. Built end to end, native and server together.
   server serves one (it lists each channel's loader today); the product page's "not yet supported"
   from fact-set coverage, not only from a missing release.
 - Native: the release loader at its smallest (sign-in, device key, self-update, verify, map,
-  relay), with `lucent-host`; kit's lease client and session key (a key pair at boot, the hello,
-  renewals with the signed nonce, the lapse kit's registry already has); `boot_info` with the
-  lease and build ids. Wire's lease and session codecs are built; nothing native uses them yet.
+  relay), with `lucent-host`. Its relay answers the module's `server_request` messages: the hello
+  to `/v1/starts/:id/session`, renewals to `/v1/sessions/:id/lease` inside its own
+  `lease_request` (its challenge answer, then the module's frame), each reply back as a
+  `server_reply`; a refusal it shows and unloads. `boot_info` with the host and build ids.
 - Render: the menu usable mid-match, by toggling cs2's own relative-mouse mode through its input
   system while the menu is open (a method fact; it frees the cursor and stops the camera), and
   input the window procedure can't block (raw input read elsewhere, key polling). The per-session
@@ -262,8 +263,7 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
 
 - `boot_info` grows (v4 carries the session ends, the image kind, the mapper's trampolines, the
   bundle, and a mapped image's entry and `.pdata`):
-  - host and build ids;
-  - the lease blob.
+  - host and build ids (the lease needs no field: the module's own hello gets the first one).
 - No static TLS in mapped modules: `lucent_module()` fails the build on a TLS directory, ast-grep bans
   `thread_local`/`__declspec(thread)`, and our code bans function-local statics. A dependency that
   needs TLS is a decision: build it with `/Zc:threadSafeInit-`, keep it out of the module, or implement
@@ -376,7 +376,7 @@ Decided in full. Landed in `native/.clang-format`, `native/.clang-tidy`, `native
   - fixtures (test font, goldens) live in each library's `tests/fixtures/`. Product fonts live in
     git too, where they're first used.
 - Rendering is decided in full.
-- Lease client: verify, renew, lapse, and feed entitlements to the registry.
+
 - Dev stats over the dev channel (the channel, text and incidents landed).
 - A patience limit on worker shutdown: `worker_set::stop()` waits forever on a body that ignores
   its token, leaving the module loaded.
