@@ -24,8 +24,11 @@ probe, the generator, the offline Source 2 schema reader, 21 cs2 facts, late-loa
 update-day pipeline), the render stack, `ui` and `menu` drawing in cs2 behind Insert, kit's
 registry, settings, safe point and draw dispatch, cs2's `world` and a player box, keyed identifier
 hashes with the release guard and post-link name check, `refract`'s phase 1 and `integrity` are
-built. `:check` runs every native test in Debug and Release. Not started: slices 2 to 5, any `/v1`
-route, the release loader, the rest of the cs2 game layer. No CI, and none planned soon: the commit hook's `:check` is the gate.
+built. So are most of slice 2 (devices, the `/v1` listener, sign-in, starts, leases, publishing),
+the web pages that go with it, the module container, release seals under the offline code key,
+and kit's release boot path. `:check` runs every native test in Debug and Release. Not started:
+fact sets on the server, the release loader, kit's lease client, slices 4 and 5, the rest of the
+cs2 game layer. No CI, and none planned soon: the commit hook's `:check` is the gate.
 
 ### Phase 0: rails
 
@@ -41,28 +44,34 @@ through our renderer.
 The spine. The thinnest path through every layer on a real release: one member, one PC, one
 product, one feature. Built end to end, native and server together.
 
-- Platform, slice 2: `device`, `device_change_window`, `product_slot`; the native `/v1` listener;
-  pushed auth requests with PKCE and DPoP; start checks in one transaction; leases; release
-  tables; `ops publish-release` and `publish-loader`.
+- Platform: promotion of staged releases. `ops publish-release` and `publish-loader` stage under a
+  verified seal, but nothing outside the tests writes `current_release`, so no release is served.
+- Platform, slice 2's rest: the start's `core` coverage check for the reported game builds (every
+  build starts today); serving the loader's artifacts over HTTP (`publish-loader` keeps them on
+  disk, and no route serves them).
 - Platform, the thin part of slice 3: fact-set storage, `ops publish-fact-set` with the release
-  manifest's core coverage, session bundle assembly. Scoring, live revisions and overrides wait.
-- Web: device approval, member devices, the loader download, a product page that says "not yet
-  supported"; admin for entitlements, devices, and promotion of staged releases and fact revisions.
+  manifest's core coverage, session bundle assembly (leases carry bundle revision 0 until then).
+  The TS fact-set and bundle code exists; the server doesn't use it yet. Scoring, live revisions
+  and overrides wait.
+- Web: admin promotion of staged releases and fact revisions; the download page's file, once the
+  server serves one (it lists each channel's loader today); the product page's "not yet supported"
+  from fact-set coverage, not only from a missing release.
 - Native: the release loader at its smallest (sign-in, device key, self-update, verify, map,
-  relay); the module container; kit's lease client and session key;
-  `boot_info` with the lease and build ids.
+  relay), with `lucent-host`; kit's lease client and session key (a key pair at boot, the hello,
+  renewals with the signed nonce, the lapse kit's registry already has); `boot_info` with the
+  lease and build ids. Wire's lease and session codecs are built; nothing native uses them yet.
 - Render: the menu usable mid-match, by toggling cs2's own relative-mouse mode through its input
   system while the menu is open (a method fact; it frees the cursor and stops the camera), and
   input the window procedure can't block (raw input read elsewhere, key polling). The per-session
   menu catalog from the server; release builds show placeholders until it arrives.
-- cs2: the world built at the game's frame stage (a method fact for it) instead of on Present; a
-  class check on controllers instead of indices 1..64 (capabilities may hold vtable facts).
-- Release tooling: the offline code and facts keys as passphrase-encrypted files with their
-  signing tools, the
-  release seal (a release's offline-signed list of its artifacts and digests), the master seed's
-  generation and archiving, and the production facts key list the release guard compares against
-  (today it only refuses the dev key).
-- The download page tells members what SmartScreen and antivirus will say.
+- cs2: the world and the registry's safe point moved from Present to the FrameStageNotify hook,
+  which exists and runs only the view domain today; a class check on controllers instead of
+  indices 1..64 (capabilities may hold vtable facts).
+- Release tooling: the offline facts key as a passphrase-encrypted file with its signing tool
+  (the key file format is the code key's; only `devkey sign` signs bundles today); the master
+  seed's generation and archiving beside the release id; the production facts key list, for the
+  release guard to compare against (today it only refuses the dev key) and for the release module
+  to trust (it trusts none, so every release start is refused as `GAME_BUILD_UNSUPPORTED`).
 - `infra/`: compose and Caddy. Backups and uptime monitoring are the owner's, outside this plan.
 
 Gate: on a PC that has never seen us, a member downloads the loader from the member area, signs
@@ -902,8 +911,8 @@ live in `wishlist/protection.md`.
     - `Device` binds to `Account` (enroll PC P-256 key once per account; default `maxDevices = 1`,
       7d self-service replacement window); `Entitlement` covers 1..N products (`EntitlementProduct`:
       `productId`, `features: "*" | FeatureTag[]`, `channels`), unioned at `txNow`; `ProductSlot`
-      serializes active sessions per `(accountId, productId)`. `device`, `device_change_window`
-      and `product_slot` arrive with slice 2, which first uses them.
+      serializes active sessions per `(accountId, productId)`, in `device`,
+      `device_change_window` and `product_slot`.
     - Permanent confusable-checked `username_claim`: the fold table is every Unicode
       `confusables.txt` 18.0.0 entry whose source is an ASCII letter, digit or underscore, after
       case folding (0→o, 1→l, i→l, m→rn, `_` dropped); single-use 7-day account-only invites (no
