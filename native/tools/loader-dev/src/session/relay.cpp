@@ -48,7 +48,11 @@ auto print_message(const kit::session_message& message) -> void {
             std::println("stage: {}", name_of(reached.reached));
         },
         [](const kit::unload_request&) { std::println("module asked the host to unload?"); },
-        [](const kit::start_refused& refused) { print_refusal(refused); }
+        [](const kit::start_refused& refused) { print_refusal(refused); },
+        [](const kit::server_request&) {
+            std::println("module asked for the server, which loader-dev doesn't relay to");
+        },
+        [](const kit::server_reply&) { std::println("module sent a server reply?"); }
     );
 }
 

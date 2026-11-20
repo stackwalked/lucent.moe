@@ -107,6 +107,8 @@ auto adopt_mapped(const boot_info& info) -> result<own_image> {
     }
     own_image adopted{
         .kind = image_kind::mapped,
+        .base = base,
+        .size = allocation.end - allocation.begin,
         .trampolines = info.trampolines,
         .entry = base + layout.entry_rva,
         .function_table = 0,
@@ -126,12 +128,25 @@ auto adopt_mapped(const boot_info& info) -> result<own_image> {
     return adopted;
 }
 
+auto adopt_loaded() -> result<own_image> {
+    const uptr base = own_base();
+    const os::address_range allocation = LUCENT_TRY(os::allocation_containing(base));
+    return own_image{
+        .kind = image_kind::loaded,
+        .base = base,
+        .size = allocation.end - allocation.begin,
+        .trampolines = 0,
+        .entry = 0,
+        .function_table = 0,
+    };
+}
+
 }
 
 auto adopt_image(const boot_info& info) -> result<own_image> {
     switch (info.kind) {
     case image_kind::loaded:
-        return own_image{.kind = image_kind::loaded};
+        return adopt_loaded();
     case image_kind::mapped:
         return adopt_mapped(info);
     }

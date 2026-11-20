@@ -37,8 +37,9 @@ struct boot_info {
     u32 pdata_size = 0;
 };
 
-// 4: the image's entry and .pdata, and the session's start_refused message.
-inline constexpr u32 boot_info_version = 4;
+// 4: the image's entry and .pdata, and the session's start_refused message. 5: the session's
+// server_request and server_reply messages, which relay the lease client's calls.
+inline constexpr u32 boot_info_version = 5;
 
 static_assert(
     std::is_trivially_copyable_v<boot_info>, "the host copies boot_info across processes"

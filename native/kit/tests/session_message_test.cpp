@@ -40,7 +40,9 @@ TEST_CASE("every message survives encoding and decoding") {
         session_message{stage_reached{.reached = stage::boot}},
         session_message{stage_reached{.reached = stage::unload}},
         session_message{unload_request{}},
-        session_message{start_refused{.code = wire::refusal_code::game_build_unsupported}}
+        session_message{start_refused{.code = wire::refusal_code::game_build_unsupported}},
+        session_message{server_request{.route = server_route::session, .body = bytes_of({1, 2})}},
+        session_message{server_reply{.route = server_route::lease, .body = bytes_of({9})}}
     );
     CHECK(round_trip(message) == message);
 }
@@ -63,6 +65,17 @@ TEST_CASE("a refused start with a code this build doesn't know still decodes, ke
     CHECK(decode(bytes_of({4, 200})) == session_message{start_refused{.code = unknown}});
 }
 
+TEST_CASE("a relayed body is framed as its kind, its route, then the body unchanged") {
+    CHECK(
+        encode(server_request{.route = server_route::lease, .body = bytes_of({0xaa, 0xbb})})
+        == bytes_of({4, 0, 0, 0, 5, 2, 0xaa, 0xbb})
+    );
+    CHECK(
+        encode(server_reply{.route = server_route::session, .body = bytes_of({0xcc})})
+        == bytes_of({3, 0, 0, 0, 6, 1, 0xcc})
+    );
+}
+
 TEST_CASE("a frame size of zero or above the bound is malformed") {
     const auto size = GENERATE(
         std::array<std::byte, 4>{},
@@ -80,7 +93,7 @@ TEST_CASE("a body that isn't a known message is malformed") {
     const std::vector<std::byte> body = GENERATE(
         bytes_of({}),
         bytes_of({0}),
-        bytes_of({5}),
+        bytes_of({7}),
         bytes_of({255, 1, 2}),
         bytes_of({2}),
         bytes_of({2, 5}),
@@ -88,7 +101,11 @@ TEST_CASE("a body that isn't a known message is malformed") {
         bytes_of({3, 0}),
         bytes_of({4}),
         bytes_of({4, 0}),
-        bytes_of({4, 19, 0})
+        bytes_of({4, 19, 0}),
+        bytes_of({5}),
+        bytes_of({5, 1}),
+        bytes_of({5, 0, 1}),
+        bytes_of({6, 3, 1})
     );
     CHECK(decode(body) == std::unexpected(error{.code = error_code::malformed}));
 }

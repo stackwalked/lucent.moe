@@ -13,15 +13,16 @@
 
 #include <Windows.h>
 
-#include <lucent/core/match.hpp>
 #include <lucent/core/narrow.hpp>
 #include <lucent/kit/boot_info.hpp>
 #include <lucent/kit/capability.hpp>
+#include <lucent/kit/clock.hpp>
 #include <lucent/kit/core_capabilities.hpp>
 #include <lucent/kit/dev_build.hpp>
 #include <lucent/kit/fact.hpp>
 #include <lucent/kit/fact_apply.hpp>
 #include <lucent/kit/game_module.hpp>
+#include <lucent/kit/registry.hpp>
 #include <lucent/kit/session.hpp>
 #include <lucent/kit/session_message.hpp>
 #include <lucent/kit/worker_set.hpp>
@@ -31,21 +32,14 @@
 #include "dev.hpp"
 #include "domain_token_mint.hpp"
 #include "late_modules.hpp"
+#include "lease_client.hpp"
+#include "lease_worker.hpp"
+#include "random.hpp"
 #include "release.hpp"
 #include "session_end.hpp"
 
 namespace lucent::kit {
 namespace {
-
-auto is_unload(const session_message& message) -> bool {
-    return match(
-        message,
-        [](const dev_text&) { return false; },
-        [](const stage_reached&) { return false; },
-        [](const unload_request&) { return true; },
-        [](const start_refused&) { return false; }
-    );
-}
 
 auto report(session& channel, stage reached) -> void {
     // A failed report means the host is gone; the next receive() sees that and unloads.
@@ -58,13 +52,21 @@ auto refuse(session& channel, wire::refusal_code code) -> void {
 }
 
 // Returns once the host asks to unload or goes away, or once a kit worker ended the session: its
-// cancel makes a pending receive fail, and the mark is checked before each.
-auto wait_for_unload(session& channel, const detail::session_end* ending) -> void {
+// cancel makes a pending receive fail, and the mark is checked before each. Leases the host relays
+// go to the lease worker's inbox, when there is one.
+auto wait_for_unload(
+    session& channel, const detail::session_end* ending, detail::lease_inbox* leases
+) -> void {
     while (ending == nullptr || !ending->is_requested()) {
         const result<session_message> received = channel.receive();
         // A closed or broken channel means nobody is left to ask: unload.
-        if (!received || is_unload(*received)) {
+        if (!received || is_unload_request(*received)) {
             return;
+        }
+        if (std::optional<std::vector<std::byte>> lease =
+                reply_body(*received, server_route::lease);
+            lease && leases != nullptr) {
+            leases->push(std::move(*lease));
         }
     }
 }
@@ -162,6 +164,14 @@ auto start_late_worker(worker_set& workers, detail::late_worker handed) -> void 
     );
 }
 
+// The lease's grant reaches the registry before the target's first tick; then the worker renews.
+auto start_lease_worker(worker_set& workers, detail::lease_run handed) -> result<void> {
+    handed.features->request({replace_entitlements{.entitled = handed.entitled}});
+    return workers.start<"lease">([run = std::move(handed)](const std::stop_token& stop) mutable {
+        detail::run_lease(stop, std::move(run));
+    });
+}
+
 auto copy_bundle(const boot_info& info) -> result<std::vector<std::byte>> {
     if (info.bundle_size > max_bundle_size || (info.bundle_size != 0 && info.bundle == nullptr)) {
         return std::unexpected(error{.code = error_code::malformed});
@@ -224,21 +234,102 @@ auto report_waiting_core([[maybe_unused]] const result<resolved>& resolution) ->
     }
 }
 
+// Whether the resolve stage left anything for a module the game hasn't loaded yet.
+auto is_waiting_on_modules(const result<resolved>& resolution) -> bool {
+    return resolution && (!resolution->waiting.is_empty() || !resolution->waiting_core.empty());
+}
+
+// Dev builds say when a module that loads later would go unnoticed.
+auto report_unwatched(
+    [[maybe_unused]] const result<detail::load_signal>& signal,
+    [[maybe_unused]] const result<resolved>& resolution
+) -> void {
+    if constexpr (is_dev_build) {
+        if (!signal && is_waiting_on_modules(resolution)) {
+            detail::report_no_load_signal(signal.error());
+        }
+    }
+}
+
+// What a release build's lease worker borrows; each outlives the worker set.
+struct lease_start {
+    std::optional<detail::opened_lease>* lease = nullptr;
+    detail::lease_inbox* inbox = nullptr;
+    session* channel = nullptr;
+    const clock* time = nullptr;
+    detail::random_source* random = nullptr;
+    detail::session_end* ending = nullptr;
+};
+
+// The lease's grant before anything ticks, and its worker from then on; nothing to do without a
+// lease (a dev build). A worker that won't start would leave nothing to notice the lease end, so
+// the session doesn't run.
+auto start_running(worker_set& workers, attachment& attached, const lease_start& with)
+    -> result<void> {
+    if (!with.lease->has_value()) {
+        return {};
+    }
+    detail::opened_lease& opened = **with.lease;
+    return start_lease_worker(
+        workers,
+        detail::lease_run{
+            .client = std::move(opened.client),
+            .entitled = opened.entitled,
+            .inbox = with.inbox,
+            .channel = with.channel,
+            .features = &attached.features(),
+            .time = with.time,
+            .random = with.random,
+            .ending = with.ending,
+        }
+    );
+}
+
+// A release build runs only under a lease, opened before the resolve stage; dev builds have no
+// server and hold none.
+auto lease_for(
+    session& channel, const start_request& request, const clock& time, detail::random_source& random
+) -> std::optional<detail::opened_lease> {
+    if constexpr (is_dev_build) {
+        return std::nullopt;
+    } else {
+        const detail::lease_identity identity = detail::own_identity(request.info, request.image);
+        result<detail::opened_lease> opened = detail::open_lease(channel, identity, time, random);
+        if (!opened) {
+            return std::nullopt;
+        }
+        return std::move(*opened);
+    }
+}
+
+// The attached run: the host sees attach and run, then the end, with its reason when a worker
+// asked for it (a core capability that failed once its module loaded, or a lease that ran out).
+auto run_until_unload(session& channel, const detail::session_end* end, detail::lease_inbox* leases)
+    -> void {
+    report(channel, stage::attach);
+    report(channel, stage::run);
+    wait_for_unload(channel, end, leases);
+    if (end != nullptr && end->is_requested()) {
+        refuse(channel, end->reason());
+    }
+}
+
 // Whether the module may be freed: not when detach couldn't show that no thread will run its code
 // again.
 auto run_stages(session& channel, const start_request& request) -> bool {
     report(channel, stage::boot);
+    // What the lease worker borrows; all outlive the workers.
+    const monotonic_clock time;
+    detail::system_random random;
+    detail::lease_inbox leases;
+    std::optional<detail::opened_lease> lease = lease_for(channel, request, time, random);
+    const bool is_leased = is_dev_build || lease.has_value();
     // Watching before the resolve stage, so a module that loads while it runs still wakes the late
     // worker. Outlives the workers, which wait on it.
     const result<detail::load_signal> signal = detail::load_signal::watch();
     result<resolved> resolution = resolve_stage(request);
-    const bool is_waiting =
-        resolution && (!resolution->waiting.is_empty() || !resolution->waiting_core.empty());
-    if constexpr (is_dev_build) {
-        if (!signal && is_waiting) {
-            detail::report_no_load_signal(signal.error());
-        }
-    }
+    const bool is_waiting = is_waiting_on_modules(resolution);
+    report_unwatched(signal, resolution);
     // How a late core failure ends the session; outlives the workers, which may use it.
     std::optional<detail::session_end> ending;
     if (result<os::unique_handle> thread = detail::current_thread(); thread) {
@@ -252,14 +343,31 @@ auto run_stages(session& channel, const start_request& request) -> bool {
     if (resolution && (!signal || end == nullptr)) {
         give_up_waiting(*resolution);
     }
+    // A lease that lapses for good must be able to end the session.
+    const bool may_attach = is_leased && (is_dev_build || end != nullptr);
     report_waiting_core(resolution);
     bool is_detached = true;
     {
         worker_set workers;
-        // A refused start, or a target that fails to attach, skips straight to detach: the host
-        // sees no attach stage.
+        // A refused start, a release start without a lease, or a target that fails to attach,
+        // skips straight to detach: the host sees no attach stage.
         const result<std::unique_ptr<attachment>> attached =
-            attach_target(request, resolution, workers);
+            may_attach ? attach_target(request, resolution, workers)
+                       : std::unexpected(error{.code = error_code::unsupported});
+        const bool is_running = attached
+                                && start_running(
+                                    workers,
+                                    **attached,
+                                    lease_start{
+                                        .lease = &lease,
+                                        .inbox = &leases,
+                                        .channel = &channel,
+                                        .time = &time,
+                                        .random = &random,
+                                        .ending = end,
+                                    }
+                                )
+                                       .has_value();
         if (attached && signal && is_waiting) {
             start_late_worker(
                 workers,
@@ -275,16 +383,13 @@ auto run_stages(session& channel, const start_request& request) -> bool {
                 }
             );
         }
-        if (attached) {
-            report(channel, stage::attach);
-            report(channel, stage::run);
-            wait_for_unload(channel, end);
-            // Only a core capability failing once its module loaded asks for the end.
-            if (end != nullptr && end->is_requested()) {
-                refuse(channel, wire::refusal_code::game_build_unsupported);
-            }
+        if (is_running) {
+            run_until_unload(channel, end, lease.has_value() ? &leases : nullptr);
         } else {
-            refuse(channel, refusal_of(resolution));
+            refuse(
+                channel,
+                is_leased ? refusal_of(resolution) : wire::refusal_code::service_unavailable
+            );
         }
         // Before detach: hook removal must not race a worker, and counts a running one as busy.
         // Dev builds reported each fault as it happened; release has nowhere to send one yet.

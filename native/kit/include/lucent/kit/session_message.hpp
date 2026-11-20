@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <optional>
 #include <span>
 #include <string>
 #include <variant>
@@ -31,7 +32,8 @@ struct unload_request {
 };
 
 // Why the module won't run, for the host to show: sent at most once, before the detach stage, when
-// the start is refused or a core capability that waited for its module fails once it loads. A code
+// the start is refused, a core capability that waited for its module fails once it loads, or the
+// lease ran out without a renewal (SESSION_ENDED). A code
 // from the user-facing catalog, never a capability's name; dev builds say which over the dev
 // channel.
 struct start_refused {
@@ -40,7 +42,37 @@ struct start_refused {
     auto operator==(const start_refused&) const -> bool = default;
 };
 
-using session_message = std::variant<dev_text, stage_reached, unload_request, start_refused>;
+// Which /v1 call a relayed body belongs to. The host knows the rest: the start or session it
+// opened, its DPoP, its own part of each lease exchange.
+enum class server_route : u8 {
+    // POST /v1/starts/:id/session: the body is the module's hello; the reply is the server's
+    // session_reply.
+    session = 1,
+    // POST /v1/sessions/:id/lease: the body is the module's renewal frame; the reply is the
+    // lease_response's frame alone, the host keeping its own challenge.
+    lease = 2,
+};
+
+// Module to host: send this body to the server. The host relays it unread and answers with a
+// server_reply on the same route, or says nothing when the server couldn't be reached; a refusal
+// it shows itself and unloads the module.
+struct server_request {
+    server_route route = server_route::session;
+    std::vector<std::byte> body;
+
+    auto operator==(const server_request&) const -> bool = default;
+};
+
+// Host to module: the server's answer to a server_request on that route.
+struct server_reply {
+    server_route route = server_route::session;
+    std::vector<std::byte> body;
+
+    auto operator==(const server_reply&) const -> bool = default;
+};
+
+using session_message = std::
+    variant<dev_text, stage_reached, unload_request, start_refused, server_request, server_reply>;
 
 // On the wire a message is a frame: a little-endian u32 size, then that many bytes holding a kind
 // byte and the payload.
@@ -48,6 +80,12 @@ inline constexpr usize frame_header_size = 4;
 
 // Bounds every read, so a corrupt size can't make the reader allocate gigabytes.
 inline constexpr isize max_frame_size = isize{64} * 1024;
+
+auto is_unload_request(const session_message& message) -> bool;
+
+// The body of a server_reply on that route; nothing for any other message.
+auto reply_body(const session_message& message, server_route route)
+    -> std::optional<std::vector<std::byte>>;
 
 auto encode(const session_message& message) -> std::vector<std::byte>;
 

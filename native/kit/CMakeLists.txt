@@ -54,9 +54,13 @@ lucent_library(kit
         src/game_module.cpp
         src/hook.cpp
         src/late_modules.cpp
+        src/lease_client.cpp
+        src/lease_worker.cpp
         src/lifecycle.cpp
         src/memory_storage.cpp
+        src/own_lease_key.cpp
         src/own_release.cpp
+        src/random.cpp
         src/raw.cpp
         src/registry.cpp
         src/release.cpp
@@ -65,10 +69,18 @@ lucent_library(kit
         src/session_message.cpp
         src/time_date_stamp.cpp
         src/worker_set.cpp
-    DEPS lucent::build lucent::bundle lucent::crypto lucent::draw lucent::foreign lucent::os lucent::pe lucent::wire safetyhook::safetyhook
+    DEPS lucent::build lucent::bundle lucent::crypto lucent::draw lucent::foreign lucent::os lucent::pe lucent::wire safetyhook::safetyhook bcrypt
 )
 # Read by <lucent/kit/dev_build.hpp>: 1 in dev builds, 0 in every other.
 target_compile_definitions(lucent_kit PUBLIC "LUCENT_KIT_DEV_BUILD=$<CONFIG:Debug>")
+# Read by src/own_lease_key.cpp alone, so a new lease key recompiles one file.
+set_property(
+    SOURCE src/own_lease_key.cpp
+    APPEND
+    PROPERTY
+        COMPILE_DEFINITIONS
+            "LUCENT_KIT_LEASE_PUBLIC_KEY=\"$<$<CONFIG:Release>:${LUCENT_LEASE_PUBLIC_KEY}>\""
+)
 # Read by src/own_release.cpp alone, so a new release id recompiles one file.
 set_property(
     SOURCE src/own_release.cpp
@@ -93,6 +105,8 @@ lucent_test(kit
         tests/handoff_test.cpp
         tests/hook_test.cpp
         tests/late_modules_test.cpp
+        tests/own_lease_key_test.cpp
+        tests/lease_client_test.cpp
         tests/own_release_test.cpp
         tests/published_test.cpp
         tests/registry_test.cpp
@@ -105,7 +119,9 @@ lucent_test(kit
 lucent_fixture(kit late SOURCES tests/fixtures/late.cpp)
 target_compile_definitions(
     lucent_kit_tests
-    PRIVATE "LUCENT_KIT_TEST_RELEASE_ID=\"$<$<CONFIG:Release>:${LUCENT_RELEASE_ID}>\""
+    PRIVATE
+        "LUCENT_KIT_TEST_RELEASE_ID=\"$<$<CONFIG:Release>:${LUCENT_RELEASE_ID}>\""
+        "LUCENT_KIT_TEST_LEASE_PUBLIC_KEY=\"$<$<CONFIG:Release>:${LUCENT_LEASE_PUBLIC_KEY}>\""
 )
 
 # Proves the ban: a source using the dev channel, compiled as a release build compiles kit's users,

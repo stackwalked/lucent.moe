@@ -4,6 +4,7 @@
 #include <stop_token>
 
 #include <lucent/os/unique_handle.hpp>
+#include <lucent/wire/refusal.hpp>
 
 namespace lucent::kit::detail {
 
@@ -26,12 +27,18 @@ public:
     // The lifecycle thread, before each read from the host.
     auto is_requested() const -> bool;
 
-    // A kit worker. Returns once stop is requested, which the lifecycle does after leaving its
-    // wait for the host.
-    auto request(const std::stop_token& stop) -> void;
+    // A kit worker, with the code the host is told. Returns once stop is requested, which the
+    // lifecycle does after leaving its wait for the host. When two workers ask at once, the first
+    // one's code is the one told.
+    auto request(const std::stop_token& stop, wire::refusal_code why) -> void;
+
+    // The lifecycle thread, once is_requested() is true.
+    auto reason() const -> wire::refusal_code;
 
 private:
     os::unique_handle m_thread;
+    // 0 until a worker asks; the first worker's code after.
+    std::atomic<u8> m_reason{0};
     std::atomic<bool> m_is_requested{false};
 };
 

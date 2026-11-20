@@ -18,6 +18,7 @@
 #include <lucent/kit/fact_apply.hpp>
 #include <lucent/kit/game_module.hpp>
 #include <lucent/os/unique_handle.hpp>
+#include <lucent/wire/refusal.hpp>
 
 #include "dev.hpp"
 #include "session_end.hpp"
@@ -158,7 +159,7 @@ auto resolve_late_modules(
             }
             // The start went on only with a way to end the session.
             LUCENT_INVARIANT(ending != nullptr);
-            ending->request(stop);
+            ending->request(stop, wire::refusal_code::game_build_unsupported);
             return;
         }
         late.waiting_core = still_waiting(std::move(late.waiting_core), judged.waiting);

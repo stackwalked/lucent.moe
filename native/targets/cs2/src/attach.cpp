@@ -70,6 +70,10 @@ public:
         return {};
     }
 
+    auto features() -> kit::registry& override {
+        return *m_parts.features;
+    }
+
 private:
     // A thread may still be in the present detour or the window procedure, which read the overlay
     // and the registry: they stay allocated, like the module that stays loaded.

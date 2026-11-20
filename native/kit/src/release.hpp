@@ -42,6 +42,9 @@ static_assert(!fits({.entry_rva = 0x1000, .pdata_rva = 0xffff'fff4, .pdata_size 
 // The module's own image as the host placed it, and what freeing it takes.
 struct own_image {
     image_kind kind = image_kind::loaded;
+    // Where the image is, either kind: its allocation as the host made it.
+    uptr base = 0;
+    u64 size = 0;
     // Mapped only; 0 for none.
     u64 trampolines = 0;
     // Mapped only, absolute; 0 for none.

@@ -22,8 +22,8 @@
 
 namespace lucent::kit {
 
-// Which features the member may run. The lease client will feed these; until it does, the input
-// is whatever the target passes, and default_entitlements() says what that is.
+// Which features the member may run. A release build's lease client feeds each lease's grant; the
+// registry starts from default_entitlements() until the first one lands.
 struct entitlements {
     bool is_everything = false;
     std::vector<feature_id> features;

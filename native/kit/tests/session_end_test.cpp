@@ -13,6 +13,7 @@
 
 #include <lucent/kit/session.hpp>
 #include <lucent/os/unique_handle.hpp>
+#include <lucent/wire/refusal.hpp>
 
 // A late core capability's failure ends the session from a kit worker while the lifecycle thread
 // is blocked reading from a host that says nothing: missed, the module would run on without its
@@ -90,7 +91,9 @@ TEST_CASE("a requested end releases a thread blocked reading from a silent host"
     const bool was_reading_unasked = !state.has_returned.load(std::memory_order_acquire);
 
     std::stop_source stopper;
-    std::jthread worker{[&ending, &stopper] { ending.request(stopper.get_token()); }};
+    std::jthread worker{[&ending, &stopper] {
+        ending.request(stopper.get_token(), wire::refusal_code::session_ended);
+    }};
     const bool returned = wait_for(state.has_returned);
     stopper.request_stop();
     worker.join();
@@ -102,6 +105,7 @@ TEST_CASE("a requested end releases a thread blocked reading from a silent host"
 
     CHECK(was_reading_unasked);
     CHECK(returned);
+    CHECK(ending.reason() == wire::refusal_code::session_ended);
 }
 
 }

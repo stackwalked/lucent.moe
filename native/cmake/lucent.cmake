@@ -109,6 +109,27 @@ if(CMAKE_BUILD_TYPE STREQUAL "Release")
     endif()
 endif()
 
+# The online lease key's public half, which every Release module verifies leases and the session
+# key exchange against: 32 bytes as 43 base64url characters, unpadded, as the server's
+# LUCENT_LEASE_SIGNING_KEY spells its seed. Required in Release, where it can't be the dev key (the
+# public half of the all-zero seed, which the server refuses to sign with in production). Not a
+# secret. release-check passes a throwaway of its own (cmake/release_check.cmake).
+set(LUCENT_LEASE_PUBLIC_KEY "" CACHE STRING "The lease key's public half: 43 base64url characters")
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    string(LENGTH "${LUCENT_LEASE_PUBLIC_KEY}" lease_key_length)
+    # The last character carries 2 bits of padding, which a canonical encoding leaves zero.
+    if(
+        NOT LUCENT_LEASE_PUBLIC_KEY MATCHES "^[A-Za-z0-9_-]+[AEIMQUYcgkosw048]$"
+        OR NOT lease_key_length EQUAL 43
+    )
+        message(FATAL_ERROR "LUCENT_LEASE_PUBLIC_KEY must be 43 base64url characters (32 bytes)")
+    endif()
+    # build: Ed25519 (RFC 8032) public key of the all-zero seed, derived with WebCrypto
+    # breaks: a release module would accept leases signed by a key anyone can derive
+    if(LUCENT_LEASE_PUBLIC_KEY STREQUAL "O2onvM62pC1io6jQKm8Nc2UyFXcd4kOmOsBIoYtZ2ik")
+        message(FATAL_ERROR "LUCENT_LEASE_PUBLIC_KEY is the dev lease key (the all-zero seed's)")
+    endif()
+endif()
 # lucent_module(<name> SOURCES <sources>... [DEPS <targets>...])
 #
 # The loadable module lucent_<name>.dll: no import library, nothing links against it. Every module

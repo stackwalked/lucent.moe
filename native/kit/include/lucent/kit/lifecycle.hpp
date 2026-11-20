@@ -7,6 +7,7 @@
 #include <lucent/kit/boot_info.hpp>
 #include <lucent/kit/domain_token.hpp>
 #include <lucent/kit/game_module.hpp>
+#include <lucent/kit/registry.hpp>
 #include <lucent/kit/worker_set.hpp>
 
 namespace lucent::kit {
@@ -24,6 +25,10 @@ public:
     // module's code, so the lifecycle leaves the module loaded instead of freeing it.
     virtual auto detach() -> result<void> = 0;
 
+    // The target's feature registry, which the lease client feeds: each lease's entitlements, and
+    // a lapse or resume. Lives as long as the attachment; any thread may request() on it.
+    virtual auto features() -> registry& = 0;
+
 protected:
     attachment() = default;
 };
@@ -32,6 +37,8 @@ protected:
 // that the attachment starts later) are stopped before detach, so they must not be needed to undo
 // attach. A failed attach drops what it made before the lifecycle stops its workers: start them
 // last. The token opens foreign access: the target hands it to its domains, never to a feature.
+// A release build's registry starts with default_entitlements() (none) and is given the lease's
+// grant once attach returns.
 using attach_fn = auto (*)(worker_set& workers, const domain_token& opens)
     -> result<std::unique_ptr<attachment>>;
 
