@@ -135,8 +135,8 @@ function(lucent_module name)
     # check, which knows the names from the target's searches) and not this machine's dev public
     # key (devkey check). A finding fails the link step. The module's name is its finder target's.
     # Then pack writes what ships, lucent_<name>.container beside the DLL, or fails the link step
-    # naming what the container can't carry; dev keeps mapping the DLL itself. A release module has no
-    # lucent_boot until kit's release boot path lands: pack gets --require-boot then.
+    # naming what the container can't carry, a missing lucent_boot among it; dev keeps mapping the
+    # DLL itself.
     if(CMAKE_BUILD_TYPE STREQUAL "Release")
         add_custom_command(
             TARGET ${target}

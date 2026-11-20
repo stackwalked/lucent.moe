@@ -32,7 +32,7 @@ auto reason_text(refusal_reason reason) -> std::string_view {
     case refusal_reason::outside_kept_sections:
         return "something the image needs in a section the container drops";
     case refusal_reason::missing_boot_entry:
-        return "no lucent_boot export, and the boot entry is required";
+        return "no lucent_boot export, which is how a loader starts the module";
     case refusal_reason::not_canonical:
         return "a layout the container format refuses";
     }

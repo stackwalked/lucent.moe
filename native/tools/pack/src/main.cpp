@@ -39,7 +39,6 @@ auto run(const options& chosen) -> i32 {
             .release = chosen.release,
             .boot_info_version = kit::boot_info_version,
             .imports_key = imports_key(),
-            .boot = chosen.boot,
         }
     );
     if (!made) {

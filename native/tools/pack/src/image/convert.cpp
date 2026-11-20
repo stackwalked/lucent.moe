@@ -187,10 +187,9 @@ auto scrub_debug(local_image& local, const pe::image_view& image) -> void {
     local.zero(directory->rva, directory->size);
 }
 
-// lucent_boot's RVA, read before the export directory is scrubbed; 0 when the image doesn't
-// export it and that is allowed.
-auto boot_rva_of(const pe::image_view& image, boot_entry boot) -> pack_result<u32> {
-    std::optional<u32> found;
+// lucent_boot's RVA, read before the export directory is scrubbed. Every module has one: it is how
+// either loader starts it.
+auto boot_rva_of(const pe::image_view& image) -> pack_result<u32> {
     if (image.find_directory(pe::directory_kind::exports)) {
         const result<pe::export_table> exports = pe::export_table::from_image(image);
         if (!exports) {
@@ -198,23 +197,17 @@ auto boot_rva_of(const pe::image_view& image, boot_entry boot) -> pack_result<u3
         }
         const result<pe::export_target> target = exports->find("lucent_boot");
         if (target) {
-            found = match(
+            const std::optional<u32> found = match(
                 *target,
                 [](const pe::export_address& address) -> std::optional<u32> { return address.rva; },
                 [](const pe::forwarder&) -> std::optional<u32> { return std::nullopt; }
             );
+            if (found) {
+                return *found;
+            }
         }
     }
-    if (found) {
-        return *found;
-    }
-    switch (boot) {
-    case boot_entry::optional:
-        return 0;
-    case boot_entry::required:
-        return refuse(refusal_reason::missing_boot_entry, "lucent_boot");
-    }
-    LUCENT_UNREACHABLE();
+    return refuse(refusal_reason::missing_boot_entry, "lucent_boot");
 }
 
 auto scrub_exports(local_image& local, const pe::image_view& image) -> void {
@@ -404,7 +397,7 @@ auto container_from_image(std::span<const std::byte> file, const container_ident
     std::vector<u32> relocations = LUCENT_TRY(rebased_relocations(local, image));
     scrub_imports(local, image);
     scrub_debug(local, image);
-    const u32 boot_rva = LUCENT_TRY(boot_rva_of(image, identity.boot));
+    const u32 boot_rva = LUCENT_TRY(boot_rva_of(image));
     scrub_exports(local, image);
 
     const std::optional<pe::directory> pdata = image.find_directory(pe::directory_kind::exceptions);

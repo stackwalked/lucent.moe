@@ -20,7 +20,7 @@ add_custom_command(
     COMMAND
         lucent_pack "$<TARGET_FILE:lucent_manualmap_contained_probe_fixture>"
         "${CMAKE_CURRENT_BINARY_DIR}/contained_probe.container" --release
-        33333333333333333333333333333333 --require-boot
+        33333333333333333333333333333333
     DEPENDS lucent_manualmap_contained_probe_fixture lucent_pack
     VERBATIM
 )

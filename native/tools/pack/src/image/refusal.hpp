@@ -31,7 +31,7 @@ enum class refusal_reason : u8 {
     // A relocation or import slot, .pdata or the entry point in a section the container drops
     // (discardable, such as .reloc).
     outside_kept_sections,
-    // No lucent_boot export (or a forwarded one), when the boot entry is required.
+    // No lucent_boot export, or a forwarded one.
     missing_boot_entry,
     // A layout the container format refuses (wire::decode_container_body's rules).
     not_canonical,
