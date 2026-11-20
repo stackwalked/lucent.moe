@@ -29,15 +29,22 @@ struct boot_info {
     // boot entry returns: kit::start copies it. Null, with a size of 0, when the host has none.
     const std::byte* bundle = nullptr;
     u64 bundle_size = 0;
+    // Mapped only, from the image's base: its entry point (the CRT's DllMain), which the module
+    // calls again to tear its CRT down, and its .pdata, which it registers at boot and removes as
+    // it unloads. A container keeps no headers to find them in. The .pdata is both 0 for none.
+    u32 entry_rva = 0;
+    u32 pdata_rva = 0;
+    u32 pdata_size = 0;
 };
 
-inline constexpr u32 boot_info_version = 3;
+// 4: the image's entry and .pdata, and the session's start_refused message.
+inline constexpr u32 boot_info_version = 4;
 
 static_assert(
     std::is_trivially_copyable_v<boot_info>, "the host copies boot_info across processes"
 );
 static_assert(
-    sizeof(boot_info) == 48, "boot_info crosses binaries: a layout change bumps the version"
+    sizeof(boot_info) == 64, "boot_info crosses binaries: a layout change bumps the version"
 );
 static_assert(offsetof(boot_info, kind) == 4, "boot_info's layout is pinned");
 static_assert(offsetof(boot_info, from_host) == 8, "boot_info's layout is pinned");
@@ -45,5 +52,8 @@ static_assert(offsetof(boot_info, to_host) == 16, "boot_info's layout is pinned"
 static_assert(offsetof(boot_info, trampolines) == 24, "boot_info's layout is pinned");
 static_assert(offsetof(boot_info, bundle) == 32, "boot_info's layout is pinned");
 static_assert(offsetof(boot_info, bundle_size) == 40, "boot_info's layout is pinned");
+static_assert(offsetof(boot_info, entry_rva) == 48, "boot_info's layout is pinned");
+static_assert(offsetof(boot_info, pdata_rva) == 52, "boot_info's layout is pinned");
+static_assert(offsetof(boot_info, pdata_size) == 56, "boot_info's layout is pinned");
 
 }

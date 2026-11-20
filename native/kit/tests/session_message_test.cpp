@@ -10,6 +10,8 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 
+#include <lucent/wire/refusal.hpp>
+
 namespace lucent::kit {
 namespace {
 
@@ -37,7 +39,8 @@ TEST_CASE("every message survives encoding and decoding") {
         session_message{dev_text{.text = ""}},
         session_message{stage_reached{.reached = stage::boot}},
         session_message{stage_reached{.reached = stage::unload}},
-        session_message{unload_request{}}
+        session_message{unload_request{}},
+        session_message{start_refused{.code = wire::refusal_code::game_build_unsupported}}
     );
     CHECK(round_trip(message) == message);
 }
@@ -45,6 +48,19 @@ TEST_CASE("every message survives encoding and decoding") {
 // The bytes are boot_info v3's: dev text took over the log line's kind and payload unchanged.
 TEST_CASE("dev text is framed as kind 1 followed by its UTF-8 bytes") {
     CHECK(encode(dev_text{.text = "hé"}) == bytes_of({4, 0, 0, 0, 1, 'h', 0xc3, 0xa9}));
+}
+
+TEST_CASE("a refused start is framed as kind 4 followed by its refusal code") {
+    CHECK(
+        encode(start_refused{.code = wire::refusal_code::game_build_unsupported})
+        == bytes_of({2, 0, 0, 0, 4, 19})
+    );
+}
+
+TEST_CASE("a refused start with a code this build doesn't know still decodes, keeping its number") {
+    // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange): a code past the catalog is what this test sends.
+    const auto unknown = static_cast<wire::refusal_code>(200);
+    CHECK(decode(bytes_of({4, 200})) == session_message{start_refused{.code = unknown}});
 }
 
 TEST_CASE("a frame size of zero or above the bound is malformed") {
@@ -64,12 +80,15 @@ TEST_CASE("a body that isn't a known message is malformed") {
     const std::vector<std::byte> body = GENERATE(
         bytes_of({}),
         bytes_of({0}),
-        bytes_of({4}),
+        bytes_of({5}),
         bytes_of({255, 1, 2}),
         bytes_of({2}),
         bytes_of({2, 5}),
         bytes_of({2, 1, 1}),
-        bytes_of({3, 0})
+        bytes_of({3, 0}),
+        bytes_of({4}),
+        bytes_of({4, 0}),
+        bytes_of({4, 19, 0})
     );
     CHECK(decode(body) == std::unexpected(error{.code = error_code::malformed}));
 }

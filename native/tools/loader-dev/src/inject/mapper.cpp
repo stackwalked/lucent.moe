@@ -22,7 +22,13 @@ auto attach_and_release(const os::process& target, manualmap::mapped image)
     if (!attached) {
         return std::unexpected(attached.error());
     }
-    return mapped_module{.base = base, .trampolines = trampolines};
+    return mapped_module{
+        .base = base,
+        .trampolines = trampolines,
+        .entry_rva = image.entry_rva,
+        .pdata_rva = image.pdata_rva,
+        .pdata_size = image.pdata_size,
+    };
 }
 
 }

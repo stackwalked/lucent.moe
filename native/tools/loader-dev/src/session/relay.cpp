@@ -1,11 +1,14 @@
 #include "session/relay.hpp"
 
+#include <optional>
 #include <print>
 #include <string_view>
+#include <utility>
 
 #include <lucent/core/match.hpp>
 #include <lucent/kit/session.hpp>
 #include <lucent/kit/session_message.hpp>
+#include <lucent/wire/refusal.hpp>
 
 #include "cli/describe.hpp"
 
@@ -28,6 +31,15 @@ auto name_of(kit::stage reached) -> std::string_view {
     return "unknown";
 }
 
+auto print_refusal(const kit::start_refused& refused) -> void {
+    const std::optional<std::string_view> name = wire::name_of(refused.code);
+    if (name) {
+        std::println("refused: {}", *name);
+        return;
+    }
+    std::println("refused: code {}, unknown to this build", std::to_underlying(refused.code));
+}
+
 auto print_message(const kit::session_message& message) -> void {
     match(
         message,
@@ -35,7 +47,8 @@ auto print_message(const kit::session_message& message) -> void {
         [](const kit::stage_reached& reached) {
             std::println("stage: {}", name_of(reached.reached));
         },
-        [](const kit::unload_request&) { std::println("module asked the host to unload?"); }
+        [](const kit::unload_request&) { std::println("module asked the host to unload?"); },
+        [](const kit::start_refused& refused) { print_refusal(refused); }
     );
 }
 

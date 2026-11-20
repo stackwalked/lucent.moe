@@ -2,7 +2,6 @@
 
 #include <cstddef>
 #include <expected>
-#include <optional>
 #include <vector>
 
 #include <lucent/kit/boot_info.hpp>
@@ -18,32 +17,34 @@
 namespace lucent::loader_dev {
 namespace {
 
-// The mapper reads the file once and holds no lock on it, so the build can overwrite the
-// original freely: no staged copy.
-auto map_from(const os::process& target, const options& chosen) -> result<loaded_module> {
-    const std::vector<std::byte> file = LUCENT_TRY(os::read_file(chosen.module));
-    const u32 boot_offset = LUCENT_TRY(boot_entry_offset(file));
-    const mapped_module mapped = LUCENT_TRY(map_module(target, file));
+auto mapped_from(const mapped_module& mapped, u32 boot_offset) -> loaded_module {
     return loaded_module{
         .base = mapped.base,
         .boot_offset = boot_offset,
         .kind = kit::image_kind::mapped,
         .trampolines = mapped.trampolines,
+        .entry_rva = mapped.entry_rva,
+        .pdata_rva = mapped.pdata_rva,
+        .pdata_size = mapped.pdata_size,
     };
 }
 
-// The container's header names its boot entry; a container without one (a release module, until
-// kit's release boot path lands) is mapped and attached, and nothing more.
+// The mapper reads the file once and holds no lock on it, so the build can overwrite the
+// original freely: no staged copy.
+auto map_from(const os::process& target, const options& chosen) -> result<loaded_module> {
+    const std::vector<std::byte> file = LUCENT_TRY(os::read_file(chosen.module));
+    const u32 boot_offset = LUCENT_TRY(boot_entry_offset(file));
+    return mapped_from(LUCENT_TRY(map_module(target, file)), boot_offset);
+}
+
+// pack refuses a module without a boot entry, so a container without one wasn't packed by ours.
 auto map_container_from(const os::process& target, const options& chosen) -> result<loaded_module> {
     const std::vector<std::byte> packed = LUCENT_TRY(os::read_file(chosen.module));
     const wire::container image = LUCENT_TRY(wire::unpack_container(packed));
-    const mapped_module mapped = LUCENT_TRY(map_container_module(target, image));
-    return loaded_module{
-        .base = mapped.base,
-        .boot_offset = image.boot_rva == 0 ? std::nullopt : std::optional<u32>{image.boot_rva},
-        .kind = kit::image_kind::mapped,
-        .trampolines = mapped.trampolines,
-    };
+    if (image.boot_rva == 0) {
+        return std::unexpected(error{.code = error_code::unsupported});
+    }
+    return mapped_from(LUCENT_TRY(map_container_module(target, image)), image.boot_rva);
 }
 
 auto load_with_os_loader(const os::process& target, const options& chosen)
@@ -56,6 +57,9 @@ auto load_with_os_loader(const os::process& target, const options& chosen)
         .boot_offset = boot_offset,
         .kind = kit::image_kind::loaded,
         .trampolines = 0,
+        .entry_rva = 0,
+        .pdata_rva = 0,
+        .pdata_size = 0,
     };
 }
 

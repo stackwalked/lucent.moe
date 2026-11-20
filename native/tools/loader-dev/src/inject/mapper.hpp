@@ -12,6 +12,10 @@ struct mapped_module {
     uptr base = 0;
     // The mapper's RtlPcToFileHeader trampoline region; 0 if it made none.
     u64 trampolines = 0;
+    // From the base, for boot_info: the module registers its .pdata and finds its entry with them.
+    u32 entry_rva = 0;
+    u32 pdata_rva = 0;
+    u32 pdata_size = 0;
 };
 
 // Maps the module and runs its CRT startup. From then on the module owns both regions and frees

@@ -24,6 +24,7 @@ lucent_library(kit
         include/lucent/kit/hook.hpp
         include/lucent/kit/lifecycle.hpp
         include/lucent/kit/memory_storage.hpp
+        include/lucent/kit/own_release.hpp
         include/lucent/kit/profile.hpp
         include/lucent/kit/profile_storage.hpp
         include/lucent/kit/published.hpp
@@ -55,6 +56,7 @@ lucent_library(kit
         src/late_modules.cpp
         src/lifecycle.cpp
         src/memory_storage.cpp
+        src/own_release.cpp
         src/raw.cpp
         src/registry.cpp
         src/release.cpp
@@ -63,10 +65,17 @@ lucent_library(kit
         src/session_message.cpp
         src/time_date_stamp.cpp
         src/worker_set.cpp
-    DEPS lucent::build lucent::bundle lucent::crypto lucent::draw lucent::foreign lucent::os lucent::pe safetyhook::safetyhook
+    DEPS lucent::build lucent::bundle lucent::crypto lucent::draw lucent::foreign lucent::os lucent::pe lucent::wire safetyhook::safetyhook
 )
 # Read by <lucent/kit/dev_build.hpp>: 1 in dev builds, 0 in every other.
 target_compile_definitions(lucent_kit PUBLIC "LUCENT_KIT_DEV_BUILD=$<CONFIG:Debug>")
+# Read by src/own_release.cpp alone, so a new release id recompiles one file.
+set_property(
+    SOURCE src/own_release.cpp
+    APPEND
+    PROPERTY
+        COMPILE_DEFINITIONS "LUCENT_KIT_RELEASE_ID=\"$<$<CONFIG:Release>:${LUCENT_RELEASE_ID}>\""
+)
 
 lucent_test(kit
     SOURCES
@@ -84,6 +93,7 @@ lucent_test(kit
         tests/handoff_test.cpp
         tests/hook_test.cpp
         tests/late_modules_test.cpp
+        tests/own_release_test.cpp
         tests/published_test.cpp
         tests/registry_test.cpp
         tests/session_end_test.cpp
@@ -93,6 +103,10 @@ lucent_test(kit
         tests/worker_set_test.cpp
 )
 lucent_fixture(kit late SOURCES tests/fixtures/late.cpp)
+target_compile_definitions(
+    lucent_kit_tests
+    PRIVATE "LUCENT_KIT_TEST_RELEASE_ID=\"$<$<CONFIG:Release>:${LUCENT_RELEASE_ID}>\""
+)
 
 # Proves the ban: a source using the dev channel, compiled as a release build compiles kit's users,
 # must fail with the channel's own refusal. Built only by the test, and kept out of

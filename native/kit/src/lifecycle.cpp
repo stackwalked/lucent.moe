@@ -26,6 +26,7 @@
 #include <lucent/kit/session_message.hpp>
 #include <lucent/kit/worker_set.hpp>
 #include <lucent/os/unique_handle.hpp>
+#include <lucent/wire/refusal.hpp>
 
 #include "dev.hpp"
 #include "domain_token_mint.hpp"
@@ -41,13 +42,19 @@ auto is_unload(const session_message& message) -> bool {
         message,
         [](const dev_text&) { return false; },
         [](const stage_reached&) { return false; },
-        [](const unload_request&) { return true; }
+        [](const unload_request&) { return true; },
+        [](const start_refused&) { return false; }
     );
 }
 
 auto report(session& channel, stage reached) -> void {
     // A failed report means the host is gone; the next receive() sees that and unloads.
     std::ignore = channel.send(stage_reached{.reached = reached});
+}
+
+auto refuse(session& channel, wire::refusal_code code) -> void {
+    // As for a report: the next receive() sees a host that's gone.
+    std::ignore = channel.send(start_refused{.code = code});
 }
 
 // Returns once the host asks to unload or goes away, or once a kit worker ended the session: its
@@ -67,6 +74,7 @@ constexpr u64 max_bundle_size = u64{16} << 20U;
 
 struct start_request {
     boot_info info;
+    detail::own_image image;
     target started;
     // A copy: the host's is borrowed only until the boot entry returns.
     std::vector<std::byte> bundle;
@@ -195,6 +203,15 @@ auto attach_target(
     return request.started.attach(workers, detail::domain_token_mint::mint());
 }
 
+// What the host is told when attach isn't reached: a core capability that failed means this game
+// build isn't covered; anything else is ours, and says only that the start couldn't be served.
+auto refusal_of(const result<resolved>& resolution) -> wire::refusal_code {
+    if (resolution && !resolution->failed_core.empty()) {
+        return wire::refusal_code::game_build_unsupported;
+    }
+    return wire::refusal_code::service_unavailable;
+}
+
 auto report_waiting_core([[maybe_unused]] const result<resolved>& resolution) -> void {
     if constexpr (is_dev_build) {
         if (resolution && resolution->failed_core.empty() && !resolution->waiting_core.empty()) {
@@ -262,6 +279,12 @@ auto run_stages(session& channel, const start_request& request) -> bool {
             report(channel, stage::attach);
             report(channel, stage::run);
             wait_for_unload(channel, end);
+            // Only a core capability failing once its module loaded asks for the end.
+            if (end != nullptr && end->is_requested()) {
+                refuse(channel, wire::refusal_code::game_build_unsupported);
+            }
+        } else {
+            refuse(channel, refusal_of(resolution));
         }
         // Before detach: hook removal must not race a worker, and counts a running one as busy.
         // Dev builds reported each fault as it happened; release has nowhere to send one yet.
@@ -299,34 +322,33 @@ auto run(const start_request& request) -> bool {
 // unload and join this very thread.
 auto WINAPI lifecycle_main(void* parameter) -> DWORD {
     bool may_free = false;
-    image_kind kind = image_kind::loaded;
-    u64 trampolines = 0;
+    detail::own_image image;
     {
         const std::unique_ptr<const start_request> request{
             static_cast<const start_request*>(parameter)
         };
-        kind = request->info.kind;
-        trampolines = request->info.trampolines;
+        image = request->image;
         may_free = run(*request);
     }
     if (!may_free) {
         // Leaked on purpose: freeing would pull code out from under a thread still in it.
         return 0;
     }
-    detail::release_module(kind, trampolines);
+    detail::release_module(image);
 }
 
 }
 
 auto start(const boot_info& info, const target& started) -> result<void> {
     LUCENT_INVARIANT(started.attach != nullptr);
-    // The host wrote it: an unknown kind is bad input, and releasing by guess would crash later.
-    if (info.kind != image_kind::loaded && info.kind != image_kind::mapped) {
-        return std::unexpected(error{.code = error_code::malformed});
-    }
-    auto owned = std::make_unique<start_request>(
-        start_request{.info = info, .started = started, .bundle = LUCENT_TRY(copy_bundle(info))}
-    );
+    std::vector<std::byte> bundle = LUCENT_TRY(copy_bundle(info));
+    const detail::own_image image = LUCENT_TRY(detail::adopt_image(info));
+    auto owned = std::make_unique<start_request>(start_request{
+        .info = info,
+        .image = image,
+        .started = started,
+        .bundle = std::move(bundle),
+    });
     // The copy is the module's own; the host's goes away once the boot entry returns.
     owned->info.bundle = nullptr;
     owned->info.bundle_size = 0;

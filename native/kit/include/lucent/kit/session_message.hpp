@@ -6,12 +6,14 @@
 #include <variant>
 #include <vector>
 
+#include <lucent/wire/refusal.hpp>
+
 namespace lucent::kit {
 
 enum class stage : u8 { boot, attach, run, detach, unload };
 
 // The dev channel's message (lucent/kit/dev_channel.hpp): only dev builds send it, so a release
-// module sends stages and nothing else.
+// module sends stages and refusals and nothing else.
 struct dev_text {
     std::string text;
 
@@ -28,7 +30,17 @@ struct unload_request {
     auto operator==(const unload_request&) const -> bool = default;
 };
 
-using session_message = std::variant<dev_text, stage_reached, unload_request>;
+// Why the module won't run, for the host to show: sent at most once, before the detach stage, when
+// the start is refused or a core capability that waited for its module fails once it loads. A code
+// from the user-facing catalog, never a capability's name; dev builds say which over the dev
+// channel.
+struct start_refused {
+    wire::refusal_code code = wire::refusal_code::service_unavailable;
+
+    auto operator==(const start_refused&) const -> bool = default;
+};
+
+using session_message = std::variant<dev_text, stage_reached, unload_request, start_refused>;
 
 // On the wire a message is a frame: a little-endian u32 size, then that many bytes holding a kind
 // byte and the payload.

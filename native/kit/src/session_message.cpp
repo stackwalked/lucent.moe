@@ -13,6 +13,7 @@
 
 #include <lucent/core/match.hpp>
 #include <lucent/core/narrow.hpp>
+#include <lucent/wire/refusal.hpp>
 
 namespace lucent::kit {
 namespace {
@@ -20,7 +21,12 @@ namespace {
 static_assert(std::endian::native == std::endian::little, "the wire is little-endian, as is x64");
 
 // The kind byte. Part of the wire format: a change bumps boot_info_version.
-enum class message_kind : u8 { dev_text = 1, stage_reached = 2, unload_request = 3 };
+enum class message_kind : u8 {
+    dev_text = 1,
+    stage_reached = 2,
+    unload_request = 3,
+    start_refused = 4,
+};
 
 constexpr error malformed{.code = error_code::malformed};
 
@@ -46,6 +52,11 @@ auto frame_of([[maybe_unused]] const unload_request& request) -> std::vector<std
     return frame(message_kind::unload_request, {});
 }
 
+auto frame_of(const start_refused& refused) -> std::vector<std::byte> {
+    const std::array payload{static_cast<std::byte>(std::to_underlying(refused.code))};
+    return frame(message_kind::start_refused, payload);
+}
+
 auto to_char(std::byte byte) -> char {
     return std::to_integer<char>(byte);
 }
@@ -61,6 +72,16 @@ auto decode_stage(std::span<const std::byte> payload) -> result<session_message>
     return stage_reached{.reached = static_cast<stage>(raw)};
 }
 
+// A code this build doesn't know still decodes, as a refusal's does: the host shows it as a
+// generic refusal. 0 is no code.
+auto decode_start_refused(std::span<const std::byte> payload) -> result<session_message> {
+    if (payload.size() != 1 || std::to_integer<u8>(payload.front()) == 0) {
+        return std::unexpected(malformed);
+    }
+    const auto code = static_cast<wire::refusal_code>(std::to_integer<u8>(payload.front()));
+    return start_refused{.code = code};
+}
+
 }
 
 auto encode(const session_message& message) -> std::vector<std::byte> {
@@ -68,7 +89,8 @@ auto encode(const session_message& message) -> std::vector<std::byte> {
         message,
         [](const dev_text& line) { return frame_of(line); },
         [](const stage_reached& reached) { return frame_of(reached); },
-        [](const unload_request& request) { return frame_of(request); }
+        [](const unload_request& request) { return frame_of(request); },
+        [](const start_refused& refused) { return frame_of(refused); }
     );
 }
 
@@ -99,6 +121,8 @@ auto decode(std::span<const std::byte> body) -> result<session_message> {
             return std::unexpected(malformed);
         }
         return unload_request{};
+    case message_kind::start_refused:
+        return decode_start_refused(payload);
     }
     // The kind byte came from outside: anything not listed above is malformed, not a bug of ours.
     return std::unexpected(malformed);

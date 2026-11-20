@@ -45,12 +45,13 @@ struct target {
     std::span<const crypto::public_key> trusted;
 };
 
-// Copies the boot_info's bundle, starts the module's lifecycle thread and returns at once. The
-// thread reports each stage to the host. Between boot and attach it runs the resolve stage, which
-// the host doesn't see: it applies the bundle to the linked facts (a dev build reports the outcome
-// over the dev channel) and judges the core capabilities. One that failed refuses the start (no
-// attach stage); one waiting only for a module the game hasn't loaded lets the start go on, its
-// features unavailable, and ends the session if it fails once the module loads. Then it attaches
+// Copies the boot_info's bundle, registers a mapped image's .pdata, starts the module's lifecycle
+// thread and returns at once. The thread reports each stage to the host. Between boot and attach
+// it runs the resolve stage, which the host doesn't see: it applies the bundle to the linked facts
+// (a dev build reports the outcome over the dev channel) and judges the core capabilities. One
+// that failed refuses the start (start_refused, then no attach stage); one waiting only for a
+// module the game hasn't loaded lets the start go on, its features unavailable, and ends the
+// session with start_refused if it fails once the module loads. Then it attaches
 // the target, runs until the host asks it to unload, the host goes away or a late core capability
 // fails, detaches, and frees the module, unless detach failed: then the host sees no unload stage
 // and the module stays loaded, inert. Call once, on the thread the host started the module with.
