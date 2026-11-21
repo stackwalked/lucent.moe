@@ -1,4 +1,4 @@
-#include "inject/boot.hpp"
+#include <lucent/launch/boot.hpp>
 
 #include <bit>
 #include <cstddef>
@@ -14,7 +14,7 @@
 #include <lucent/pe/exports.hpp>
 #include <lucent/pe/image_view.hpp>
 
-namespace lucent::loader_dev {
+namespace lucent::launch {
 
 auto boot_entry_offset(std::span<const std::byte> module_file) -> result<u32> {
     const pe::image_view image = LUCENT_TRY(pe::image_view::parse(module_file, pe::layout::file));

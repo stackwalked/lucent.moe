@@ -4,7 +4,7 @@ project:
 language: "cpp"
 layer: "tool"
 
-dependsOn: ["kit", "manualmap", "os", "pe", "wire"]
+dependsOn: ["kit", "launch", "os", "pe", "wire"]
 
 workspace:
   inheritedTasks:

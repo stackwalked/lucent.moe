@@ -1,0 +1,7 @@
+project:
+  description: "The host's side of starting a module: maps it into a process, opens the session, runs its boot entry. Shared by loader-dev and the release loader."
+
+language: "cpp"
+layer: "library"
+
+dependsOn: ["core", "kit", "manualmap", "os", "pe", "wire"]

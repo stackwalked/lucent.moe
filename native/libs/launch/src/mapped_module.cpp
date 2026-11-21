@@ -1,4 +1,4 @@
-#include "inject/mapper.hpp"
+#include <lucent/launch/mapped_module.hpp>
 
 #include <cstddef>
 #include <expected>
@@ -8,7 +8,7 @@
 #include <lucent/os/process.hpp>
 #include <lucent/wire/container.hpp>
 
-namespace lucent::loader_dev {
+namespace lucent::launch {
 
 namespace {
 

@@ -12,14 +12,14 @@
 #include <lucent/kit/boot_info.hpp>
 #include <lucent/kit/session.hpp>
 #include <lucent/kit/session_message.hpp>
+#include <lucent/launch/boot.hpp>
+#include <lucent/launch/channel.hpp>
 #include <lucent/os/file.hpp>
 #include <lucent/os/process.hpp>
 
 #include "cli/describe.hpp"
 #include "cli/options.hpp"
-#include "inject/boot.hpp"
 #include "inject/load.hpp"
-#include "session/channel.hpp"
 #include "session/relay.hpp"
 
 namespace lucent::loader_dev {
@@ -31,20 +31,22 @@ auto run(const options& chosen) -> result<void> {
     const std::vector<std::byte> bundle =
         chosen.bundle ? LUCENT_TRY(os::read_file(*chosen.bundle)) : std::vector<std::byte>{};
     const loaded_module module = LUCENT_TRY(load_module(target, chosen));
-    host_channel channel = LUCENT_TRY(open_channel(target));
+    launch::host_channel channel = LUCENT_TRY(launch::open_channel(target));
     channel.boot.kind = module.kind;
     channel.boot.trampolines = module.trampolines;
     channel.boot.entry_rva = module.entry_rva;
     channel.boot.pdata_rva = module.pdata_rva;
     channel.boot.pdata_size = module.pdata_size;
-    LUCENT_TRY(start_module(
-        target,
-        boot_request{
-            .entry = module.base + module.boot_offset,
-            .info = channel.boot,
-            .bundle = bundle,
-        }
-    ));
+    LUCENT_TRY(
+        launch::start_module(
+            target,
+            launch::boot_request{
+                .entry = module.base + module.boot_offset,
+                .info = channel.boot,
+                .bundle = bundle,
+            }
+        )
+    );
     std::println(
         "started in {} ({}), {} at {:#x}, with {}; press Enter to unload",
         chosen.process,

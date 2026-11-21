@@ -6,7 +6,7 @@
 #include <lucent/kit/boot_info.hpp>
 #include <lucent/os/process.hpp>
 
-namespace lucent::loader_dev {
+namespace lucent::launch {
 
 // The offset of the module's lucent_boot export from its base, read from the module's file.
 auto boot_entry_offset(std::span<const std::byte> module_file) -> result<u32>;

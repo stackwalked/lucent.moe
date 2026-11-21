@@ -4,7 +4,7 @@
 #include <lucent/kit/session.hpp>
 #include <lucent/os/process.hpp>
 
-namespace lucent::loader_dev {
+namespace lucent::launch {
 
 struct host_channel {
     kit::session session;

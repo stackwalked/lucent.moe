@@ -5,19 +5,19 @@
 #include <vector>
 
 #include <lucent/kit/boot_info.hpp>
+#include <lucent/launch/boot.hpp>
+#include <lucent/launch/mapped_module.hpp>
 #include <lucent/os/file.hpp>
 #include <lucent/os/process.hpp>
 #include <lucent/wire/container.hpp>
 
 #include "cli/options.hpp"
-#include "inject/boot.hpp"
-#include "inject/mapper.hpp"
 #include "inject/os_loader.hpp"
 
 namespace lucent::loader_dev {
 namespace {
 
-auto mapped_from(const mapped_module& mapped, u32 boot_offset) -> loaded_module {
+auto mapped_from(const launch::mapped_module& mapped, u32 boot_offset) -> loaded_module {
     return loaded_module{
         .base = mapped.base,
         .boot_offset = boot_offset,
@@ -33,8 +33,8 @@ auto mapped_from(const mapped_module& mapped, u32 boot_offset) -> loaded_module 
 // original freely: no staged copy.
 auto map_from(const os::process& target, const options& chosen) -> result<loaded_module> {
     const std::vector<std::byte> file = LUCENT_TRY(os::read_file(chosen.module));
-    const u32 boot_offset = LUCENT_TRY(boot_entry_offset(file));
-    return mapped_from(LUCENT_TRY(map_module(target, file)), boot_offset);
+    const u32 boot_offset = LUCENT_TRY(launch::boot_entry_offset(file));
+    return mapped_from(LUCENT_TRY(launch::map_module(target, file)), boot_offset);
 }
 
 // pack refuses a module without a boot entry, so a container without one wasn't packed by ours.
@@ -44,13 +44,13 @@ auto map_container_from(const os::process& target, const options& chosen) -> res
     if (image.boot_rva == 0) {
         return std::unexpected(error{.code = error_code::unsupported});
     }
-    return mapped_from(LUCENT_TRY(map_container_module(target, image)), image.boot_rva);
+    return mapped_from(LUCENT_TRY(launch::map_container_module(target, image)), image.boot_rva);
 }
 
 auto load_with_os_loader(const os::process& target, const options& chosen)
     -> result<loaded_module> {
     const staged_module staged = LUCENT_TRY(stage_module(chosen.module));
-    const u32 boot_offset = LUCENT_TRY(boot_entry_offset(staged.file));
+    const u32 boot_offset = LUCENT_TRY(launch::boot_entry_offset(staged.file));
     const uptr base = LUCENT_TRY(load_staged_module(target, staged));
     return loaded_module{
         .base = base,

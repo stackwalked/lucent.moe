@@ -6,7 +6,7 @@
 #include <lucent/os/process.hpp>
 #include <lucent/wire/container.hpp>
 
-namespace lucent::loader_dev {
+namespace lucent::launch {
 
 struct mapped_module {
     uptr base = 0;

@@ -1,4 +1,4 @@
-#include "session/channel.hpp"
+#include <lucent/launch/channel.hpp>
 
 #include <utility>
 
@@ -7,7 +7,7 @@
 #include <lucent/os/pipe.hpp>
 #include <lucent/os/process.hpp>
 
-namespace lucent::loader_dev {
+namespace lucent::launch {
 
 auto open_channel(const os::process& target) -> result<host_channel> {
     os::pipe to_module = LUCENT_TRY(os::create_pipe());
