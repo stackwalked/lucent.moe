@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import type { ProductCatalog } from "@lucent/catalog/catalog";
 import type { Clock } from "@lucent/core/clock";
 import { containBoundary } from "@lucent/core/contain";
@@ -24,6 +25,7 @@ import {
     refusalResponse,
 } from "./http.ts";
 import type { LeaseSigner } from "./lease-key.ts";
+import { checkLoaderArtifact, readLoaderSeal } from "./loader.ts";
 import { createRateLimiter, type RateRule } from "./rate-limit.ts";
 import { closeSession, openSession, renewLease } from "./sessions.ts";
 import {
@@ -51,6 +53,8 @@ export type NativeDeps = {
     readonly signer: LeaseSigner;
     // The public origin loaders address, which their DPoP proofs name.
     readonly origin: string;
+    // Where ops wrote the loader's and host's bytes, one file per BLAKE2b-256 hex digest.
+    readonly artifactDir: string;
     readonly isSuperseded: () => boolean;
     readonly logger: Logger;
     readonly rateLimits?: Readonly<Record<string, RateRule>>;
@@ -68,6 +72,8 @@ export const DEFAULT_RATE_LIMITS: Readonly<Record<string, RateRule>> = {
     "sessions.open": { perMinute: 20 },
     "sessions.lease": { perMinute: 20 },
     "sessions.close": { perMinute: 20 },
+    "loader.seal": { perMinute: 20 },
+    "artifacts.read": { perMinute: 20 },
 };
 
 type ServerFault = DbFailure | { readonly code: "RECEIPT_UNREADABLE" };
@@ -398,6 +404,45 @@ export function createNativeApp(deps: NativeDeps): Hono {
         if (sessionId === null) return refusalResponse({ code: "NOT_FOUND" });
         const closed = await closeSession(deps.db, { ...caller.value, sessionId });
         return reply(closed, () => new Response(null, { status: 204 }));
+    });
+
+    app.get("/v1/loader/:channel", async (c) => {
+        const caller = await authenticated(c, "loader.seal");
+        if (!caller.ok) return refusalResponse(caller.error);
+        const seal = await readLoaderSeal(deps.db, {
+            catalog: deps.catalog,
+            accountId: caller.value.holder.accountId,
+            channel: c.req.param("channel"),
+        });
+        return reply(seal, (bytes) => binaryResponse(new Uint8Array(bytes)));
+    });
+
+    app.get("/v1/artifacts/:digest", async (c) => {
+        const caller = await authenticated(c, "artifacts.read");
+        if (!caller.ok) return refusalResponse(caller.error);
+        const digest = c.req.param("digest");
+        if (!/^[0-9a-f]{64}$/.test(digest)) return refusalResponse({ code: "NOT_FOUND" });
+        const offered = await checkLoaderArtifact(deps.db, {
+            catalog: deps.catalog,
+            accountId: caller.value.holder.accountId,
+            digest,
+        });
+        if (!offered.ok) return refusalResponse(refusalOf(offered.error));
+        // Only the validated digest names a file; the bytes were written by ops, never by a request.
+        const file = Bun.file(join(deps.artifactDir, digest));
+        if (!(await file.exists())) {
+            return await unavailable(
+                `no file for the current artifact ${digest}`,
+                "artifact_missing",
+            );
+        }
+        return new Response(file.stream(), {
+            headers: {
+                "content-type": "application/octet-stream",
+                "content-length": String(file.size),
+                "cache-control": "no-store",
+            },
+        });
     });
 
     app.notFound(() => refusalResponse({ code: "NOT_FOUND" }));

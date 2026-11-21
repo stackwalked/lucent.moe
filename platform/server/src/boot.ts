@@ -197,6 +197,7 @@ export async function startServer(params: {
             catalog: catalog.value,
             signer: await createLeaseSigner(config.native.leaseSigningSeed),
             origin: config.native.origin,
+            artifactDir: config.native.artifactDir,
             isSuperseded: epochGuard.isSuperseded,
             logger,
         }).fetch;

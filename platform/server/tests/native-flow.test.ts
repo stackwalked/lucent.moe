@@ -54,6 +54,7 @@ test("a member's PC signs in, enrolls, starts, holds a lease and closes, end to 
                     listen: { kind: "tcp", hostname: "127.0.0.1", port: 0 },
                     origin: ORIGIN,
                     leaseSigningSeed: LEASE_SEED,
+                    artifactDir: "unused-artifact-dir",
                 },
             },
             logger: { write: () => {} },

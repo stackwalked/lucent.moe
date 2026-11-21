@@ -34,6 +34,8 @@ export type NativeConfig = {
     // The 32-byte Ed25519 seed. Never generated at startup: its public half ships inside every
     // signed release, so a key the server made up would sign leases no module accepts.
     readonly leaseSigningSeed: Uint8Array;
+    // Where `ops publish-loader` wrote the loader's and host's bytes, by digest; served on /v1.
+    readonly artifactDir: string;
 };
 
 export type NativeListenAddress =
@@ -66,6 +68,7 @@ export type Environment = {
     readonly LUCENT_NATIVE_LISTEN?: string | undefined;
     readonly LUCENT_NATIVE_ORIGIN?: string | undefined;
     readonly LUCENT_LEASE_SIGNING_KEY?: string | undefined;
+    readonly LUCENT_ARTIFACT_DIR?: string | undefined;
     readonly LUCENT_CODE_PUBLIC_KEY?: string | undefined;
 };
 
@@ -155,15 +158,16 @@ function parseLeaseSigningKey(raw: string): Uint8Array | null {
     return Uint8Array.fromBase64(raw, { alphabet: "base64url" });
 }
 
-// All three variables or none: a server half-configured for loaders refuses to start rather
+// All four variables or none: a server half-configured for loaders refuses to start rather
 // than guessing which half was meant.
 function readNativeConfig(env: Environment, problems: string[]): NativeConfig | null {
     const raw = {
         listen: env.LUCENT_NATIVE_LISTEN ?? "",
         origin: env.LUCENT_NATIVE_ORIGIN ?? "",
         key: env.LUCENT_LEASE_SIGNING_KEY ?? "",
+        artifactDir: env.LUCENT_ARTIFACT_DIR ?? "",
     };
-    if (raw.listen === "" && raw.origin === "" && raw.key === "") return null;
+    if (Object.values(raw).every((value) => value === "")) return null;
     const listen = parseNativeListen(raw.listen);
     if (listen === null) {
         problems.push("LUCENT_NATIVE_LISTEN must be unix:<path> or <ip>:<port>");
@@ -176,8 +180,13 @@ function readNativeConfig(env: Environment, problems: string[]): NativeConfig | 
     if (leaseSigningSeed === null) {
         problems.push("LUCENT_LEASE_SIGNING_KEY must be a 32-byte Ed25519 seed in base64url");
     }
-    if (listen === null || origin === null || leaseSigningSeed === null) return null;
-    return { listen, origin, leaseSigningSeed };
+    if (raw.artifactDir === "") {
+        problems.push("LUCENT_ARTIFACT_DIR must name the directory ops publish-loader writes to");
+    }
+    if (listen === null || origin === null || leaseSigningSeed === null || raw.artifactDir === "") {
+        return null;
+    }
+    return { listen, origin, leaseSigningSeed, artifactDir: raw.artifactDir };
 }
 
 function readDatabaseUrl(env: Environment, problems: string[]): string {
@@ -302,6 +311,7 @@ export function processEnvironment(): Environment {
         LUCENT_NATIVE_LISTEN,
         LUCENT_NATIVE_ORIGIN,
         LUCENT_LEASE_SIGNING_KEY,
+        LUCENT_ARTIFACT_DIR,
         LUCENT_CODE_PUBLIC_KEY,
     } = process.env;
     return {
@@ -317,6 +327,7 @@ export function processEnvironment(): Environment {
         LUCENT_NATIVE_LISTEN,
         LUCENT_NATIVE_ORIGIN,
         LUCENT_LEASE_SIGNING_KEY,
+        LUCENT_ARTIFACT_DIR,
         LUCENT_CODE_PUBLIC_KEY,
     };
 }

@@ -72,7 +72,11 @@ export type NativeHarness = {
 export async function createNativeHarness(
     db: Db,
     rng: SeededRng,
-    options?: { readonly clock?: Clock; readonly rateLimits?: Readonly<Record<string, RateRule>> },
+    options?: {
+        readonly clock?: Clock;
+        readonly rateLimits?: Readonly<Record<string, RateRule>>;
+        readonly artifactDir?: string;
+    },
 ): Promise<NativeHarness> {
     const products = catalog();
     const signer = await createLeaseSigner(LEASE_SEED);
@@ -83,6 +87,7 @@ export async function createNativeHarness(
         catalog: products,
         signer,
         origin: ORIGIN,
+        artifactDir: options?.artifactDir ?? "unused-artifact-dir",
         isSuperseded: () => false,
         logger: { write: () => {} },
         rateLimits: options?.rateLimits ?? DEFAULT_RATE_LIMITS,
