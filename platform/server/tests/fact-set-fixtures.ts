@@ -15,7 +15,7 @@ import { invariant } from "@lucent/core/contain";
 import type { SeededRng } from "@lucent/core/rng";
 import { signWithSeed } from "@lucent/wire/session-crypto";
 import { type Db, execute, sql } from "../src/db/pool.ts";
-import { publishFactSet } from "../src/native/fact-sets.ts";
+import { publishFactSet } from "../src/facts/publishing.ts";
 import { publishRelease } from "./native-fixtures.ts";
 // The facts key is a test key (RFC 8032's first); the release links three facts, the first two
 // needed by a core capability and the third by an optional one.

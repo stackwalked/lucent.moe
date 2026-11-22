@@ -4,8 +4,8 @@ import { createSeededRng } from "@lucent/core/rng";
 import { newOperationId } from "@lucent/core/scalars";
 import { hashToken } from "../src/auth/tokens.ts";
 import { execute, sql } from "../src/db/pool.ts";
-import { listMemberProducts } from "../src/internal/products.ts";
-import { listDevices, removeDevice, renameDevice } from "../src/native/devices.ts";
+import { listDevices, removeDevice, renameDevice } from "../src/devices/devices.ts";
+import { listMemberProducts } from "../src/products/products.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 import {
     createNativeHarness,

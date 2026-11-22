@@ -19,7 +19,7 @@ import { signWithSeed } from "@lucent/wire/session-crypto";
 import { type Channel, parseStartReply } from "@lucent/wire/start";
 import { z } from "zod";
 import { type Db, execute, queryAll, sql } from "../src/db/pool.ts";
-import { publishLoaderRelease, publishModuleRelease } from "../src/native/publish.ts";
+import { publishLoaderRelease, publishModuleRelease } from "../src/releases/publish.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 import {
     createNativeHarness,

@@ -4,7 +4,7 @@ import { createSeededRng } from "@lucent/core/rng";
 import { EpochMs, newOperationId, toHex } from "@lucent/core/scalars";
 import { z } from "zod";
 import { execute, sql } from "../src/db/pool.ts";
-import { sweepNative } from "../src/native/expiry.ts";
+import { sweepNative } from "../src/runtime/expiry.ts";
 import { scalar } from "./authority-fixtures.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 import {

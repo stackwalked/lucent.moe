@@ -1,6 +1,6 @@
 import { err, ok, type Result } from "@lucent/core/result";
 import { type AccountId, ChannelId, type EpochMs, ProductId, RoleId } from "@lucent/core/scalars";
-import { type Action, ActionSchema } from "@lucent/policy/actions";
+import type { Action } from "@lucent/policy/actions";
 import type { AccountStanding, AuthzRefusal, Caller, Subject } from "@lucent/policy/policy";
 import { z } from "zod";
 import {
@@ -12,25 +12,8 @@ import {
     type Tx,
     toTimestamptz,
 } from "../db/pool.ts";
-
-// Stored roles outlive the Action union: a permission dropped from code stays in old rows. It
-// grants nothing and is kept apart so an admin can see and clean it up.
-function splitPermissions(stored: readonly string[]): {
-    readonly known: readonly Action[];
-    readonly unknown: readonly string[];
-} {
-    const known: Action[] = [];
-    const unknown: string[] = [];
-    for (const raw of stored) {
-        const parsed = ActionSchema.safeParse(raw);
-        if (parsed.success) {
-            known.push(parsed.data);
-        } else {
-            unknown.push(raw);
-        }
-    }
-    return { known, unknown };
-}
+import { splitPermissions } from "./permissions.ts";
+import { decideStanding } from "./standing.rules.ts";
 
 const AccountLockRowSchema = z.object({
     status: z.enum(["active", "suspended"]),
@@ -62,20 +45,10 @@ async function standingOf(
     );
     if (!rolesRes.ok) return rolesRes;
 
-    let maxRank = 0;
-    const permissions = new Set<Action>();
-    for (const role of rolesRes.value) {
-        maxRank = Math.max(maxRank, role.rank);
-        for (const permission of splitPermissions(role.permissions).known) {
-            permissions.add(permission);
-        }
-    }
-    return ok({
+    return decideStanding({
         accountId: params.accountId,
-        isRoot: params.account.is_root,
-        isActive: params.account.status === "active" && !params.account.is_locked,
-        maxRank,
-        permissions,
+        account: params.account,
+        roles: rolesRes.value,
     });
 }
 

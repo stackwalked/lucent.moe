@@ -10,7 +10,7 @@ import type { z } from "zod";
 import { redeemSetupLink } from "../src/auth/setup.ts";
 import { hashToken } from "../src/auth/tokens.ts";
 import { execute, sql } from "../src/db/pool.ts";
-import { webProcedures } from "../src/internal/web-rpc.ts";
+import { webProcedures } from "../src/listeners/internal/web-rpc.ts";
 import { memberSession, newSetupLink, seedRootOnce } from "./auth-fixtures.ts";
 import { createTestAuthDeps } from "./harness/auth.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";

@@ -1,0 +1,16 @@
+id: ts-rules-pure
+valid:
+  - "import { ok } from '@lucent/core/result';"
+  - "export function decideLease(now: number) { return ok(now + 1000); }"
+invalid:
+  - "const rule = async () => 42;"
+  - "function decide() { return await gather(); }"
+  - "import type { Tx } from '../db/pool.ts';"
+  - "import { send } from '../listeners/internal/download.ts';"
+  - "import { mail } from '../adapters/mail.ts';"
+  - "import { join } from 'node:path';"
+  - "import { file } from 'bun';"
+  - "const file = Bun.file('account');"
+  - "function load() { return import('../adapters/mail.ts'); }"
+  - "export { find } from '../db/pool.ts';"
+  - "async function drain(xs) { for await (const x of xs) {} }"

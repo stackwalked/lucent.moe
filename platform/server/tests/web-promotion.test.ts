@@ -12,12 +12,12 @@ import { LOADER_DOWNLOAD_PATH } from "@lucent/rpc/web";
 import { z } from "zod";
 import { claimServiceEpoch, openEpochGuard } from "../src/db/epoch-guard.ts";
 import { type Db, execute, queryAll, sql } from "../src/db/pool.ts";
-import { createInternalWebApp } from "../src/internal/app.ts";
-import { readLoaderOffer } from "../src/internal/download.ts";
-import { listReleaseFactSets, promoteFactSet } from "../src/internal/fact-sets.ts";
-import { listMemberProducts } from "../src/internal/products.ts";
-import { listReleaseLines, promoteRelease } from "../src/internal/releases.ts";
-import { findCurrentRelease } from "../src/native/releases.ts";
+import { listReleaseFactSets, promoteFactSet } from "../src/facts/promotion.ts";
+import { createInternalWebApp } from "../src/listeners/internal/app.ts";
+import { listMemberProducts } from "../src/products/products.ts";
+import { readLoaderOffer } from "../src/releases/offer.ts";
+import { listReleaseLines, promoteRelease } from "../src/releases/promotion.ts";
+import { findCurrentRelease } from "../src/releases/reads.ts";
 import { memberSession, seedRootOnce } from "./auth-fixtures.ts";
 import {
     catalog,

@@ -18,6 +18,9 @@ They break ties between the rules below.
    (`AbortSignal`) and database handles (`Db` vs. `Tx`) pass as parameters.
 5. Control flow is visible: expected failures return `Result<T, E>`; programmer bugs call
    `invariant()`/`unreachable()` and surface as `503` at `containBoundary()`.
+6. Gather → decide → apply when a writer has competing refusals or time or sequence arithmetic.
+   Gather under the existing locks, pass plain values to a synchronous rule, then write its plan.
+   A CRUD writer with nothing to decide stays plain.
 
 ## Semantics
 
@@ -26,7 +29,8 @@ They break ties between the rules below.
   from a repository or domain query.
 - `findX` returns `Promise<X | null>` (absence is normal). `readX` returns `Promise<Result<X, E>>`
   (absence is a refusal such as `NOT_FOUND`). `parseX` validates untrusted input into `Result`;
-  `fromX` constructs infallibly; `toX` formats or serializes.
+  `fromX` constructs infallibly; `toX` formats or serializes. `decideX` in `<unit>.rules.ts`
+  returns `Result<Plan, Refusal>` without effects.
 - More than three positional parameters become a single `readonly` parameter object.
 - Guard clauses sit at the top of functions; avoid `else` after an early `return`.
 - Every outbound I/O call (`fetch`, `Bun.spawn`) carries a bounded `AbortSignal` deadline.
@@ -53,3 +57,4 @@ They break ties between the rules below.
 - `tests/<unit>.test.ts`, named as behavior sentences.
 - Real PostgreSQL (`withTestDb` over `TEMPLATE` cloning), injected clocks and RNG, zero network,
   never mocking our own modules or SQL.
+- Table-test rules; use PostgreSQL tests for locks, constraints and races.

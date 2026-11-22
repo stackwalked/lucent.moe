@@ -9,7 +9,7 @@ import { invariant } from "@lucent/core/contain";
 import { createSeededRng } from "@lucent/core/rng";
 import { z } from "zod";
 import { queryAll, sql } from "../src/db/pool.ts";
-import { publishFactSet } from "../src/native/fact-sets.ts";
+import { publishFactSet } from "../src/facts/publishing.ts";
 import {
     CAPABILITIES,
     coreRelease,

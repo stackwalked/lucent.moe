@@ -57,11 +57,15 @@ import { calculateJwkThumbprint, SignJWT } from "jose";
 import { z } from "zod";
 import { issueEntitlement } from "../src/authority/writers.ts";
 import { type Db, execute, sql } from "../src/db/pool.ts";
-import { createNativeApp, DEFAULT_RATE_LIMITS } from "../src/native/app.ts";
-import { approveEnrollment } from "../src/native/devices.ts";
-import { createLeaseSigner, type LeaseSigner } from "../src/native/lease-key.ts";
-import type { RateRule } from "../src/native/rate-limit.ts";
-import { decideSignInRequest, SignInRequestId } from "../src/native/sign-in.ts";
+import { approveEnrollment } from "../src/devices/devices.ts";
+import {
+    answerSignInRequest as decideSignInRequest,
+    SignInRequestId,
+} from "../src/devices/sign-in.ts";
+import { createNativeApp } from "../src/listeners/native/app.ts";
+import type { RateRule } from "../src/listeners/native/rate-limit.ts";
+import { DEFAULT_RATE_LIMITS } from "../src/listeners/native/route-context.ts";
+import { createLeaseSigner, type LeaseSigner } from "../src/runtime/lease-key.ts";
 import { memberSession, seedRootOnce } from "./auth-fixtures.ts";
 import { catalog, seedAccount, steppedUp } from "./authority-fixtures.ts";
 import { createTestAuthDeps } from "./harness/auth.ts";

@@ -25,7 +25,7 @@ import {
     toTimestamptz,
 } from "../db/pool.ts";
 import { withTx } from "../db/tx.ts";
-import { type DeviceList, readAccountDevices } from "../native/devices.ts";
+import { type DeviceList, readAccountDevices } from "../devices/devices.ts";
 import type { FeatureSelection } from "./entitlements.ts";
 import { readStanding } from "./standing.ts";
 

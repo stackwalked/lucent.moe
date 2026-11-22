@@ -9,8 +9,12 @@ import { bootstrapRootAccount, recoverRootAccount } from "./authority/writers.ts
 import { processEnvironment, readOpsConfig } from "./config.ts";
 import { migrateDatabase, verifySchemaCurrent } from "./db/migrate.ts";
 import { openPool } from "./db/pool.ts";
-import { describePublishedFactSet, publishFactSet } from "./native/fact-sets.ts";
-import { describePublished, publishLoaderRelease, publishModuleRelease } from "./native/publish.ts";
+import { describePublishedFactSet, publishFactSet } from "./facts/publishing.ts";
+import {
+    describePublished,
+    publishLoaderRelease,
+    publishModuleRelease,
+} from "./releases/publish.ts";
 
 // Operator verbs, run against the database the server uses. Exit 1 on any refusal; the reason
 // goes to stderr as one JSON object.

@@ -5,7 +5,11 @@ import { BearerToken, sha256Base64Url, toBase64Url } from "@lucent/core/scalars"
 import { z } from "zod";
 import { hashToken } from "../src/auth/tokens.ts";
 import { execute, sql } from "../src/db/pool.ts";
-import { decideSignInRequest, readSignInRequest, SignInRequestId } from "../src/native/sign-in.ts";
+import {
+    answerSignInRequest as decideSignInRequest,
+    readSignInRequest,
+    SignInRequestId,
+} from "../src/devices/sign-in.ts";
 import { dbNow, scalar } from "./authority-fixtures.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 import {
