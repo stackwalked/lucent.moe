@@ -5,6 +5,7 @@
 #include <vector>
 
 #include <lucent/bundle/bundle.hpp>
+#include <lucent/bundle/fact_set.hpp>
 #include <lucent/crypto/crypto.hpp>
 #include <lucent/kit/fact.hpp>
 #include <lucent/kit/fact_resolve.hpp>
@@ -61,7 +62,8 @@ struct apply_report;
 
 // The sets apply or admit verified and found made for this manifest, but keyed by a module that
 // wasn't loaded yet. Only those two add to them, so applying one later needs only its module keys
-// checked.
+// checked. It also remembers every such set it has taken, applied or not, so a late bundle that
+// repeats one (the server answers for every build asked, the boot builds too) changes nothing.
 class waiting_sets final {
 public:
     waiting_sets() = default;
@@ -79,17 +81,25 @@ public:
     auto apply_loaded(const late_request& request) -> late_report;
 
     // Adds the bundle's sets that are signed by a trusted key with every entry under the signed
-    // root, and made for this manifest; the rest it drops. Resolves nothing: apply_loaded applies
-    // them once their modules have loaded. A bundle that doesn't decode adds nothing, and fails as
-    // apply's does. One thread at a time.
+    // root, made for this manifest, and keyed by builds no set taken before was keyed by; the rest
+    // it drops. Resolves nothing: apply_loaded applies them once their modules have loaded. A
+    // bundle that doesn't decode adds nothing, and fails as apply's does. One thread at a time.
     auto admit(const admit_request& request) -> result<void>;
 
 private:
     friend auto apply(const apply_request& request) -> result<apply_report>;
 
-    explicit waiting_sets(std::vector<bundle::delivered_set> sets);
+    waiting_sets(
+        std::vector<bundle::delivered_set> sets, std::vector<std::vector<bundle::module_key>> taken
+    );
+
+    auto is_taken(const bundle::delivered_set& set) const -> bool;
 
     std::vector<bundle::delivered_set> m_sets;
+    // The module keys of every set taken. A set is known by its builds alone: a newer revision
+    // for builds whose facts already resolved must not resolve them again while features read
+    // them.
+    std::vector<std::vector<bundle::module_key>> m_taken;
 };
 
 struct apply_report {

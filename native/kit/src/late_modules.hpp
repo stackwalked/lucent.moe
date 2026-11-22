@@ -44,6 +44,10 @@ public:
     // within stop_patience. Kit workers only.
     auto wait(const std::stop_token& stop) const -> void;
 
+    // As wait, and also once `time` reaches `due`, which it sees within stop_patience.
+    auto wait_until(const std::stop_token& stop, const clock& time, clock::time_point due) const
+        -> void;
+
 private:
     // ntdll's LdrUnregisterDllNotification; LONG is 32 bits on Windows.
     using unregister_fn = auto(__stdcall*)(void* cookie) -> i32;
@@ -61,8 +65,8 @@ struct late_facts {
     waiting_sets waiting;
     // Core capabilities that were unavailable only for a module not loaded yet.
     std::vector<declared_capability> waiting_core;
-    // The indices of the target's game modules that weren't loaded at boot: with a data route,
-    // the server is asked for each one's set once it loads.
+    // The indices of the target's game modules that weren't loaded at boot and whose sets the
+    // server hasn't answered for yet: with a data route, it is asked once each loads.
     std::vector<u8> unasked;
     // The target's game modules: static data.
     std::span<const game_module> modules;
@@ -71,10 +75,17 @@ struct late_facts {
     std::span<const crypto::public_key> trusted;
 };
 
-// How long an asked-for set may take to come back: the loader's own patience for one call (10 s
-// to connect, 30 s to receive, loader/src/http/client.cpp), twice for a proof retried with the
-// server's clock, and room for a renewal relayed ahead of it.
+// How long an asked-for set may take to come back: the loader's own patience for one data call
+// (10 s to connect, 10 s to receive, loader/src/session/live_link.cpp), twice for a proof retried
+// with the server's clock, and room for a renewal relayed ahead of it on the loader's one relay
+// thread. Also the least time between two asks: one that went unanswered has waited this long
+// already.
 inline constexpr std::chrono::seconds data_patience{90};
+
+// How often the server is asked for a module's set without an answer before its capabilities stay
+// unavailable. The host relays no refusal, so each of them waited out data_patience: three ride
+// out a server fault or a deploy of a few minutes without asking for the whole session.
+inline constexpr i32 max_asks = 3;
 
 // The data route as the late-module worker uses it (release builds). Every pointer outlives the
 // worker; the inbox is fed by the lifecycle thread with the data frames the host relays.
@@ -96,14 +107,17 @@ struct late_worker {
     late_facts facts;
 };
 
-// The late-module worker's body. After every DLL load the signal reports, asks the server once for
-// the sets of the unasked modules that have loaded since (with a data link: one request per
-// wake, which an unreachable server or a refusal leaves unanswered, their capabilities then
-// unavailable), applies the waiting sets whose modules the game has loaded, then judges the waiting
-// core capabilities again: one that failed once its modules loaded ends the session (decided: a
-// late core module waits, and only its failure ends the session). Returns once nothing waits or is
-// left to ask for, once it ended the session, or once stop is requested. The signal must have been
-// watched since before the sets were judged at boot. A dev build reports each outcome.
+// The late-module worker's body. After every DLL load the signal reports, asks the server for the
+// sets of the unasked modules that have loaded since (with a data link: one request naming every
+// known module loaded now, so a set keyed by an earlier module and the new one matches too, and
+// taking only the reply that answers it; one left unanswered, by an unreachable server or a
+// refusal, is asked again until max_asks, the capabilities then unavailable), admits the sets it
+// doesn't hold yet, applies the waiting sets whose modules the game has loaded, then judges the
+// waiting core capabilities again: one that failed once its modules loaded ends the session
+// (decided: a late core module waits, and only its failure ends the session). Returns once nothing
+// waits or is left to ask for, once it ended the session, or once stop is requested. The signal
+// must have been watched since before the sets were judged at boot. A dev build reports each
+// outcome.
 auto resolve_late_modules(const std::stop_token& stop, late_worker worker) -> void;
 
 }

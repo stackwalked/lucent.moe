@@ -321,10 +321,10 @@ auto bundle_of(std::initializer_list<u8> values) -> std::vector<std::byte> {
 
 // The server's answer to a data request for one module build, carrying this bundle.
 auto ask_data(opened& session, std::vector<std::byte> bundle) -> stand_in_server::data_answer {
-    const result<std::vector<std::byte>> asked =
+    const result<data_request_frame> asked =
         session.data->request({bundle::module_key{.name_hash = 5}}, session.random);
     REQUIRE(asked.has_value());
-    return session.server.data_for(*asked, std::move(bundle));
+    return session.server.data_for(asked->frame, std::move(bundle));
 }
 
 auto renew(opened& session, clock::time_point when) -> std::vector<std::byte> {

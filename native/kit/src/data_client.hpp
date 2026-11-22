@@ -14,6 +14,12 @@
 
 namespace lucent::kit::detail {
 
+// A data request ready to send, and the sequence its frame carries: what its answer names.
+struct data_request_frame {
+    std::vector<std::byte> frame;
+    u64 sequence = 0;
+};
+
 // The module's half of the session's data route (POST /v1/sessions/:id/data), relayed by the host:
 // requests sealed module to server, and the server's responses, each accepted only when its
 // sequence is above any accepted before. The route's keys and sequences are its own, so lease
@@ -34,7 +40,7 @@ public:
 
     // The next request's frame, asking for these module builds, to send now.
     auto request(std::vector<bundle::module_key> modules, random_source& random)
-        -> result<std::vector<std::byte>>;
+        -> result<data_request_frame>;
 
     // A data frame from the server. Malformed or stale unless it is the server's, for this session,
     // newer than any accepted, and opens under the data route's key. A refused frame changes

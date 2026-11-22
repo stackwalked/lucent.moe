@@ -147,8 +147,15 @@ auto images_of(std::span<const loaded_module> modules) -> std::vector<module_ima
 
 }
 
-waiting_sets::waiting_sets(std::vector<bundle::delivered_set> sets)
-    : m_sets{std::move(sets)} {}
+waiting_sets::waiting_sets(
+    std::vector<bundle::delivered_set> sets, std::vector<std::vector<bundle::module_key>> taken
+)
+    : m_sets{std::move(sets)}
+    , m_taken{std::move(taken)} {}
+
+auto waiting_sets::is_taken(const bundle::delivered_set& set) const -> bool {
+    return std::ranges::contains(m_taken, set.header.modules);
+}
 
 auto waiting_sets::is_empty() const -> bool {
     return m_sets.empty();
@@ -193,7 +200,8 @@ auto waiting_sets::admit(const admit_request& request) -> result<void> {
     std::vector<bundle::delivered_set> decoded = LUCENT_TRY(bundle::decode_bundle(request.bundle));
     const crypto::digest manifest = manifest_of(request.records);
     for (bundle::delivered_set& set : decoded) {
-        if (!refusal_of(set, request.trusted, manifest)) {
+        if (!refusal_of(set, request.trusted, manifest) && !is_taken(set)) {
+            m_taken.push_back(set.header.modules);
             m_sets.push_back(std::move(set));
         }
     }
@@ -226,9 +234,13 @@ auto apply(const apply_request& request) -> result<apply_report> {
     apply_report report;
     std::vector<fact_value> values;
     std::vector<bundle::delivered_set> waiting;
+    std::vector<std::vector<bundle::module_key>> held;
     for (bundle::delivered_set& set : *decoded) {
         const set_outcome outcome = judge(set, request, manifest);
         report.sets.push_back(outcome);
+        if (outcome != set_outcome::unverified && outcome != set_outcome::other_manifest) {
+            held.push_back(set.header.modules);
+        }
         if (outcome == set_outcome::module_absent) {
             waiting.push_back(std::move(set));
             continue;
@@ -241,7 +253,7 @@ auto apply(const apply_request& request) -> result<apply_report> {
         report.misplaced += taken.misplaced;
     }
     report.facts = resolve(request.records, values, images);
-    report.waiting = waiting_sets{std::move(waiting)};
+    report.waiting = waiting_sets{std::move(waiting), std::move(held)};
     return report;
 }
 

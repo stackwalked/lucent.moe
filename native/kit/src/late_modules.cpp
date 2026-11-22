@@ -27,6 +27,7 @@
 #include <lucent/wire/frame.hpp>
 #include <lucent/wire/refusal.hpp>
 
+#include "data_client.hpp"
 #include "dev.hpp"
 #include "session_end.hpp"
 
@@ -115,6 +116,19 @@ auto load_signal::wait(const std::stop_token& stop) const -> void {
     }
 }
 
+auto load_signal::wait_until(
+    const std::stop_token& stop, const clock& time, clock::time_point due
+) const -> void {
+    const auto patience = static_cast<DWORD>(stop_patience.count());
+    // The clock is read between waits, not waited on: an injected one may be stepped, which no
+    // real wait follows.
+    while (!stop.stop_requested() && time.now() < due) {
+        if (WaitForSingleObject(m_loaded.native(), patience) == WAIT_OBJECT_0) {
+            return;
+        }
+    }
+}
+
 namespace {
 
 auto indices_of(std::span<const loaded_module> loaded) -> std::vector<u8> {
@@ -133,26 +147,39 @@ auto still_waiting(std::vector<declared_capability> core, std::span<const u64> w
     return core;
 }
 
-// One data request for these builds, and the response the host relays back; nothing once the
-// patience runs out, stop is requested, or the request couldn't go out. A frame that doesn't check
-// out is the host's or the network's noise, as on the lease route: dropped, and the wait goes on.
+auto builds_of(std::span<const loaded_module> loaded) -> std::vector<bundle::module_key> {
+    std::vector<bundle::module_key> builds;
+    for (const loaded_module& each : loaded) {
+        builds.push_back(each.build);
+    }
+    return builds;
+}
+
+// One data request for these builds, and the response the host relays back that answers it;
+// nothing once the deadline passes, stop is requested, or the request couldn't go out. A frame
+// that doesn't check out is the host's or the network's noise, as on the lease route, and a reply
+// to another request is a late answer to one given up on: both dropped, and the wait goes on.
 auto fetch(
-    const std::stop_token& stop, const data_link& link, std::vector<bundle::module_key> builds
+    const std::stop_token& stop,
+    const data_link& link,
+    std::vector<bundle::module_key> builds,
+    clock::time_point deadline
 ) -> std::optional<wire::data_response> {
-    const result<std::vector<std::byte>> body =
-        link.client->request(std::move(builds), *link.random);
-    if (!body
-        || !link.channel->send(server_request{.route = server_route::data, .body = *body})
+    const result<data_request_frame> sent = link.client->request(std::move(builds), *link.random);
+    if (!sent
+        || !link.channel->send(server_request{.route = server_route::data, .body = sent->frame})
             .has_value()) {
         return std::nullopt;
     }
-    const clock::time_point deadline = link.time->now() + data_patience;
     while (!stop.stop_requested()) {
         const clock::time_point now = link.time->now();
         if (now >= deadline) {
             return std::nullopt;
         }
-        const std::optional<std::vector<std::byte>> frame = link.inbox->wait(stop, deadline - now);
+        // In slices, as load_signal::wait_until reads the clock: the inbox waits in real time.
+        const std::optional<std::vector<std::byte>> frame = link.inbox->wait(
+            stop, std::min(deadline - now, clock::time_point::duration{stop_patience})
+        );
         if (!frame) {
             continue;
         }
@@ -161,35 +188,102 @@ auto fetch(
             continue;
         }
         result<wire::data_response> response = link.client->accept(*sealed);
-        if (response) {
+        if (response && response->answers == sent->sequence) {
             return std::move(*response);
         }
     }
     return std::nullopt;
 }
 
-// The unasked modules loaded now leave the list whatever the answer: one request per load. What
-// comes back waits with the other sets; release says nothing of a set it drops or of a build the
-// server has none for, as the boot resolve doesn't.
+// How often a module still owed its set was asked for without an answer.
+struct unanswered {
+    u8 module = 0;
+    i32 asks = 0;
+};
+
+// The late worker's asking, between wakes.
+struct asking {
+    std::vector<unanswered> counts;
+    // When the modules asked for without an answer are asked again; none while no retry is owed.
+    std::optional<clock::time_point> retry_at;
+};
+
+auto owed_loaded(std::span<const u8> unasked, std::span<const loaded_module> loaded)
+    -> std::vector<u8> {
+    std::vector<u8> owed;
+    for (const loaded_module& each : loaded) {
+        if (std::ranges::contains(unasked, each.image.index)) {
+            owed.push_back(each.image.index);
+        }
+    }
+    return owed;
+}
+
+// The module's unanswered asks, this one counted.
+auto count_ask(asking& state, u8 module) -> i32 {
+    const auto found = std::ranges::find(state.counts, module, &unanswered::module);
+    if (found != state.counts.end()) {
+        return ++found->asks;
+    }
+    state.counts.push_back(unanswered{.module = module, .asks = 1});
+    return 1;
+}
+
+auto forget(late_facts& late, asking& state, u8 module) -> void {
+    std::erase(late.unasked, module);
+    std::erase_if(state.counts, [module](const unanswered& each) { return each.module == module; });
+}
+
+// The asked modules are asked again from the deadline on, until max_asks; then they leave the
+// list, their capabilities unavailable.
+auto count_unanswered(
+    late_facts& late, asking& state, std::span<const u8> asked, clock::time_point deadline
+) -> void {
+    for (const u8 module : asked) {
+        if (count_ask(state, module) >= max_asks) {
+            forget(late, state, module);
+        }
+    }
+    if (!state.counts.empty()) {
+        state.retry_at = deadline;
+    }
+}
+
+// The request names every known module loaded now, the boot ones too, so the server can match a
+// set keyed by an earlier build and a late one; the reply's sets the module holds already admit
+// drops. What comes back waits with the other sets; release says nothing of a set it drops or of a
+// build the server has none for, as the boot resolve doesn't.
 auto ask_for_loaded(
     const std::stop_token& stop,
     const data_link& link,
     late_facts& late,
+    asking& state,
     std::span<const loaded_module> loaded
 ) -> void {
-    std::vector<bundle::module_key> builds;
-    for (const loaded_module& each : loaded) {
-        if (std::ranges::contains(late.unasked, each.image.index)) {
-            builds.push_back(each.build);
-            std::erase(late.unasked, each.image.index);
+    const clock::time_point now = link.time->now();
+    const bool is_retry_due = state.retry_at && now >= *state.retry_at;
+    const std::vector<u8> owed = owed_loaded(late.unasked, loaded);
+    if (owed.empty() || (state.retry_at && !is_retry_due)) {
+        // A retry owed for modules unloaded since waits for their next load.
+        if (is_retry_due) {
+            state.retry_at.reset();
         }
-    }
-    if (builds.empty()) {
         return;
     }
-    const std::optional<wire::data_response> response = fetch(stop, link, std::move(builds));
+    state.retry_at.reset();
+    // Read before the request goes, so all the time it is out counts against its wait.
+    const clock::time_point deadline = now + data_patience;
+    const std::optional<wire::data_response> response =
+        fetch(stop, link, builds_of(loaded), deadline);
+    if (stop.stop_requested()) {
+        return;
+    }
     if (!response) {
+        count_unanswered(late, state, owed, deadline);
         return;
+    }
+    for (const u8 module : owed) {
+        forget(late, state, module);
     }
     std::ignore = late.waiting.admit(
         admit_request{
@@ -198,6 +292,16 @@ auto ask_for_loaded(
             .records = late.records,
         }
     );
+}
+
+// A retry owed wakes the worker at its time, a load at once.
+auto wait_for_wake(const std::stop_token& stop, const late_worker& worker, const asking& state)
+    -> void {
+    if (worker.data != nullptr && state.retry_at) {
+        worker.signal->wait_until(stop, *worker.data->time, *state.retry_at);
+    } else {
+        worker.signal->wait(stop);
+    }
 }
 
 auto is_left(const late_worker& worker) -> bool {
@@ -211,10 +315,11 @@ auto is_left(const late_worker& worker) -> bool {
 
 auto resolve_late_modules(const std::stop_token& stop, late_worker worker) -> void {
     late_facts& late = worker.facts;
+    asking state;
     // Waits before the first scan: the signal watched from before the boot resolve, so a module
     // loaded since that scan has already set it, and one loaded before was in that scan.
     while (is_left(worker)) {
-        worker.signal->wait(stop);
+        wait_for_wake(stop, worker, state);
         if (stop.stop_requested()) {
             return;
         }
@@ -222,7 +327,7 @@ auto resolve_late_modules(const std::stop_token& stop, late_worker worker) -> vo
         // Before the waiting sets apply and the core is judged: a core capability of a module that
         // just loaded must see its set first.
         if (worker.data != nullptr) {
-            ask_for_loaded(stop, *worker.data, late, loaded);
+            ask_for_loaded(stop, *worker.data, late, state, loaded);
         }
         if (!late.waiting.is_empty()) {
             const late_report report =

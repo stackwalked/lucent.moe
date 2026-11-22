@@ -23,7 +23,7 @@ data_client::data_client(wire::session_id session, wire::route_keys keys)
     , m_keys{std::move(keys)} {}
 
 auto data_client::request(std::vector<bundle::module_key> modules, random_source& random)
-    -> result<std::vector<std::byte>> {
+    -> result<data_request_frame> {
     std::ranges::sort(modules);
     const auto repeated = std::ranges::unique(modules);
     modules.erase(repeated.begin(), repeated.end());
@@ -48,7 +48,7 @@ auto data_client::request(std::vector<bundle::module_key> modules, random_source
         }
     );
     m_last_out = sequence;
-    return wire::encode_frame(sealed);
+    return data_request_frame{.frame = wire::encode_frame(sealed), .sequence = sequence};
 }
 
 auto data_client::accept(const wire::frame& sealed) -> result<wire::data_response> {
