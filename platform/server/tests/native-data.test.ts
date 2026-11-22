@@ -182,6 +182,85 @@ test("a data request for a late-loaded build gets that build's set", async () =>
     });
 });
 
+test("a data request for a late build gets a set spanning that build and a build the start reported", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ nativeDb }) => {
+        const rng = createSeededRng(9_509);
+        const harness = await createNativeHarness(nativeDb, rng);
+        const releases = await publishBoth(nativeDb, rng);
+        await currentSet(nativeDb, releases.module.id, [GAME, LATE], [0x10n]);
+        const running = await run(harness, releases, [GAME]);
+
+        const sent = await askData(running, running.module.dataRequest([LATE]));
+        expect(sent.status).toBe(200);
+        const answer = running.module.acceptData(sent.bytes);
+        expect(setsOf(answer.bundle)).toEqual([{ modules: [GAME, LATE], keys: [0x10n] }]);
+        expect(answer.unsupported).toEqual([]);
+    });
+});
+
+// Over a frame's 1 MiB of plaintext at 8 bytes a key and the same again for its value, with
+// headroom for the entries' own framing.
+const OVERSIZED_KEYS = Array.from({ length: 100_000 }, (_, index) => BigInt(index + 1));
+
+test("a first data response too large for a frame is unavailable and leaves the start unconsumed", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ nativeDb }) => {
+        const rng = createSeededRng(9_510);
+        const harness = await createNativeHarness(nativeDb, rng);
+        const releases = await publishBoth(nativeDb, rng);
+        await currentSet(nativeDb, releases.module.id, [GAME], OVERSIZED_KEYS);
+        const member = await entitledMember(harness, {
+            email: "big@lucent.test",
+            channels: ["alpha"],
+        });
+        const loader = createTestLoader(harness, await createTestDevice(harness.rng));
+        await signIn(harness, loader, member.browserSession);
+        await enroll(harness, loader, member.browserSession);
+        const started = await startOk(loader, releases, [GAME]);
+        const module = createTestModule(harness.rng, harness.signer.publicKey);
+
+        const refused = await loader.send({
+            method: "POST",
+            path: `${started.path}/session`,
+            body: await module.hello(releases.module.id),
+        });
+        expect(refused.status).toBe(503);
+        expect(refusalCodeOf(refused)).toBe("SERVICE_UNAVAILABLE");
+
+        const cleared = await execute(nativeDb, sql`delete from current_fact_set`);
+        invariant(cleared.ok, "clearing the current sets failed");
+        const retried = await loader.send({
+            method: "POST",
+            path: `${started.path}/session`,
+            body: await module.hello(releases.module.id),
+        });
+        expect(retried.status).toBe(200);
+    });
+});
+
+test("a data response too large for a frame is unavailable and takes no sequence", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ nativeDb }) => {
+        const rng = createSeededRng(9_511);
+        const harness = await createNativeHarness(nativeDb, rng);
+        const releases = await publishBoth(nativeDb, rng);
+        await currentSet(nativeDb, releases.module.id, [LATE], OVERSIZED_KEYS);
+        const running = await run(harness, releases, [GAME]);
+
+        const refused = await askData(running, running.module.dataRequest([LATE]));
+        expect(refused.status).toBe(503);
+        expect(refusalCodeOf(refused)).toBe("SERVICE_UNAVAILABLE");
+        const next = await askData(running, running.module.dataRequest([GAME]));
+        expect(next.status).toBe(200);
+        const answer = running.module.acceptData(next.bytes);
+        const sequence = parseFrame(next.bytes);
+        invariant(sequence.ok, "the reply is a frame");
+        expect(sequence.value.header.sequence).toBe(1n);
+        expect(answer.unsupported).toEqual([GAME]);
+    });
+});
+
 test("a renewal and a data request both succeed in either order, each on its own sequence", async () => {
     const cluster = await sharedTestCluster();
     await cluster.withTestDb(async ({ nativeDb }) => {

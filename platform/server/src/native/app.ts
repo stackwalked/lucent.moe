@@ -4,7 +4,7 @@ import type { Clock } from "@lucent/core/clock";
 import { containBoundary } from "@lucent/core/contain";
 import { err, ok, type Result } from "@lucent/core/result";
 import type { CryptoRng } from "@lucent/core/rng";
-import { BearerToken } from "@lucent/core/scalars";
+import { BearerToken, toHex } from "@lucent/core/scalars";
 import { encryptedSize, toEncryptedContainerStream } from "@lucent/wire/container-stream";
 import { parseEnrollmentRequest, toEnrollmentStatusBytes } from "@lucent/wire/enrollment";
 import { parseFrame } from "@lucent/wire/frame";
@@ -378,7 +378,14 @@ export function createNativeApp(deps: NativeDeps): Hono {
             hello: hello.value,
             operationId,
         });
-        return reply(opened, (bytesOut) => binaryResponse(bytesOut));
+        if (opened.ok) return binaryResponse(opened.value);
+        if (opened.error.code === "DATA_TOO_LARGE") {
+            return await unavailable(
+                `first data response of ${opened.error.size} bytes for start ${toHex(startId)}`,
+                "data_response_too_large",
+            );
+        }
+        return refusalResponse(refusalOf(opened.error));
     });
 
     app.post("/v1/sessions/:id/lease", async (c) => {
@@ -422,7 +429,14 @@ export function createNativeApp(deps: NativeDeps): Hono {
             body: bytes.value,
             operationId,
         });
-        return reply(served, (bytesOut) => binaryResponse(bytesOut));
+        if (served.ok) return binaryResponse(served.value);
+        if (served.error.code === "DATA_TOO_LARGE") {
+            return await unavailable(
+                `data response of ${served.error.size} bytes for session ${toHex(sessionId)}`,
+                "data_response_too_large",
+            );
+        }
+        return refusalResponse(refusalOf(served.error));
     });
 
     app.post("/v1/sessions/:id/close", async (c) => {

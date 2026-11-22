@@ -263,10 +263,11 @@ async function startOutcome(params: {
         const rng = createSeededRng(9_407);
         const harness = await createNativeHarness(nativeDb, rng);
         const loaderRelease = (await publishBoth(nativeDb, rng)).loader;
+        const facts = params.facts ?? FACTS;
         const release = await publishRelease(nativeDb, rng, {
             product: "cs2",
             channel: "alpha",
-            facts: params.facts ?? FACTS,
+            facts,
             capabilities: params.capabilities ?? CAPABILITIES,
         });
         let revision = 0;
@@ -277,6 +278,7 @@ async function startOutcome(params: {
                 keys: set.keys,
                 revision,
                 modules,
+                digest: manifestDigest(facts),
             });
             invariant(
                 published.ok,
@@ -337,4 +339,96 @@ test("a start with only optional capabilities uncovered passes", async () => {
             capabilities: [{ key: 0xb0n, level: "optional", members: [0x30n] }],
         }),
     ).toBe(STARTED);
+});
+
+// Two game modules: GAME's facts feed one core capability, OTHER_GAME's another.
+const SPLIT_FACTS: readonly LocatedFact[] = [
+    { key: 0x10n, kind: 1, module: 0x1234n },
+    { key: 0x20n, kind: 1, module: 0x1234n },
+    { key: 0x40n, kind: 1, module: 0x9999n },
+];
+const SPLIT_CAPABILITIES: readonly ManifestCapability[] = [
+    { key: 0xa0n, level: "core", members: [0x10n, 0x20n] },
+    { key: 0xc0n, level: "core", members: [0x40n] },
+];
+
+test("a start whose core capability lives in a module it didn't report passes", async () => {
+    const outcome = await startOutcome({
+        facts: SPLIT_FACTS,
+        capabilities: SPLIT_CAPABILITIES,
+        sets: [{ keys: [0x10n, 0x20n] }],
+    });
+    expect(outcome).toBe(STARTED);
+});
+
+test("a start whose core capability's module is reported but uncovered is a game build unsupported", async () => {
+    const outcome = await startOutcome({
+        facts: SPLIT_FACTS,
+        capabilities: SPLIT_CAPABILITIES,
+        sets: [],
+    });
+    expect(outcome).toBe("GAME_BUILD_UNSUPPORTED");
+});
+
+test("a set missing a core fact of another module is published", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ nativeDb }) => {
+        const release = await publishRelease(nativeDb, createSeededRng(9_408), {
+            product: "cs2",
+            channel: "alpha",
+            facts: SPLIT_FACTS,
+            capabilities: SPLIT_CAPABILITIES,
+        });
+
+        const published = await publishWith(nativeDb, release.id, {
+            keys: [0x10n, 0x20n],
+            digest: manifestDigest(SPLIT_FACTS),
+        });
+
+        expect(published.ok).toBe(true);
+    });
+});
+
+test("a set missing a core fact of a module it lists is refused", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ nativeDb }) => {
+        const release = await publishRelease(nativeDb, createSeededRng(9_409), {
+            product: "cs2",
+            channel: "alpha",
+            facts: SPLIT_FACTS,
+            capabilities: SPLIT_CAPABILITIES,
+        });
+
+        const spanning = await publishWith(nativeDb, release.id, {
+            keys: [0x10n, 0x40n],
+            modules: [GAME, OTHER_GAME],
+            digest: manifestDigest(SPLIT_FACTS),
+        });
+        const ownModule = await publishWith(nativeDb, release.id, {
+            keys: [0x10n, 0x40n],
+            digest: manifestDigest(SPLIT_FACTS),
+        });
+
+        const refusal = {
+            ok: false as const,
+            error: { code: "CORE_FACT_MISSING" as const, key: "0000000000000020" },
+        };
+        expect(spanning).toEqual(refusal);
+        expect(ownModule).toEqual(refusal);
+    });
+});
+
+test("a fact set over 512 KiB is refused at publish", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ nativeDb }) => {
+        const release = await coreRelease(nativeDb, createSeededRng(9_410));
+
+        const published = await publishFactSet(nativeDb, {
+            factsKeys: [FACTS_KEY],
+            releaseId: release.id,
+            bundle: new Uint8Array(512 * 1024 + 1),
+        });
+
+        expect(published).toEqual({ ok: false, error: { code: "FACT_SET_TOO_LARGE" } });
+    });
 });

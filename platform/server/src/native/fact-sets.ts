@@ -1,7 +1,7 @@
 import { type DeliveredSet, parseBundle, toBundleBytes, verifySet } from "@lucent/bundle/bundle";
 import type { ModuleKey } from "@lucent/bundle/fact-set";
 import {
-    coreFactKeys,
+    coreFactKeysIn,
     manifestDigest,
     parseReleaseManifestV3,
 } from "@lucent/bundle/release-manifest";
@@ -24,12 +24,20 @@ import { withTx } from "../db/tx.ts";
 import { findReleaseManifest } from "./releases.ts";
 
 // `ops publish-fact-set`: a set enters staged, verified against the offline facts key, signed for
-// this release's manifest, carrying every fact a core capability needs, and at a revision above
-// every one stored for the release and each module build it lists. Promotion (current_fact_set)
-// isn't written here. Nothing here signs: a taken-over server can withhold facts, never forge one.
+// this release's manifest, carrying every core fact that resolves in a module build it lists, and
+// at a revision above every one stored for the release and each module build it lists. Promotion
+// (current_fact_set) isn't written here. Nothing here signs: a taken-over server can withhold
+// facts, never forge one.
+
+// Why 512 KiB: a data_response answers with every applicable set whole, and the frame it rides in
+// holds 1 MiB of plaintext (MAX_FRAME_PLAIN_SIZE). Two sets at the cap, one for the start's build
+// and one spanning it and a late build, fit with headroom for the response's own fields; a set
+// above it could make a delivery that no frame can carry.
+export const MAX_FACT_SET_BYTES = 512 * 1024;
 
 export type FactSetRefusal =
     | { readonly code: "FACT_SET_INVALID" }
+    | { readonly code: "FACT_SET_TOO_LARGE" }
     | { readonly code: "FACT_SET_UNSIGNED" }
     | { readonly code: "RELEASE_NOT_FOUND" }
     | { readonly code: "MANIFEST_DIGEST_MISMATCH" }
@@ -54,6 +62,7 @@ export async function publishFactSet(
         readonly bundle: Uint8Array;
     },
 ): Promise<Result<PublishedFactSet, FactSetRefusal | DbFailure>> {
+    if (params.bundle.byteLength > MAX_FACT_SET_BYTES) return err({ code: "FACT_SET_TOO_LARGE" });
     const parsed = parseBundle(params.bundle);
     if (!parsed.ok || parsed.value.length !== 1) return err({ code: "FACT_SET_INVALID" });
     const [set] = parsed.value;
@@ -79,7 +88,11 @@ export async function publishFactSet(
         return err({ code: "MANIFEST_DIGEST_MISMATCH" });
     }
     const present = new Set(set.entries.map((given) => given.entry.key));
-    const missing = coreFactKeys(manifest.value).find((key) => !present.has(key));
+    // A set is per module build: it owes the core facts of the modules it lists, and no others.
+    const owed = header.modules.flatMap((module) =>
+        coreFactKeysIn(manifest.value, module.nameHash),
+    );
+    const missing = owed.find((key) => !present.has(key));
     if (missing !== undefined) {
         return err({ code: "CORE_FACT_MISSING", key: missing.toString(16).padStart(16, "0") });
     }
@@ -153,16 +166,25 @@ async function highestRevision(
     return ok(highest);
 }
 
-// The release's current sets that apply to the reported builds. A set applies when it is the
-// current set of some reported build and every build it lists was reported: a module applies a set
-// only when everything that shaped it is loaded. `unsupported` is every reported build whose own
-// current set doesn't apply (or that has none). Sets are in the order of the builds that found
-// them, each once.
+type BuildsAsked = {
+    readonly releaseId: Uint8Array;
+    // The builds asked about: each one's current set is looked up.
+    readonly builds: readonly ModuleKey[];
+    // Builds already loaded that count when judging whether a set applies, though nothing is asked
+    // about them: a late request's session start's builds.
+    readonly loaded?: readonly ModuleKey[];
+};
+
+// The release's current sets that apply to the asked builds. A set applies when it is the current
+// set of some asked build and every build it lists is asked or loaded: a module applies a set only
+// when everything that shaped it is loaded, and a late build's set may span builds the start
+// already reported. `unsupported` is every asked build whose own current set doesn't apply (or that
+// has none). Sets are in the order of the builds that found them, each once.
 async function readApplicableSets(
     q: Queryable,
-    params: { readonly releaseId: Uint8Array; readonly builds: readonly ModuleKey[] },
+    params: BuildsAsked,
 ): Promise<Result<{ setIds: string[]; unsupported: ModuleKey[] }, DbFailure>> {
-    const reported = new Set(params.builds.map(buildId));
+    const reported = new Set([...params.builds, ...(params.loaded ?? [])].map(buildId));
     const setIds: string[] = [];
     const unsupported: ModuleKey[] = [];
     const checked = new Map<string, boolean>();
@@ -217,8 +239,8 @@ async function readApplicableSets(
     return ok({ setIds, unsupported });
 }
 
-// The facts the release's current sets hold for the reported builds (see readApplicableSets).
-// The manifest doesn't say which module a fact lives in, so coverage is of the union.
+// The facts the release's current sets hold for the reported builds (see readApplicableSets); a
+// start asks nothing of builds beyond the ones it reports.
 export async function readCoveredFactKeys(
     q: Queryable,
     params: { readonly releaseId: Uint8Array; readonly builds: readonly ModuleKey[] },
@@ -252,7 +274,7 @@ export type FactDelivery = {
 
 export async function readFactDelivery(
     q: Queryable,
-    params: { readonly releaseId: Uint8Array; readonly builds: readonly ModuleKey[] },
+    params: BuildsAsked,
 ): Promise<Result<FactDelivery, DbFailure>> {
     const found = await readApplicableSets(q, params);
     if (!found.ok) return found;

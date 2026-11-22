@@ -1,4 +1,4 @@
-import { coreFactKeys, parseReleaseManifestV3 } from "@lucent/bundle/release-manifest";
+import { parseReleaseManifestV3 } from "@lucent/bundle/release-manifest";
 import type { ProductCatalog } from "@lucent/catalog/catalog";
 import { invariant } from "@lucent/core/contain";
 import { err, ok, type Result } from "@lucent/core/result";
@@ -65,8 +65,9 @@ const StartRowSchema = z.object({
 // The order is the order a member would fix things in: who they are and which PC, what they are
 // entitled to, then whether the loader and the release are current. The slot never refuses (the
 // newest session takes it) and is taken by the session, not here. Last comes core coverage: the
-// release's current fact sets for the reported game builds must hold every fact a core capability
-// needs; anything less optional degrades in the module, never here.
+// release's current fact sets for the reported game builds must hold every fact of each core
+// capability whose modules are all reported; anything less optional degrades in the module, never
+// here.
 export async function createStart(
     db: Db,
     params: {
@@ -188,9 +189,10 @@ export async function createStart(
     });
 }
 
-// The manifest doesn't say which module a core fact lives in, so the rule is the union: every
-// core fact must be in some current set for the reported builds. A release with no core
-// capability needs no set at all.
+// A core capability is checked when every module its facts resolve in (the manifest names each
+// fact's) is among the reported builds: then every one of its facts must be in some current set
+// for the reported builds. One with a module not reported waits for that module to load, and kit
+// refuses then if it stays uncovered. A release with no core capability needs no set at all.
 async function coversCoreFacts(
     q: Queryable,
     releaseId: Uint8Array,
@@ -201,11 +203,23 @@ async function coversCoreFacts(
     invariant(bytes.value !== null, "a module release has a manifest");
     const manifest = parseReleaseManifestV3(bytes.value);
     invariant(manifest.ok, "a stored release manifest was verified when it was published");
-    const needed = coreFactKeys(manifest.value);
-    if (needed.length === 0) return ok(true);
+    const moduleOf = new Map(manifest.value.facts.map((fact) => [fact.key, fact.module]));
+    const reported = new Set(builds.map((build) => build.nameHash));
+    const needed = new Set<bigint>();
+    for (const capability of manifest.value.capabilities) {
+        const modules = capability.members.map((member) => moduleOf.get(member));
+        invariant(!modules.includes(undefined), "a capability's members are among the facts");
+        if (
+            capability.level === "core" &&
+            modules.every((m) => m !== undefined && reported.has(m))
+        ) {
+            for (const member of capability.members) needed.add(member);
+        }
+    }
+    if (needed.size === 0) return ok(true);
     const covered = await readCoveredFactKeys(q, { releaseId, builds });
     if (!covered.ok) return covered;
-    return ok(needed.every((key) => covered.value.has(key)));
+    return ok([...needed].every((key) => covered.value.has(key)));
 }
 
 export type StartContainer = {

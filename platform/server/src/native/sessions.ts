@@ -32,7 +32,13 @@ import {
 import { type ReceiptRefusal, readReplay, recordReceipt, toOperationKey } from "../db/receipt.ts";
 import { errCommit, withTx } from "../db/tx.ts";
 import { type AccountInactive, lockAccountStanding, lockActiveAccount } from "./accounts.ts";
-import { FIRST_DATA_ANSWERS, FIRST_DATA_SEQUENCE, sealedData } from "./data.ts";
+import {
+    assembleData,
+    type DataTooLarge,
+    FIRST_DATA_ANSWERS,
+    FIRST_DATA_SEQUENCE,
+    sealData,
+} from "./data.ts";
 import { lockDevice } from "./devices.ts";
 import type { DpopProof } from "./dpop.ts";
 import { readFactDelivery } from "./fact-sets.ts";
@@ -228,10 +234,26 @@ function endedRefusal(reason: EndReason): SessionEnded {
     }
 }
 
+// A data response that no frame can carry: the server's own failure, shown as unavailable and
+// logged by the route, never a refusal of the member.
+export type DataUnsendable = DataTooLarge;
+
+// The data_response the session reply carries: the sets for the start's own builds.
+async function assembleFirstData(
+    tx: Tx,
+    releaseId: Uint8Array,
+    startBuilds: readonly ModuleKey[],
+): Promise<Result<Uint8Array<ArrayBuffer>, DataUnsendable | DbFailure>> {
+    const delivery = await readFactDelivery(tx, { releaseId, builds: startBuilds });
+    if (!delivery.ok) return delivery;
+    return assembleData({ answers: FIRST_DATA_ANSWERS, delivery: delivery.value });
+}
+
 export type OpenRefusal =
     | AccountInactive
     | ReceiptRefusal
     | SessionEnded
+    | DataUnsendable
     | Code<
           | "NOT_FOUND"
           | "INVALID_REQUEST"
@@ -244,6 +266,17 @@ export type OpenRefusal =
 
 const SessionReceipt = z.object({ session: z.string().regex(/^[0-9a-f]{32}$/) });
 
+// The builds a start reported, as session_start.modules stores them.
+const StartModules = z
+    .array(z.tuple([z.string(), z.number(), z.number()]))
+    .transform((builds): ModuleKey[] =>
+        builds.map(([nameHash, timeDateStamp, sizeOfImage]) => ({
+            nameHash: BigInt(nameHash),
+            timeDateStamp,
+            sizeOfImage,
+        })),
+    );
+
 const StartRowSchema = z.object({
     device_id: Bytes,
     product_id: z.string(),
@@ -251,15 +284,7 @@ const StartRowSchema = z.object({
     release_id: Bytes,
     expires_at: EpochMs,
     consumed_at: EpochMs.nullable(),
-    modules: z
-        .array(z.tuple([z.string(), z.number(), z.number()]))
-        .transform((builds): ModuleKey[] =>
-            builds.map(([nameHash, timeDateStamp, sizeOfImage]) => ({
-                nameHash: BigInt(nameHash),
-                timeDateStamp,
-                sizeOfImage,
-            })),
-        ),
+    modules: StartModules,
 });
 
 // POST /v1/starts/:id/session: the module's hello, relayed by the loader. Binds the module's
@@ -358,12 +383,9 @@ export async function openSession(
             const row = replayed.value;
             if (row.end_reason !== null) return err(endedRefusal(row.end_reason));
             if (row.lease_sequence !== 1n) return err({ code: "STALE_SEQUENCE" });
-            const delivery = await readFactDelivery(tx, {
-                releaseId: row.release_id,
-                builds: start.modules,
-            });
-            if (!delivery.ok) return delivery;
-            return ok({ session: row, delivery: delivery.value });
+            const plain = await assembleFirstData(tx, row.release_id, start.modules);
+            if (!plain.ok) return plain;
+            return ok({ session: row, plain: plain.value });
         }
 
         if (lockedStart.value?.consumed_at !== null || start.expires_at <= txNow) {
@@ -377,6 +399,9 @@ export async function openSession(
         const manifest = parseReleaseManifestV3(manifestBytes.value);
         invariant(manifest.ok, "a published release manifest parses");
         const entitled = entitledFeaturesOf(access.value.features, manifest.value);
+        // Before the start is consumed: a response no frame can carry must leave it usable.
+        const plain = await assembleFirstData(tx, start.release_id, start.modules);
+        if (!plain.ok) return plain;
 
         const generation = slot.value.generation + 1n;
         const took = await execute(
@@ -423,12 +448,7 @@ export async function openSession(
         invariant(inserted.value !== null, "insert returning yields its row");
         const recorded = await recordReceipt(tx, op, { session: toHex(sessionId) });
         if (!recorded.ok) return recorded;
-        const delivery = await readFactDelivery(tx, {
-            releaseId: start.release_id,
-            builds: start.modules,
-        });
-        if (!delivery.ok) return delivery;
-        return ok({ session: inserted.value, delivery: delivery.value });
+        return ok({ session: inserted.value, plain: plain.value });
     });
     // The lease and data routes' keys are stored; the reports route's wait for something that
     // serves it.
@@ -437,7 +457,7 @@ export async function openSession(
         route.serverToModule.fill(0);
     }
     if (!opened.ok) return opened;
-    const { session, delivery } = opened.value;
+    const { session, plain } = opened.value;
     invariant(session.data_key_to_module !== null, "a live session holds its keys");
     return ok(
         await toSessionReply({
@@ -446,13 +466,12 @@ export async function openSession(
             state: leaseStateOf(session),
             moduleKey: session.module_key,
             serverKey: session.server_key,
-            firstData: sealedData({
+            firstData: sealData({
                 rng,
                 key: session.data_key_to_module,
                 session: session.id,
                 sequence: FIRST_DATA_SEQUENCE,
-                answers: FIRST_DATA_ANSWERS,
-                delivery,
+                plain,
             }),
         }),
     );
@@ -620,8 +639,10 @@ const DataReceipt = z.object({ sequence: z.string().regex(/^\d+$/) });
 // be newer than any accepted on the data route (its sequences are its own: a renewal never stales
 // it). The reply is a data_response for the builds it names, sealed as the next frame the server
 // sends on that route; the builds needn't have been reported at start, since late-loaded modules
-// ask too. Phase 1 ignores the request's feature list. A retry gets the response rebuilt from the
-// same builds at the same sequence, so it is the first answer unless a set was promoted since.
+// ask too, and a set applies when each build it lists is asked or was reported at start. Phase 1
+// ignores the request's feature list. A retry gets the response rebuilt from the same builds at
+// the same sequence, so it is the first answer unless a set was promoted since. A response over
+// the frame bound is refused before the receipt, so the request stays unanswered.
 export async function serveData(
     db: Db,
     params: {
@@ -633,7 +654,7 @@ export async function serveData(
         readonly body: Uint8Array;
         readonly operationId: OperationId;
     },
-): Promise<Result<Uint8Array<ArrayBuffer>, RenewRefusal | DbFailure>> {
+): Promise<Result<Uint8Array<ArrayBuffer>, RenewRefusal | DataUnsendable | DbFailure>> {
     const { accountId } = params.holder;
     const { frame } = params;
     if (
@@ -703,12 +724,23 @@ export async function serveData(
         const request = parseDataRequest(plain.value);
         plain.value.fill(0);
         if (!request.ok) return err({ code: "INVALID_REQUEST" });
+        const started = await queryOne(
+            tx,
+            z.object({ modules: StartModules }),
+            sql`select s.modules from runtime_session r join session_start s on s.id = r.start_id
+                where r.id = ${session.id}`,
+        );
+        if (!started.ok) return started;
+        invariant(started.value !== null, "a session's start exists");
         const delivery = await readFactDelivery(tx, {
             releaseId: session.release_id,
             builds: request.value.modules,
+            loaded: started.value.modules,
         });
         if (!delivery.ok) return delivery;
-        if (replayed !== null) return ok({ session, delivery: delivery.value, sequence: replayed });
+        const answer = assembleData({ answers: frame.header.sequence, delivery: delivery.value });
+        if (!answer.ok) return answer;
+        if (replayed !== null) return ok({ session, answer: answer.value, sequence: replayed });
 
         const sequence = session.data_out_sequence;
         const advanced = await execute(
@@ -721,20 +753,19 @@ export async function serveData(
         if (!advanced.ok) return advanced;
         const recorded = await recordReceipt(tx, op, { sequence: sequence.toString() });
         if (!recorded.ok) return recorded;
-        return ok({ session, delivery: delivery.value, sequence });
+        return ok({ session, answer: answer.value, sequence });
     });
     if (!served.ok) return served;
-    const { session, delivery, sequence } = served.value;
+    const { session, answer, sequence } = served.value;
     invariant(session.data_key_to_module !== null, "a live session holds its keys");
     return ok(
         toFrameBytes(
-            sealedData({
+            sealData({
                 rng: params.rng,
                 key: session.data_key_to_module,
                 session: session.id,
                 sequence,
-                answers: frame.header.sequence,
-                delivery,
+                plain: answer,
             }),
         ),
     );
