@@ -21,6 +21,8 @@ export const AUDIT_OPERATIONS = [
     "role.assign",
     "role.unassign",
     "entitlement.issue",
+    "release.promote",
+    "fact_set.promote",
 ] as const;
 
 export const AuditOperation = z.enum(AUDIT_OPERATIONS);
