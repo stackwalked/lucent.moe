@@ -11,6 +11,7 @@ const SERVER_DIR = join(WORKSPACE_ROOT, "platform/server");
 // origin is a localhost one, like the dev values.
 const PEER_KEY = "integration-test-peer-key-not-a-secret-0123456789";
 const TOTP_KEYS = `it:${"B".repeat(43)}`;
+const LEASE_SIGNING_KEY = "C".repeat(43);
 
 export type RunningPlatform = {
     readonly internalUrl: string;
@@ -62,6 +63,9 @@ export async function startPlatform(params: {
     readonly webOrigin: string;
     // Passwords the stand-in for Have I Been Pwned's range API lists as breached.
     readonly breached?: readonly string[];
+    // Where ops publish-loader would have written the loader's bytes. Given, the server also runs
+    // its loaders' listener, which owns that directory, on a port of its own.
+    readonly artifactDir?: string;
 }): Promise<RunningPlatform> {
     const databaseUrl = await params.cluster.createDatabase(params.database, "template0");
     const ops = (args: readonly string[]) =>
@@ -88,6 +92,16 @@ export async function startPlatform(params: {
 
     const range = await servePwnedRanges(params.breached ?? []);
     const port = allocateEphemeralPort();
+    const nativePort = params.artifactDir === undefined ? null : allocateEphemeralPort();
+    const native =
+        params.artifactDir === undefined || nativePort === null
+            ? {}
+            : {
+                  LUCENT_NATIVE_LISTEN: `127.0.0.1:${nativePort}`,
+                  LUCENT_NATIVE_ORIGIN: `http://localhost:${nativePort}`,
+                  LUCENT_LEASE_SIGNING_KEY: LEASE_SIGNING_KEY,
+                  LUCENT_ARTIFACT_DIR: params.artifactDir,
+              };
     const server = spawnServer({
         command: [process.execPath, "src/main.ts"],
         cwd: SERVER_DIR,
@@ -100,6 +114,7 @@ export async function startPlatform(params: {
             LUCENT_WEBAUTHN_RP_ID: new URL(params.webOrigin).hostname,
             LUCENT_WEBAUTHN_ORIGIN: params.webOrigin,
             LUCENT_PWNED_PASSWORDS_URL: range.url,
+            ...native,
         },
     });
     await server.waitFor(/"msg":"listening"/);
