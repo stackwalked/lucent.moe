@@ -26,9 +26,9 @@ registry, settings, safe point and draw dispatch, cs2's `world` and a player box
 hashes with the release guard and post-link name check, `refract`'s phase 1 and `integrity` are
 built. So are most of slice 2 (devices, the `/v1` listener, sign-in, starts, leases, publishing),
 the web pages that go with it, the module container, release seals under the offline code key,
-and kit's release boot path and lease client. `:check` runs every native test in Debug and
-Release. Not started: fact sets on the server, the release loader, slices 4 and 5, the rest of the
-cs2 game layer. No CI, and none planned soon: the commit hook's `:check` is the gate.
+kit's release boot path and lease client, and the release loader at its smallest (tested, not yet
+run against a live server). `:check` runs every native test in Debug and Release. Not started: fact
+sets on the server, slices 4 and 5, the rest of the cs2 game layer. No CI, and none planned soon: the commit hook's `:check` is the gate.
 
 ### Phase 0: rails
 
@@ -47,8 +47,10 @@ product, one feature. Built end to end, native and server together.
 - Platform: promotion of staged releases. `ops publish-release` and `publish-loader` stage under a
   verified seal, but nothing outside the tests writes `current_release`, so no release is served.
 - Platform, slice 2's rest: the start's `core` coverage check for the reported game builds (every
-  build starts today); serving the loader's artifacts over HTTP (`publish-loader` keeps them on
-  disk, and no route serves them).
+  build starts today). The loader's seal and artifacts are served on `/v1` (`GET /v1/loader/:channel`,
+  `GET /v1/artifacts/:digest`) to channels the account holds on any entitled product; web's download
+  page counts only the `lucent-loader` product's own channels, and one of the two rules has to
+  give. `.config/dev.env` has no native listener, so `server:dev` serves no loader.
 - Platform, the thin part of slice 3: fact-set storage, `ops publish-fact-set` with the release
   manifest's core coverage, session bundle assembly (leases carry bundle revision 0 until then).
   The TS fact-set and bundle code exists; the server doesn't use it yet. Scoring, live revisions
@@ -56,11 +58,14 @@ product, one feature. Built end to end, native and server together.
 - Web: admin promotion of staged releases and fact revisions; the download page's file, once the
   server serves one (it lists each channel's loader today); the product page's "not yet supported"
   from fact-set coverage, not only from a missing release.
-- Native: the release loader at its smallest (sign-in, device key, self-update, verify, map,
-  relay), with `lucent-host`. Its relay answers the module's `server_request` messages: the hello
-  to `/v1/starts/:id/session`, renewals to `/v1/sessions/:id/lease` inside its own
-  `lease_request` (its challenge answer, then the module's frame), each reply back as a
-  `server_reply`; a refusal it shows and unloads. `boot_info` with the host and build ids.
+- Native, the release loader's rest (`native/loader`, `native/host`, `libs/launch` landed):
+  - a first run against a live server and a running cs2: sign-in, enrollment, self-update, start
+    and relay are tested only in parts;
+  - the release pipeline's loader half: building the loader and host in the release preset and
+    signing their seal (`codekey sign-loader`) as a step, beside the module's;
+  - `boot_info` with the host and build ids;
+  - the game's process from `products/*.toml` instead of the loader's compiled-in table, and
+    the cap of 64 reported module builds checked against what cs2 loads.
 - Render: the menu usable mid-match, by toggling cs2's own relative-mouse mode through its input
   system while the menu is open (a method fact; it frees the cursor and stops the camera), and
   input the window procedure can't block (raw input read elsewhere, key polling). The per-session
@@ -1078,8 +1083,8 @@ checklist of families. A family leaves when it is on `alpha`.
 The release loader appears in phase 1 at its smallest and grows into old lucent's app. Its trust
 rules are in `wishlist/protection.md`.
 
-- Phase 1: system-browser sign-in, device key with the match code on the approval page,
-  self-update with a way back, verify before parse, map, relay, the reason for a refusal.
+- Phase 1's loader is a console program (sign-in, device key and match code, self-update with a
+  way back, verify before parse, map, relay, the refusal's code); its window comes with the app.
 - The app (phase 8): products as rows, one session each; tray and background; start with Windows;
   auto-load per product (attach to a running game, never launch it); a rotating log; crash report
   review and send on a click, the dump never leaving the PC; `forget` and `uninstall`.
