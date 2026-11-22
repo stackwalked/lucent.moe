@@ -49,14 +49,15 @@ product, one feature. Built end to end, native and server together.
 - Platform, slice 2's rest: the start's `core` coverage check for the reported game builds (every
   build starts today). The loader's seal and artifacts are served on `/v1` (`GET /v1/loader`,
   `GET /v1/artifacts/:digest`) to any account entitled to a product.
-- Platform, the thin part of slice 3: fact-set storage, `ops publish-fact-set` with the release
-  manifest's core coverage, the first bundle in the session reply, and `POST /v1/sessions/:id/data`
-  for late-loaded modules and revisions (leases carry data revision 0 until then). The TS fact-set
-  and bundle code exists; the server doesn't use it yet. Scoring, live revisions over promotion
-  and overrides wait.
-- Contracts and kit for it: session keys per route (lease, data, reports), `session_reply` v2 with
-  the first bundle, the data request and response, kit's data route and boot applying the first
-  bundle before attach, and the loader relaying the new routes.
+- Facts reach release modules (fact-set storage, `ops publish-fact-set`, the start's core coverage
+  per module from release manifest v3, the first bundle in the session reply, `/data` for late
+  modules, kit and loader on the data route, landed). Left: promoting fact revisions (nothing
+  writes `current_fact_set` outside tests; web's admin, below); `ops publish-fact-set` run for
+  real (its tests call the function); a dev database holding v2 manifests fails starts until its
+  releases are republished as v3. Live revisions, overrides, the reports route and scoring wait.
+- kit takes a newer revision of a set it already holds for nobody: a set is known by its builds,
+  so the rest of the session keeps the revision it started with. Live revisions decide how one
+  is applied at a safe point; until then a promotion reaches the next session only.
 - Web: admin promotion of staged releases and fact revisions; the download page's file, once the
   server serves one (it lists each channel's loader today); the product page's "not yet supported"
   from fact-set coverage, not only from a missing release.
@@ -627,9 +628,12 @@ Still to land, in order:
     previous build flagged for sign-off. The generator signs nothing.
   - publish: the server refuses a set whose manifest digest isn't the release's, that lacks a fact
     a `core` capability needs, or whose revision isn't newer. It knows the release's facts and
-    core capabilities from the release manifest (`contracts/release-manifest/v1`, written by
-    `facts manifest`), which `publish-release` uploads; the server side of both is still to land,
-    and the manifest's game id is the product id (`products/<id>.toml`); Steam's app id stays a label.
+    core capabilities from the release manifest (`contracts/release-manifest/v3`, written by
+    `facts manifest`: each fact with its game module's name hash), which `publish-release` uploads.
+    A set must carry the core facts of the modules it lists, and a start is refused only for a core
+    capability whose modules were all reported and aren't covered; one in a module not loaded yet
+    waits. The manifest's game id is the product id (`products/<id>.toml`); Steam's app id stays a
+    label.
   - load: bundle signature, format and module keys; the per-kind checks against the loaded image
     (`RtlLookupFunctionEntry` for methods), header reads through `contain()`. A failed fact makes
     its capabilities unavailable; telemetry reports its key and module build.
