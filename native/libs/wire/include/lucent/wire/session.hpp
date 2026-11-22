@@ -11,7 +11,7 @@
 
 // How a module opens its session (POST /v1/starts/:id/session, relayed opaquely by the loader):
 // its hello, then the server's signed half of the key exchange, the first lease and the first data
-// in\n// frames.
+// in frames.
 
 namespace lucent::wire {
 
