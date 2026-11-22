@@ -89,15 +89,19 @@ export function toReleaseManifestBytes(manifest: ReleaseManifest): Uint8Array<Ar
     return out.finish();
 }
 
-// The facts and capabilities, as both versions write them.
+// The facts and capabilities, as versions 1 and 2 write them.
 function writeBody(out: Writer, manifest: Omit<ReleaseManifest, "game">): void {
     out.u32(manifest.facts.length);
     for (const fact of manifest.facts) {
         out.u64(fact.key);
         out.u8(fact.kind);
     }
-    out.u32(manifest.capabilities.length);
-    for (const capability of manifest.capabilities) {
+    writeCapabilities(out, manifest.capabilities);
+}
+
+function writeCapabilities(out: Writer, capabilities: readonly ManifestCapability[]): void {
+    out.u32(capabilities.length);
+    for (const capability of capabilities) {
         out.u64(capability.key);
         out.u8(LEVELS.indexOf(capability.level));
         out.u32(capability.members.length);
@@ -156,7 +160,7 @@ export function parseReleaseManifest(bytes: Uint8Array): Result<ReleaseManifest,
     return ok(manifest);
 }
 
-// The facts and capabilities, as both versions write them; not yet checked for order.
+// The facts and capabilities, as versions 1 and 2 write them; not yet checked for order.
 function readBody(input: Reader): Result<Omit<ReleaseManifest, "game">, FormatError> {
     if (input.remaining() < 4) {
         return malformed();
@@ -169,22 +173,34 @@ function readBody(input: Reader): Result<Omit<ReleaseManifest, "game">, FormatEr
     for (let index = 0; index < factCount; index += 1) {
         facts.push({ key: input.u64(), kind: input.u8() });
     }
+    const capabilities = readCapabilities(input, factCount);
+    if (!capabilities.ok) {
+        return capabilities;
+    }
+    return ok({ facts, capabilities: capabilities.value });
+}
+
+// Not yet checked for order.
+function readCapabilities(
+    input: Reader,
+    factCount: number,
+): Result<ManifestCapability[], FormatError> {
     if (input.remaining() < 4) {
         return malformed();
     }
-    const capabilityCount = input.u32();
-    if (capabilityCount > MAX_CAPABILITIES) {
+    const count = input.u32();
+    if (count > MAX_CAPABILITIES) {
         return malformed();
     }
     const capabilities: ManifestCapability[] = [];
-    for (let index = 0; index < capabilityCount; index += 1) {
+    for (let index = 0; index < count; index += 1) {
         const capability = readCapability(input, factCount);
         if (!capability.ok) {
             return capability;
         }
         capabilities.push(capability.value);
     }
-    return ok({ facts, capabilities });
+    return ok(capabilities);
 }
 
 // BLAKE2b-256 over each fact's key and kind, sorted by key: what a release's fact sets carry as
@@ -259,18 +275,22 @@ function readText(input: Reader): string | null {
 // The manifest must be canonical, as its members describe; anything else is our own bug.
 export function toReleaseManifestV2Bytes(manifest: ReleaseManifestV2): Uint8Array<ArrayBuffer> {
     invariant(isCanonicalV2(manifest), "release manifest isn't canonical");
-    invariant(manifest.features.length <= MAX_FEATURES, "too many features");
     const out = createWriter();
     out.u32(RELEASE_MANIFEST_MAGIC);
     out.u16(RELEASE_MANIFEST_V2);
     writeText(out, manifest.product);
     writeBody(out, manifest);
-    out.u32(manifest.features.length);
-    for (const feature of manifest.features) {
+    writeFeatures(out, manifest.features);
+    return out.finish();
+}
+
+function writeFeatures(out: Writer, features: readonly ManifestFeature[]): void {
+    invariant(features.length <= MAX_FEATURES, "too many features");
+    out.u32(features.length);
+    for (const feature of features) {
         out.u64(feature.key);
         writeText(out, feature.tag);
     }
-    return out.finish();
 }
 
 function readFeatures(input: Reader): ManifestFeature[] | null {
@@ -339,4 +359,149 @@ export function coreFactKeys(manifest: Pick<ReleaseManifest, "capabilities">): b
         }
     }
     return [...keys].sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+}
+
+// Version 3 (contracts/release-manifest/v3), as native/libs/bundle/src/release_manifest.cpp reads
+// and writes it: version 2 with, for each fact, the game module it resolves in. Fact sets are per
+// module build, so the server needs to know which of a release's core facts one module's set must
+// carry, and that a core capability living in a module that loads later waits for it rather than
+// refusing the start. Versions 1 and 2 stay readable through their parsers.
+//
+//   u32 magic "LRM1", u16 version 3, u8 product size, product, u32 fact count, then per fact: u64
+//   key, u8 kind, u64 module name hash; the capabilities and features as version 2 has them.
+//
+// A fact names its module by hash rather than by an index into a module table: a table would save
+// 7 bytes a fact in a document stored once per release, at the price of index range and table
+// order rules a decoder must enforce and a reader must resolve.
+
+const RELEASE_MANIFEST_V3 = 3;
+
+const LOCATED_FACT_SIZE = 8 + 1 + 8;
+
+// One fact and the game module it resolves in.
+export type LocatedFact = {
+    readonly key: bigint;
+    readonly kind: number;
+    // The module's name hash (kit's module_name_hash), as fact sets' module keys carry it; never 0.
+    readonly module: bigint;
+};
+
+export type ReleaseManifestV3 = {
+    // [a-z0-9-], 1 to 32 bytes.
+    readonly product: string;
+    // Sorted by key, keys unique and never 0.
+    readonly facts: readonly LocatedFact[];
+    // Sorted by key, keys unique and never 0.
+    readonly capabilities: readonly ManifestCapability[];
+    // Sorted by key, keys unique and never 0; tags as the platform's FeatureTag.
+    readonly features: readonly ManifestFeature[];
+};
+
+function isCanonicalV3(manifest: ReleaseManifestV3): boolean {
+    return (
+        manifest.facts.every((fact) => fact.module !== 0n) &&
+        isCanonicalV2({
+            product: manifest.product,
+            facts: manifest.facts,
+            capabilities: manifest.capabilities,
+            features: manifest.features,
+        })
+    );
+}
+
+// The manifest must be canonical, as its members describe; anything else is our own bug.
+export function toReleaseManifestV3Bytes(manifest: ReleaseManifestV3): Uint8Array<ArrayBuffer> {
+    invariant(isCanonicalV3(manifest), "release manifest isn't canonical");
+    invariant(manifest.facts.length <= MAX_FACTS, "too many facts");
+    const out = createWriter();
+    out.u32(RELEASE_MANIFEST_MAGIC);
+    out.u16(RELEASE_MANIFEST_V3);
+    writeText(out, manifest.product);
+    out.u32(manifest.facts.length);
+    for (const fact of manifest.facts) {
+        out.u64(fact.key);
+        out.u8(fact.kind);
+        out.u64(fact.module);
+    }
+    writeCapabilities(out, manifest.capabilities);
+    writeFeatures(out, manifest.features);
+    return out.finish();
+}
+
+// Not yet checked for order.
+function readLocatedFacts(input: Reader): LocatedFact[] | null {
+    if (input.remaining() < 4) {
+        return null;
+    }
+    const count = input.u32();
+    if (count > MAX_FACTS || input.remaining() < count * LOCATED_FACT_SIZE) {
+        return null;
+    }
+    const facts: LocatedFact[] = [];
+    for (let index = 0; index < count; index += 1) {
+        facts.push({ key: input.u64(), kind: input.u8(), module: input.u64() });
+    }
+    return facts;
+}
+
+// Canonical or nothing, as parseReleaseManifestV2, and besides: no fact's module hash is 0.
+// Version 1 and 2 bytes are VERSION_MISMATCH.
+export function parseReleaseManifestV3(bytes: Uint8Array): Result<ReleaseManifestV3, FormatError> {
+    const input = openReader(bytes);
+    if (input.remaining() < 4 + 2) {
+        return malformed();
+    }
+    if (input.u32() !== RELEASE_MANIFEST_MAGIC) {
+        return malformed();
+    }
+    if (input.u16() !== RELEASE_MANIFEST_V3) {
+        return versionMismatch();
+    }
+    const product = readText(input);
+    if (product === null) {
+        return malformed();
+    }
+    const facts = readLocatedFacts(input);
+    if (facts === null) {
+        return malformed();
+    }
+    const capabilities = readCapabilities(input, facts.length);
+    if (!capabilities.ok) {
+        return capabilities;
+    }
+    const features = readFeatures(input);
+    if (features === null) {
+        return malformed();
+    }
+    const manifest: ReleaseManifestV3 = {
+        product,
+        facts,
+        capabilities: capabilities.value,
+        features,
+    };
+    if (input.remaining() !== 0 || !isCanonicalV3(manifest)) {
+        return malformed();
+    }
+    return ok(manifest);
+}
+
+function sortedUnique(keys: Iterable<bigint>): bigint[] {
+    return [...new Set(keys)].sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+}
+
+// Sorted and unique: the module name hashes the manifest's facts resolve in.
+export function factModules(manifest: Pick<ReleaseManifestV3, "facts">): bigint[] {
+    return sortedUnique(manifest.facts.map((fact) => fact.module));
+}
+
+// Sorted and unique: every fact some core capability needs that resolves in the module named by
+// its name hash. Empty for a module no fact resolves in.
+export function coreFactKeysIn(
+    manifest: Pick<ReleaseManifestV3, "facts" | "capabilities">,
+    module: bigint,
+): bigint[] {
+    const inModule = new Set(
+        manifest.facts.filter((fact) => fact.module === module).map((fact) => fact.key),
+    );
+    return coreFactKeys(manifest).filter((key) => inModule.has(key));
 }

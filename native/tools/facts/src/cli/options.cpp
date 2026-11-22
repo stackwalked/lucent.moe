@@ -27,8 +27,9 @@ auto usage() -> error {
         "against the latest snapshots and writes the values devkey signs, with the changes from\n"
         "the set before; update-day runs both and stops before sign-off; each step's start, end\n"
         "and outcome per module go to update-day.jsonl in the cache, which latency reports;\n"
-        "manifest writes the module's release manifest (version 2: its product, facts,\n"
-        "capabilities and features) for the server; check fails when the module's image holds a "
+        "manifest writes the module's release manifest (version 3: its product, facts with\n"
+        "their game modules, capabilities and features) for the server; check fails when the "
+        "module's image holds a "
         "fact name (a release build runs it\n"
         "after linking). LUCENT_<NAME> overrides where the game is installed"
     );

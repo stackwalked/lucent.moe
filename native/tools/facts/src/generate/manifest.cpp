@@ -15,7 +15,6 @@
 #include <utility>
 #include <vector>
 
-#include <lucent/bundle/fact_set.hpp>
 #include <lucent/bundle/release_manifest.hpp>
 #include <lucent/crypto/crypto.hpp>
 #include <lucent/finder/fact_search.hpp>
@@ -23,6 +22,7 @@
 #include <lucent/kit/capability.hpp>
 #include <lucent/kit/fact.hpp>
 #include <lucent/kit/feature_section.hpp>
+#include <lucent/kit/game_module.hpp>
 #include <lucent/os/file.hpp>
 #include <lucent/pe/image_view.hpp>
 
@@ -67,17 +67,38 @@ auto level_of(kit::capability_level level) -> bundle::capability_level {
     LUCENT_UNREACHABLE();
 }
 
-auto facts_of(std::span<const kit::fact_record> records)
-    -> result<std::vector<bundle::manifest_entry>> {
-    std::vector<bundle::manifest_entry> facts;
+// The name hash of the module a fact's index names in the target's table, as kit hashes it for
+// the fact sets' module keys.
+auto module_of(const kit::fact_record& record, std::span<const kit::game_module> modules)
+    -> result<u64> {
+    const auto found = std::ranges::find(modules, record.module, &kit::game_module::index);
+    if (found == modules.end()) {
+        std::println(
+            stderr,
+            "facts: fact {:#018x} names module index {}, which the target's table doesn't have",
+            record.key,
+            record.module
+        );
+        return std::unexpected(malformed);
+    }
+    return kit::module_name_hash(found->name);
+}
+
+auto facts_of(std::span<const kit::fact_record> records, std::span<const kit::game_module> modules)
+    -> result<std::vector<bundle::manifest_fact>> {
+    std::vector<bundle::manifest_fact> facts;
     facts.reserve(records.size());
     for (const kit::fact_record& record : records) {
         facts.push_back(
-            bundle::manifest_entry{.key = record.key, .kind = std::to_underlying(record.kind)}
+            bundle::manifest_fact{
+                .key = record.key,
+                .kind = std::to_underlying(record.kind),
+                .module = LUCENT_TRY(module_of(record, modules)),
+            }
         );
     }
-    std::ranges::sort(facts, {}, &bundle::manifest_entry::key);
-    const auto repeated = std::ranges::adjacent_find(facts, {}, &bundle::manifest_entry::key);
+    std::ranges::sort(facts, {}, &bundle::manifest_fact::key);
+    const auto repeated = std::ranges::adjacent_find(facts, {}, &bundle::manifest_fact::key);
     if (repeated != facts.end()) {
         std::println(stderr, "facts: two linked facts share the key {:#018x}", repeated->key);
         return std::unexpected(malformed);
@@ -102,7 +123,7 @@ auto features_of(std::span<const kit::declared_feature> declared)
 }
 
 auto capability_of(
-    const kit::declared_capability& declared, std::span<const bundle::manifest_entry> facts
+    const kit::declared_capability& declared, std::span<const bundle::manifest_fact> facts
 ) -> result<bundle::manifest_capability> {
     bundle::manifest_capability capability{
         .key = declared.key,
@@ -115,7 +136,7 @@ auto capability_of(
         return std::unexpected(malformed);
     }
     for (const u64 member : capability.members) {
-        if (!std::ranges::binary_search(facts, member, {}, &bundle::manifest_entry::key)) {
+        if (!std::ranges::binary_search(facts, member, {}, &bundle::manifest_fact::key)) {
             std::println(
                 stderr,
                 "facts: capability {:#018x} names fact {:#018x}, which the module doesn't link",
@@ -143,11 +164,11 @@ auto manifest_of(const std::filesystem::path& module) -> result<module_manifest>
     };
 }
 
-auto release_manifest_of(const module_manifest& linked, std::string_view product)
-    -> result<bundle::release_manifest_v2> {
-    bundle::release_manifest_v2 manifest{
-        .product = std::string{product},
-        .facts = LUCENT_TRY(facts_of(linked.facts)),
+auto release_manifest_of(const module_manifest& linked, const finder::target& target)
+    -> result<bundle::release_manifest_v3> {
+    bundle::release_manifest_v3 manifest{
+        .product = std::string{product_of(target)},
+        .facts = LUCENT_TRY(facts_of(linked.facts, target.modules)),
         .capabilities = {},
         .features = LUCENT_TRY(features_of(linked.features)),
     };

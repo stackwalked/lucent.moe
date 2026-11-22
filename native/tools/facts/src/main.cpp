@@ -220,12 +220,11 @@ auto level_name(bundle::capability_level level) -> std::string_view {
 auto run(const manifest_command& chosen) -> result<isize> {
     const finder::target target = LUCENT_TRY(target_named(chosen.target));
     const module_manifest linked = LUCENT_TRY(manifest_of(chosen.module));
-    const bundle::release_manifest_v2 made =
-        LUCENT_TRY(release_manifest_of(linked, product_of(target)));
-    LUCENT_TRY(os::write_file(chosen.out, bundle::encode_release_manifest_v2(made)));
+    const bundle::release_manifest_v3 made = LUCENT_TRY(release_manifest_of(linked, target));
+    LUCENT_TRY(os::write_file(chosen.out, bundle::encode_release_manifest_v3(made)));
     const std::vector<std::byte> written = LUCENT_TRY(os::read_file(chosen.out));
-    const bundle::release_manifest_v2 stored =
-        LUCENT_TRY(bundle::decode_release_manifest_v2(written));
+    const bundle::release_manifest_v3 stored =
+        LUCENT_TRY(bundle::decode_release_manifest_v3(written));
     std::println("{}: {} bytes", chosen.out.string(), written.size());
     std::println(
         "  product {}, manifest digest {}", stored.product, hex_of(bundle::manifest_digest(stored))

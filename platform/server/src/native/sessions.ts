@@ -1,5 +1,5 @@
 import type { ModuleKey } from "@lucent/bundle/fact-set";
-import { parseReleaseManifestV2 } from "@lucent/bundle/release-manifest";
+import { parseReleaseManifestV3 } from "@lucent/bundle/release-manifest";
 import type { ProductCatalog } from "@lucent/catalog/catalog";
 import { invariant } from "@lucent/core/contain";
 import { err, ok, type Result } from "@lucent/core/result";
@@ -32,7 +32,7 @@ import {
 import { type ReceiptRefusal, readReplay, recordReceipt, toOperationKey } from "../db/receipt.ts";
 import { errCommit, withTx } from "../db/tx.ts";
 import { type AccountInactive, lockAccountStanding, lockActiveAccount } from "./accounts.ts";
-import { FIRST_DATA_SEQUENCE, sealedData } from "./data.ts";
+import { FIRST_DATA_ANSWERS, FIRST_DATA_SEQUENCE, sealedData } from "./data.ts";
 import { lockDevice } from "./devices.ts";
 import type { DpopProof } from "./dpop.ts";
 import { readFactDelivery } from "./fact-sets.ts";
@@ -374,7 +374,7 @@ export async function openSession(
         const manifestBytes = await findReleaseManifest(tx, start.release_id);
         if (!manifestBytes.ok) return manifestBytes;
         invariant(manifestBytes.value !== null, "a started release has a manifest");
-        const manifest = parseReleaseManifestV2(manifestBytes.value);
+        const manifest = parseReleaseManifestV3(manifestBytes.value);
         invariant(manifest.ok, "a published release manifest parses");
         const entitled = entitledFeaturesOf(access.value.features, manifest.value);
 
@@ -451,6 +451,7 @@ export async function openSession(
                 key: session.data_key_to_module,
                 session: session.id,
                 sequence: FIRST_DATA_SEQUENCE,
+                answers: FIRST_DATA_ANSWERS,
                 delivery,
             }),
         }),
@@ -732,6 +733,7 @@ export async function serveData(
                 key: session.data_key_to_module,
                 session: session.id,
                 sequence,
+                answers: frame.header.sequence,
                 delivery,
             }),
         ),

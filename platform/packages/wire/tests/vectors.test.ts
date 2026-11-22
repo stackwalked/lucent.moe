@@ -121,6 +121,7 @@ const ModuleKeys = z.array(
 
 const DataResponseFields = z
     .strictObject({
+        answers: bigintNumber,
         data_revision: bigintNumber,
         bundle: hexAny,
         unsupported: ModuleKeys,

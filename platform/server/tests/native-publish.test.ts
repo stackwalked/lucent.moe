@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { blake2b256 } from "@lucent/bundle/crypto";
-import { toReleaseManifestV2Bytes } from "@lucent/bundle/release-manifest";
+import { toReleaseManifestV3Bytes } from "@lucent/bundle/release-manifest";
 import { createWriter, equalBytes } from "@lucent/bundle/wire";
 import { invariant } from "@lucent/core/contain";
 import { createSeededRng } from "@lucent/core/rng";
@@ -57,7 +57,7 @@ const CONTAINER = new Uint8Array(
 const MODULE_RELEASE = new Uint8Array(16).fill(0x33);
 const BOOT_INFO_VERSION = 3;
 
-const MANIFEST = toReleaseManifestV2Bytes({
+const MANIFEST = toReleaseManifestV3Bytes({
     product: "cs2",
     facts: [],
     capabilities: [],
@@ -237,7 +237,7 @@ test("going back is the same release under a higher number; another under its id
             containerFor(second),
         );
         const back = await publishModule(nativeDb, await moduleSeal({ number: 3n }));
-        const otherManifest = toReleaseManifestV2Bytes({
+        const otherManifest = toReleaseManifestV3Bytes({
             product: "cs2",
             facts: [],
             capabilities: [],

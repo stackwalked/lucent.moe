@@ -12,15 +12,16 @@ import { isModuleList, readModules, writeModules } from "./start.ts";
 // the data route's keys. The session reply carries the first response, so a module has its bundle
 // before it attaches.
 //
-// Version 1 on the wire:
+// On the wire, the request version 1 and the response version 2:
 //   request: context "lucent data request v1" (32), u8 module count, then per module: u64 name
 //     hash, u32 time-date stamp, u32 size of image (as start requests carry them); u8 has features
 //     (0 or 1), after 1 only u32 feature count, u64 feature ids.
-//   response: context "lucent data response v1" (32), u64 data revision, u32 bundle size, the
-//     bundle, u8 unsupported module count, then the modules as in the request.
+//   response: context "lucent data response v2" (32), u64 the sequence it answers, u64 data
+//     revision, u32 bundle size, the bundle, u8 unsupported module count, then the modules as in
+//     the request.
 
 const REQUEST_VERSION = 1;
-const RESPONSE_VERSION = 1;
+const RESPONSE_VERSION = 2;
 
 const FEATURE_SIZE = 8;
 
@@ -35,6 +36,10 @@ export type DataRequest = {
 };
 
 export type DataResponse = {
+    // The sequence of the module's data-route frame this answers, so a reply arriving late is never
+    // taken for the answer to a later request; 0n for the first, in the session reply, which
+    // answers the hello.
+    readonly answers: bigint;
     // The lease's data revision at the time this was built.
     readonly dataRevision: bigint;
     // bundle::encode_bundle's bytes, opaque here: the module decodes and verifies the bundle
@@ -106,6 +111,7 @@ export function toDataResponseBytes(response: DataResponse): Uint8Array<ArrayBuf
     invariant(isModuleList(response.unsupported), "unsupported modules aren't canonical");
     const out = createWriter();
     writeContext(out, "data response", RESPONSE_VERSION);
+    out.u64(response.answers);
     out.u64(response.dataRevision);
     out.u32(response.bundle.byteLength);
     out.bytes(response.bundle);
@@ -121,9 +127,10 @@ export function parseDataResponse(bytes: Uint8Array): Result<DataResponse, Forma
     if (!context.ok) {
         return context;
     }
-    if (input.remaining() < 8 + 4) {
+    if (input.remaining() < 8 + 8 + 4) {
         return malformed();
     }
+    const answers = input.u64();
     const dataRevision = input.u64();
     const size = input.u32();
     if (size > MAX_FRAME_PLAIN_SIZE || input.remaining() < size) {
@@ -134,5 +141,5 @@ export function parseDataResponse(bytes: Uint8Array): Result<DataResponse, Forma
     if (!unsupported.ok) {
         return unsupported;
     }
-    return finish(input, { dataRevision, bundle, unsupported: unsupported.value });
+    return finish(input, { answers, dataRevision, bundle, unsupported: unsupported.value });
 }

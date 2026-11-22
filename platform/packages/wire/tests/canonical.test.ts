@@ -154,9 +154,9 @@ test("a data request's modules are sorted and unique, and both messages bound th
 test("a data response's bundle is no longer than a frame's plaintext or what follows", async () => {
     const response = await bytesOf("data_response");
 
-    // The bundle's size at 40.
-    expect(parseDataResponse(withByte(response, 43, 0x7f))).toEqual(MALFORMED);
-    expect(parseDataResponse(withByte(response, 41, 0x0f))).toEqual(MALFORMED);
+    // The bundle's size at 48.
+    expect(parseDataResponse(withByte(response, 51, 0x7f))).toEqual(MALFORMED);
+    expect(parseDataResponse(withByte(response, 49, 0x0f))).toEqual(MALFORMED);
 });
 
 test("a lease with a zero duration or challenge, a bad product, or features under everything is malformed", async () => {

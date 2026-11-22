@@ -208,6 +208,7 @@ private:
         -> wire::frame {
         const std::vector<std::byte> plain = wire::encode_data_response(
             wire::data_response{
+                .answers = 0,
                 .data_revision = 0,
                 .bundle_bytes = std::vector<std::byte>{bundle.begin(), bundle.end()},
                 .unsupported = {},
@@ -454,6 +455,7 @@ TEST_CASE("the data route counts its sequences apart from the lease route's") {
     CHECK(
         response
         == wire::data_response{
+            .answers = 0,
             .data_revision = 0,
             .bundle_bytes = bundle_of({0x5e}),
             .unsupported = {},

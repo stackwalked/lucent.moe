@@ -3,7 +3,7 @@ import type { ModuleKey } from "@lucent/bundle/fact-set";
 import {
     coreFactKeys,
     manifestDigest,
-    parseReleaseManifestV2,
+    parseReleaseManifestV3,
 } from "@lucent/bundle/release-manifest";
 import { equalBytes } from "@lucent/bundle/wire";
 import { invariant } from "@lucent/core/contain";
@@ -73,7 +73,7 @@ export async function publishFactSet(
     const manifestBytes = await findReleaseManifest(db, params.releaseId);
     if (!manifestBytes.ok) return manifestBytes;
     if (manifestBytes.value === null) return err({ code: "RELEASE_NOT_FOUND" });
-    const manifest = parseReleaseManifestV2(manifestBytes.value);
+    const manifest = parseReleaseManifestV3(manifestBytes.value);
     invariant(manifest.ok, "a stored release manifest was verified when it was published");
     if (!equalBytes(header.manifestDigest, manifestDigest(manifest.value.facts))) {
         return err({ code: "MANIFEST_DIGEST_MISMATCH" });

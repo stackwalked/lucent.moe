@@ -1,5 +1,5 @@
 import { blake2b256 } from "@lucent/bundle/crypto";
-import { parseReleaseManifestV2 } from "@lucent/bundle/release-manifest";
+import { parseReleaseManifestV3 } from "@lucent/bundle/release-manifest";
 import { equalBytes } from "@lucent/bundle/wire";
 import { invariant } from "@lucent/core/contain";
 import { err, ok, type Result } from "@lucent/core/result";
@@ -90,7 +90,7 @@ function checkModule(seal: ReleaseSeal, artifacts: ModuleArtifacts): Result<null
     if (container.value.bootInfoVersion !== seal.bootInfoVersion) {
         return err({ code: "CONTAINER_DISAGREES", field: "boot_info_version" });
     }
-    const manifest = parseReleaseManifestV2(artifacts.manifest);
+    const manifest = parseReleaseManifestV3(artifacts.manifest);
     if (!manifest.ok) return err({ code: "MANIFEST_INVALID" });
     if (manifest.value.product !== seal.product) return err({ code: "MANIFEST_DISAGREES" });
     return ok(null);

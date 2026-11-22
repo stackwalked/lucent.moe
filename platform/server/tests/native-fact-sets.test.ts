@@ -8,8 +8,8 @@ import {
 } from "@lucent/bundle/fact-set";
 import { leafHash, treeRoot } from "@lucent/bundle/merkle";
 import {
+    type LocatedFact,
     type ManifestCapability,
-    type ManifestFact,
     manifestDigest,
 } from "@lucent/bundle/release-manifest";
 import { invariant } from "@lucent/core/contain";
@@ -45,10 +45,11 @@ const OTHER_SEED = Uint8Array.fromHex(
     "4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb",
 );
 
-const FACTS: readonly ManifestFact[] = [
-    { key: 0x10n, kind: 1 },
-    { key: 0x20n, kind: 1 },
-    { key: 0x30n, kind: 1 },
+// All in GAME's module.
+const FACTS: readonly LocatedFact[] = [
+    { key: 0x10n, kind: 1, module: 0x1234n },
+    { key: 0x20n, kind: 1, module: 0x1234n },
+    { key: 0x30n, kind: 1, module: 0x1234n },
 ];
 const CAPABILITIES: readonly ManifestCapability[] = [
     { key: 0xa0n, level: "core", members: [0x10n, 0x20n] },
@@ -253,7 +254,7 @@ async function startOutcome(params: {
         readonly modules?: readonly ModuleKey[];
         readonly promote?: boolean;
     }[];
-    readonly facts?: readonly ManifestFact[];
+    readonly facts?: readonly LocatedFact[];
     readonly capabilities?: readonly ManifestCapability[];
 }): Promise<string> {
     const cluster = await sharedTestCluster();

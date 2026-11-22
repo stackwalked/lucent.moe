@@ -8,8 +8,9 @@
 #include <lucent/bundle/fact_set.hpp>
 #include <lucent/crypto/crypto.hpp>
 
-// The release manifest (contracts/release-manifest/v1): which facts a release's module links and
-// which capabilities it groups them into, derived from the built module file. The server uses it
+// The release manifest (contracts/release-manifest/v1 to v3): which facts a release's module links
+// and which capabilities it groups them into, derived from the built module file. Releases are
+// built with version 3. The server uses it
 // to refuse a session that leaves a core capability uncovered and a fact set that lacks a fact a
 // core capability needs.
 //
@@ -97,5 +98,53 @@ auto decode_release_manifest_v2(std::span<const std::byte> bytes) -> result<rele
 
 auto manifest_digest(const release_manifest_v2& manifest) -> crypto::digest;
 auto core_fact_keys(const release_manifest_v2& manifest) -> std::vector<u64>;
+
+// Version 3 (contracts/release-manifest/v3) is version 2 with, for each fact, the game module it
+// resolves in: fact sets are per module build, so the server needs to know which of a release's
+// core facts a given module's set must carry, and that a core capability living in a module that
+// loads later waits for that module rather than refusing the start. Versions 1 and 2 stay readable
+// through the functions above.
+
+// One fact and the game module it resolves in.
+struct manifest_fact {
+    u64 key = 0;
+    u8 kind = 0;
+    // The module's name hash (kit::module_name_hash), as fact sets' module keys carry it; never 0.
+    u64 module = 0;
+
+    auto operator==(const manifest_fact&) const -> bool = default;
+};
+
+struct release_manifest_v3 {
+    // [a-z0-9-], 1 to 32 bytes.
+    std::string product;
+    // Sorted by key, keys unique and never 0.
+    std::vector<manifest_fact> facts;
+    // Sorted by key, keys unique and never 0.
+    std::vector<manifest_capability> capabilities;
+    // Sorted by key, keys unique and never 0.
+    std::vector<manifest_feature> features;
+
+    auto operator==(const release_manifest_v3&) const -> bool = default;
+};
+
+// The manifest must be canonical, as described on its members; anything else is our own bug.
+auto encode_release_manifest_v3(const release_manifest_v3& manifest) -> std::vector<std::byte>;
+
+// Canonical or nothing, as decode_release_manifest_v2, and besides: no fact's module hash is 0.
+// Version 1 and 2 bytes are version_mismatch.
+auto decode_release_manifest_v3(std::span<const std::byte> bytes) -> result<release_manifest_v3>;
+
+// Over each fact's key and kind only, as the earlier versions: the module computes the same digest
+// from its linked facts, which know their module only by the target's index.
+auto manifest_digest(const release_manifest_v3& manifest) -> crypto::digest;
+auto core_fact_keys(const release_manifest_v3& manifest) -> std::vector<u64>;
+
+// Sorted and unique: the module name hashes the manifest's facts resolve in.
+auto fact_modules(const release_manifest_v3& manifest) -> std::vector<u64>;
+
+// Sorted and unique: every fact some core capability needs that resolves in the module named by
+// its name hash. Empty for a module no fact resolves in.
+auto core_fact_keys(const release_manifest_v3& manifest, u64 module) -> std::vector<u64>;
 
 }

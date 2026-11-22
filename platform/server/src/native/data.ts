@@ -12,14 +12,20 @@ export const NO_DATA_REVISION = 0n;
 
 export const FIRST_DATA_SEQUENCE = 0n;
 
+// The first data answers the hello, not a data-route frame.
+export const FIRST_DATA_ANSWERS = 0n;
+
 export function sealedData(params: {
     readonly rng: CryptoRng;
     readonly key: Uint8Array;
     readonly session: Uint8Array;
     readonly sequence: bigint;
+    // The sequence of the module's data-route frame this answers.
+    readonly answers: bigint;
     readonly delivery: FactDelivery;
 }): Frame {
     const plain = toDataResponseBytes({
+        answers: params.answers,
         dataRevision: NO_DATA_REVISION,
         bundle: params.delivery.bundle,
         unsupported: params.delivery.unsupported,

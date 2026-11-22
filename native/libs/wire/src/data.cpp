@@ -12,18 +12,19 @@
 
 #include "codec.hpp"
 
-// Version 1 on the wire:
+// On the wire, the request version 1 and the response version 2:
 //   request: context "lucent data request v1" (32), u8 module count, then per module: u64 name
 //     hash, u32 time-date stamp, u32 size of image (as start requests carry them); u8 has features
 //     (0 or 1), after 1 only u32 feature count, u64 feature ids.
-//   response: context "lucent data response v1" (32), u64 data revision, u32 bundle size, the
-//     bundle, u8 unsupported module count, then the modules as in the request.
+//   response: context "lucent data response v2" (32), u64 the sequence it answers, u64 data
+//     revision, u32 bundle size, the bundle, u8 unsupported module count, then the modules as in
+//     the request.
 
 namespace lucent::wire {
 namespace {
 
 constexpr u32 request_version = 1;
-constexpr u32 response_version = 1;
+constexpr u32 response_version = 2;
 
 constexpr usize feature_size = 8;
 
@@ -81,6 +82,7 @@ auto encode_data_response(const data_response& response) -> std::vector<std::byt
     LUCENT_INVARIANT(is_canonical(response));
     detail::writer out;
     out.write_context("data response", response_version);
+    out.write_u64(response.answers);
     out.write_u64(response.data_revision);
     out.write_u32(static_cast<u32>(response.bundle_bytes.size()));
     out.write_bytes(response.bundle_bytes);
@@ -92,6 +94,7 @@ auto decode_data_response(std::span<const std::byte> bytes) -> result<data_respo
     detail::reader input{bytes};
     LUCENT_TRY(input.read_context("data response", response_version));
     data_response response;
+    response.answers = LUCENT_TRY(input.read_u64());
     response.data_revision = LUCENT_TRY(input.read_u64());
     const u32 size = LUCENT_TRY(input.read_u32());
     if (size > max_frame_plain_size) {

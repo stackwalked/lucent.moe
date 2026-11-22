@@ -27,6 +27,10 @@ struct data_request {
 };
 
 struct data_response {
+    // The sequence of the module's data-route frame this answers, so a reply arriving late is never
+    // taken for the answer to a later request; 0 for the first, in the session reply, which
+    // answers the hello.
+    u64 answers = 0;
     // The lease's data revision at the time this was built.
     u64 data_revision = 0;
     // bundle::encode_bundle's bytes, opaque here: the module decodes and verifies the bundle

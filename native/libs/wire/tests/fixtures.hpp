@@ -192,13 +192,21 @@ inline auto data_request_everything() -> data_request {
     return data_request{.modules = module_builds(), .features = std::nullopt};
 }
 
-// The first data: the first module build's set, the second not yet supported.
+// The first data: the first module build's set, the second not yet supported, answering the hello.
 inline auto first_data() -> data_response {
     return data_response{
+        .answers = 0,
         .data_revision = 7,
         .bundle_bytes = first_bundle(),
         .unsupported = {module_builds().back()},
     };
+}
+
+// The same, answering the module's data-route frame with sequence 3.
+inline auto later_data() -> data_response {
+    data_response response = first_data();
+    response.answers = 3;
+    return response;
 }
 
 inline auto reply() -> session_reply {

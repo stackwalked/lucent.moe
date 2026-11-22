@@ -420,13 +420,18 @@ TEST_CASE(
 }
 
 TEST_CASE("a data response may hold an empty bundle, but not one longer than what follows") {
-    const data_response empty{.data_revision = 0, .bundle_bytes = {}, .unsupported = {}};
+    const data_response empty{
+        .answers = 0,
+        .data_revision = 0,
+        .bundle_bytes = {},
+        .unsupported = {},
+    };
     const std::vector<std::byte> response = encode_data_response(fixtures::first_data());
 
     CHECK(decode_data_response(encode_data_response(empty)) == empty);
-    // The bundle's size at 40: past a frame's plaintext bound, and past what follows.
-    CHECK(error_of(decode_data_response(with_byte(response, 43, 0x7f))) == malformed);
-    CHECK(error_of(decode_data_response(with_byte(response, 41, 0x0f))) == malformed);
+    // The bundle's size at 48: past a frame's plaintext bound, and past what follows.
+    CHECK(error_of(decode_data_response(with_byte(response, 51, 0x7f))) == malformed);
+    CHECK(error_of(decode_data_response(with_byte(response, 49, 0x0f))) == malformed);
 }
 
 TEST_CASE("a lease or exchange verifies only under the lease key and only as signed") {

@@ -1,4 +1,4 @@
-import { type ReleaseManifestV2, toReleaseManifestV2Bytes } from "@lucent/bundle/release-manifest";
+import { type ReleaseManifestV3, toReleaseManifestV3Bytes } from "@lucent/bundle/release-manifest";
 import type { ProductCatalog } from "@lucent/catalog/catalog";
 import { type Clock, systemClock } from "@lucent/core/clock";
 import { invariant, trySync } from "@lucent/core/contain";
@@ -366,15 +366,15 @@ export async function publishRelease(
         readonly product: string;
         readonly channel: Channel;
         readonly container?: Uint8Array;
-        readonly facts?: ReleaseManifestV2["facts"];
-        readonly capabilities?: ReleaseManifestV2["capabilities"];
+        readonly facts?: ReleaseManifestV3["facts"];
+        readonly capabilities?: ReleaseManifestV3["capabilities"];
     },
 ): Promise<PublishedRelease> {
     const id = rng.fillBytes(new Uint8Array(16));
     const seal = rng.fillBytes(new Uint8Array(96));
     const isModule = params.product !== "lucent-loader";
     const manifest = isModule
-        ? toReleaseManifestV2Bytes({
+        ? toReleaseManifestV3Bytes({
               product: params.product,
               facts: params.facts ?? [],
               capabilities: params.capabilities ?? [],

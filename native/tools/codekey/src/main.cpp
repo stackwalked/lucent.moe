@@ -164,10 +164,10 @@ auto run(const sign_module_command& chosen) -> outcome {
     if (!image) {
         return fail(std::format("{} isn't a container", chosen.container.string()));
     }
-    const result<bundle::release_manifest_v2> manifest =
-        bundle::decode_release_manifest_v2(manifest_bytes);
+    const result<bundle::release_manifest_v3> manifest =
+        bundle::decode_release_manifest_v3(manifest_bytes);
     if (!manifest) {
-        return fail(std::format("{} isn't a release manifest v2", chosen.manifest.string()));
+        return fail(std::format("{} isn't a release manifest v3", chosen.manifest.string()));
     }
     if (manifest->product != chosen.product) {
         return fail(

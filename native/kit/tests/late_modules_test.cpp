@@ -387,6 +387,7 @@ auto pipe_pair() -> pipes {
 auto data_reply(std::span<const std::byte> bundle) -> std::vector<std::byte> {
     const std::vector<std::byte> plain = wire::encode_data_response(
         wire::data_response{
+            .answers = 0,
             .data_revision = 0,
             .bundle_bytes = std::vector<std::byte>{bundle.begin(), bundle.end()},
             .unsupported = {},

@@ -29,11 +29,13 @@ struct module_manifest {
 
 auto manifest_of(const std::filesystem::path& module) -> result<module_manifest>;
 
-// The release manifest the server is given for this module: its facts, capabilities and features
-// sorted, for the product named. Malformed, with an error printed, when two facts, capabilities
-// or features share a key, or a capability names a fact the module doesn't link.
-auto release_manifest_of(const module_manifest& linked, std::string_view product)
-    -> result<bundle::release_manifest_v2>;
+// The release manifest the server is given for this module: its facts, each with the name hash of
+// the game module the target's table maps its module index to, capabilities and features sorted,
+// for the target's product. Malformed, with an error printed, when two facts, capabilities or
+// features share a key, a capability names a fact the module doesn't link, or a fact's module
+// index isn't in the target's table.
+auto release_manifest_of(const module_manifest& linked, const finder::target& target)
+    -> result<bundle::release_manifest_v3>;
 
 // The product a target's release manifest names: its id in products/*.toml, which is the target's
 // name (the cs2 target builds the cs2 product).

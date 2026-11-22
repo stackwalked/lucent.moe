@@ -17,10 +17,16 @@
 
 // On the wire, little-endian, nothing aligned or padded:
 //   version 1: u32 magic "LRM1", u16 version 1, u32 game (the Steam app), then the body;
-//   version 2: u32 magic "LRM1", u16 version 2, u8 product size, product, the body, then
-//     u32 feature count and per feature: u64 key, u8 tag size, tag.
+//   version 2: u32 magic "LRM1", u16 version 2, u8 product size, product, the body, then the
+//     features;
+//   version 3: as version 2, but each fact also carries its module: u64 key, u8 kind, u64 module
+//     name hash.
 //   The body: u32 fact count, then per fact: u64 key, u8 kind; u32 capability count, then per
 //     capability: u64 key, u8 level, u32 member count, u64 keys.
+//   The features: u32 feature count, then per feature: u64 key, u8 tag size, tag.
+// Version 3 names each fact's module by its hash rather than by an index into a module table: a
+// table would save 7 bytes a fact in a document stored once per release, at the price of index
+// range and table order rules a decoder must enforce and a reader must resolve.
 // The magic names the format; the version field says which one. A change that isn't additive is
 // a new version; the server keeps a decoder for each a live release uses.
 
@@ -31,6 +37,7 @@ namespace {
 constexpr u32 release_manifest_magic = 0x314d'524c;
 constexpr u16 version_one = 1;
 constexpr u16 version_two = 2;
+constexpr u16 version_three = 3;
 
 // Sanity bounds on what the decoder accepts.
 constexpr usize max_facts = usize{1} << 20U;
@@ -39,6 +46,7 @@ constexpr usize max_features = usize{1} << 16U;
 
 // The smallest encodings, which bound a count by the bytes left before anything is reserved.
 constexpr usize fact_size = 9;
+constexpr usize located_fact_size = 17;
 constexpr usize capability_size = 21;
 constexpr usize feature_size = 10;
 
@@ -133,6 +141,22 @@ auto is_canonical(const release_manifest_v2& manifest) -> bool {
            && is_canonical(manifest.features);
 }
 
+auto entries_of(std::span<const manifest_fact> facts) -> std::vector<manifest_entry> {
+    std::vector<manifest_entry> entries;
+    entries.reserve(facts.size());
+    for (const manifest_fact& fact : facts) {
+        entries.push_back(manifest_entry{.key = fact.key, .kind = fact.kind});
+    }
+    return entries;
+}
+
+auto is_canonical(const release_manifest_v3& manifest) -> bool {
+    return is_product(manifest.product)
+           && !std::ranges::contains(manifest.facts, u64{0}, &manifest_fact::module)
+           && is_canonical(entries_of(manifest.facts), manifest.capabilities)
+           && is_canonical(manifest.features);
+}
+
 auto write_text(detail::writer& out, std::string_view text) -> void {
     out.write_u8(static_cast<u8>(text.size()));
     out.write_bytes(std::as_bytes(std::span{text}));
@@ -148,19 +172,9 @@ auto read_text(detail::reader& input) -> result<std::string> {
     return text;
 }
 
-auto write_body(
-    detail::writer& out,
-    std::span<const manifest_entry> facts,
-    std::span<const manifest_capability> capabilities
-) -> void {
-    LUCENT_INVARIANT(is_canonical(facts, capabilities));
-    LUCENT_INVARIANT(facts.size() <= max_facts);
+auto write_capabilities(detail::writer& out, std::span<const manifest_capability> capabilities)
+    -> void {
     LUCENT_INVARIANT(capabilities.size() <= max_capabilities);
-    out.write_u32(static_cast<u32>(facts.size()));
-    for (const manifest_entry& fact : facts) {
-        out.write_u64(fact.key);
-        out.write_u8(fact.kind);
-    }
     out.write_u32(static_cast<u32>(capabilities.size()));
     for (const manifest_capability& capability : capabilities) {
         out.write_u64(capability.key);
@@ -169,6 +183,30 @@ auto write_body(
         for (const u64 member : capability.members) {
             out.write_u64(member);
         }
+    }
+}
+
+auto write_body(
+    detail::writer& out,
+    std::span<const manifest_entry> facts,
+    std::span<const manifest_capability> capabilities
+) -> void {
+    LUCENT_INVARIANT(is_canonical(facts, capabilities));
+    LUCENT_INVARIANT(facts.size() <= max_facts);
+    out.write_u32(static_cast<u32>(facts.size()));
+    for (const manifest_entry& fact : facts) {
+        out.write_u64(fact.key);
+        out.write_u8(fact.kind);
+    }
+    write_capabilities(out, capabilities);
+}
+
+auto write_features(detail::writer& out, std::span<const manifest_feature> features) -> void {
+    LUCENT_INVARIANT(features.size() <= max_features);
+    out.write_u32(static_cast<u32>(features.size()));
+    for (const manifest_feature& feature : features) {
+        out.write_u64(feature.key);
+        write_text(out, feature.tag);
     }
 }
 
@@ -193,7 +231,27 @@ auto read_capability(detail::reader& input, usize fact_count) -> result<manifest
     return capability;
 }
 
-// Not checked for canonical order: the caller checks the whole manifest at once.
+// What bounds the capabilities' counts: the whole manifest's size, and the facts read before them.
+struct capability_bounds {
+    usize total_size = 0;
+    usize fact_count = 0;
+};
+
+// Not checked for canonical order, as none of the readers below: the caller checks the whole
+// manifest at once.
+auto read_capabilities(detail::reader& input, capability_bounds bounds)
+    -> result<std::vector<manifest_capability>> {
+    const u32 count = LUCENT_TRY(
+        read_count(input, std::min(max_capabilities, bounds.total_size / capability_size))
+    );
+    std::vector<manifest_capability> capabilities;
+    capabilities.reserve(count);
+    for (u32 index = 0; index < count; ++index) {
+        capabilities.push_back(LUCENT_TRY(read_capability(input, bounds.fact_count)));
+    }
+    return capabilities;
+}
+
 auto read_body(detail::reader& input, usize total_size) -> result<manifest_body> {
     manifest_body body;
     const u32 fact_count =
@@ -205,13 +263,25 @@ auto read_body(detail::reader& input, usize total_size) -> result<manifest_body>
         fact.kind = LUCENT_TRY(input.read_u8());
         body.facts.push_back(fact);
     }
-    const u32 capability_count =
-        LUCENT_TRY(read_count(input, std::min(max_capabilities, total_size / capability_size)));
-    body.capabilities.reserve(capability_count);
-    for (u32 index = 0; index < capability_count; ++index) {
-        body.capabilities.push_back(LUCENT_TRY(read_capability(input, fact_count)));
-    }
+    body.capabilities =
+        LUCENT_TRY(read_capabilities(input, {.total_size = total_size, .fact_count = fact_count}));
     return body;
+}
+
+auto read_located_facts(detail::reader& input, usize total_size)
+    -> result<std::vector<manifest_fact>> {
+    const u32 count =
+        LUCENT_TRY(read_count(input, std::min(max_facts, total_size / located_fact_size)));
+    std::vector<manifest_fact> facts;
+    facts.reserve(count);
+    for (u32 index = 0; index < count; ++index) {
+        manifest_fact fact;
+        fact.key = LUCENT_TRY(input.read_u64());
+        fact.kind = LUCENT_TRY(input.read_u8());
+        fact.module = LUCENT_TRY(input.read_u64());
+        facts.push_back(fact);
+    }
+    return facts;
 }
 
 auto read_features(detail::reader& input, usize total_size)
@@ -289,17 +359,12 @@ auto core_fact_keys(const release_manifest& manifest) -> std::vector<u64> {
 
 auto encode_release_manifest_v2(const release_manifest_v2& manifest) -> std::vector<std::byte> {
     LUCENT_INVARIANT(is_canonical(manifest));
-    LUCENT_INVARIANT(manifest.features.size() <= max_features);
     detail::writer out;
     out.write_u32(release_manifest_magic);
     out.write_u16(version_two);
     write_text(out, manifest.product);
     write_body(out, manifest.facts, manifest.capabilities);
-    out.write_u32(static_cast<u32>(manifest.features.size()));
-    for (const manifest_feature& feature : manifest.features) {
-        out.write_u64(feature.key);
-        write_text(out, feature.tag);
-    }
+    write_features(out, manifest.features);
     return out.take();
 }
 
@@ -326,6 +391,73 @@ auto manifest_digest(const release_manifest_v2& manifest) -> crypto::digest {
 
 auto core_fact_keys(const release_manifest_v2& manifest) -> std::vector<u64> {
     return core_keys_of(manifest.capabilities);
+}
+
+auto encode_release_manifest_v3(const release_manifest_v3& manifest) -> std::vector<std::byte> {
+    LUCENT_INVARIANT(is_canonical(manifest));
+    LUCENT_INVARIANT(manifest.facts.size() <= max_facts);
+    detail::writer out;
+    out.write_u32(release_manifest_magic);
+    out.write_u16(version_three);
+    write_text(out, manifest.product);
+    out.write_u32(static_cast<u32>(manifest.facts.size()));
+    for (const manifest_fact& fact : manifest.facts) {
+        out.write_u64(fact.key);
+        out.write_u8(fact.kind);
+        out.write_u64(fact.module);
+    }
+    write_capabilities(out, manifest.capabilities);
+    write_features(out, manifest.features);
+    return out.take();
+}
+
+auto decode_release_manifest_v3(std::span<const std::byte> bytes) -> result<release_manifest_v3> {
+    detail::reader input{bytes};
+    LUCENT_TRY(read_header(input, version_three));
+    std::string product = LUCENT_TRY(read_text(input));
+    std::vector<manifest_fact> facts = LUCENT_TRY(read_located_facts(input, bytes.size()));
+    std::vector<manifest_capability> capabilities = LUCENT_TRY(
+        read_capabilities(input, {.total_size = bytes.size(), .fact_count = facts.size()})
+    );
+    release_manifest_v3 manifest{
+        .product = std::move(product),
+        .facts = std::move(facts),
+        .capabilities = std::move(capabilities),
+        .features = LUCENT_TRY(read_features(input, bytes.size())),
+    };
+    if (!input.is_at_end() || !is_canonical(manifest)) {
+        return std::unexpected(malformed);
+    }
+    return manifest;
+}
+
+auto manifest_digest(const release_manifest_v3& manifest) -> crypto::digest {
+    return manifest_digest(entries_of(manifest.facts));
+}
+
+auto core_fact_keys(const release_manifest_v3& manifest) -> std::vector<u64> {
+    return core_keys_of(manifest.capabilities);
+}
+
+auto fact_modules(const release_manifest_v3& manifest) -> std::vector<u64> {
+    std::vector<u64> modules;
+    modules.reserve(manifest.facts.size());
+    for (const manifest_fact& fact : manifest.facts) {
+        modules.push_back(fact.module);
+    }
+    std::ranges::sort(modules);
+    const auto [first, last] = std::ranges::unique(modules);
+    modules.erase(first, last);
+    return modules;
+}
+
+auto core_fact_keys(const release_manifest_v3& manifest, u64 module) -> std::vector<u64> {
+    std::vector<u64> keys = core_keys_of(manifest.capabilities);
+    std::erase_if(keys, [&](u64 key) {
+        const auto found = std::ranges::lower_bound(manifest.facts, key, {}, &manifest_fact::key);
+        return found == manifest.facts.end() || found->key != key || found->module != module;
+    });
+    return keys;
 }
 
 }

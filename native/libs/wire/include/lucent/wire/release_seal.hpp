@@ -21,7 +21,7 @@ namespace lucent::wire {
 enum class artifact_kind : u8 {
     // The packed container (wire/container.hpp), before the start's encryption.
     container = 1,
-    // The release manifest, version 2 (bundle/release_manifest.hpp).
+    // The release manifest, version 3 (bundle/release_manifest.hpp).
     release_manifest = 2,
     // The loader's executable.
     loader = 3,

@@ -330,6 +330,7 @@ auto data_request_json(const data_request& request) -> std::string {
 auto data_response_json(const data_response& response, usize indent) -> std::string {
     return object(
         {
+            field{.name = "answers", .value = std::format("{}", response.answers)},
             field{.name = "data_revision", .value = std::format("{}", response.data_revision)},
             field{.name = "bundle", .value = hex_field(response.bundle_bytes)},
             field{.name = "unsupported", .value = modules_json(response.unsupported, indent + 2)},
@@ -539,8 +540,8 @@ auto cases() -> std::vector<vector_case> {
         },
         vector_case{
             .name = "data_response",
-            .bytes = encode_data_response(fixtures::first_data()),
-            .json = data_response_json(fixtures::first_data(), 0),
+            .bytes = encode_data_response(fixtures::later_data()),
+            .json = data_response_json(fixtures::later_data(), 0),
             .decode_and_encode =
                 [](std::span<const std::byte> bytes) {
                     return decode_data_response(bytes).transform(encode_data_response);

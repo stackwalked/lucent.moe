@@ -1,4 +1,4 @@
-import type { ReleaseManifestV2 } from "@lucent/bundle/release-manifest";
+import type { ReleaseManifestV3 } from "@lucent/bundle/release-manifest";
 import type { CryptoRng } from "@lucent/core/rng";
 import { type Frame, NONCE_SIZE, sealFrame } from "@lucent/wire/frame";
 import {
@@ -41,7 +41,7 @@ export function newChallenge(rng: CryptoRng, imageSize: number): HashChallenge {
 // The entitlement's feature tags as this release's keyed feature ids; everything stays everything.
 export function entitledFeaturesOf(
     selection: FeatureSelection,
-    manifest: ReleaseManifestV2,
+    manifest: ReleaseManifestV3,
 ): EntitledFeatures {
     if (selection === "*") return { everything: true };
     const tags = new Set<string>(selection);
