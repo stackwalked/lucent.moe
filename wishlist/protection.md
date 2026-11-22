@@ -32,8 +32,10 @@ spec: entries leave as they land. Facts' own seams for this work stay in `wishli
   Online keys sign data only. A taken-over server can withhold a release, never run its own code on
   a member's PC. So no per-account bytes inside code: an account mark is an online-signed data blob
   beside the loader.
-- The loader is downloaded from the member area only. One loader for every channel, with a channel
-  selection; when it isn't the latest it does nothing but update itself.
+- The loader is downloaded from the member area only. It has no channels of its own (decided: an
+  alpha loader buys nothing): one release line, its seals signed for stable, and the member's
+  channel selection picks the product's channel. When it isn't the latest it does nothing but
+  update itself.
 - Channels are `stable`, `alpha` and `debug`: product tiers. `alpha` has fresher features and
   `stable`'s integrity posture. `debug` is for a handful of vetted people and drops integrity
   measures for performance: the release build of the same source with refract's VM and mutation

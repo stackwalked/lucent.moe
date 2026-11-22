@@ -47,10 +47,8 @@ product, one feature. Built end to end, native and server together.
 - Platform: promotion of staged releases. `ops publish-release` and `publish-loader` stage under a
   verified seal, but nothing outside the tests writes `current_release`, so no release is served.
 - Platform, slice 2's rest: the start's `core` coverage check for the reported game builds (every
-  build starts today). The loader's seal and artifacts are served on `/v1` (`GET /v1/loader/:channel`,
-  `GET /v1/artifacts/:digest`) to channels the account holds on any entitled product; web's download
-  page counts only the `lucent-loader` product's own channels, and one of the two rules has to
-  give. `.config/dev.env` has no native listener, so `server:dev` serves no loader.
+  build starts today). The loader's seal and artifacts are served on `/v1` (`GET /v1/loader`,
+  `GET /v1/artifacts/:digest`) to any account entitled to a product.
 - Platform, the thin part of slice 3: fact-set storage, `ops publish-fact-set` with the release
   manifest's core coverage, session bundle assembly (leases carry bundle revision 0 until then).
   The TS fact-set and bundle code exists; the server doesn't use it yet. Scoring, live revisions
