@@ -83,6 +83,8 @@ auto relay::on_message(const kit::session_message& message, server_link& link)
                 return on_hello(asked.body, link);
             case kit::server_route::lease:
                 return on_renewal(asked.body, link);
+            case kit::server_route::data:
+                return on_data(asked.body, link);
             }
             return std::nullopt;
         },
@@ -155,6 +157,27 @@ auto relay::on_renewal(std::span<const std::byte> frame, server_link& link)
     return kit::server_reply{
         .route = kit::server_route::lease,
         .body = wire::encode_frame(response->lease),
+    };
+}
+
+// The frame both ways is the module's and the server's alone: the loader adds nothing to a data
+// request and reads nothing of its reply.
+auto relay::on_data(std::span<const std::byte> frame, server_link& link)
+    -> std::optional<kit::session_message> {
+    if (!m_session) {
+        return std::nullopt;
+    }
+    const result<answer> answered = link.fetch_data(*m_session, frame);
+    if (!answered) {
+        return std::nullopt;
+    }
+    if (const std::optional<wire::refusal> refused = refusal_in(*answered)) {
+        return is_passing(refused->code) ? std::nullopt : std::optional{refuse(refused->code)};
+    }
+    const std::span<const std::byte> body = body_in(*answered);
+    return kit::server_reply{
+        .route = kit::server_route::data,
+        .body = std::vector<std::byte>{body.begin(), body.end()},
     };
 }
 

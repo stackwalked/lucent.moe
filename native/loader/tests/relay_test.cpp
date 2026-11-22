@@ -84,7 +84,9 @@ class scripted_server final : public server_link {
 public:
     std::optional<result<answer>> hello_answer;
     std::optional<result<answer>> renewal_answer;
+    std::optional<result<answer>> data_answer;
     std::vector<std::vector<std::byte>> renewals_sent;
+    std::vector<std::vector<std::byte>> data_sent;
     i32 hellos_sent = 0;
 
     auto open_session(const wire::start_id& /*start*/, std::span<const std::byte> /*hello*/)
@@ -108,6 +110,17 @@ public:
         return *renewal_answer;
     }
 
+    auto fetch_data(const wire::session_id& session, std::span<const std::byte> frame)
+        -> result<answer> override {
+        REQUIRE(session == id_of(3));
+        data_sent.emplace_back(frame.begin(), frame.end());
+        if (!data_answer) {
+            FAIL("the test set no data answer");
+            return std::unexpected(error{.code = error_code::closed});
+        }
+        return *data_answer;
+    }
+
     auto close(const wire::session_id& /*session*/) -> result<void> override {
         return {};
     }
@@ -125,6 +138,19 @@ auto renewal() -> kit::session_message {
         .route = kit::server_route::lease,
         .body = wire::encode_frame(renewal_frame()),
     };
+}
+
+// Opaque to the loader both ways: neither needs to decode.
+auto data_request_body() -> std::vector<std::byte> {
+    return std::vector<std::byte>(24, std::byte{0xd1});
+}
+
+auto data_reply_body() -> std::vector<std::byte> {
+    return std::vector<std::byte>(40, std::byte{0xd2});
+}
+
+auto data_request() -> kit::session_message {
+    return kit::server_request{.route = kit::server_route::data, .body = data_request_body()};
 }
 
 auto opened(relay& state, scripted_server& server) -> void {
@@ -251,6 +277,51 @@ TEST_CASE("the module's own refusal is kept, and the first reason wins") {
     server.hello_answer = refusal(wire::refusal_code::slot_taken);
     std::ignore = state.on_message(hello(), server);
     REQUIRE(state.refused() == wire::refusal_code::game_build_unsupported);
+}
+
+TEST_CASE("a data request goes to the server as it is, and its reply back to the module unread") {
+    scripted_server server;
+    relay state{wire::start_id{}};
+    opened(state, server);
+    server.data_answer = answer{data_reply_body()};
+
+    const std::optional<kit::session_message> reply = state.on_message(data_request(), server);
+
+    REQUIRE(
+        reply
+        == kit::session_message{
+            kit::server_reply{.route = kit::server_route::data, .body = data_reply_body()}
+        }
+    );
+    REQUIRE(server.data_sent.size() == 1);
+    REQUIRE(server.data_sent.at(0) == data_request_body());
+}
+
+TEST_CASE("a data request before the session opened isn't relayed") {
+    scripted_server server;
+    relay state{wire::start_id{}};
+    REQUIRE_FALSE(state.on_message(data_request(), server));
+    REQUIRE(server.data_sent.empty());
+}
+
+TEST_CASE("a troubled server's answer to a data request leaves the module running") {
+    scripted_server server;
+    relay state{wire::start_id{}};
+    opened(state, server);
+    server.data_answer = refusal(wire::refusal_code::service_unavailable);
+    REQUIRE_FALSE(state.on_message(data_request(), server).has_value());
+    REQUIRE_FALSE(state.refused().has_value());
+}
+
+TEST_CASE("a definitive refusal of a data request unloads the module") {
+    scripted_server server;
+    relay state{wire::start_id{}};
+    opened(state, server);
+    server.data_answer = refusal(wire::refusal_code::session_ended);
+    REQUIRE(
+        state.on_message(data_request(), server) == kit::session_message{kit::unload_request{}}
+    );
+    REQUIRE(state.refused() == wire::refusal_code::session_ended);
 }
 
 }

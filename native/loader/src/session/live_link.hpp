@@ -21,6 +21,8 @@ public:
         -> result<answer> override;
     auto renew(const wire::session_id& session, std::span<const std::byte> request)
         -> result<answer> override;
+    auto fetch_data(const wire::session_id& session, std::span<const std::byte> frame)
+        -> result<answer> override;
     auto close(const wire::session_id& session) -> result<void> override;
 
 private:

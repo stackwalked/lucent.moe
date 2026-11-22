@@ -13,8 +13,9 @@
 #include "api/server.hpp"
 
 // The loader's half of the module's session (kit/session_message.hpp): the module's hello goes to
-// POST /v1/starts/:id/session and each renewal to POST /v1/sessions/:id/lease inside the loader's
-// own lease_request, every reply back to the module unread. A refusal is shown and the module is
+// POST /v1/starts/:id/session, each renewal to POST /v1/sessions/:id/lease inside the loader's
+// own lease_request, and each data request to POST /v1/sessions/:id/data as it is, every reply
+// back to the module unread. A refusal is shown and the module is
 // told to unload; an unreachable or troubled server gets no reply, and the module rides it out on
 // its lease.
 
@@ -34,6 +35,8 @@ public:
     virtual auto open_session(const wire::start_id& start, std::span<const std::byte> hello)
         -> result<answer> = 0;
     virtual auto renew(const wire::session_id& session, std::span<const std::byte> request)
+        -> result<answer> = 0;
+    virtual auto fetch_data(const wire::session_id& session, std::span<const std::byte> frame)
         -> result<answer> = 0;
     virtual auto close(const wire::session_id& session) -> result<void> = 0;
 };
@@ -57,6 +60,8 @@ private:
     auto on_hello(std::span<const std::byte> hello, server_link& link)
         -> std::optional<kit::session_message>;
     auto on_renewal(std::span<const std::byte> frame, server_link& link)
+        -> std::optional<kit::session_message>;
+    auto on_data(std::span<const std::byte> frame, server_link& link)
         -> std::optional<kit::session_message>;
     auto refuse(wire::refusal_code code) -> kit::session_message;
 

@@ -47,6 +47,11 @@ auto live_link::renew(const wire::session_id& session, std::span<const std::byte
     return post(std::format("/v1/sessions/{}/lease", to_hex(session.bytes)), request);
 }
 
+auto live_link::fetch_data(const wire::session_id& session, std::span<const std::byte> frame)
+    -> result<answer> {
+    return post(std::format("/v1/sessions/{}/data", to_hex(session.bytes)), frame);
+}
+
 auto live_link::close(const wire::session_id& session) -> result<void> {
     const std::optional<std::string> token = LUCENT_TRY(m_tokens->access_token(*m_api, m_keep));
     if (!token) {
