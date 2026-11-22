@@ -12,10 +12,12 @@
 #include <lucent/kit/clock.hpp>
 #include <lucent/kit/feature.hpp>
 #include <lucent/kit/registry.hpp>
+#include <lucent/wire/data.hpp>
 #include <lucent/wire/frame.hpp>
 #include <lucent/wire/lease.hpp>
 #include <lucent/wire/session.hpp>
 
+#include "data_client.hpp"
 #include "random.hpp"
 
 namespace lucent::kit::detail {
@@ -63,7 +65,7 @@ auto lease_client::hello() const -> std::vector<std::byte> {
 }
 
 auto lease_client::open(std::span<const std::byte> reply, clock::time_point sent)
-    -> result<entitlements> {
+    -> result<session_opening> {
     LUCENT_INVARIANT(!m_session.has_value());
     const wire::session_reply decoded = LUCENT_TRY(wire::decode_session_reply(reply));
     const wire::session_exchange& exchange = decoded.exchange;
@@ -95,9 +97,11 @@ auto lease_client::open(std::span<const std::byte> reply, clock::time_point sent
         || granted.release != m_identity.release) {
         return std::unexpected(malformed);
     }
+    data_client data{exchange.session, std::move(keys.data)};
+    wire::data_response first_data = LUCENT_TRY(data.accept(decoded.first_data));
     m_session.emplace(
         session_state{
-            .keys = std::move(keys),
+            .keys = std::move(keys.lease),
             .held = granted,
             .expires = sent + granted.duration,
             .highest_in = first.header.sequence,
@@ -106,7 +110,11 @@ auto lease_client::open(std::span<const std::byte> reply, clock::time_point sent
             .pending = {},
         }
     );
-    return entitlements_of(granted.entitled);
+    return session_opening{
+        .entitled = entitlements_of(granted.entitled),
+        .data = std::move(data),
+        .first_data = std::move(first_data),
+    };
 }
 
 auto lease_client::renewal(clock::time_point now, random_source& random)
@@ -129,7 +137,7 @@ auto lease_client::renewal(clock::time_point now, random_source& random)
     );
     const u64 sequence = session.last_out + 1;
     const wire::frame sealed = wire::seal_frame(
-        session.keys.lease.module_to_server,
+        session.keys.module_to_server,
         wire::frame_contents{
             .header =
                 wire::frame_header{
@@ -161,7 +169,7 @@ auto lease_client::accept(std::span<const std::byte> frame) -> result<entitlemen
         return std::unexpected(malformed);
     }
     const crypto::secret_bytes plain =
-        LUCENT_TRY(wire::open_frame(session.keys.lease.server_to_module, sealed));
+        LUCENT_TRY(wire::open_frame(session.keys.server_to_module, sealed));
     const wire::lease granted = LUCENT_TRY(wire::decode_lease(plain.as_bytes()));
     LUCENT_TRY(wire::verify_lease(granted, m_identity.lease_key));
     if (granted.session != session.held.session

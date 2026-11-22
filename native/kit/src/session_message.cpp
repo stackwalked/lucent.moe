@@ -103,7 +103,8 @@ auto decode_relayed(std::span<const std::byte> payload) -> result<relayed_body> 
     }
     const auto raw = std::to_integer<u8>(payload.front());
     if (raw != std::to_underlying(server_route::session)
-        && raw != std::to_underlying(server_route::lease)) {
+        && raw != std::to_underlying(server_route::lease)
+        && raw != std::to_underlying(server_route::data)) {
         return std::unexpected(malformed);
     }
     const std::span<const std::byte> body = payload.subspan(1);

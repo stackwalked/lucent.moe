@@ -1,6 +1,7 @@
 #include <lucent/kit/session_message.hpp>
 
 #include <array>
+#include <bit>
 #include <cstddef>
 #include <expected>
 #include <initializer_list>
@@ -10,6 +11,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 
+#include <lucent/core/narrow.hpp>
 #include <lucent/wire/refusal.hpp>
 
 namespace lucent::kit {
@@ -21,6 +23,10 @@ auto round_trip(const session_message& message) -> result<session_message> {
     const isize size = LUCENT_TRY(decode_frame_size(bytes.first<frame_header_size>()));
     REQUIRE(size == std::ssize(frame) - isize{frame_header_size});
     return decode(bytes.subspan(frame_header_size));
+}
+
+auto header_of(isize size) -> std::array<std::byte, frame_header_size> {
+    return std::bit_cast<std::array<std::byte, frame_header_size>>(narrow<u32>(size));
 }
 
 auto bytes_of(std::initializer_list<u8> values) -> std::vector<std::byte> {
@@ -42,7 +48,9 @@ TEST_CASE("every message survives encoding and decoding") {
         session_message{unload_request{}},
         session_message{start_refused{.code = wire::refusal_code::game_build_unsupported}},
         session_message{server_request{.route = server_route::session, .body = bytes_of({1, 2})}},
-        session_message{server_reply{.route = server_route::lease, .body = bytes_of({9})}}
+        session_message{server_reply{.route = server_route::lease, .body = bytes_of({9})}},
+        session_message{server_request{.route = server_route::data, .body = bytes_of({3})}},
+        session_message{server_reply{.route = server_route::data, .body = bytes_of({4, 5})}}
     );
     CHECK(round_trip(message) == message);
 }
@@ -74,19 +82,19 @@ TEST_CASE("a relayed body is framed as its kind, its route, then the body unchan
         encode(server_reply{.route = server_route::session, .body = bytes_of({0xcc})})
         == bytes_of({3, 0, 0, 0, 6, 1, 0xcc})
     );
+    CHECK(
+        encode(server_request{.route = server_route::data, .body = bytes_of({0xdd})})
+        == bytes_of({3, 0, 0, 0, 5, 3, 0xdd})
+    );
 }
 
 TEST_CASE("a frame size of zero or above the bound is malformed") {
-    const auto size = GENERATE(
-        std::array<std::byte, 4>{},
-        std::array{std::byte{0x01}, std::byte{0x00}, std::byte{0x01}, std::byte{0x00}}
-    );
+    const auto size = GENERATE(header_of(0), header_of(max_frame_size + 1));
     CHECK(decode_frame_size(size) == std::unexpected(error{.code = error_code::malformed}));
 }
 
 TEST_CASE("a frame exactly at the bound is accepted") {
-    const std::array header{std::byte{0x00}, std::byte{0x00}, std::byte{0x01}, std::byte{0x00}};
-    CHECK(decode_frame_size(header) == max_frame_size);
+    CHECK(decode_frame_size(header_of(max_frame_size)) == max_frame_size);
 }
 
 TEST_CASE("a body that isn't a known message is malformed") {
@@ -105,7 +113,7 @@ TEST_CASE("a body that isn't a known message is malformed") {
         bytes_of({5}),
         bytes_of({5, 1}),
         bytes_of({5, 0, 1}),
-        bytes_of({6, 3, 1})
+        bytes_of({6, 4, 1})
     );
     CHECK(decode(body) == std::unexpected(error{.code = error_code::malformed}));
 }

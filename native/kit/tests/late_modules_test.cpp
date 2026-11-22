@@ -1,14 +1,17 @@
 #include "../src/late_modules.hpp"
 
+#include <algorithm>
 #include <array>
 #include <bit>
 #include <chrono>
 #include <cstddef>
+#include <expected>
 #include <filesystem>
 #include <span>
 #include <stop_token>
 #include <string>
 #include <thread>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -18,6 +21,7 @@
 
 #include <lucent/bundle/bundle.hpp>
 #include <lucent/bundle/fact_set.hpp>
+#include <lucent/core/match.hpp>
 #include <lucent/crypto/crypto.hpp>
 #include <lucent/kit/capability.hpp>
 #include <lucent/kit/clock.hpp>
@@ -25,11 +29,20 @@
 #include <lucent/kit/fact_apply.hpp>
 #include <lucent/kit/fact_resolve.hpp>
 #include <lucent/kit/game_module.hpp>
+#include <lucent/kit/session.hpp>
+#include <lucent/kit/session_message.hpp>
 #include <lucent/kit/worker_set.hpp>
 #include <lucent/os/file.hpp>
 #include <lucent/os/unique_handle.hpp>
 #include <lucent/pe/image_view.hpp>
+#include <lucent/wire/data.hpp>
+#include <lucent/wire/frame.hpp>
+#include <lucent/wire/ids.hpp>
+#include <lucent/wire/session.hpp>
 
+#include "../src/data_client.hpp"
+#include "../src/frame_inbox.hpp"
+#include "../src/random.hpp"
 #include "../src/session_end.hpp"
 
 // A set keyed by a module that isn't loaded at boot waits, and applies once the module loads. This
@@ -194,7 +207,7 @@ auto wait_until_available() -> bool {
 auto start_late_worker(worker_set& workers, detail::late_worker handed) -> result<void> {
     return workers.start<"late facts">(
         [late = std::move(handed)](const std::stop_token& stop) mutable {
-            detail::resolve_late_modules(stop, *late.signal, std::move(late.facts), late.ending);
+            detail::resolve_late_modules(stop, std::move(late));
         }
     );
 }
@@ -214,11 +227,14 @@ TEST_CASE("the late worker resolves a module's facts when the loader loads it") 
         detail::late_worker{
             .signal = &*signal,
             .ending = nullptr,
+            .data = nullptr,
             .facts = detail::late_facts{
                 .waiting = std::move(booted.waiting),
                 .waiting_core = {},
+                .unasked = {},
                 .modules = known,
                 .records = linked_fact_records(),
+                .trusted = {},
             },
         }
     );
@@ -298,11 +314,14 @@ TEST_CASE("a core capability waiting for a module that loads without its facts e
         detail::late_worker{
             .signal = &*signal,
             .ending = &ending,
+            .data = nullptr,
             .facts = detail::late_facts{
                 .waiting = std::move(booted.waiting),
                 .waiting_core = fixture_core(),
+                .unasked = {},
                 .modules = known,
                 .records = linked_fact_records(),
+                .trusted = {},
             },
         }
     );
@@ -319,6 +338,159 @@ TEST_CASE("a core capability waiting for a module that loads without its facts e
     CHECK_FALSE(ended_before_load);
     CHECK(has_ended);
     CHECK(fixture_count.record().status == fact_status::rejected);
+}
+
+// Fills nothing in: the data route's nonces need no secrecy in a test, and stay the same each run.
+class zero_random final : public detail::random_source {
+public:
+    auto fill(std::span<std::byte> out) -> result<void> override {
+        std::ranges::fill(out, std::byte{0});
+        return {};
+    }
+};
+
+constexpr wire::session_id test_session{};
+
+auto key_of(u8 fill) -> crypto::secret_key {
+    std::array<std::byte, crypto::secret_key_size> material{};
+    material.fill(std::byte{fill});
+    return crypto::secret_key::from_bytes(material);
+}
+
+// The module's ends of two anonymous pipes, and the host's ends, as the host would hold them.
+struct pipes {
+    session_ends module;
+    session_ends host;
+};
+
+auto pipe_pair() -> pipes {
+    HANDLE to_module_read = nullptr;
+    HANDLE to_module_write = nullptr;
+    HANDLE to_host_read = nullptr;
+    HANDLE to_host_write = nullptr;
+    REQUIRE(CreatePipe(&to_module_read, &to_module_write, nullptr, 0) != FALSE);
+    REQUIRE(CreatePipe(&to_host_read, &to_host_write, nullptr, 0) != FALSE);
+    return pipes{
+        .module =
+            session_ends{
+                .inbound = os::unique_handle{to_module_read},
+                .outbound = os::unique_handle{to_host_write},
+            },
+        .host = session_ends{
+            .inbound = os::unique_handle{to_host_read},
+            .outbound = os::unique_handle{to_module_write},
+        },
+    };
+}
+
+// The server's answer to one data request, sealed as platform/server would seal it.
+auto data_reply(std::span<const std::byte> bundle) -> std::vector<std::byte> {
+    const std::vector<std::byte> plain = wire::encode_data_response(
+        wire::data_response{
+            .data_revision = 0,
+            .bundle_bytes = std::vector<std::byte>{bundle.begin(), bundle.end()},
+            .unsupported = {},
+        }
+    );
+    return wire::encode_frame(
+        wire::seal_frame(
+            key_of(2),
+            wire::frame_contents{
+                .header =
+                    wire::frame_header{
+                        .session = test_session,
+                        .way = wire::direction::server_to_module,
+                        .sequence = 1,
+                    },
+                .nonce = {},
+                .plain = plain,
+            }
+        )
+    );
+}
+
+// What the module asked the server for, as the host relays it.
+auto asked_modules(session& host) -> std::vector<bundle::module_key> {
+    const result<session_message> received = host.receive();
+    REQUIRE(received.has_value());
+    const result<std::vector<std::byte>> body = match(
+        *received,
+        [](const server_request& asked) -> result<std::vector<std::byte>> {
+            if (asked.route != server_route::data) {
+                return std::unexpected(error{.code = error_code::malformed});
+            }
+            return asked.body;
+        },
+        [](const auto&) -> result<std::vector<std::byte>> {
+            return std::unexpected(error{.code = error_code::malformed});
+        }
+    );
+    REQUIRE(body.has_value());
+    const result<wire::frame> sealed = wire::decode_frame(*body);
+    REQUIRE(sealed.has_value());
+    const result<crypto::secret_bytes> plain = wire::open_frame(key_of(1), *sealed);
+    REQUIRE(plain.has_value());
+    const result<wire::data_request> request = wire::decode_data_request(plain->as_bytes());
+    REQUIRE(request.has_value());
+    return request->modules;
+}
+
+TEST_CASE("a module that loads after the start gets its set from the server's data reply") {
+    REQUIRE(GetModuleHandleW(fixture_path().filename().c_str()) == nullptr);
+    const result<detail::load_signal> signal = detail::load_signal::watch();
+    REQUIRE(signal.has_value());
+    // Every fact unresolved, as at a boot that had no set for the fixture.
+    std::ignore = apply_at_boot(honest_bundle());
+    const std::string name = fixture_name();
+    const std::array known{game_module{.index = fixture_module, .name = name}};
+    const std::array<crypto::public_key, 1> trusted{trusted_signer().public_part()};
+    pipes ends = pipe_pair();
+    session channel{std::move(ends.module)};
+    session host{std::move(ends.host)};
+    wire::route_keys keys{.module_to_server = key_of(1), .server_to_module = key_of(2)};
+    detail::data_client client{test_session, std::move(keys)};
+    detail::frame_inbox inbox;
+    const monotonic_clock real_time;
+    zero_random random;
+    const detail::data_link link{
+        .client = &client,
+        .inbox = &inbox,
+        .channel = &channel,
+        .time = &real_time,
+        .random = &random,
+    };
+    worker_set workers;
+    const result<void> started = start_late_worker(
+        workers,
+        detail::late_worker{
+            .signal = &*signal,
+            .ending = nullptr,
+            .data = &link,
+            .facts = detail::late_facts{
+                .waiting = {},
+                .waiting_core = {},
+                .unasked = {fixture_module},
+                .modules = known,
+                .records = linked_fact_records(),
+                .trusted = trusted,
+            },
+        }
+    );
+    REQUIRE(started.has_value());
+
+    const HMODULE fixture = LoadLibraryW(fixture_path().c_str());
+    REQUIRE(fixture != nullptr);
+    const std::vector<bundle::module_key> asked = asked_modules(host);
+    inbox.push(
+        data_reply(bundle_for(fixture_build(), {bundle::literal(fixture_count.record().key, 5)}))
+    );
+    const bool is_resolved = wait_until_available();
+    CHECK(workers.stop().empty());
+    FreeLibrary(fixture);
+
+    CHECK(asked == std::vector{fixture_build()});
+    CHECK(is_resolved);
+    CHECK(fixture_count.get() == 5);
 }
 
 }

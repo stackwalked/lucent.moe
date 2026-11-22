@@ -43,6 +43,7 @@ lucent_library(kit
         src/clock.cpp
         src/config_store.cpp
         src/core_capabilities.cpp
+        src/data_client.cpp
         $<$<CONFIG:Debug>:src/dev_channel.cpp>
         $<$<CONFIG:Debug>:src/dev_facts.cpp>
         $<$<CONFIG:Debug>:src/dev_features.cpp>
@@ -51,6 +52,7 @@ lucent_library(kit
         src/fact_resolve.cpp
         src/fact_section.cpp
         src/feature_section.cpp
+        src/frame_inbox.cpp
         src/game_module.cpp
         src/hook.cpp
         src/late_modules.cpp

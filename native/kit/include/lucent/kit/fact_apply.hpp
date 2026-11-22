@@ -41,6 +41,14 @@ struct late_request {
     std::span<const loaded_module> modules;
 };
 
+// A bundle that arrived after the start (release builds: the data route's answer for a module
+// loaded late).
+struct admit_request {
+    std::span<const std::byte> bundle;
+    std::span<const crypto::public_key> trusted;
+    std::span<const fact_record> records;
+};
+
 struct late_report {
     // One per set decided now (applied, or other_build), in the bundle's order.
     std::vector<set_outcome> sets;
@@ -51,8 +59,9 @@ struct late_report {
 
 struct apply_report;
 
-// The sets apply verified and found made for this manifest, but keyed by a module that wasn't
-// loaded yet. Only apply makes them, so applying one later needs only its module keys checked.
+// The sets apply or admit verified and found made for this manifest, but keyed by a module that
+// wasn't loaded yet. Only those two add to them, so applying one later needs only its module keys
+// checked.
 class waiting_sets final {
 public:
     waiting_sets() = default;
@@ -68,6 +77,12 @@ public:
     // and drops it either way; a set still waiting on a module stays. Resolves with resolve_late,
     // so other threads may read facts meanwhile. One thread at a time.
     auto apply_loaded(const late_request& request) -> late_report;
+
+    // Adds the bundle's sets that are signed by a trusted key with every entry under the signed
+    // root, and made for this manifest; the rest it drops. Resolves nothing: apply_loaded applies
+    // them once their modules have loaded. A bundle that doesn't decode adds nothing, and fails as
+    // apply's does. One thread at a time.
+    auto admit(const admit_request& request) -> result<void>;
 
 private:
     friend auto apply(const apply_request& request) -> result<apply_report>;

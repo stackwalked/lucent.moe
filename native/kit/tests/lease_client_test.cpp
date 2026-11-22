@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cstddef>
 #include <expected>
+#include <initializer_list>
 #include <memory>
 #include <optional>
 #include <span>
@@ -11,6 +12,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <lucent/bundle/fact_set.hpp>
 #include <lucent/crypto/crypto.hpp>
 #include <lucent/kit/clock.hpp>
 #include <lucent/kit/feature.hpp>
@@ -21,6 +23,7 @@
 #include <lucent/wire/lease.hpp>
 #include <lucent/wire/session.hpp>
 
+#include "../src/data_client.hpp"
 #include "../src/random.hpp"
 
 // The lease client against a stand-in server built from wire's own signing and sealing, on a
@@ -77,6 +80,8 @@ public:
         std::optional<wire::release_id> release;
         std::optional<wire::module_nonce> nonce;
         bool is_signed_by_another_key = false;
+        // Seals the first data under the lease route's key, as a server mixing routes up would.
+        bool is_data_under_lease_key = false;
     };
 
     auto reply_to(std::span<const std::byte> hello_bytes, const reply_options& options)
@@ -112,9 +117,37 @@ public:
             wire::session_reply{
                 .exchange = exchange,
                 .first_lease = sealed(first),
-                .first_data = sealed_empty_data(),
+                .first_data = sealed_data(
+                    options.is_data_under_lease_key ? m_keys->lease.server_to_module
+                                                    : m_keys->data.server_to_module,
+                    m_first_bundle
+                ),
             }
         );
+    }
+
+    // The data response to the request in this frame, and the request as the server read it.
+    struct data_answer {
+        wire::frame_header request_header;
+        wire::data_request request;
+        std::vector<std::byte> response;
+    };
+
+    auto data_for(std::span<const std::byte> request_frame, std::vector<std::byte> bundle)
+        -> data_answer {
+        const result<wire::frame> frame = wire::decode_frame(request_frame);
+        REQUIRE(frame.has_value());
+        REQUIRE(m_keys != nullptr);
+        const result<crypto::secret_bytes> plain =
+            wire::open_frame(m_keys->data.module_to_server, *frame);
+        REQUIRE(plain.has_value());
+        const result<wire::data_request> request = wire::decode_data_request(plain->as_bytes());
+        REQUIRE(request.has_value());
+        return data_answer{
+            .request_header = frame->header,
+            .request = *request,
+            .response = wire::encode_frame(sealed_data(m_keys->data.server_to_module, bundle)),
+        };
     }
 
     // The next lease, for the renewal in this frame.
@@ -128,6 +161,11 @@ public:
         const result<wire::lease_renewal> renewal = wire::decode_lease_renewal(plain->as_bytes());
         REQUIRE(renewal.has_value());
         return wire::encode_frame(sealed(lease_of(renewal->sequence, renewal->nonce, m_release)));
+    }
+
+    // What the next session reply's first data carries; opaque to the client.
+    auto carry_first(std::vector<std::byte> bundle) -> void {
+        m_first_bundle = std::move(bundle);
     }
 
     auto lease_key() const -> crypto::public_key {
@@ -165,23 +203,31 @@ private:
         );
     }
 
-    auto sealed_empty_data() const -> wire::frame {
+    // The data route's frames count from 0, the first data's, apart from the lease route's.
+    auto sealed_data(const crypto::secret_key& key, std::span<const std::byte> bundle)
+        -> wire::frame {
         const std::vector<std::byte> plain = wire::encode_data_response(
-            wire::data_response{.data_revision = 0, .bundle_bytes = {}, .unsupported = {}}
+            wire::data_response{
+                .data_revision = 0,
+                .bundle_bytes = std::vector<std::byte>{bundle.begin(), bundle.end()},
+                .unsupported = {},
+            }
         );
-        return wire::seal_frame(
-            m_keys->data.server_to_module,
+        wire::frame frame = wire::seal_frame(
+            key,
             wire::frame_contents{
                 .header =
                     wire::frame_header{
                         .session = m_session,
                         .way = wire::direction::server_to_module,
-                        .sequence = 0,
+                        .sequence = m_data_out,
                     },
                 .nonce = {},
                 .plain = plain,
             }
         );
+        ++m_data_out;
+        return frame;
     }
 
     auto sealed(const wire::lease& granted) -> wire::frame {
@@ -208,6 +254,8 @@ private:
     crypto::signing_key m_lease_key = crypto::signing_key::from_seed(seed_of(7));
     std::unique_ptr<wire::session_keys> m_keys;
     u64 m_out = 0;
+    u64 m_data_out = 0;
+    std::vector<std::byte> m_first_bundle{std::byte{1}, std::byte{2}, std::byte{3}};
 };
 
 auto identity_for(const stand_in_server& server) -> lease_identity {
@@ -215,7 +263,7 @@ auto identity_for(const stand_in_server& server) -> lease_identity {
         .lease_key = server.lease_key(),
         .release = server.release(),
         .boot = wire::boot_report{
-            .boot_info_version = 5,
+            .boot_info_version = 6,
             .kind = wire::image_kind::mapped,
             .image_base = 0x1'0000,
             .image_size = 0x2'0000,
@@ -235,20 +283,47 @@ const stand_in_server::reply_options no_change{
     .release = std::nullopt,
     .nonce = std::nullopt,
     .is_signed_by_another_key = false,
+    .is_data_under_lease_key = false,
 };
 
-// An opened client and the server it talks to.
+// An opened client, its data route, and the server they talk to.
 struct opened {
     stand_in_server server;
     seeded_random random{42};
     std::unique_ptr<lease_client> client;
+    std::unique_ptr<data_client> data;
 };
 
 auto open_at_start(opened& session) -> void {
     session.client = std::make_unique<lease_client>(client_for(session.server, session.random));
     const std::vector<std::byte> reply =
         session.server.reply_to(session.client->hello(), no_change);
-    REQUIRE(session.client->open(reply, start).has_value());
+    result<session_opening> opening = session.client->open(reply, start);
+    REQUIRE(opening.has_value());
+    session.data = std::make_unique<data_client>(std::move(opening->data));
+}
+
+auto accept_data(data_client& data, std::span<const std::byte> frame)
+    -> result<wire::data_response> {
+    const result<wire::frame> sealed = wire::decode_frame(frame);
+    REQUIRE(sealed.has_value());
+    return data.accept(*sealed);
+}
+
+auto bundle_of(std::initializer_list<u8> values) -> std::vector<std::byte> {
+    std::vector<std::byte> bytes;
+    for (const u8 value : values) {
+        bytes.push_back(std::byte{value});
+    }
+    return bytes;
+}
+
+// The server's answer to a data request for one module build, carrying this bundle.
+auto ask_data(opened& session, std::vector<std::byte> bundle) -> stand_in_server::data_answer {
+    const result<std::vector<std::byte>> asked =
+        session.data->request({bundle::module_key{.name_hash = 5}}, session.random);
+    REQUIRE(asked.has_value());
+    return session.server.data_for(*asked, std::move(bundle));
 }
 
 auto renew(opened& session, clock::time_point when) -> std::vector<std::byte> {
@@ -264,12 +339,12 @@ TEST_CASE("a reply signed by the lease key that answers this hello opens the ses
     seeded_random random{1};
     lease_client client = client_for(server, random);
 
-    const result<entitlements> granted =
+    const result<session_opening> opening =
         client.open(server.reply_to(client.hello(), no_change), start);
 
-    REQUIRE(granted.has_value());
+    REQUIRE(opening.has_value());
     CHECK(
-        *granted
+        opening->entitled
         == entitlements{
             .is_everything = false,
             .features = {static_cast<feature_id>(7), static_cast<feature_id>(9)},
@@ -285,7 +360,12 @@ TEST_CASE("a reply signed by any other key opens no session") {
 
     const std::vector<std::byte> reply = server.reply_to(
         client.hello(),
-        {.release = std::nullopt, .nonce = std::nullopt, .is_signed_by_another_key = true}
+        {
+            .release = std::nullopt,
+            .nonce = std::nullopt,
+            .is_signed_by_another_key = true,
+            .is_data_under_lease_key = false,
+        }
     );
 
     CHECK(client.open(reply, start) == std::unexpected(malformed));
@@ -299,7 +379,13 @@ TEST_CASE("a first lease answering another hello's nonce opens no session") {
     other.fill(std::byte{0x5a});
 
     const std::vector<std::byte> reply = server.reply_to(
-        client.hello(), {.release = std::nullopt, .nonce = other, .is_signed_by_another_key = false}
+        client.hello(),
+        {
+            .release = std::nullopt,
+            .nonce = other,
+            .is_signed_by_another_key = false,
+            .is_data_under_lease_key = false,
+        }
     );
 
     CHECK(client.open(reply, start) == std::unexpected(malformed));
@@ -314,11 +400,83 @@ TEST_CASE("a first lease for another release opens no session") {
         .release = id_of<wire::release_id>(4),
         .nonce = std::nullopt,
         .is_signed_by_another_key = false,
+        .is_data_under_lease_key = false,
     };
 
     const std::vector<std::byte> reply = server.reply_to(client.hello(), other_release);
 
     CHECK(client.open(reply, start) == std::unexpected(malformed));
+}
+
+TEST_CASE("the session reply's first data opens on the data route and yields its bundle") {
+    stand_in_server server;
+    server.carry_first(bundle_of({0xb0, 0x0b}));
+    seeded_random random{1};
+    lease_client client = client_for(server, random);
+
+    const result<session_opening> opening =
+        client.open(server.reply_to(client.hello(), no_change), start);
+
+    REQUIRE(opening.has_value());
+    CHECK(opening->first_data.bundle_bytes == bundle_of({0xb0, 0x0b}));
+}
+
+TEST_CASE("a first data frame sealed under the lease route's key opens no session") {
+    stand_in_server server;
+    seeded_random random{1};
+    lease_client client = client_for(server, random);
+
+    const std::vector<std::byte> reply = server.reply_to(
+        client.hello(),
+        {
+            .release = std::nullopt,
+            .nonce = std::nullopt,
+            .is_signed_by_another_key = false,
+            .is_data_under_lease_key = true,
+        }
+    );
+
+    CHECK(client.open(reply, start) == std::unexpected(malformed));
+}
+
+TEST_CASE("the data route counts its sequences apart from the lease route's") {
+    opened session;
+    open_at_start(session);
+    // Two renewals and their leases take the lease route to sequence 2 both ways.
+    REQUIRE(session.client->accept(session.server.lease_for(renew(session, start + 15s))));
+    REQUIRE(session.client->accept(session.server.lease_for(renew(session, start + 30s))));
+
+    const stand_in_server::data_answer answer = ask_data(session, bundle_of({0x5e}));
+
+    CHECK(answer.request_header.sequence == 1);
+    CHECK(answer.request.modules == std::vector{bundle::module_key{.name_hash = 5}});
+    const result<wire::data_response> response = accept_data(*session.data, answer.response);
+    CHECK(
+        response
+        == wire::data_response{
+            .data_revision = 0,
+            .bundle_bytes = bundle_of({0x5e}),
+            .unsupported = {},
+        }
+    );
+}
+
+TEST_CASE("the same data frame relayed twice is accepted once") {
+    opened session;
+    open_at_start(session);
+    const std::vector<std::byte> response = ask_data(session, {}).response;
+
+    REQUIRE(accept_data(*session.data, response).has_value());
+
+    CHECK(accept_data(*session.data, response) == std::unexpected(malformed));
+}
+
+TEST_CASE("a lease frame never opens on the data route") {
+    opened session;
+    open_at_start(session);
+    const std::vector<std::byte> lease = session.server.lease_for(renew(session, start + 15s));
+
+    CHECK(accept_data(*session.data, lease) == std::unexpected(malformed));
 }
 
 TEST_CASE("a lease runs from when the request it answers was sent, not from when it arrived") {

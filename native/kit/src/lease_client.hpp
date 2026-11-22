@@ -9,10 +9,12 @@
 #include <lucent/crypto/crypto.hpp>
 #include <lucent/kit/clock.hpp>
 #include <lucent/kit/registry.hpp>
+#include <lucent/wire/data.hpp>
 #include <lucent/wire/ids.hpp>
 #include <lucent/wire/lease.hpp>
 #include <lucent/wire/session.hpp>
 
+#include "data_client.hpp"
 #include "random.hpp"
 
 namespace lucent::kit::detail {
@@ -32,6 +34,14 @@ struct lease_identity {
     crypto::public_key lease_key{};
     wire::release_id release;
     wire::boot_report boot;
+};
+
+// What opening the session leaves beside the lease client: the first lease's grant, the data
+// route, and the first data response, which the session reply carries.
+struct session_opening {
+    entitlements entitled;
+    data_client data;
+    wire::data_response first_data;
 };
 
 enum class lease_standing : u8 {
@@ -66,10 +76,11 @@ public:
     // POST /v1/starts/:id/session's body.
     auto hello() const -> std::vector<std::byte>;
 
-    // The server's reply to the hello sent at `sent`: its signed half of the exchange and the
-    // first lease. Malformed unless the exchange is signed by the lease key over this hello's key
-    // and nonce, and the lease answers this hello for this release. Once only.
-    auto open(std::span<const std::byte> reply, clock::time_point sent) -> result<entitlements>;
+    // The server's reply to the hello sent at `sent`: its signed half of the exchange, the first
+    // lease and the first data. Malformed unless the exchange is signed by the lease key over this
+    // hello's key and nonce, the lease answers this hello for this release, and the first data
+    // opens on the data route. Once only.
+    auto open(std::span<const std::byte> reply, clock::time_point sent) -> result<session_opening>;
 
     // The next renewal's frame, to send now; nothing until open() succeeded.
     auto renewal(clock::time_point now, random_source& random) -> result<std::vector<std::byte>>;
@@ -93,7 +104,8 @@ private:
     };
 
     struct session_state {
-        wire::session_keys keys;
+        // The lease route's; the data route's went to the data client.
+        wire::route_keys keys;
         wire::lease held;
         clock::time_point expires;
         // The highest frame sequence accepted from the server, and the last one sent to it.

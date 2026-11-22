@@ -7,6 +7,10 @@
 #include <variant>
 #include <vector>
 
+#include <lucent/core/narrow.hpp>
+#include <lucent/crypto/crypto.hpp>
+#include <lucent/wire/frame.hpp>
+#include <lucent/wire/ids.hpp>
 #include <lucent/wire/refusal.hpp>
 
 namespace lucent::kit {
@@ -51,6 +55,9 @@ enum class server_route : u8 {
     // POST /v1/sessions/:id/lease: the body is the module's renewal frame; the reply is the
     // lease_response's frame alone, the host keeping its own challenge.
     lease = 2,
+    // POST /v1/sessions/:id/data: the body is the module's data-route frame; the reply is the
+    // server's data-route frame.
+    data = 3,
 };
 
 // Module to host: send this body to the server. The host relays it unread and answers with a
@@ -78,8 +85,19 @@ using session_message = std::
 // byte and the payload.
 inline constexpr usize frame_header_size = 4;
 
-// Bounds every read, so a corrupt size can't make the reader allocate gigabytes.
-inline constexpr isize max_frame_size = isize{64} * 1024;
+// A wire frame at its largest (lucent/wire/frame.hpp, version 1): the plaintext bound, then the
+// header (a 32-byte context, the session id, the direction byte and the u64 sequence), the nonce
+// and the tag.
+inline constexpr isize max_wire_frame_size = narrow<isize>(
+    wire::max_frame_plain_size + 32 + wire::id_size + sizeof(u8) + sizeof(u64)
+    + crypto::aead_nonce_size + crypto::aead_tag_size
+);
+
+// Bounds every read, so a corrupt size can't make the reader allocate gigabytes. The largest
+// message is a relayed session reply: two wire frames (the first lease and the first data) after
+// the kind byte, the route byte, the reply's context, the signed exchange and the lease frame's
+// size, which the headroom holds with room to spare.
+inline constexpr isize max_frame_size = (2 * max_wire_frame_size) + (isize{4} * 1024);
 
 auto is_unload_request(const session_message& message) -> bool;
 

@@ -31,6 +31,7 @@
 
 #include "dev.hpp"
 #include "domain_token_mint.hpp"
+#include "frame_inbox.hpp"
 #include "late_modules.hpp"
 #include "lease_client.hpp"
 #include "lease_worker.hpp"
@@ -51,23 +52,33 @@ auto refuse(session& channel, wire::refusal_code code) -> void {
     std::ignore = channel.send(start_refused{.code = code});
 }
 
+// Where the frames the host relays back go: each route's to the worker that owns its client. Null
+// without a session (a dev build, or a release start that opened none).
+struct inboxes {
+    detail::frame_inbox* lease = nullptr;
+    detail::frame_inbox* data = nullptr;
+};
+
+auto deliver(const session_message& received, server_route route, detail::frame_inbox* inbox)
+    -> void {
+    if (std::optional<std::vector<std::byte>> body = reply_body(received, route);
+        body && inbox != nullptr) {
+        inbox->push(std::move(*body));
+    }
+}
+
 // Returns once the host asks to unload or goes away, or once a kit worker ended the session: its
-// cancel makes a pending receive fail, and the mark is checked before each. Leases the host relays
-// go to the lease worker's inbox, when there is one.
-auto wait_for_unload(
-    session& channel, const detail::session_end* ending, detail::lease_inbox* leases
-) -> void {
+// cancel makes a pending receive fail, and the mark is checked before each.
+auto wait_for_unload(session& channel, const detail::session_end* ending, const inboxes& relayed)
+    -> void {
     while (ending == nullptr || !ending->is_requested()) {
         const result<session_message> received = channel.receive();
         // A closed or broken channel means nobody is left to ask: unload.
         if (!received || is_unload_request(*received)) {
             return;
         }
-        if (std::optional<std::vector<std::byte>> lease =
-                reply_body(*received, server_route::lease);
-            lease && leases != nullptr) {
-            leases->push(std::move(*lease));
-        }
+        deliver(*received, server_route::lease, relayed.lease);
+        deliver(*received, server_route::data, relayed.data);
     }
 }
 
@@ -78,7 +89,8 @@ struct start_request {
     boot_info info;
     detail::own_image image;
     target started;
-    // A copy: the host's is borrowed only until the boot entry returns.
+    // A copy: the host's is borrowed only until the boot entry returns. Only a dev build applies
+    // it; a release module's comes with its session.
     std::vector<std::byte> bundle;
 };
 
@@ -89,6 +101,8 @@ struct resolved {
     // Core capabilities unavailable only for such a module, and those that failed outright.
     std::vector<declared_capability> waiting_core;
     std::vector<u64> failed_core;
+    // The known modules not loaded now, whose sets a release module asks for once they load.
+    std::vector<u8> unloaded;
 };
 
 auto indices_of(std::span<const loaded_module> loaded) -> std::vector<u8> {
@@ -101,9 +115,12 @@ auto indices_of(std::span<const loaded_module> loaded) -> std::vector<u8> {
 
 // Every linked fact gets its value from the bundle, or stays unresolved. Dev builds report the
 // outcome over the dev channel; a release module says nothing.
-auto apply_bundle(const start_request& request, std::span<const loaded_module> loaded)
-    -> waiting_sets {
-    if (request.bundle.empty()) {
+auto apply_bundle(
+    const start_request& request,
+    std::span<const std::byte> bundle,
+    std::span<const loaded_module> loaded
+) -> waiting_sets {
+    if (bundle.empty()) {
         if constexpr (is_dev_build) {
             detail::report_no_bundle();
         }
@@ -111,7 +128,7 @@ auto apply_bundle(const start_request& request, std::span<const loaded_module> l
     }
     result<apply_report> applied = apply(
         apply_request{
-            .bundle = request.bundle,
+            .bundle = bundle,
             .trusted = request.started.trusted,
             .records = linked_fact_records(),
             .modules = loaded,
@@ -137,12 +154,29 @@ auto with_keys(std::span<const declared_capability> declared, std::span<const u6
     return kept;
 }
 
-// The resolve stage, between boot and attach: the bundle applied, then the core capabilities
-// judged against the modules loaded now. A capability section that doesn't parse is our own
-// image's, and fails the start as a failed core capability would.
-auto resolve_stage(const start_request& request) -> result<resolved> {
+auto index_of(const loaded_module& loaded) -> u8 {
+    return loaded.image.index;
+}
+
+auto unloaded_of(std::span<const game_module> known, std::span<const loaded_module> loaded)
+    -> std::vector<u8> {
+    std::vector<u8> unloaded;
+    for (const game_module& module : known) {
+        if (!std::ranges::contains(loaded, module.index, index_of)) {
+            unloaded.push_back(module.index);
+        }
+    }
+    return unloaded;
+}
+
+// The resolve stage, between boot and attach and after the session opened: the bundle applied (a
+// release module's from the session reply, a dev module's from the host), then the core
+// capabilities judged against the modules loaded now. A capability section that doesn't parse is
+// our own image's, and fails the start as a failed core capability would.
+auto resolve_stage(const start_request& request, std::span<const std::byte> bundle)
+    -> result<resolved> {
     const std::vector<loaded_module> loaded = loaded_game_modules(request.started.modules);
-    waiting_sets waiting = apply_bundle(request, loaded);
+    waiting_sets waiting = apply_bundle(request, bundle, loaded);
     const std::vector<declared_capability> declared =
         LUCENT_TRY(declared_capabilities(linked_capability_section()));
     const core_judgment judged = judge_core(declared, linked_fact_records(), indices_of(loaded));
@@ -150,6 +184,7 @@ auto resolve_stage(const start_request& request) -> result<resolved> {
         .waiting = std::move(waiting),
         .waiting_core = with_keys(declared, judged.waiting),
         .failed_core = judged.failed,
+        .unloaded = unloaded_of(request.started.modules, loaded),
     };
 }
 
@@ -159,7 +194,7 @@ auto start_late_worker(worker_set& workers, detail::late_worker handed) -> void 
     // Refused only once the set is stopping, and then nothing is left to resolve for.
     std::ignore = workers.start<"late facts">(
         [late = std::move(handed)](const std::stop_token& stop) mutable {
-            detail::resolve_late_modules(stop, *late.signal, std::move(late.facts), late.ending);
+            detail::resolve_late_modules(stop, std::move(late));
         }
     );
 }
@@ -239,6 +274,15 @@ auto is_waiting_on_modules(const result<resolved>& resolution) -> bool {
     return resolution && (!resolution->waiting.is_empty() || !resolution->waiting_core.empty());
 }
 
+// Whether the late worker has anything to do: with a session, any module not loaded yet has its
+// set to be asked for.
+auto is_left_for_late(
+    const result<resolved>& resolution, const std::optional<detail::opened_lease>& lease
+) -> bool {
+    return is_waiting_on_modules(resolution)
+           || (lease.has_value() && resolution && !resolution->unloaded.empty());
+}
+
 // Dev builds say when a module that loads later would go unnoticed.
 auto report_unwatched(
     [[maybe_unused]] const result<detail::load_signal>& signal,
@@ -251,10 +295,11 @@ auto report_unwatched(
     }
 }
 
-// What a release build's lease worker borrows; each outlives the worker set.
+// What a release build's lease and late workers borrow; each outlives the worker set.
 struct lease_start {
     std::optional<detail::opened_lease>* lease = nullptr;
-    detail::lease_inbox* inbox = nullptr;
+    detail::frame_inbox* inbox = nullptr;
+    detail::frame_inbox* data_inbox = nullptr;
     session* channel = nullptr;
     const clock* time = nullptr;
     detail::random_source* random = nullptr;
@@ -285,8 +330,30 @@ auto start_running(worker_set& workers, attachment& attached, const lease_start&
     );
 }
 
-// A release build runs only under a lease, opened before the resolve stage; dev builds have no
-// server and hold none.
+// The late worker's way to the server, when there is a session: nothing in a dev build. Its client
+// stays in the opened lease.
+auto data_link_of(const lease_start& with) -> std::optional<detail::data_link> {
+    if (!with.lease->has_value()) {
+        return std::nullopt;
+    }
+    return detail::data_link{
+        .client = &(*with.lease)->data,
+        .inbox = with.data_inbox,
+        .channel = with.channel,
+        .time = with.time,
+        .random = with.random,
+    };
+}
+
+auto inboxes_of(const lease_start& with) -> inboxes {
+    if (!with.lease->has_value()) {
+        return {};
+    }
+    return inboxes{.lease = with.inbox, .data = with.data_inbox};
+}
+
+// A release build runs only under a lease, opened before the resolve stage, whose reply also
+// brings the first bundle; dev builds have no server and hold none.
 auto lease_for(
     session& channel, const start_request& request, const clock& time, detail::random_source& random
 ) -> std::optional<detail::opened_lease> {
@@ -302,13 +369,25 @@ auto lease_for(
     }
 }
 
+// The bundle the resolve stage applies: the session reply's in release (none without a session),
+// the host's in dev.
+auto boot_bundle(const start_request& request, const std::optional<detail::opened_lease>& lease)
+    -> std::span<const std::byte> {
+    if constexpr (is_dev_build) {
+        return request.bundle;
+    } else if (lease) {
+        return lease->bundle;
+    }
+    return {};
+}
+
 // The attached run: the host sees attach and run, then the end, with its reason when a worker
 // asked for it (a core capability that failed once its module loaded, or a lease that ran out).
-auto run_until_unload(session& channel, const detail::session_end* end, detail::lease_inbox* leases)
+auto run_until_unload(session& channel, const detail::session_end* end, const inboxes& relayed)
     -> void {
     report(channel, stage::attach);
     report(channel, stage::run);
-    wait_for_unload(channel, end, leases);
+    wait_for_unload(channel, end, relayed);
     if (end != nullptr && end->is_requested()) {
         refuse(channel, end->reason());
     }
@@ -321,14 +400,15 @@ auto run_stages(session& channel, const start_request& request) -> bool {
     // What the lease worker borrows; all outlive the workers.
     const monotonic_clock time;
     detail::system_random random;
-    detail::lease_inbox leases;
+    detail::frame_inbox leases;
+    detail::frame_inbox data_frames;
     std::optional<detail::opened_lease> lease = lease_for(channel, request, time, random);
     const bool is_leased = is_dev_build || lease.has_value();
     // Watching before the resolve stage, so a module that loads while it runs still wakes the late
     // worker. Outlives the workers, which wait on it.
     const result<detail::load_signal> signal = detail::load_signal::watch();
-    result<resolved> resolution = resolve_stage(request);
-    const bool is_waiting = is_waiting_on_modules(resolution);
+    result<resolved> resolution = resolve_stage(request, boot_bundle(request, lease));
+    const bool is_waiting = is_left_for_late(resolution, lease);
     report_unwatched(signal, resolution);
     // How a late core failure ends the session; outlives the workers, which may use it.
     std::optional<detail::session_end> ending;
@@ -346,6 +426,16 @@ auto run_stages(session& channel, const start_request& request) -> bool {
     // A lease that lapses for good must be able to end the session.
     const bool may_attach = is_leased && (is_dev_build || end != nullptr);
     report_waiting_core(resolution);
+    const lease_start with{
+        .lease = &lease,
+        .inbox = &leases,
+        .data_inbox = &data_frames,
+        .channel = &channel,
+        .time = &time,
+        .random = &random,
+        .ending = end,
+    };
+    std::optional<detail::data_link> data = data_link_of(with);
     bool is_detached = true;
     {
         worker_set workers;
@@ -354,37 +444,27 @@ auto run_stages(session& channel, const start_request& request) -> bool {
         const result<std::unique_ptr<attachment>> attached =
             may_attach ? attach_target(request, resolution, workers)
                        : std::unexpected(error{.code = error_code::unsupported});
-        const bool is_running = attached
-                                && start_running(
-                                    workers,
-                                    **attached,
-                                    lease_start{
-                                        .lease = &lease,
-                                        .inbox = &leases,
-                                        .channel = &channel,
-                                        .time = &time,
-                                        .random = &random,
-                                        .ending = end,
-                                    }
-                                )
-                                       .has_value();
+        const bool is_running = attached && start_running(workers, **attached, with).has_value();
         if (attached && signal && is_waiting) {
             start_late_worker(
                 workers,
                 detail::late_worker{
                     .signal = &*signal,
                     .ending = end,
+                    .data = data.has_value() ? &*data : nullptr,
                     .facts = detail::late_facts{
                         .waiting = std::move(resolution->waiting),
                         .waiting_core = std::move(resolution->waiting_core),
+                        .unasked = std::move(resolution->unloaded),
                         .modules = request.started.modules,
                         .records = linked_fact_records(),
+                        .trusted = request.started.trusted,
                     },
                 }
             );
         }
         if (is_running) {
-            run_until_unload(channel, end, lease.has_value() ? &leases : nullptr);
+            run_until_unload(channel, end, inboxes_of(with));
         } else {
             refuse(
                 channel,

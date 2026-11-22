@@ -67,14 +67,26 @@ auto keyed_outcome(const bundle::delivered_set& set, std::span<const loaded_modu
     return is_waiting ? set_outcome::module_absent : set_outcome::applied;
 }
 
-auto judge(
-    const bundle::delivered_set& set, const apply_request& request, const crypto::digest& manifest
-) -> set_outcome {
-    if (!bundle::verify(set, request.trusted)) {
+// What refuses a set before any module is looked at, if anything does.
+auto refusal_of(
+    const bundle::delivered_set& set,
+    std::span<const crypto::public_key> trusted,
+    const crypto::digest& manifest
+) -> std::optional<set_outcome> {
+    if (!bundle::verify(set, trusted)) {
         return set_outcome::unverified;
     }
     if (set.header.manifest_digest != manifest) {
         return set_outcome::other_manifest;
+    }
+    return std::nullopt;
+}
+
+auto judge(
+    const bundle::delivered_set& set, const apply_request& request, const crypto::digest& manifest
+) -> set_outcome {
+    if (const std::optional<set_outcome> refused = refusal_of(set, request.trusted, manifest)) {
+        return *refused;
     }
     return keyed_outcome(set, request.modules);
 }
@@ -175,6 +187,17 @@ auto waiting_sets::apply_loaded(const late_request& request) -> late_report {
         }
     );
     return report;
+}
+
+auto waiting_sets::admit(const admit_request& request) -> result<void> {
+    std::vector<bundle::delivered_set> decoded = LUCENT_TRY(bundle::decode_bundle(request.bundle));
+    const crypto::digest manifest = manifest_of(request.records);
+    for (bundle::delivered_set& set : decoded) {
+        if (!refusal_of(set, request.trusted, manifest)) {
+            m_sets.push_back(std::move(set));
+        }
+    }
+    return {};
 }
 
 auto manifest_of(std::span<const fact_record> records) -> crypto::digest {

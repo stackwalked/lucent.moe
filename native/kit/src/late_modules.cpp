@@ -3,7 +3,9 @@
 #include <algorithm>
 #include <bit>
 #include <chrono>
+#include <cstddef>
 #include <expected>
+#include <optional>
 #include <span>
 #include <stop_token>
 #include <tuple>
@@ -12,12 +14,17 @@
 
 #include <Windows.h>
 
+#include <lucent/bundle/fact_set.hpp>
 #include <lucent/kit/capability.hpp>
+#include <lucent/kit/clock.hpp>
 #include <lucent/kit/core_capabilities.hpp>
 #include <lucent/kit/dev_build.hpp>
 #include <lucent/kit/fact_apply.hpp>
 #include <lucent/kit/game_module.hpp>
+#include <lucent/kit/session_message.hpp>
 #include <lucent/os/unique_handle.hpp>
+#include <lucent/wire/data.hpp>
+#include <lucent/wire/frame.hpp>
 #include <lucent/wire/refusal.hpp>
 
 #include "dev.hpp"
@@ -126,19 +133,97 @@ auto still_waiting(std::vector<declared_capability> core, std::span<const u64> w
     return core;
 }
 
+// One data request for these builds, and the response the host relays back; nothing once the
+// patience runs out, stop is requested, or the request couldn't go out. A frame that doesn't check
+// out is the host's or the network's noise, as on the lease route: dropped, and the wait goes on.
+auto fetch(
+    const std::stop_token& stop, const data_link& link, std::vector<bundle::module_key> builds
+) -> std::optional<wire::data_response> {
+    const result<std::vector<std::byte>> body =
+        link.client->request(std::move(builds), *link.random);
+    if (!body
+        || !link.channel->send(server_request{.route = server_route::data, .body = *body})
+            .has_value()) {
+        return std::nullopt;
+    }
+    const clock::time_point deadline = link.time->now() + data_patience;
+    while (!stop.stop_requested()) {
+        const clock::time_point now = link.time->now();
+        if (now >= deadline) {
+            return std::nullopt;
+        }
+        const std::optional<std::vector<std::byte>> frame = link.inbox->wait(stop, deadline - now);
+        if (!frame) {
+            continue;
+        }
+        const result<wire::frame> sealed = wire::decode_frame(*frame);
+        if (!sealed) {
+            continue;
+        }
+        result<wire::data_response> response = link.client->accept(*sealed);
+        if (response) {
+            return std::move(*response);
+        }
+    }
+    return std::nullopt;
 }
 
-auto resolve_late_modules(
-    const std::stop_token& stop, const load_signal& signal, late_facts late, session_end* ending
+// The unasked modules loaded now leave the list whatever the answer: one request per load. What
+// comes back waits with the other sets; release says nothing of a set it drops or of a build the
+// server has none for, as the boot resolve doesn't.
+auto ask_for_loaded(
+    const std::stop_token& stop,
+    const data_link& link,
+    late_facts& late,
+    std::span<const loaded_module> loaded
 ) -> void {
+    std::vector<bundle::module_key> builds;
+    for (const loaded_module& each : loaded) {
+        if (std::ranges::contains(late.unasked, each.image.index)) {
+            builds.push_back(each.build);
+            std::erase(late.unasked, each.image.index);
+        }
+    }
+    if (builds.empty()) {
+        return;
+    }
+    const std::optional<wire::data_response> response = fetch(stop, link, std::move(builds));
+    if (!response) {
+        return;
+    }
+    std::ignore = late.waiting.admit(
+        admit_request{
+            .bundle = response->bundle_bytes,
+            .trusted = late.trusted,
+            .records = late.records,
+        }
+    );
+}
+
+auto is_left(const late_worker& worker) -> bool {
+    const late_facts& late = worker.facts;
+    return !late.waiting.is_empty()
+           || !late.waiting_core.empty()
+           || (worker.data != nullptr && !late.unasked.empty());
+}
+
+}
+
+auto resolve_late_modules(const std::stop_token& stop, late_worker worker) -> void {
+    late_facts& late = worker.facts;
     // Waits before the first scan: the signal watched from before the boot resolve, so a module
     // loaded since that scan has already set it, and one loaded before was in that scan.
-    while (!late.waiting.is_empty() || !late.waiting_core.empty()) {
-        signal.wait(stop);
+    while (is_left(worker)) {
+        worker.signal->wait(stop);
         if (stop.stop_requested()) {
             return;
         }
         const std::vector<loaded_module> loaded = loaded_game_modules(late.modules);
+        // Before the waiting sets apply and the core is judged: a core capability of a module that
+        // just loaded must see its set first.
+        if (worker.data != nullptr) {
+            ask_for_loaded(stop, *worker.data, late, loaded);
+        }
         if (!late.waiting.is_empty()) {
             const late_report report =
                 late.waiting.apply_loaded(late_request{.records = late.records, .modules = loaded});
@@ -158,8 +243,8 @@ auto resolve_late_modules(
                 report_late_core_failed(judged.failed);
             }
             // The start went on only with a way to end the session.
-            LUCENT_INVARIANT(ending != nullptr);
-            ending->request(stop, wire::refusal_code::game_build_unsupported);
+            LUCENT_INVARIANT(worker.ending != nullptr);
+            worker.ending->request(stop, wire::refusal_code::game_build_unsupported);
             return;
         }
         late.waiting_core = still_waiting(std::move(late.waiting_core), judged.waiting);
