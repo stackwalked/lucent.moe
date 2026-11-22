@@ -50,9 +50,13 @@ product, one feature. Built end to end, native and server together.
   build starts today). The loader's seal and artifacts are served on `/v1` (`GET /v1/loader`,
   `GET /v1/artifacts/:digest`) to any account entitled to a product.
 - Platform, the thin part of slice 3: fact-set storage, `ops publish-fact-set` with the release
-  manifest's core coverage, session bundle assembly (leases carry bundle revision 0 until then).
-  The TS fact-set and bundle code exists; the server doesn't use it yet. Scoring, live revisions
+  manifest's core coverage, the first bundle in the session reply, and `POST /v1/sessions/:id/data`
+  for late-loaded modules and revisions (leases carry data revision 0 until then). The TS fact-set
+  and bundle code exists; the server doesn't use it yet. Scoring, live revisions over promotion
   and overrides wait.
+- Contracts and kit for it: session keys per route (lease, data, reports), `session_reply` v2 with
+  the first bundle, the data request and response, kit's data route and boot applying the first
+  bundle before attach, and the loader relaying the new routes.
 - Web: admin promotion of staged releases and fact revisions; the download page's file, once the
   server serves one (it lists each channel's loader today); the product page's "not yet supported"
   from fact-set coverage, not only from a missing release.
@@ -650,8 +654,13 @@ Still to land, in order:
     revision for the release's manifest and drops entries the session isn't entitled to;
   - a module with no set is "not yet supported" and its capabilities are unavailable; the server
     refuses the session only when a `core` capability is uncovered;
-  - the bundle rides in `boot_info`; revisions and newly entitled entries arrive over the session
-    and apply at a safe point.
+  - in release the first bundle rides the session reply, beside the first lease, under the session
+    key (decided: one round trip fewer at boot); `boot_info`'s bundle is dev only. A late-loaded
+    module's set, revisions and overrides come over the data route and apply at a safe point;
+  - Phase 1 delivers every entry of a set: withholding per feature needs the manifest to map
+    features to the capabilities they need, which version 2 doesn't (a version 3, then). The data
+    request carries an optional feature list from its first version, so asking per feature later
+    needs no new one.
 - No client cache in release: no server, no start. Dev reads local bundles signed with the dev key,
   which release builds reject.
 - The container format lives in `contracts/`: little-endian, canonical, versioned, with golden
@@ -737,7 +746,7 @@ live in `wishlist/protection.md`.
        - `POST /v1/starts/:id/session`: the module's X25519 hello, relayed opaquely by the
          loader; binds the key, consumes the start, takes the slot; returns the server's half
          and the first lease, signed by the lease key;
-       - `POST /v1/sessions/:id/lease` every 15 s, `/bundles`, `/close`: the loader's DPoP
+       - `POST /v1/sessions/:id/lease` every 15 s, `/data`, `/reports`, `/close`: the loader's DPoP
          around the module's AEAD frame. Close frees the slot at once; a crash drains it when
          the last lease expires;
        - DPoP freshness by clock window as old (`iat` at most 5 s ahead, 300 s behind, the
@@ -939,10 +948,14 @@ live in `wishlist/protection.md`.
   - Encoding: every native-facing message is canonical little-endian binary in `contracts/` with
     golden vectors, like the bundle, except the OAuth endpoints (PAR, token), which stay standard
     (form requests, JSON replies); the loader carries a minimal parser for the token reply only.
-  - Separate `/v1` channels: `POST /v1/sessions/:id/lease` (15s cadence / 60s TTL, carries
-    `bundle_revision_tag` + a hash challenge, never game data) and
-    `POST /v1/sessions/:id/bundles` (lazy per-feature and per-module AEAD-encrypted session bundles
-    with Merkle proofs + online overrides).
+  - Separate `/v1` channels, decided: `POST /v1/sessions/:id/lease` (15s cadence / 60s TTL, carries
+    the data revision, which rises when the session's facts or overrides change, and a hash
+    challenge, never game data); `POST /v1/sessions/:id/data` (what the server sends the module:
+    fact-set entries with Merkle proofs and the override document, later the menu catalog, cloud
+    configs and scripts; each request names what it needs, per module build in Phase 1); and
+    `POST /v1/sessions/:id/reports` (what the module sends back: health events and crash
+    summaries, batched and capped). Each route has its own key and sequence per direction, from
+    the session secret with the route in the derivation, so routes never stale each other.
   - No `INTEGRITY_REFUSED` on `/handoff` or `/lease`: a mismatch changes nothing the client sees.
     It appends `risk_signal` rows (tagged with a release id) for risk scoring and review items
     that staff act on.
