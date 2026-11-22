@@ -3,7 +3,8 @@ export const DOWNLOAD_COPY = {
     intro: "the lucent loader signs you in and starts your products. it has no channels of its own.",
     loader: "loader",
     none: "you have no product yet. ask staff.",
-    unavailable: "downloads aren't open on lucent.moe yet.",
+    unavailable: "the loader isn't out yet. try again later.",
+    download: "download the loader",
     warnings: "what windows will say",
     unsigned:
         "the loader isn't signed with a code-signing certificate, so windows can't tell who made it.",

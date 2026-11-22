@@ -70,11 +70,26 @@ export type AuditDetail =
     | { readonly kind: "none" }
     | { readonly kind: "reason"; readonly reason: string }
     | { readonly kind: "rename"; readonly from: string | null; readonly to: string }
-    | { readonly kind: "role"; readonly roleId: string; readonly expiresAt: EpochMs | null };
+    | { readonly kind: "role"; readonly roleId: string; readonly expiresAt: EpochMs | null }
+    | {
+          readonly kind: "seal";
+          readonly productId: string;
+          readonly channel: string;
+          readonly number: string;
+          readonly previous: string | null;
+      }
+    | { readonly kind: "factSet"; readonly revision: number; readonly builds: number };
 
 const Reason = z.object({ reason: z.string().min(1) });
 const Rename = z.object({ from: z.string().nullable(), to: z.string() });
 const RoleChange = z.object({ roleId: z.string().min(1), expiresAt: EpochMs.nullish() });
+const SealPromotion = z.object({
+    productId: z.string(),
+    channel: z.string(),
+    number: z.string(),
+    previous: z.string().nullable(),
+});
+const FactSetPromotion = z.object({ revision: z.number(), builds: z.array(z.unknown()) });
 
 // What an entry's free-form detail says, as much as fits a table cell. Rows outlive the code
 // that wrote them, so anything that doesn't match its operation's shape shows nothing.
@@ -96,6 +111,16 @@ export function auditDetail(
                 roleId: role.data.roleId,
                 expiresAt: operation === "role.assign" ? (role.data.expiresAt ?? null) : null,
             };
+        }
+    }
+    if (operation === "release.promote") {
+        const seal = SealPromotion.safeParse(detail);
+        if (seal.success) return { kind: "seal", ...seal.data };
+    }
+    if (operation === "fact_set.promote") {
+        const set = FactSetPromotion.safeParse(detail);
+        if (set.success) {
+            return { kind: "factSet", revision: set.data.revision, builds: set.data.builds.length };
         }
     }
     return { kind: "none" };

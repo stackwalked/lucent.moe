@@ -61,6 +61,8 @@ export const REFUSALS: Readonly<Record<RefusalCode, string>> = {
     UNKNOWN_PRODUCT: "that product isn't in the catalog anymore. reload and try again.",
     UNKNOWN_CHANNEL: "that channel isn't one this product has. reload and try again.",
     INVALID_WINDOW: "the end has to come after the start.",
+    SEAL_BELOW_CURRENT: "a higher seal is current. sign the old release anew to go back.",
+    REVISION_BELOW_CURRENT: "a newer revision is current. publish the fix as the next one.",
 };
 // The text for one refusal, a form's own wording first where it has one.
 export function refusalText(

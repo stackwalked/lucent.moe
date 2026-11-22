@@ -11,4 +11,10 @@ export const AUDIT_COPY = {
     empty: "no entries.",
     until: "until",
     renamed: (from: string, to: string) => `${from} → ${to}`,
+    seal: (product: string, channel: string, number: string, previous: string | null) =>
+        previous === null
+            ? `${product} ${channel}: seal ${number}`
+            : `${product} ${channel}: seal ${previous} → ${number}`,
+    factSet: (revision: number, builds: number) =>
+        `revision ${revision}, ${builds === 1 ? "1 build" : `${builds} builds`}`,
 } as const;

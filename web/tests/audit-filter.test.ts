@@ -100,3 +100,27 @@ test("detail shows a reason, a rename or a role, and nothing it does not recogni
     });
     expect(auditDetail("account.create", {})).toEqual({ kind: "none" });
 });
+
+test("detail shows which seal or fact revision a promotion made current", () => {
+    const seal = {
+        productId: "cs2",
+        channel: "alpha",
+        number: "3",
+        releaseId: "ab",
+        previous: "2",
+    };
+    expect(auditDetail("release.promote", seal)).toEqual({
+        kind: "seal",
+        productId: "cs2",
+        channel: "alpha",
+        number: "3",
+        previous: "2",
+    });
+    const set = { releaseId: "ab", setId: "7", revision: 4, builds: [{}, {}] };
+    expect(auditDetail("fact_set.promote", set)).toEqual({
+        kind: "factSet",
+        revision: 4,
+        builds: 2,
+    });
+    expect(auditDetail("release.promote", { number: 3 })).toEqual({ kind: "none" });
+});

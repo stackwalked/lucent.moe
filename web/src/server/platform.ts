@@ -1,17 +1,18 @@
 import "@tanstack/react-start/server-only";
 import { systemClock } from "@lucent/core/clock";
-import { invariant } from "@lucent/core/contain";
+import { invariant, tryAsync } from "@lucent/core/contain";
 import { err, type Result } from "@lucent/core/result";
 import { systemCryptoRng } from "@lucent/core/rng";
 import { type AccountId, ClientInfo, toBase64Url } from "@lucent/core/scalars";
 import type { ReplyOf, RpcClient } from "@lucent/rpc/client";
-import { RequestId } from "@lucent/rpc/contract";
-import { type WebContract, webContract } from "@lucent/rpc/web";
+import { RequestId, RPC_HEADERS, toClientHeader } from "@lucent/rpc/contract";
+import { LOADER_DOWNLOAD_PATH, type WebContract, webContract } from "@lucent/rpc/web";
 import { getGlobalStartContext } from "@tanstack/react-start";
 import { getRequestHeader } from "@tanstack/react-start/server";
 import type { z } from "zod";
+import { REFUSALS } from "../copy/refusals.ts";
 import { processEnvironment, readWebConfig } from "./config.ts";
-import { connectPlatform } from "./connect.ts";
+import { connectPlatform, connectPlatformStreams, type PlatformGet } from "./connect.ts";
 import { clearSessionToken, readSessionToken } from "./cookies.ts";
 import { createRequestTrace, type WebRequest } from "./request.ts";
 import { toNotFound, toSignIn, toUnavailable } from "./route-control.ts";
@@ -142,4 +143,65 @@ export async function readPlatform<K extends Name>(
         toUnavailable(currentRequest().requestId);
     }
     return reply;
+}
+
+let streams: PlatformGet | null = null;
+
+function platformStreams(): PlatformGet {
+    if (streams !== null) return streams;
+    const config = readWebConfig(processEnvironment());
+    invariant(config.ok, `web config invalid: ${JSON.stringify(config)}`);
+    streams = connectPlatformStreams(config.value.platform, config.value.peerKey);
+    return streams;
+}
+
+// Long enough for a slow line to take the whole loader; the browser leaving ends it sooner.
+const DOWNLOAD_DEADLINE_MS = 10 * 60 * 1_000;
+const DOWNLOAD_NAME = "lucent-loader.exe";
+
+// The current loader for the signed-in member, from platform's streaming route and passed on as
+// it arrives: web holds neither the file nor anything but the member's own session. Who may have
+// it is platform's to decide; anything but the bytes sends the browser back to the download page,
+// which says why (or, signed out, on to sign-in).
+export async function downloadLoader(signal: AbortSignal): Promise<Response> {
+    const web = currentRequest();
+    const back = new Response(null, { status: 303, headers: { location: "/download" } });
+    const session = readSessionToken();
+    if (session === null) return back;
+    const startedAt = systemClock.now();
+    const reply = await tryAsync(
+        () =>
+            platformStreams()(
+                LOADER_DOWNLOAD_PATH,
+                {
+                    [RPC_HEADERS.session]: session,
+                    [RPC_HEADERS.client]: toClientHeader(web.client),
+                    [RPC_HEADERS.request]: web.requestId,
+                },
+                AbortSignal.any([signal, AbortSignal.timeout(DOWNLOAD_DEADLINE_MS)]),
+            ),
+        () => null,
+    );
+    web.trace.addPlatformTime(systemClock.now() - startedAt);
+    const res = reply.ok ? reply.value : null;
+    if (res?.status === 200 && res.body !== null) {
+        const length = res.headers.get("content-length");
+        return new Response(res.body, {
+            headers: {
+                "content-type": "application/octet-stream",
+                "content-disposition": `attachment; filename="${DOWNLOAD_NAME}"`,
+                "cache-control": "no-store",
+                ...(length === null ? {} : { "content-length": length }),
+            },
+        });
+    }
+    await res?.body?.cancel();
+    if (res === null || res.status >= 500) {
+        return new Response(`${REFUSALS.SERVICE_UNAVAILABLE} reference: ${web.requestId}`, {
+            status: 503,
+            headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" },
+        });
+    }
+    if (res.status === 401) clearSessionToken();
+    return back;
 }

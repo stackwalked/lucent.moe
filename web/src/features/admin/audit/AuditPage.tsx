@@ -43,6 +43,15 @@ function Detail({ detail }: { readonly detail: AuditDetail }) {
                     )}
                 </>
             );
+        case "seal":
+            return AUDIT_COPY.seal(
+                detail.productId,
+                detail.channel,
+                detail.number,
+                detail.previous,
+            );
+        case "factSet":
+            return AUDIT_COPY.factSet(detail.revision, detail.builds);
     }
 }
 

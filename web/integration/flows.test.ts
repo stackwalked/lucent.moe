@@ -1,4 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { systemClock } from "@lucent/core/clock";
 import { invariant } from "@lucent/core/contain";
@@ -54,6 +56,11 @@ const fn = {
     renameDevice: "features.devices.server--renameDevice",
     removeDevice: "features.devices.server--removeDevice",
     fetchProducts: "features.products.server--fetchProducts",
+    listReleases: "features.admin.releases.server--listReleases",
+    promoteRelease: "features.admin.releases.promote--promoteRelease",
+    listFactSets: "features.admin.releases.server--listFactSets",
+    promoteFactSet: "features.admin.releases.promote--promoteFactSet",
+    fetchLoaderOffer: "features.download.server--fetchLoaderOffer",
 } as const;
 
 // A device key's thumbprint as the loader would push it: 32 bytes, here all zero, so its match
@@ -66,6 +73,7 @@ let platform: RunningPlatform;
 let web: ChildServer;
 let origin: string;
 let socket: string;
+let artifactDir: string;
 let authenticator: TestAuthenticator;
 let totpSecret: string;
 // Signed in by a passkey and carried through the later flows: web lets an address make ten sign-in
@@ -80,11 +88,13 @@ beforeAll(async () => {
     const port = allocateEphemeralPort();
     origin = `http://localhost:${port}`;
     socket = `http://127.0.0.1:${port}`;
+    artifactDir = await mkdtemp(join(tmpdir(), "lucent-web-artifacts-"));
     platform = await startPlatform({
         cluster: await sharedEphemeralCluster(),
         database: "web_flows",
         webOrigin: origin,
         breached: [BREACHED],
+        artifactDir,
     });
     web = spawnServer({
         command: [process.execPath, "src/main.ts"],
@@ -106,6 +116,7 @@ beforeAll(async () => {
 afterAll(async () => {
     await web.stop();
     await platform.stop();
+    await rm(artifactDir, { recursive: true, force: true });
     await shutdownSharedEphemeralCluster();
 });
 
@@ -371,5 +382,126 @@ describe("web against a real platform", () => {
         expect((await page.get("/products")).status).toBe(200);
         expect((await page.get("/download")).status).toBe(200);
         expect((await page.get("/products/cs2")).status).toBe(404);
+    });
+
+    test("staff promote a staged seal and then a fact set once a step-up proves them, and a seal below the current one is refused", async () => {
+        const page = member;
+        const releaseId = "5".repeat(32);
+        const db = new SQL(platform.databaseUrl);
+        // Staged as ops leaves them, on a channel no one here is entitled to: nothing below reads
+        // the manifest or the bundle, so placeholder bytes stand in for them.
+        await db`insert into release (id, product_id, channel, container, manifest)
+                 values (decode(${releaseId}, 'hex'), 'cs2', 'debug', decode('01', 'hex'), decode('01', 'hex'))`;
+        await db`insert into release_seal (product_id, channel, number, release_id, seal)
+                 values ('cs2', 'debug', 1, decode(${releaseId}, 'hex'), decode('01', 'hex')),
+                        ('cs2', 'debug', 2, decode(${releaseId}, 'hex'), decode('02', 'hex'))`;
+        const [set] = await db`insert into fact_set (release_id, bundle, fact_keys)
+                               values (decode(${releaseId}, 'hex'), decode('01', 'hex'), ''::bytea)
+                               returning id::text as id`;
+        await db`insert into fact_set_build
+                     (set_id, release_id, name_hash, time_date_stamp, size_of_image, revision)
+                 values (${set.id}::bigint, decode(${releaseId}, 'hex'), 4660, 1, 2, 1)`;
+        await db`update browser_session set step_up_at = null`;
+
+        const Lines = z.array(
+            z.object({
+                productId: z.string(),
+                channel: z.string(),
+                current: z.object({ number: z.string() }).nullable(),
+                seals: z.array(z.object({ number: z.string() })),
+            }),
+        );
+        const debugLine = async () =>
+            accepted(Lines, await page.read(fn.listReleases)).find(
+                (line) => line.productId === "cs2" && line.channel === "debug",
+            );
+        expect(await debugLine()).toEqual({
+            productId: "cs2",
+            channel: "debug",
+            current: null,
+            seals: [{ number: "2" }, { number: "1" }],
+        });
+
+        const promote = (number: string) =>
+            page.call(fn.promoteRelease, { productId: "cs2", channel: "debug", number });
+        expect(refusedCode(await promote("2"))).toBe("STEP_UP_REQUIRED");
+        const proof = accepted(RequestOptions, await page.call(fn.beginStepUp));
+        accepted(
+            z.null(),
+            await page.call(fn.finishStepUp, { response: await authenticator.assert(proof) }),
+        );
+        expect(accepted(z.boolean(), await promote("2"))).toBe(true);
+        expect(refusedCode(await promote("1"))).toBe("SEAL_BELOW_CURRENT");
+        expect((await debugLine())?.current).toEqual({ number: "2" });
+
+        const listed = accepted(
+            z.object({ sets: z.array(z.object({ setId: z.string(), revision: z.number() })) }),
+            await page.read(fn.listFactSets, { releaseId }),
+        );
+        expect(listed.sets).toEqual([{ setId: set.id, revision: 1 }]);
+        expect(
+            accepted(z.boolean(), await page.call(fn.promoteFactSet, { releaseId, setId: set.id })),
+        ).toBe(true);
+        const [current] = await db`select revision::int as revision from current_fact_set
+                                   where release_id = decode(${releaseId}, 'hex')`;
+        expect(current.revision).toBe(1);
+        const audited = await db`select operation from audit
+                                 where operation in ('release.promote', 'fact_set.promote')
+                                 order by id`;
+        expect(audited.map((row: { operation: string }) => row.operation)).toEqual([
+            "release.promote",
+            "fact_set.promote",
+        ]);
+        await db.close();
+    });
+
+    test("the loader downloads as an attachment for a member with a product, and sends anyone else back to the download page", async () => {
+        const page = member;
+        const Offer = z.object({ state: z.string(), number: z.string().optional() });
+        const file = "/download/lucent-loader.exe";
+        expect(accepted(Offer, await page.read(fn.fetchLoaderOffer))).toEqual({
+            state: "no_product",
+        });
+        const refused = await page.get(file);
+        expect(refused.status).toBe(303);
+        expect(refused.headers.get("location")).toEndWith("/download");
+
+        // The golden loader seal (number 12) is current; its loader digest names the file.
+        const seal = await readFile(join(WEB_DIR, "../contracts/release-seal/v1/loader.bin"));
+        const loader = new TextEncoder().encode("MZ the loader under test");
+        await Bun.write(join(artifactDir, "3d".repeat(32)), loader);
+        const db = new SQL(platform.databaseUrl);
+        const [root] = await db`select id from account where username = 'root'`;
+        const entitlementId = `ent_${"e".repeat(22)}`;
+        await db`insert into entitlement (id, account_id, status, valid_from, created_at)
+                 values (${entitlementId}, ${root.id}, 'active', now(), now())`;
+        await db`insert into entitlement_product (entitlement_id, product_id, features, channels)
+                 values (${entitlementId}, 'cs2', '"*"'::jsonb, '{stable}')`;
+        expect(accepted(Offer, await page.read(fn.fetchLoaderOffer))).toEqual({
+            state: "no_release",
+        });
+        await db`insert into release (id, product_id, channel)
+                 values (decode(${"4".repeat(32)}, 'hex'), 'lucent-loader', 'stable')`;
+        await db`insert into release_seal (product_id, channel, number, release_id, seal)
+                 values ('lucent-loader', 'stable', 12, decode(${"4".repeat(32)}, 'hex'), ${seal})`;
+        await db`insert into current_release (product_id, channel, number)
+                 values ('lucent-loader', 'stable', 12)`;
+        await db.close();
+        expect(accepted(Offer, await page.read(fn.fetchLoaderOffer))).toEqual({
+            state: "ready",
+            number: "12",
+        });
+
+        const served = await page.get(file);
+        expect(served.status).toBe(200);
+        expect(served.headers.get("content-disposition")).toBe(
+            'attachment; filename="lucent-loader.exe"',
+        );
+        expect(served.headers.get("cache-control")).toBe("no-store");
+        expect(new Uint8Array(await served.arrayBuffer())).toEqual(loader);
+
+        const stranger = await browser().get(file);
+        expect(stranger.status).toBe(303);
+        expect(stranger.headers.get("location")).toEndWith("/download");
     });
 });

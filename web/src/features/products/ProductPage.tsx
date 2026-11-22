@@ -14,10 +14,11 @@ const route = getRouteApi("/_member/products/$productId");
 type Channel = ReturnType<typeof route.useLoaderData>["channels"][number];
 
 // One product as the member holds it: what's theirs, on which channels, and whether each runs
-// now. A channel with nothing promoted on it is "not yet supported", as after a game update.
+// now. A channel is "not yet supported" with nothing promoted on it, or when its release's current
+// fact sets don't cover the game's builds, as after a game update.
 export function ProductPage() {
     const product = route.useLoaderData();
-    const unsupported = product.channels.some((c) => c.release === null);
+    const unsupported = product.channels.some((c) => c.release === null || !c.release.supported);
     return (
         <Page
             title={productName(product.name)}
@@ -55,7 +56,7 @@ export function ProductPage() {
                                 header: PRODUCTS_COPY.state,
                                 align: "end",
                                 cell: (c) =>
-                                    c.release === null ? (
+                                    c.release === null || !c.release.supported ? (
                                         <Status tone="shu">{PRODUCTS_COPY.notYetSupported}</Status>
                                     ) : (
                                         <Stack direction="row" gap={2} align="center">

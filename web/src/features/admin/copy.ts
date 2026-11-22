@@ -4,6 +4,7 @@ export const ADMIN_COPY = {
     admin: "admin",
     accounts: "accounts",
     roles: "roles",
+    releases: "releases",
     audit: "audit",
     pending: "—",
     needsPasskey: "staff actions need a passkey. add one in security.",
@@ -31,6 +32,8 @@ export const OPERATION_LABELS: Readonly<Record<AuditOperation, string>> = {
     "role.assign": "role given",
     "role.unassign": "role taken away",
     "entitlement.issue": "entitlement issued",
+    "release.promote": "release promoted",
+    "fact_set.promote": "fact set promoted",
 };
 
 export function operationLabel(operation: string): string {

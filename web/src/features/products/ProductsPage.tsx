@@ -46,7 +46,7 @@ export function ProductsPage() {
                                 header: PRODUCTS_COPY.state,
                                 align: "end",
                                 cell: (p) =>
-                                    p.channels.some((c) => c.release !== null) ? (
+                                    p.channels.some((c) => c.release?.supported === true) ? (
                                         <Status icon="check">{PRODUCTS_COPY.ready}</Status>
                                     ) : (
                                         <Status tone="shu">{PRODUCTS_COPY.notYetSupported}</Status>
