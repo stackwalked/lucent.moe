@@ -7,6 +7,7 @@ import type { CryptoRng } from "@lucent/core/rng";
 import { BearerToken } from "@lucent/core/scalars";
 import { encryptedSize, toEncryptedContainerStream } from "@lucent/wire/container-stream";
 import { parseEnrollmentRequest, toEnrollmentStatusBytes } from "@lucent/wire/enrollment";
+import { parseFrame } from "@lucent/wire/frame";
 import { parseLeaseRequest } from "@lucent/wire/lease-exchange";
 import type { RefusalCode } from "@lucent/wire/refusal";
 import { parseSessionHello } from "@lucent/wire/session";
@@ -18,6 +19,8 @@ import { readEnrollment, requestEnrollment } from "./devices.ts";
 import { acceptFresh, type DpopProof, verifyProof } from "./dpop.ts";
 import {
     binaryResponse,
+    MAX_DATA_BODY_BYTES,
+    MAX_NATIVE_BODY_BYTES,
     type NativeRefusal,
     operationIdOf,
     parseIdSegment,
@@ -27,7 +30,7 @@ import {
 import type { LeaseSigner } from "./lease-key.ts";
 import { checkLoaderArtifact, readLoaderSeal } from "./loader.ts";
 import { createRateLimiter, type RateRule } from "./rate-limit.ts";
-import { closeSession, openSession, renewLease } from "./sessions.ts";
+import { closeSession, openSession, renewLease, serveData } from "./sessions.ts";
 import {
     type OAuthError,
     parseForm,
@@ -71,6 +74,7 @@ export const DEFAULT_RATE_LIMITS: Readonly<Record<string, RateRule>> = {
     "starts.container": { perMinute: 20 },
     "sessions.open": { perMinute: 20 },
     "sessions.lease": { perMinute: 20 },
+    "sessions.data": { perMinute: 60 },
     "sessions.close": { perMinute: 20 },
     "loader.seal": { perMinute: 20 },
     "artifacts.read": { perMinute: 20 },
@@ -217,8 +221,11 @@ export function createNativeApp(deps: NativeDeps): Hono {
         return ok({ holder: holder.value, proof: proof.value });
     };
 
-    const body = async (c: Context): Promise<Result<Uint8Array<ArrayBuffer>, NativeRefusal>> => {
-        const read = await readBoundedBody(c.req.raw);
+    const body = async (
+        c: Context,
+        maxBytes = MAX_NATIVE_BODY_BYTES,
+    ): Promise<Result<Uint8Array<ArrayBuffer>, NativeRefusal>> => {
+        const read = await readBoundedBody(c.req.raw, maxBytes);
         return read.ok ? read : err({ code: "INVALID_REQUEST" });
     };
 
@@ -395,6 +402,27 @@ export function createNativeApp(deps: NativeDeps): Hono {
             operationId,
         });
         return reply(renewed, (bytesOut) => binaryResponse(bytesOut));
+    });
+
+    app.post("/v1/sessions/:id/data", async (c) => {
+        const caller = await authenticated(c, "sessions.data");
+        if (!caller.ok) return refusalResponse(caller.error);
+        const sessionId = parseIdSegment(c.req.param("id"));
+        if (sessionId === null) return refusalResponse({ code: "NOT_FOUND" });
+        const operationId = operationIdOf(c.req.raw);
+        const bytes = await body(c, MAX_DATA_BODY_BYTES);
+        if (!bytes.ok) return refusalResponse(bytes.error);
+        const frame = parseFrame(bytes.value);
+        if (operationId === null || !frame.ok) return refusalResponse({ code: "INVALID_REQUEST" });
+        const served = await serveData(deps.db, {
+            rng: deps.rng,
+            ...caller.value,
+            sessionId,
+            frame: frame.value,
+            body: bytes.value,
+            operationId,
+        });
+        return reply(served, (bytesOut) => binaryResponse(bytesOut));
     });
 
     app.post("/v1/sessions/:id/close", async (c) => {

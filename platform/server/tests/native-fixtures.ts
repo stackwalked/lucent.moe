@@ -21,8 +21,9 @@ import {
     CONTAINER_CHUNK_SIZE,
     toChunkAssociatedData,
 } from "@lucent/wire/container-stream";
+import { type DataResponse, parseDataResponse, toDataRequestBytes } from "@lucent/wire/data";
 import { parseEnrollmentStatus, toEnrollmentRequestBytes } from "@lucent/wire/enrollment";
-import { openFrame, sealFrame } from "@lucent/wire/frame";
+import { openFrame, parseFrame, sealFrame, toFrameBytes } from "@lucent/wire/frame";
 import {
     CHALLENGE_ANSWER_SIZE,
     type Lease,
@@ -41,7 +42,12 @@ import {
     toSessionHelloBytes,
 } from "@lucent/wire/session";
 import { exchangePublicKey, sharedSecret } from "@lucent/wire/session-crypto";
-import { type Channel, parseStartReply, toStartRequestBytes } from "@lucent/wire/start";
+import {
+    type Channel,
+    parseStartReply,
+    type StartRequest,
+    toStartRequestBytes,
+} from "@lucent/wire/start";
 import { isStrictlySignedBy } from "@lucent/wire/strict-signature";
 import { xchacha20poly1305 } from "@noble/ciphers/chacha.js";
 import { calculateJwkThumbprint, SignJWT } from "jose";
@@ -418,12 +424,15 @@ export function startBody(params: {
     readonly loaderRelease: Uint8Array;
     readonly channel?: Channel;
     readonly product?: string;
+    readonly modules?: StartRequest["modules"];
 }): Uint8Array {
     return toStartRequestBytes({
         product: params.product ?? "cs2",
         channel: params.channel ?? "alpha",
         loaderRelease: params.loaderRelease,
-        modules: [{ nameHash: 0x1234n, timeDateStamp: 0x5566_7788, sizeOfImage: 0x0040_0000 }],
+        modules: params.modules ?? [
+            { nameHash: 0x1234n, timeDateStamp: 0x5566_7788, sizeOfImage: 0x0040_0000 },
+        ],
     });
 }
 
@@ -433,11 +442,18 @@ export type StartedTest = {
     readonly path: string;
 };
 
-export async function startOk(loader: TestLoader, releases: Releases): Promise<StartedTest> {
+export async function startOk(
+    loader: TestLoader,
+    releases: Releases,
+    modules?: StartRequest["modules"],
+): Promise<StartedTest> {
     const sent = await loader.send({
         method: "POST",
         path: "/v1/starts",
-        body: startBody({ loaderRelease: releases.loader.id }),
+        body: startBody({
+            loaderRelease: releases.loader.id,
+            ...(modules === undefined ? {} : { modules }),
+        }),
     });
     const reply = parseStartReply(sent.bytes);
     invariant(reply.ok, `starting failed: ${refusalCodeOf(sent)}`);
@@ -489,6 +505,15 @@ export type TestModule = {
     readonly acceptSession: (reply: Uint8Array) => Promise<Lease>;
     readonly renewal: (params?: { readonly loaderAnswer?: Uint8Array | null }) => Uint8Array;
     readonly acceptLease: (reply: Uint8Array) => Promise<Lease>;
+    // The data_response the session reply carried, opened under the data route's key.
+    readonly firstData: () => DataResponse;
+    // A data_request frame for these builds, as the body of POST /v1/sessions/:id/data; each call
+    // takes the next sequence unless one is given.
+    readonly dataRequest: (
+        modules: StartRequest["modules"],
+        params?: { readonly sequence?: bigint },
+    ) => Uint8Array;
+    readonly acceptData: (reply: Uint8Array) => DataResponse;
     readonly session: () => Uint8Array;
     readonly held: () => Lease;
 };
@@ -502,6 +527,17 @@ export function createTestModule(rng: SeededRng, leaseKey: Uint8Array): TestModu
     let lease: Lease | null = null;
     let sentFrames = 0n;
     let receivedFrames = 0n;
+    let sentData = 0n;
+    let firstData: DataResponse | null = null;
+
+    const openData = (frame: Parameters<typeof openFrame>[1]): DataResponse => {
+        invariant(keys !== null, "the session is open");
+        const plain = openFrame(keys.data.serverToModule, frame);
+        invariant(plain.ok, "the data frame opens under the data route's key");
+        const parsed = parseDataResponse(plain.value);
+        invariant(parsed.ok, "the data response parses");
+        return parsed.value;
+    };
 
     const openLease = async (frame: Parameters<typeof openFrame>[1]): Promise<Lease> => {
         invariant(keys !== null, "the session is open");
@@ -558,6 +594,8 @@ export function createTestModule(rng: SeededRng, leaseKey: Uint8Array): TestModu
                 serverKey: exchange.serverKey,
             });
             session = exchange.session;
+            invariant(parsed.value.firstData.header.sequence === 0n, "the first data frame is 0");
+            firstData = openData(parsed.value.firstData);
             return await openLease(parsed.value.firstLease);
         },
         renewal: (params) => {
@@ -583,6 +621,29 @@ export function createTestModule(rng: SeededRng, leaseKey: Uint8Array): TestModu
             const parsed = parseLeaseResponse(reply);
             invariant(parsed.ok, "the lease response parses");
             return await openLease(parsed.value.lease);
+        },
+        firstData: () => {
+            invariant(firstData !== null, "a session reply was accepted");
+            return firstData;
+        },
+        dataRequest: (modules, params) => {
+            invariant(keys !== null, "the session is open");
+            sentData += 1n;
+            const frame = sealFrame(keys.data.moduleToServer, {
+                header: {
+                    session,
+                    direction: "module_to_server",
+                    sequence: params?.sequence ?? sentData,
+                },
+                nonce: rng.fillBytes(new Uint8Array(24)),
+                plain: toDataRequestBytes({ modules, features: null }),
+            });
+            return toFrameBytes(frame);
+        },
+        acceptData: (reply) => {
+            const frame = parseFrame(reply);
+            invariant(frame.ok, "the data reply is a frame");
+            return openData(frame.value);
         },
         session: () => session,
         held: () => {

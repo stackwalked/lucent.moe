@@ -1,3 +1,4 @@
+import type { ModuleKey } from "@lucent/bundle/fact-set";
 import { parseReleaseManifestV2 } from "@lucent/bundle/release-manifest";
 import type { ProductCatalog } from "@lucent/catalog/catalog";
 import { invariant } from "@lucent/core/contain";
@@ -11,7 +12,8 @@ import {
     toBase64Url,
     toHex,
 } from "@lucent/core/scalars";
-import { openFrame } from "@lucent/wire/frame";
+import { parseDataRequest } from "@lucent/wire/data";
+import { type Frame, openFrame, toFrameBytes } from "@lucent/wire/frame";
 import { parseLeaseRenewal } from "@lucent/wire/lease";
 import type { LeaseRequest } from "@lucent/wire/lease-exchange";
 import { deriveSessionKeys, type SessionHello } from "@lucent/wire/session";
@@ -30,8 +32,10 @@ import {
 import { type ReceiptRefusal, readReplay, recordReceipt, toOperationKey } from "../db/receipt.ts";
 import { errCommit, withTx } from "../db/tx.ts";
 import { type AccountInactive, lockAccountStanding, lockActiveAccount } from "./accounts.ts";
+import { FIRST_DATA_SEQUENCE, sealedData } from "./data.ts";
 import { lockDevice } from "./devices.ts";
 import type { DpopProof } from "./dpop.ts";
+import { readFactDelivery } from "./fact-sets.ts";
 import { newWireId } from "./ids.ts";
 import type { LeaseSigner } from "./lease-key.ts";
 import {
@@ -85,6 +89,10 @@ const SessionRowSchema = z.object({
     lease_expires_at: EpochMs,
     frame_in_sequence: U64,
     frame_out_sequence: U64,
+    data_key_to_server: Bytes.nullable(),
+    data_key_to_module: Bytes.nullable(),
+    data_in_sequence: U64,
+    data_out_sequence: U64,
     end_reason: z
         .enum(["closed", "slot_taken", "suspended", "device_revoked", "expired", "capped"])
         .nullable(),
@@ -95,7 +103,8 @@ const SESSION_COLUMNS = sql`id, account_id, device_id, product_id, release_id, s
     module_key, server_key, key_to_server, key_to_module, image_size, entitled_everything,
     entitled_features, created_at, lease_sequence, lease_nonce, lease_challenge_nonce,
     lease_challenge_offset, lease_challenge_size, loader_challenge_nonce, loader_challenge_offset,
-    loader_challenge_size, lease_expires_at, frame_in_sequence, frame_out_sequence, end_reason`;
+    loader_challenge_size, lease_expires_at, frame_in_sequence, frame_out_sequence,
+    data_key_to_server, data_key_to_module, data_in_sequence, data_out_sequence, end_reason`;
 
 function leaseStateOf(row: SessionRow): LeaseState {
     invariant(row.key_to_module !== null, "a live session holds its keys");
@@ -184,7 +193,8 @@ async function endSession(
         tx,
         sql`update runtime_session
             set ended_at = ${toTimestamptz(params.txNow)}::timestamptz, end_reason = ${params.reason},
-                key_to_server = null, key_to_module = null
+                key_to_server = null, key_to_module = null,
+                data_key_to_server = null, data_key_to_module = null
             where id = ${params.session.id} and ended_at is null`,
     );
     if (!ended.ok) return ended;
@@ -241,6 +251,15 @@ const StartRowSchema = z.object({
     release_id: Bytes,
     expires_at: EpochMs,
     consumed_at: EpochMs.nullable(),
+    modules: z
+        .array(z.tuple([z.string(), z.number(), z.number()]))
+        .transform((builds): ModuleKey[] =>
+            builds.map(([nameHash, timeDateStamp, sizeOfImage]) => ({
+                nameHash: BigInt(nameHash),
+                timeDateStamp,
+                sizeOfImage,
+            })),
+        ),
 });
 
 // POST /v1/starts/:id/session: the module's hello, relayed by the loader. Binds the module's
@@ -296,7 +315,7 @@ export async function openSession(
         const startRow = await queryOne(
             tx,
             StartRowSchema,
-            sql`select device_id, product_id, channel, release_id, expires_at, consumed_at
+            sql`select device_id, product_id, channel, release_id, expires_at, consumed_at, modules
                 from session_start where id = ${params.startId} and account_id = ${accountId}`,
         );
         if (!startRow.ok) return startRow;
@@ -339,7 +358,12 @@ export async function openSession(
             const row = replayed.value;
             if (row.end_reason !== null) return err(endedRefusal(row.end_reason));
             if (row.lease_sequence !== 1n) return err({ code: "STALE_SEQUENCE" });
-            return ok(row);
+            const delivery = await readFactDelivery(tx, {
+                releaseId: row.release_id,
+                builds: start.modules,
+            });
+            if (!delivery.ok) return delivery;
+            return ok({ session: row, delivery: delivery.value });
         }
 
         if (lockedStart.value?.consumed_at !== null || start.expires_at <= txNow) {
@@ -378,7 +402,8 @@ export async function openSession(
                      entitled_features, created_at, lease_sequence, lease_nonce,
                      lease_challenge_nonce, lease_challenge_offset, lease_challenge_size,
                      loader_challenge_nonce, loader_challenge_offset, loader_challenge_size,
-                     lease_issued_at, lease_expires_at, frame_in_sequence, frame_out_sequence)
+                     lease_issued_at, lease_expires_at, frame_in_sequence, frame_out_sequence,
+                     data_key_to_server, data_key_to_module)
                 values (${sessionId}, ${params.startId}, ${accountId}, ${start.device_id},
                         ${start.product_id}, ${start.channel}, ${start.release_id}, ${generation},
                         ${hello.moduleKey}, ${serverKey}, ${keys.lease.moduleToServer},
@@ -391,36 +416,45 @@ export async function openSession(
                         ${loaderChallenge.nonce}, ${loaderChallenge.offset}, ${loaderChallenge.size},
                         ${toTimestamptz(txNow)}::timestamptz,
                         ${toTimestamptz(EpochMs.parse(txNow + LEASE_DURATION_MS))}::timestamptz,
-                        0, 1)
+                        0, 1, ${keys.data.moduleToServer}, ${keys.data.serverToModule})
                 returning ${SESSION_COLUMNS}`,
         );
         if (!inserted.ok) return inserted;
         invariant(inserted.value !== null, "insert returning yields its row");
         const recorded = await recordReceipt(tx, op, { session: toHex(sessionId) });
         if (!recorded.ok) return recorded;
-        return ok(inserted.value);
+        const delivery = await readFactDelivery(tx, {
+            releaseId: start.release_id,
+            builds: start.modules,
+        });
+        if (!delivery.ok) return delivery;
+        return ok({ session: inserted.value, delivery: delivery.value });
     });
-    // Only the lease route's keys are stored so far; the data key lives just long enough to seal
-    // the first data frame.
-    for (const route of [keys.lease, keys.reports]) {
+    // The lease and data routes' keys are stored; the reports route's wait for something that
+    // serves it.
+    for (const route of [keys.lease, keys.data, keys.reports]) {
         route.moduleToServer.fill(0);
         route.serverToModule.fill(0);
     }
-    keys.data.moduleToServer.fill(0);
-    if (!opened.ok) {
-        keys.data.serverToModule.fill(0);
-        return opened;
-    }
-    const reply = await toSessionReply({
-        signer: params.signer,
-        rng,
-        state: leaseStateOf(opened.value),
-        moduleKey: opened.value.module_key,
-        serverKey: opened.value.server_key,
-        dataKey: keys.data.serverToModule,
-    });
-    keys.data.serverToModule.fill(0);
-    return ok(reply);
+    if (!opened.ok) return opened;
+    const { session, delivery } = opened.value;
+    invariant(session.data_key_to_module !== null, "a live session holds its keys");
+    return ok(
+        await toSessionReply({
+            signer: params.signer,
+            rng,
+            state: leaseStateOf(session),
+            moduleKey: session.module_key,
+            serverKey: session.server_key,
+            firstData: sealedData({
+                rng,
+                key: session.data_key_to_module,
+                session: session.id,
+                sequence: FIRST_DATA_SEQUENCE,
+                delivery,
+            }),
+        }),
+    );
 }
 
 export type RenewRefusal =
@@ -576,6 +610,131 @@ export async function renewLease(
             rng: params.rng,
             state: leaseStateOf(renewed.value),
         }),
+    );
+}
+
+const DataReceipt = z.object({ sequence: z.string().regex(/^\d+$/) });
+
+// POST /v1/sessions/:id/data: the loader's DPoP around the module's data_request frame, which must
+// be newer than any accepted on the data route (its sequences are its own: a renewal never stales
+// it). The reply is a data_response for the builds it names, sealed as the next frame the server
+// sends on that route; the builds needn't have been reported at start, since late-loaded modules
+// ask too. Phase 1 ignores the request's feature list. A retry gets the response rebuilt from the
+// same builds at the same sequence, so it is the first answer unless a set was promoted since.
+export async function serveData(
+    db: Db,
+    params: {
+        readonly rng: CryptoRng;
+        readonly holder: TokenHolder;
+        readonly proof: DpopProof;
+        readonly sessionId: Uint8Array;
+        readonly frame: Frame;
+        readonly body: Uint8Array;
+        readonly operationId: OperationId;
+    },
+): Promise<Result<Uint8Array<ArrayBuffer>, RenewRefusal | DbFailure>> {
+    const { accountId } = params.holder;
+    const { frame } = params;
+    if (
+        toHex(frame.header.session) !== toHex(params.sessionId) ||
+        frame.header.direction !== "module_to_server"
+    ) {
+        return err({ code: "INVALID_REQUEST" });
+    }
+    const op = await toOperationKey({
+        principal: `account:${accountId}`,
+        endpoint: "v1.sessions.data",
+        operationId: params.operationId,
+        payload: { session: toHex(params.sessionId), body: toBase64Url(params.body) },
+    });
+
+    const served = await withTx(db, async (tx, txNow) => {
+        const found = await findSession(tx, {
+            sessionId: params.sessionId,
+            accountId,
+            lock: "no lock",
+        });
+        if (!found.ok) return found;
+        if (found.value === null) return err({ code: "NOT_FOUND" });
+        const standing = await lockAccountStanding(tx, accountId, txNow);
+        if (!standing.ok) return standing;
+        const device = await lockDevice(tx, found.value.device_id);
+        if (!device.ok) return device;
+        if (device.value.jkt !== params.proof.jkt) return err({ code: "NOT_FOUND" });
+        const slot = await lockSlot(tx, { accountId, productId: found.value.product_id });
+        if (!slot.ok) return slot;
+        const locked = await findSession(tx, {
+            sessionId: params.sessionId,
+            accountId,
+            lock: "for update",
+        });
+        if (!locked.ok) return locked;
+        invariant(locked.value !== null, "a session found a moment ago exists under lock");
+        const session = locked.value;
+        if (session.end_reason !== null) return err(endedRefusal(session.end_reason));
+
+        const replay = await readReplay(tx, op, DataReceipt);
+        if (!replay.ok) return replay;
+        const replayed = replay.value.replayed ? BigInt(replay.value.result.sequence) : null;
+        if (replayed !== null && replayed !== session.data_out_sequence - 1n) {
+            return err({ code: "STALE_SEQUENCE" });
+        }
+
+        const reason = endReasonOf({
+            session,
+            slot: slot.value,
+            accountActive: standing.value === "active",
+            deviceRevoked: device.value.revokedAt !== null,
+            txNow,
+        });
+        if (reason !== null) {
+            const ended = await endSession(tx, { session, slot: slot.value, reason, txNow });
+            if (!ended.ok) return ended;
+            return errCommit(endedRefusal(reason));
+        }
+
+        if (replayed === null && frame.header.sequence <= session.data_in_sequence) {
+            return err({ code: "STALE_SEQUENCE" });
+        }
+        invariant(session.data_key_to_server !== null, "a live session holds its keys");
+        const plain = openFrame(session.data_key_to_server, frame);
+        if (!plain.ok) return err({ code: "PROOF_INVALID" });
+        const request = parseDataRequest(plain.value);
+        plain.value.fill(0);
+        if (!request.ok) return err({ code: "INVALID_REQUEST" });
+        const delivery = await readFactDelivery(tx, {
+            releaseId: session.release_id,
+            builds: request.value.modules,
+        });
+        if (!delivery.ok) return delivery;
+        if (replayed !== null) return ok({ session, delivery: delivery.value, sequence: replayed });
+
+        const sequence = session.data_out_sequence;
+        const advanced = await execute(
+            tx,
+            sql`update runtime_session
+                set data_in_sequence = ${frame.header.sequence},
+                    data_out_sequence = data_out_sequence + 1
+                where id = ${session.id}`,
+        );
+        if (!advanced.ok) return advanced;
+        const recorded = await recordReceipt(tx, op, { sequence: sequence.toString() });
+        if (!recorded.ok) return recorded;
+        return ok({ session, delivery: delivery.value, sequence });
+    });
+    if (!served.ok) return served;
+    const { session, delivery, sequence } = served.value;
+    invariant(session.data_key_to_module !== null, "a live session holds its keys");
+    return ok(
+        toFrameBytes(
+            sealedData({
+                rng: params.rng,
+                key: session.data_key_to_module,
+                session: session.id,
+                sequence,
+                delivery,
+            }),
+        ),
     );
 }
 

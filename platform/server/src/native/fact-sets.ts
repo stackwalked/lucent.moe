@@ -1,4 +1,4 @@
-import { parseBundle, verifySet } from "@lucent/bundle/bundle";
+import { type DeliveredSet, parseBundle, toBundleBytes, verifySet } from "@lucent/bundle/bundle";
 import type { ModuleKey } from "@lucent/bundle/fact-set";
 import {
     coreFactKeys,
@@ -153,18 +153,21 @@ async function highestRevision(
     return ok(highest);
 }
 
-// The facts the release's current sets hold for the reported builds. A set counts when it is the
-// current set of some reported build and every build it lists was reported: a module applies a
-// set only when everything that shaped it is loaded. The manifest doesn't say which module a fact
-// lives in, so coverage is of the union.
-export async function readCoveredFactKeys(
+// The release's current sets that apply to the reported builds. A set applies when it is the
+// current set of some reported build and every build it lists was reported: a module applies a set
+// only when everything that shaped it is loaded. `unsupported` is every reported build whose own
+// current set doesn't apply (or that has none). Sets are in the order of the builds that found
+// them, each once.
+async function readApplicableSets(
     q: Queryable,
     params: { readonly releaseId: Uint8Array; readonly builds: readonly ModuleKey[] },
-): Promise<Result<Set<bigint>, DbFailure>> {
+): Promise<Result<{ setIds: string[]; unsupported: ModuleKey[] }, DbFailure>> {
     const reported = new Set(params.builds.map(buildId));
-    const setIds = new Set<string>();
+    const setIds: string[] = [];
+    const unsupported: ModuleKey[] = [];
+    const checked = new Map<string, boolean>();
     for (const build of params.builds) {
-        const row = await queryAll(
+        const row = await queryOne(
             q,
             z.object({ set_id: z.string() }),
             sql`select b.set_id::text as set_id
@@ -179,31 +182,51 @@ export async function readCoveredFactKeys(
                   and c.size_of_image = ${build.sizeOfImage}`,
         );
         if (!row.ok) return row;
-        for (const found of row.value) setIds.add(found.set_id);
-    }
-    const covered = new Set<bigint>();
-    for (const setId of setIds) {
-        const listed = await queryAll(
-            q,
-            z.object({
-                name_hash: z.string(),
-                time_date_stamp: z.coerce.number(),
-                size: z.coerce.number(),
-            }),
-            sql`select name_hash::text as name_hash, time_date_stamp, size_of_image as size
-                from fact_set_build where set_id = ${setId}::bigint`,
-        );
-        if (!listed.ok) return listed;
-        const isReported = listed.value.every((build) =>
-            reported.has(
-                buildId({
-                    nameHash: BigInt(build.name_hash),
-                    timeDateStamp: build.time_date_stamp,
-                    sizeOfImage: build.size,
+        const setId = row.value?.set_id ?? null;
+        if (setId === null) {
+            unsupported.push(build);
+            continue;
+        }
+        let applies = checked.get(setId);
+        if (applies === undefined) {
+            const listed = await queryAll(
+                q,
+                z.object({
+                    name_hash: z.string(),
+                    time_date_stamp: z.coerce.number(),
+                    size: z.coerce.number(),
                 }),
-            ),
-        );
-        if (!isReported) continue;
+                sql`select name_hash::text as name_hash, time_date_stamp, size_of_image as size
+                    from fact_set_build where set_id = ${setId}::bigint`,
+            );
+            if (!listed.ok) return listed;
+            applies = listed.value.every((listedBuild) =>
+                reported.has(
+                    buildId({
+                        nameHash: BigInt(listedBuild.name_hash),
+                        timeDateStamp: listedBuild.time_date_stamp,
+                        sizeOfImage: listedBuild.size,
+                    }),
+                ),
+            );
+            checked.set(setId, applies);
+            if (applies) setIds.push(setId);
+        }
+        if (!applies) unsupported.push(build);
+    }
+    return ok({ setIds, unsupported });
+}
+
+// The facts the release's current sets hold for the reported builds (see readApplicableSets).
+// The manifest doesn't say which module a fact lives in, so coverage is of the union.
+export async function readCoveredFactKeys(
+    q: Queryable,
+    params: { readonly releaseId: Uint8Array; readonly builds: readonly ModuleKey[] },
+): Promise<Result<Set<bigint>, DbFailure>> {
+    const found = await readApplicableSets(q, params);
+    if (!found.ok) return found;
+    const covered = new Set<bigint>();
+    for (const setId of found.value.setIds) {
         const keys = await queryOne(
             q,
             z.object({ fact_keys: z.instanceof(Uint8Array) }),
@@ -218,6 +241,40 @@ export async function readCoveredFactKeys(
         }
     }
     return ok(covered);
+}
+
+// What the data route delivers for the builds: the applicable sets, each whole, as one fact bundle
+// (contracts/fact-bundle/v1), and the builds nothing applies to.
+export type FactDelivery = {
+    readonly bundle: Uint8Array<ArrayBuffer>;
+    readonly unsupported: readonly ModuleKey[];
+};
+
+export async function readFactDelivery(
+    q: Queryable,
+    params: { readonly releaseId: Uint8Array; readonly builds: readonly ModuleKey[] },
+): Promise<Result<FactDelivery, DbFailure>> {
+    const found = await readApplicableSets(q, params);
+    if (!found.ok) return found;
+    const sets: DeliveredSet[] = [];
+    for (const setId of found.value.setIds) {
+        const row = await queryOne(
+            q,
+            z.object({ bundle: z.instanceof(Uint8Array) }),
+            sql`select bundle from fact_set where id = ${setId}::bigint`,
+        );
+        if (!row.ok) return row;
+        invariant(row.value !== null, "a set indexed by a build exists");
+        const parsed = parseBundle(row.value.bundle);
+        invariant(
+            parsed.ok && parsed.value.length === 1,
+            "a stored set is a bundle of one, checked when published",
+        );
+        const [set] = parsed.value;
+        invariant(set !== undefined, "a bundle of one set has one");
+        sets.push(set);
+    }
+    return ok({ bundle: toBundleBytes(sets), unsupported: found.value.unsupported });
 }
 
 function buildId(build: ModuleKey): string {

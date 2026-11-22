@@ -168,11 +168,18 @@ export async function createStart(
             tx,
             sql`insert into session_start
                     (id, account_id, device_id, product_id, channel, release_id, release_number,
-                     container_key, created_at, expires_at)
+                     container_key, created_at, expires_at, modules)
                 values (${startId}, ${accountId}, ${device.value.id}, ${product.id}, ${channel},
                         ${release.value.id}, ${release.value.number}, ${containerKey},
                         ${toTimestamptz(txNow)}::timestamptz,
-                        ${toTimestamptz(EpochMs.parse(txNow + START_TTL_MS))}::timestamptz)`,
+                        ${toTimestamptz(EpochMs.parse(txNow + START_TTL_MS))}::timestamptz,
+                        ${JSON.stringify(
+                            request.modules.map((module) => [
+                                module.nameHash.toString(),
+                                module.timeDateStamp,
+                                module.sizeOfImage,
+                            ]),
+                        )}::jsonb)`,
         );
         if (!inserted.ok) return inserted;
         const recorded = await recordReceipt(tx, op, { start: toHex(startId) });

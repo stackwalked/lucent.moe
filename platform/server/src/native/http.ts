@@ -10,6 +10,9 @@ import { type RefusalCode, toRefusalBytes } from "@lucent/wire/refusal";
 // hundred bytes); anything bigger is refused before it is buffered.
 export const MAX_NATIVE_BODY_BYTES = 16 * 1024;
 
+// The data route's requests may carry a feature list, which can reach 32 KiB.
+export const MAX_DATA_BODY_BYTES = 64 * 1024;
+
 export const OPERATION_HEADER = "lucent-operation";
 
 export type NativeRefusal = {
