@@ -1,0 +1,7 @@
+project:
+  description: "The release loader: signs in, holds the device key, updates itself, verifies and maps a module into its game, and relays its session to the server."
+
+language: "cpp"
+layer: "application"
+
+dependsOn: ["bundle", "core", "crypto", "kit", "launch", "os", "pe", "wire"]

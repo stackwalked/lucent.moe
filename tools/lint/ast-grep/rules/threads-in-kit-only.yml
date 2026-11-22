@@ -12,6 +12,8 @@ rule:
         regex: ^(::)?(CreateThread|_beginthread|_beginthreadex)$
 ignores:
   - "**/native/kit/**"
-  # Tests and tools are executables of their own, never mapped into a target.
+  # Tests and tools are executables of their own, never mapped into a target, as is the loader's
+  # console watcher.
   - "**/native/**/tests/**"
   - "**/native/tools/**"
+  - "**/native/loader/src/app/run.cpp"

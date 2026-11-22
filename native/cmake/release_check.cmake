@@ -17,29 +17,37 @@ if(NOT EXISTS "${seed}")
     file(WRITE "${seed}" "${material}")
 endif()
 
-# The lease key's public half, likewise a throwaway: random bytes no server holds the seed of, so
-# nothing built here accepts a real lease. Drawn once per machine, beside the seed.
-set(lease_key_file "${source_dir}/../.moon/cache/release-check.lease-key")
-if(NOT EXISTS "${lease_key_file}")
-    set(base64url "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")
-    string(RANDOM LENGTH 42 ALPHABET "${base64url}" lease_key_head)
-    # The last character's 2 low bits are padding, zero in a canonical encoding.
-    string(RANDOM LENGTH 1 ALPHABET "AEIMQUYcgkosw048" lease_key_tail)
-    file(WRITE "${lease_key_file}" "${lease_key_head}${lease_key_tail}")
-endif()
-file(READ "${lease_key_file}" lease_key)
+# A public key's 43 base64url characters, drawn once per machine into the file and read back:
+# random bytes no one holds the secret half of, so nothing built here accepts a real lease or seal.
+function(throwaway_public_key file out)
+    if(NOT EXISTS "${file}")
+        set(base64url "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")
+        string(RANDOM LENGTH 42 ALPHABET "${base64url}" head)
+        # The last character's 2 low bits are padding, zero in a canonical encoding.
+        string(RANDOM LENGTH 1 ALPHABET "AEIMQUYcgkosw048" tail)
+        file(WRITE "${file}" "${head}${tail}")
+    endif()
+    file(READ "${file}" key)
+    set(${out} "${key}" PARENT_SCOPE)
+endfunction()
+
+# The lease key's public half, which release modules verify leases against, and the code key's,
+# which the release loader verifies seals against.
+throwaway_public_key("${source_dir}/../.moon/cache/release-check.lease-key" lease_key)
+throwaway_public_key("${source_dir}/../.moon/cache/release-check.code-key" code_key)
 
 # Configure once, then let Ninja rerun CMake when an input changed, as configure.cmake does; a
-# tree configured before it had the lease key configures again to take it.
+# tree configured before it had both keys configures again to take them.
 set(cache "${binary_dir}/CMakeCache.txt")
-set(has_lease_key FALSE)
+set(has_keys FALSE)
 if(EXISTS "${cache}")
     file(STRINGS "${cache}" cached_lease_key REGEX "^LUCENT_LEASE_PUBLIC_KEY:STRING=${lease_key}$")
-    if(cached_lease_key)
-        set(has_lease_key TRUE)
+    file(STRINGS "${cache}" cached_code_key REGEX "^LUCENT_CODE_PUBLIC_KEY:STRING=${code_key}$")
+    if(cached_lease_key AND cached_code_key)
+        set(has_keys TRUE)
     endif()
 endif()
-if(EXISTS "${binary_dir}/build.ninja" AND has_lease_key)
+if(EXISTS "${binary_dir}/build.ninja" AND has_keys)
     set(configure
         "${CMAKE_COMMAND}"
         --build
@@ -54,6 +62,7 @@ else()
         --preset
         release-check
         "-DLUCENT_LEASE_PUBLIC_KEY=${lease_key}"
+        "-DLUCENT_CODE_PUBLIC_KEY=${code_key}"
     )
 endif()
 execute_process(COMMAND ${configure} WORKING_DIRECTORY "${source_dir}" COMMAND_ERROR_IS_FATAL ANY)

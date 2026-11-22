@@ -1,0 +1,11 @@
+project:
+  description: "lucent-host: the process the loader maps a host-placed product's module into, apart from its own tokens and device key."
+
+language: "cpp"
+layer: "application"
+
+dependsOn: ["core"]
+
+workspace:
+  inheritedTasks:
+    exclude: ["test"]

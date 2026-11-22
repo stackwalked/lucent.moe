@@ -130,6 +130,21 @@ if(CMAKE_BUILD_TYPE STREQUAL "Release")
         message(FATAL_ERROR "LUCENT_LEASE_PUBLIC_KEY is the dev lease key (the all-zero seed's)")
     endif()
 endif()
+
+# The offline code key's public half, which the release loader verifies every seal against before
+# it runs or installs what the seal names: 32 bytes as 43 base64url characters, as `codekey public`
+# prints them. Required in Release. A dev build may name one too, to try the loader against a dev
+# server; without one it refuses every seal. Not a secret. release-check passes a throwaway.
+set(LUCENT_CODE_PUBLIC_KEY "" CACHE STRING "The code key's public half: 43 base64url characters")
+if(CMAKE_BUILD_TYPE STREQUAL "Release" OR LUCENT_CODE_PUBLIC_KEY)
+    string(LENGTH "${LUCENT_CODE_PUBLIC_KEY}" code_key_length)
+    if(
+        NOT LUCENT_CODE_PUBLIC_KEY MATCHES "^[A-Za-z0-9_-]+[AEIMQUYcgkosw048]$"
+        OR NOT code_key_length EQUAL 43
+    )
+        message(FATAL_ERROR "LUCENT_CODE_PUBLIC_KEY must be 43 base64url characters (32 bytes)")
+    endif()
+endif()
 # lucent_module(<name> SOURCES <sources>... [DEPS <targets>...])
 #
 # The loadable module lucent_<name>.dll: no import library, nothing links against it. Every module
