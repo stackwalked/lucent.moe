@@ -13,16 +13,18 @@
 
 #include "codec.hpp"
 
-// Version 1 on the wire:
+// Hello and exchange are version 1, the reply version 2:
 //   hello: context "lucent session hello v1" (32), module X25519 key (32), module nonce (16),
 //     release id (16), u32 boot_info version, u8 image kind, u64 image base, u32 image size.
 //   exchange: context "lucent session exchange v1" (32), session id (16), module X25519 key (32),
 //     module nonce (16), server X25519 key (32), Ed25519 signature (64) over everything before it.
-//   reply: the exchange, then a frame running to the end.
+//   reply: context "lucent session reply v2" (32), the exchange, u32 size of the first lease frame,
+//     that frame (server to module, lease route), then the first data frame (server to module,
+//     data route) running to the end. Frames carry no length of their own.
 //
-// Keys derive from one unkeyed BLAKE2b-256 per direction over fixed-size fields after a fixed
-// context, so no two inputs share an encoding. Unkeyed because Bun has BLAKE2b-256 built in but
-// not its keyed mode, and the server derives the same keys. Both public halves go in, as in
+// Keys derive from one unkeyed BLAKE2b-256 per route and direction over fixed-size fields after a
+// fixed context, so no two inputs share an encoding. Unkeyed because Bun has BLAKE2b-256 built in
+// but not its keyed mode, and the server derives the same keys. Both public halves go in, as in
 // libsodium's crypto_kx, so the keys commit to the whole exchange and not only its secret.
 
 namespace lucent::wire {
@@ -30,7 +32,8 @@ namespace {
 
 constexpr u32 hello_version = 1;
 constexpr u32 exchange_version = 1;
-constexpr u32 keys_version = 1;
+constexpr u32 reply_version = 2;
+constexpr u32 keys_version = 2;
 
 // 2^255 - 19, little-endian: an X25519 key is canonical below it.
 constexpr std::array<u8, 32> field_prime{
@@ -118,11 +121,17 @@ auto read_exchange(detail::reader& input) -> result<session_exchange> {
     return exchange;
 }
 
-auto derive_key(direction way, const crypto::secret_key& shared, const exchange_halves& halves)
+struct key_slot {
+    frame_route route = frame_route::lease;
+    direction way = direction::module_to_server;
+};
+
+auto derive_key(key_slot slot, const crypto::secret_key& shared, const exchange_halves& halves)
     -> crypto::secret_key {
     detail::writer input;
     input.write_context("session keys", keys_version);
-    input.write_u8(std::to_underlying(way));
+    input.write_u8(std::to_underlying(slot.route));
+    input.write_u8(std::to_underlying(slot.way));
     input.write_bytes(shared.as_bytes());
     input.write_bytes(halves.module_key);
     input.write_bytes(halves.server_key);
@@ -132,6 +141,23 @@ auto derive_key(direction way, const crypto::secret_key& shared, const exchange_
     crypto::wipe(material);
     crypto::wipe(derived);
     return key;
+}
+
+auto derive_route_keys(
+    frame_route route, const crypto::secret_key& shared, const exchange_halves& halves
+) -> route_keys {
+    return route_keys{
+        .module_to_server = derive_key(
+            key_slot{.route = route, .way = direction::module_to_server}, shared, halves
+        ),
+        .server_to_module = derive_key(
+            key_slot{.route = route, .way = direction::server_to_module}, shared, halves
+        ),
+    };
+}
+
+auto is_first_frame(const frame& sealed, const session_id& session) -> bool {
+    return sealed.header.way == direction::server_to_module && sealed.header.session == session;
 }
 
 }
@@ -199,30 +225,44 @@ auto decode_session_exchange(std::span<const std::byte> bytes) -> result<session
 }
 
 auto encode_session_reply(const session_reply& reply) -> std::vector<std::byte> {
-    LUCENT_INVARIANT(reply.first_lease.header.way == direction::server_to_module);
-    LUCENT_INVARIANT(reply.first_lease.header.session == reply.exchange.session);
-    std::vector<std::byte> out = encode_session_exchange(reply.exchange);
-    out.append_range(encode_frame(reply.first_lease));
-    return out;
+    LUCENT_INVARIANT(is_first_frame(reply.first_lease, reply.exchange.session));
+    LUCENT_INVARIANT(is_first_frame(reply.first_data, reply.exchange.session));
+    const std::vector<std::byte> lease = encode_frame(reply.first_lease);
+    detail::writer out;
+    out.write_context("session reply", reply_version);
+    out.write_bytes(encode_session_exchange(reply.exchange));
+    out.write_u32(static_cast<u32>(lease.size()));
+    out.write_bytes(lease);
+    out.write_bytes(encode_frame(reply.first_data));
+    return out.take();
 }
 
 auto decode_session_reply(std::span<const std::byte> bytes) -> result<session_reply> {
     detail::reader input{bytes};
+    LUCENT_TRY(input.read_context("session reply", reply_version));
     const session_exchange exchange = LUCENT_TRY(read_exchange(input));
-    const std::span<const std::byte> rest = LUCENT_TRY(input.read_bytes(input.remaining()));
-    frame first_lease = LUCENT_TRY(decode_frame(rest));
-    if (first_lease.header.way != direction::server_to_module
-        || first_lease.header.session != exchange.session) {
+    const u32 lease_size = LUCENT_TRY(input.read_u32());
+    const std::span<const std::byte> lease_bytes = LUCENT_TRY(input.read_bytes(lease_size));
+    const std::span<const std::byte> data_bytes = LUCENT_TRY(input.read_bytes(input.remaining()));
+    frame first_lease = LUCENT_TRY(decode_frame(lease_bytes));
+    frame first_data = LUCENT_TRY(decode_frame(data_bytes));
+    if (!is_first_frame(first_lease, exchange.session)
+        || !is_first_frame(first_data, exchange.session)) {
         return std::unexpected(detail::malformed);
     }
-    return session_reply{.exchange = exchange, .first_lease = std::move(first_lease)};
+    return session_reply{
+        .exchange = exchange,
+        .first_lease = std::move(first_lease),
+        .first_data = std::move(first_data),
+    };
 }
 
 auto derive_session_keys(const crypto::secret_key& shared, const exchange_halves& halves)
     -> session_keys {
     return session_keys{
-        .module_to_server = derive_key(direction::module_to_server, shared, halves),
-        .server_to_module = derive_key(direction::server_to_module, shared, halves),
+        .lease = derive_route_keys(frame_route::lease, shared, halves),
+        .data = derive_route_keys(frame_route::data, shared, halves),
+        .reports = derive_route_keys(frame_route::reports, shared, halves),
     };
 }
 

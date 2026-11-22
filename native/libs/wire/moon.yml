@@ -1,5 +1,5 @@
 project:
-  description: "The native /v1 messages: session hello and key exchange, frames, leases and renewals, starts, enrollments and refusals; the module container, its download stream and the release seal."
+  description: "The native /v1 messages: session hello and key exchange, frames, leases and renewals, data requests and responses, starts, enrollments and refusals; the module container, its download stream and the release seal."
 
 language: "cpp"
 layer: "library"

@@ -3,11 +3,14 @@
 #include <array>
 #include <chrono>
 #include <cstddef>
+#include <optional>
 #include <string_view>
 #include <vector>
 
+#include <lucent/bundle/bundle.hpp>
 #include <lucent/bundle/fact_set.hpp>
 #include <lucent/crypto/crypto.hpp>
+#include <lucent/wire/data.hpp>
 #include <lucent/wire/enrollment.hpp>
 #include <lucent/wire/frame.hpp>
 #include <lucent/wire/ids.hpp>
@@ -66,6 +69,7 @@ constexpr enrollment_id enrollment{.bytes = filled<id_size>(0x66)};
 constexpr module_nonce hello_nonce = filled<module_nonce_size>(0x77);
 constexpr module_nonce renewal_nonce = filled<module_nonce_size>(0x78);
 constexpr crypto::aead_nonce first_lease_nonce = filled<crypto::aead_nonce_size>(0x88);
+constexpr crypto::aead_nonce first_data_nonce = filled<crypto::aead_nonce_size>(0x8b);
 constexpr crypto::aead_nonce renewal_frame_nonce = filled<crypto::aead_nonce_size>(0x89);
 constexpr crypto::aead_nonce lease_frame_nonce = filled<crypto::aead_nonce_size>(0x8a);
 
@@ -104,7 +108,7 @@ inline auto unsigned_lease(entitled_features entitled) -> lease {
         .sequence = 1,
         .nonce = hello_nonce,
         .duration = std::chrono::milliseconds{60'000},
-        .bundle_revision = 7,
+        .data_revision = 7,
         .challenge =
             hash_challenge{
                 .nonce = filled<challenge_nonce_size>(0x99),
@@ -147,12 +151,63 @@ inline auto keys() -> session_keys {
     );
 }
 
+inline auto module_builds() -> std::vector<bundle::module_key> {
+    return {
+        bundle::module_key{
+            .name_hash = 0x1111'2222'3333'4444,
+            .time_date_stamp = 0x6731'a2f0,
+            .size_of_image = 0x04c2'e000,
+        },
+        bundle::module_key{
+            .name_hash = 0x5555'6666'7777'8888,
+            .time_date_stamp = 0x6731'a2f1,
+            .size_of_image = 0x0012'3000,
+        },
+    };
+}
+
+// A real, signed fact set for the first module build, every entry delivered.
+inline auto first_bundle() -> std::vector<std::byte> {
+    const bundle::fact_set full = bundle::sign_fact_set(
+        bundle::fact_set_header{
+            .game = 1,
+            .revision = 3,
+            .modules = {module_builds().front()},
+        },
+        {bundle::literal(0x10, 0x1000), bundle::literal(0x20, 0x2000)},
+        crypto::signing_key::from_seed(lease_seed)
+    );
+    const std::array sets{bundle::deliver_all(full)};
+    return bundle::encode_bundle(sets);
+}
+
+inline auto data_request_of() -> data_request {
+    return data_request{
+        .modules = module_builds(),
+        .features = std::vector<u64>{0x0123'4567'89ab'cdef, 0x8000'0000'0000'0001},
+    };
+}
+
+inline auto data_request_everything() -> data_request {
+    return data_request{.modules = module_builds(), .features = std::nullopt};
+}
+
+// The first data: the first module build's set, the second not yet supported.
+inline auto first_data() -> data_response {
+    return data_response{
+        .data_revision = 7,
+        .bundle_bytes = first_bundle(),
+        .unsupported = {module_builds().back()},
+    };
+}
+
 inline auto reply() -> session_reply {
     const std::vector<std::byte> plain = encode_lease(first_lease());
+    const std::vector<std::byte> encoded_data = encode_data_response(first_data());
     return session_reply{
         .exchange = exchange(),
         .first_lease = seal_frame(
-            keys().server_to_module,
+            keys().lease.server_to_module,
             frame_contents{
                 .header =
                     frame_header{
@@ -162,6 +217,19 @@ inline auto reply() -> session_reply {
                     },
                 .nonce = first_lease_nonce,
                 .plain = plain,
+            }
+        ),
+        .first_data = seal_frame(
+            keys().data.server_to_module,
+            frame_contents{
+                .header =
+                    frame_header{
+                        .session = session,
+                        .way = direction::server_to_module,
+                        .sequence = 0,
+                    },
+                .nonce = first_data_nonce,
+                .plain = encoded_data,
             }
         ),
     };
@@ -182,7 +250,7 @@ inline auto renewal() -> lease_renewal {
 inline auto renewal_frame() -> frame {
     const std::vector<std::byte> plain = encode_lease_renewal(renewal());
     return seal_frame(
-        keys().module_to_server,
+        keys().lease.module_to_server,
         frame_contents{
             .header =
                 frame_header{
@@ -222,7 +290,7 @@ inline auto lease_response_of() -> lease_response {
                 .size = 0x100,
             },
         .lease = seal_frame(
-            keys().server_to_module,
+            keys().lease.server_to_module,
             frame_contents{
                 .header =
                     frame_header{
@@ -242,18 +310,7 @@ inline auto request() -> start_request {
         .product = "cs2",
         .chosen = channel::alpha,
         .loader_release = loader_release,
-        .modules = {
-            bundle::module_key{
-                .name_hash = 0x1111'2222'3333'4444,
-                .time_date_stamp = 0x6731'a2f0,
-                .size_of_image = 0x04c2'e000,
-            },
-            bundle::module_key{
-                .name_hash = 0x5555'6666'7777'8888,
-                .time_date_stamp = 0x6731'a2f1,
-                .size_of_image = 0x0012'3000,
-            },
-        },
+        .modules = module_builds(),
     };
 }
 

@@ -507,7 +507,7 @@ export function createTestModule(rng: SeededRng, leaseKey: Uint8Array): TestModu
         invariant(keys !== null, "the session is open");
         invariant(frame.header.sequence > receivedFrames, "frames only move forward");
         receivedFrames = frame.header.sequence;
-        const plain = openFrame(keys.serverToModule, frame);
+        const plain = openFrame(keys.lease.serverToModule, frame);
         invariant(plain.ok, "the lease frame opens under the session key");
         const parsed = parseLease(plain.value);
         invariant(parsed.ok, "the lease parses");
@@ -564,7 +564,7 @@ export function createTestModule(rng: SeededRng, leaseKey: Uint8Array): TestModu
             invariant(keys !== null && lease !== null, "a lease is held");
             nonce = rng.fillBytes(new Uint8Array(16));
             sentFrames += 1n;
-            const frame = sealFrame(keys.moduleToServer, {
+            const frame = sealFrame(keys.lease.moduleToServer, {
                 header: { session, direction: "module_to_server", sequence: sentFrames },
                 nonce: rng.fillBytes(new Uint8Array(24)),
                 plain: toLeaseRenewalBytes({

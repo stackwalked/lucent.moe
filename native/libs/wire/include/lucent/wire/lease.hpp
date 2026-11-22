@@ -51,7 +51,9 @@ struct lease {
     // The nonce of the hello or renewal this lease answers.
     module_nonce nonce{};
     std::chrono::milliseconds duration{};
-    u64 bundle_revision = 0;
+    // Rises when the session's facts or overrides change; the data route's response carries the
+    // same number.
+    u64 data_revision = 0;
     hash_challenge challenge;
     // A product id, as ids.hpp describes it.
     std::string product;

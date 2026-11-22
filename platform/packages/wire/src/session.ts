@@ -11,26 +11,29 @@ import {
 import { invariant } from "@lucent/core/contain";
 import { ok, type Result } from "@lucent/core/result";
 import { finish, ID_SIZE, readContext, writeContext } from "./codec.ts";
-import { type Frame, parseFrame, toFrameBytes } from "./frame.ts";
+import { FRAME_ROUTES, type Frame, type FrameRoute, parseFrame, toFrameBytes } from "./frame.ts";
 
 // How a module opens its session, as native/libs/wire/src/session.cpp reads and writes it: its
 // hello (POST /v1/starts/:id/session, relayed by the loader), then the server's half of the key
-// exchange signed by the lease key, and the first lease in a frame.
+// exchange signed by the lease key, and the first lease and first data in frames.
 //
-// Version 1 on the wire:
+// Hello and exchange are version 1, the reply version 2:
 //   hello: context "lucent session hello v1" (32), module X25519 key (32), module nonce (16),
 //     release id (16), u32 boot_info version, u8 image kind, u64 image base, u32 image size.
 //   exchange: context "lucent session exchange v1" (32), session id (16), module X25519 key (32),
 //     module nonce (16), server X25519 key (32), Ed25519 signature (64) over everything before it.
-//   reply: the exchange, then a frame (server to module) running to the end.
+//   reply: context "lucent session reply v2" (32), the exchange, u32 size of the first lease
+//     frame, that frame (server to module, lease route), then the first data frame (server to
+//     module, data route) running to the end. Frames carry no length of their own.
 //
-// Session keys: per direction, BLAKE2b-256(context "lucent session keys v1" || direction byte ||
-// shared secret || module key || server key). Unkeyed because Bun has no keyed BLAKE2b; the
-// fixed-size fields after a fixed context keep every input's encoding unique.
+// Session keys: per route and direction, BLAKE2b-256(context "lucent session keys v2" || route
+// byte || direction byte || shared secret || module key || server key). Unkeyed because Bun has no
+// keyed BLAKE2b; the fixed-size fields after a fixed context keep every input's encoding unique.
 
 const HELLO_VERSION = 1;
 const EXCHANGE_VERSION = 1;
-const KEYS_VERSION = 1;
+const REPLY_VERSION = 2;
+const KEYS_VERSION = 2;
 
 export const MODULE_NONCE_SIZE = 16;
 export const EXCHANGE_KEY_SIZE = 32;
@@ -65,12 +68,18 @@ export type SessionExchange = {
 export type SessionReply = {
     readonly exchange: SessionExchange;
     readonly firstLease: Frame;
+    // A data_response, on the data route.
+    readonly firstData: Frame;
 };
 
-export type SessionKeys = {
+// One key per direction, so neither side's frames can be reflected back at it.
+export type RouteKeys = {
     readonly moduleToServer: Uint8Array<ArrayBuffer>;
     readonly serverToModule: Uint8Array<ArrayBuffer>;
 };
+
+// One pair per route, so no route's frames open on another's.
+export type SessionKeys = Readonly<Record<FrameRoute, RouteKeys>>;
 
 const EXCHANGE_SIZE =
     32 + ID_SIZE + EXCHANGE_KEY_SIZE + MODULE_NONCE_SIZE + EXCHANGE_KEY_SIZE + SIGNATURE_SIZE;
@@ -186,46 +195,73 @@ export function parseSessionExchange(bytes: Uint8Array): Result<SessionExchange,
     return finish(input, exchange.value);
 }
 
+function isFirstFrame(frame: Frame, session: Uint8Array): boolean {
+    return (
+        frame.header.direction === "server_to_module" && equalBytes(frame.header.session, session)
+    );
+}
+
 export function toSessionReplyBytes(reply: SessionReply): Uint8Array<ArrayBuffer> {
-    invariant(reply.firstLease.header.direction === "server_to_module", "first lease direction");
-    invariant(equalBytes(reply.firstLease.header.session, reply.exchange.session), "session");
-    const exchange = toSessionExchangeBytes(reply.exchange);
-    const frame = toFrameBytes(reply.firstLease);
-    const out = new Uint8Array(exchange.byteLength + frame.byteLength);
-    out.set(exchange);
-    out.set(frame, exchange.byteLength);
-    return out;
+    invariant(isFirstFrame(reply.firstLease, reply.exchange.session), "first lease frame");
+    invariant(isFirstFrame(reply.firstData, reply.exchange.session), "first data frame");
+    const lease = toFrameBytes(reply.firstLease);
+    const out = createWriter();
+    writeContext(out, "session reply", REPLY_VERSION);
+    out.bytes(toSessionExchangeBytes(reply.exchange));
+    out.u32(lease.byteLength);
+    out.bytes(lease);
+    out.bytes(toFrameBytes(reply.firstData));
+    return out.finish();
 }
 
 export function parseSessionReply(bytes: Uint8Array): Result<SessionReply, FormatError> {
     const input = openReader(bytes);
+    const context = readContext(input, "session reply", REPLY_VERSION);
+    if (!context.ok) {
+        return context;
+    }
     const exchange = readExchange(input);
     if (!exchange.ok) {
         return exchange;
     }
-    const firstLease = parseFrame(input.bytes(input.remaining()));
+    if (input.remaining() < 4) {
+        return malformed();
+    }
+    const leaseSize = input.u32();
+    if (input.remaining() < leaseSize) {
+        return malformed();
+    }
+    const firstLease = parseFrame(input.bytes(leaseSize));
     if (!firstLease.ok) {
         return firstLease;
     }
-    const header = firstLease.value.header;
+    const firstData = parseFrame(input.bytes(input.remaining()));
+    if (!firstData.ok) {
+        return firstData;
+    }
     if (
-        header.direction !== "server_to_module" ||
-        !equalBytes(header.session, exchange.value.session)
+        !isFirstFrame(firstLease.value, exchange.value.session) ||
+        !isFirstFrame(firstData.value, exchange.value.session)
     ) {
         return malformed();
     }
-    return ok({ exchange: exchange.value, firstLease: firstLease.value });
+    return ok({
+        exchange: exchange.value,
+        firstLease: firstLease.value,
+        firstData: firstData.value,
+    });
 }
 
 function deriveKey(
-    direction: number,
+    slot: { readonly route: FrameRoute; readonly direction: number },
     shared: Uint8Array,
     moduleKey: Uint8Array,
     serverKey: Uint8Array,
 ) {
     const out = createWriter();
     writeContext(out, "session keys", KEYS_VERSION);
-    out.u8(direction);
+    out.u8(FRAME_ROUTES[slot.route]);
+    out.u8(slot.direction);
     out.bytes(shared);
     out.bytes(moduleKey);
     out.bytes(serverKey);
@@ -238,8 +274,19 @@ export function deriveSessionKeys(params: {
     readonly serverKey: Uint8Array;
 }): SessionKeys {
     invariant(params.shared.byteLength === 32, "shared secret size");
-    return {
-        moduleToServer: deriveKey(1, params.shared, params.moduleKey, params.serverKey),
-        serverToModule: deriveKey(2, params.shared, params.moduleKey, params.serverKey),
-    };
+    const routeKeys = (route: FrameRoute): RouteKeys => ({
+        moduleToServer: deriveKey(
+            { route, direction: 1 },
+            params.shared,
+            params.moduleKey,
+            params.serverKey,
+        ),
+        serverToModule: deriveKey(
+            { route, direction: 2 },
+            params.shared,
+            params.moduleKey,
+            params.serverKey,
+        ),
+    });
+    return { lease: routeKeys("lease"), data: routeKeys("data"), reports: routeKeys("reports") };
 }

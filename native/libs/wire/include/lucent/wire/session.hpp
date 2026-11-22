@@ -10,7 +10,8 @@
 #include <lucent/wire/ids.hpp>
 
 // How a module opens its session (POST /v1/starts/:id/session, relayed opaquely by the loader):
-// its hello, then the server's signed half of the key exchange and the first lease in a frame.
+// its hello, then the server's signed half of the key exchange, the first lease and the first data
+// in\n// frames.
 
 namespace lucent::wire {
 
@@ -58,19 +59,28 @@ struct session_exchange {
     auto operator==(const session_exchange&) const -> bool = default;
 };
 
-// The response body: the exchange, then the first lease sealed under the keys it sets up
-// (server to module, sequence 0).
+// The response body: the exchange, then the first lease (lease route) and the first data (data
+// route, a data_response, sequence 0), each sealed server to module under the keys the exchange
+// sets up.
 struct session_reply {
     session_exchange exchange;
     frame first_lease;
+    frame first_data;
 
     auto operator==(const session_reply&) const -> bool = default;
 };
 
 // One key per direction, so neither side's frames can be reflected back at it.
-struct session_keys {
+struct route_keys {
     crypto::secret_key module_to_server;
     crypto::secret_key server_to_module;
+};
+
+// One pair per route, so no route's frames open on another's.
+struct session_keys {
+    route_keys lease;
+    route_keys data;
+    route_keys reports;
 };
 
 auto encode_session_hello(const session_hello& hello) -> std::vector<std::byte>;
@@ -100,9 +110,9 @@ struct exchange_halves {
     crypto::exchange_public_key server_key{};
 };
 
-// Both directions' keys from the X25519 secret and the two public halves:
-// BLAKE2b-256(context "lucent session keys v1" || direction || shared || module key || server key),
-// the direction byte being frame's.
+// Every route's and direction's key from the X25519 secret and the two public halves:
+// BLAKE2b-256(context "lucent session keys v2" || route || direction || shared || module key ||
+// server key), the route and direction bytes being frame's.
 auto derive_session_keys(const crypto::secret_key& shared, const exchange_halves& halves)
     -> session_keys;
 

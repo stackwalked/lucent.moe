@@ -15,6 +15,7 @@
 #include <lucent/kit/clock.hpp>
 #include <lucent/kit/feature.hpp>
 #include <lucent/kit/registry.hpp>
+#include <lucent/wire/data.hpp>
 #include <lucent/wire/frame.hpp>
 #include <lucent/wire/ids.hpp>
 #include <lucent/wire/lease.hpp>
@@ -108,7 +109,11 @@ public:
             1, options.nonce.value_or(hello->nonce), options.release.value_or(hello->release)
         );
         return wire::encode_session_reply(
-            wire::session_reply{.exchange = exchange, .first_lease = sealed(first)}
+            wire::session_reply{
+                .exchange = exchange,
+                .first_lease = sealed(first),
+                .first_data = sealed_empty_data(),
+            }
         );
     }
 
@@ -118,7 +123,7 @@ public:
         REQUIRE(frame.has_value());
         REQUIRE(m_keys != nullptr);
         const result<crypto::secret_bytes> plain =
-            wire::open_frame(m_keys->module_to_server, *frame);
+            wire::open_frame(m_keys->lease.module_to_server, *frame);
         REQUIRE(plain.has_value());
         const result<wire::lease_renewal> renewal = wire::decode_lease_renewal(plain->as_bytes());
         REQUIRE(renewal.has_value());
@@ -150,7 +155,7 @@ private:
                 .sequence = sequence,
                 .nonce = nonce,
                 .duration = lease_duration,
-                .bundle_revision = 0,
+                .data_revision = 0,
                 .challenge = wire::hash_challenge{.nonce = {}, .offset = 0, .size = 16},
                 .product = "cs2",
                 .entitled = wire::entitled_features{.is_everything = false, .features = {7, 9}},
@@ -160,10 +165,29 @@ private:
         );
     }
 
+    auto sealed_empty_data() const -> wire::frame {
+        const std::vector<std::byte> plain = wire::encode_data_response(
+            wire::data_response{.data_revision = 0, .bundle_bytes = {}, .unsupported = {}}
+        );
+        return wire::seal_frame(
+            m_keys->data.server_to_module,
+            wire::frame_contents{
+                .header =
+                    wire::frame_header{
+                        .session = m_session,
+                        .way = wire::direction::server_to_module,
+                        .sequence = 0,
+                    },
+                .nonce = {},
+                .plain = plain,
+            }
+        );
+    }
+
     auto sealed(const wire::lease& granted) -> wire::frame {
         const std::vector<std::byte> plain = wire::encode_lease(granted);
         wire::frame frame = wire::seal_frame(
-            m_keys->server_to_module,
+            m_keys->lease.server_to_module,
             wire::frame_contents{
                 .header =
                     wire::frame_header{

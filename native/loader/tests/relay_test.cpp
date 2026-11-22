@@ -58,6 +58,7 @@ auto session_reply_bytes() -> std::vector<std::byte> {
                     .signature = {},
                 },
             .first_lease = lease_frame(),
+            .first_data = lease_frame(),
         }
     );
 }

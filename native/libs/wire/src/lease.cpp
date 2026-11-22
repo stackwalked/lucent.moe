@@ -1,10 +1,8 @@
 #include <lucent/wire/lease.hpp>
 
-#include <algorithm>
 #include <chrono>
 #include <cstddef>
 #include <expected>
-#include <functional>
 #include <optional>
 #include <span>
 #include <utility>
@@ -19,7 +17,7 @@
 
 // Version 1 on the wire:
 //   lease: context "lucent lease v1" (32), session id (16), device id (16), release id (16),
-//     u64 sequence, module nonce (16), u32 duration in milliseconds, u64 bundle revision,
+//     u64 sequence, module nonce (16), u32 duration in milliseconds, u64 data revision,
 //     challenge nonce (16), u32 challenge offset, u32 challenge size, u8 product size, product,
 //     u8 everything (0 or 1), u16 feature count, u64 feature ids, Ed25519 signature (64) over
 //     everything before it.
@@ -42,10 +40,7 @@ auto is_canonical(const entitled_features& entitled) -> bool {
     if (entitled.is_everything) {
         return entitled.features.empty();
     }
-    return entitled.features.size() <= max_features
-           && !std::ranges::contains(entitled.features, u64{0})
-           && std::ranges::adjacent_find(entitled.features, std::ranges::greater_equal{})
-                  == entitled.features.end();
+    return detail::is_canonical_features(entitled.features);
 }
 
 auto is_canonical(const lease& granted) -> bool {
@@ -64,7 +59,7 @@ auto write_lease_fields(detail::writer& out, const lease& granted) -> void {
     out.write_u64(granted.sequence);
     out.write_bytes(granted.nonce);
     out.write_u32(static_cast<u32>(granted.duration.count()));
-    out.write_u64(granted.bundle_revision);
+    out.write_u64(granted.data_revision);
     out.write_bytes(granted.challenge.nonce);
     out.write_u32(granted.challenge.offset);
     out.write_u32(granted.challenge.size);
@@ -85,7 +80,7 @@ auto read_lease_head(detail::reader& input) -> result<lease> {
     granted.sequence = LUCENT_TRY(input.read_u64());
     granted.nonce = LUCENT_TRY(input.read_array<module_nonce_size>());
     granted.duration = std::chrono::milliseconds{LUCENT_TRY(input.read_u32())};
-    granted.bundle_revision = LUCENT_TRY(input.read_u64());
+    granted.data_revision = LUCENT_TRY(input.read_u64());
     return granted;
 }
 

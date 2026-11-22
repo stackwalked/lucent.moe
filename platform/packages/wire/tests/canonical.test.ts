@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import type { FormatError } from "@lucent/bundle/wire";
 import type { Result } from "@lucent/core/result";
+import { parseDataRequest, parseDataResponse } from "../src/data.ts";
 import { parseEnrollmentRequest, parseEnrollmentStatus } from "../src/enrollment.ts";
 import { parseFrame } from "../src/frame.ts";
 import { parseLease, parseLeaseRenewal } from "../src/lease.ts";
@@ -43,6 +44,9 @@ type Parser = (bytes: Uint8Array) => Result<unknown, FormatError>;
 const DELIMITED: readonly [string, Parser][] = [
     ["session_hello", parseSessionHello],
     ["lease_everything", parseLease],
+    ["data_request", parseDataRequest],
+    ["data_request_everything", parseDataRequest],
+    ["data_response", parseDataResponse],
     ["start_request", parseStartRequest],
     ["start_reply", parseStartReply],
     ["enrollment_request", parseEnrollmentRequest],
@@ -99,11 +103,60 @@ test("a frame with an unknown direction or no room for a tag is malformed", asyn
     expect(parseFrame(frame.subarray(0, 81 + 15))).toEqual(MALFORMED);
 });
 
-test("a session reply whose frame runs the wrong way or names another session is malformed", async () => {
+test("a session reply's frames both run server to module and name the exchange's session", async () => {
     const reply = await bytesOf("session_reply");
+    // The context at 0, the 192-byte exchange from 32, the lease frame's size at 224 and the frame
+    // at 228, its session 32 bytes in and its direction 48. The data frame follows it.
+    const leaseFrame = 228;
+    const dataFrame =
+        leaseFrame + new DataView(reply.buffer, reply.byteOffset).getUint32(224, true);
 
-    expect(parseSessionReply(withByte(reply, 240, 1))).toEqual(MALFORMED);
-    expect(parseSessionReply(withByte(reply, 224, 0x12))).toEqual(MALFORMED);
+    expect(parseSessionReply(withByte(reply, leaseFrame + 48, 1))).toEqual(MALFORMED);
+    expect(parseSessionReply(withByte(reply, leaseFrame + 32, 0x12))).toEqual(MALFORMED);
+    expect(parseSessionReply(withByte(reply, dataFrame + 48, 1))).toEqual(MALFORMED);
+    expect(parseSessionReply(withByte(reply, dataFrame + 32, 0x12))).toEqual(MALFORMED);
+});
+
+test("a session reply whose lease frame size overruns or leaves no data frame is malformed, and v1 is a version mismatch", async () => {
+    const reply = await bytesOf("session_reply");
+    const leaseSize = new DataView(reply.buffer, reply.byteOffset).getUint32(224, true);
+
+    expect(parseSessionReply(withByte(reply, 224, 0xff))).toEqual(MALFORMED);
+    expect(parseSessionReply(reply.subarray(0, 228 + leaseSize))).toEqual(MALFORMED);
+    expect(parseSessionReply(withByte(reply, 22, "1".charCodeAt(0)))).toEqual({
+        ok: false,
+        error: { code: "VERSION_MISMATCH" },
+    });
+});
+
+test("a data request's feature flag is 0 or 1, and its ids are sorted, unique and non-zero", async () => {
+    const request = await bytesOf("data_request");
+    const everything = await bytesOf("data_request_everything");
+
+    // The two modules end at 32 + 1 + 32 = 65: the flag at 65, the count at 66, ids from 70.
+    expect(parseDataRequest(withByte(request, 65, 2))).toEqual(MALFORMED);
+    expect(parseDataRequest(withBytes(request, 70, new Uint8Array(8)))).toEqual(MALFORMED);
+    expect(parseDataRequest(withBytes(request, 78, request.slice(70, 78)))).toEqual(MALFORMED);
+    expect(parseDataRequest(withByte(everything, 65, 1))).toEqual(MALFORMED);
+    expect(parseDataRequest(withByte(request, 66, 255))).toEqual(MALFORMED);
+});
+
+test("a data request's modules are sorted and unique, and both messages bound their module count", async () => {
+    const request = await bytesOf("data_request");
+    const response = await bytesOf("data_response");
+
+    // The count at 32, the modules from 33, 16 bytes each.
+    expect(parseDataRequest(withBytes(request, 49, request.slice(33, 49)))).toEqual(MALFORMED);
+    expect(parseDataRequest(withByte(request, 32, 65))).toEqual(MALFORMED);
+    expect(parseDataResponse(withByte(response, response.byteLength - 17, 65))).toEqual(MALFORMED);
+});
+
+test("a data response's bundle is no longer than a frame's plaintext or what follows", async () => {
+    const response = await bytesOf("data_response");
+
+    // The bundle's size at 40.
+    expect(parseDataResponse(withByte(response, 43, 0x7f))).toEqual(MALFORMED);
+    expect(parseDataResponse(withByte(response, 41, 0x0f))).toEqual(MALFORMED);
 });
 
 test("a lease with a zero duration or challenge, a bad product, or features under everything is malformed", async () => {

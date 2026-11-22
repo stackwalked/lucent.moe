@@ -11,8 +11,8 @@ import { xchacha20poly1305 } from "@noble/ciphers/chacha.js";
 import { finish, ID_SIZE, readContext, writeContext } from "./codec.ts";
 
 // The session's frame, as native/libs/wire/src/frame.cpp reads and writes it: everything between
-// module and server after the key exchange, sealed with XChaCha20-Poly1305 under the direction's
-// session key. A receiver accepts a frame only when its sequence is above the highest it has
+// module and server after the key exchange, sealed with XChaCha20-Poly1305 under the session key of
+// its route and direction. A receiver accepts a frame only when its sequence is above the highest it has
 // accepted in that direction. The nonce is random, so a server that loses its counter still never
 // repeats one under a key.
 //
@@ -29,6 +29,13 @@ const FRAME_VERSION = 1;
 export const NONCE_SIZE = 24;
 export const TAG_SIZE = 16;
 export const MAX_FRAME_PLAIN_SIZE = 1 << 20;
+
+// The channel a frame travels on: each route has its own key and sequence per direction, so one
+// route's traffic never stales another's. The route is implied by the endpoint, not carried in the
+// frame.
+export type FrameRoute = "lease" | "data" | "reports";
+
+export const FRAME_ROUTES: Record<FrameRoute, number> = { lease: 1, data: 2, reports: 3 };
 
 export type Direction = "module_to_server" | "server_to_module";
 

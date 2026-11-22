@@ -86,7 +86,8 @@ auto lease_client::open(std::span<const std::byte> reply, clock::time_point sent
         || first.header.session != exchange.session) {
         return std::unexpected(malformed);
     }
-    const crypto::secret_bytes plain = LUCENT_TRY(wire::open_frame(keys.server_to_module, first));
+    const crypto::secret_bytes plain =
+        LUCENT_TRY(wire::open_frame(keys.lease.server_to_module, first));
     const wire::lease granted = LUCENT_TRY(wire::decode_lease(plain.as_bytes()));
     LUCENT_TRY(wire::verify_lease(granted, m_identity.lease_key));
     if (granted.session != exchange.session
@@ -128,7 +129,7 @@ auto lease_client::renewal(clock::time_point now, random_source& random)
     );
     const u64 sequence = session.last_out + 1;
     const wire::frame sealed = wire::seal_frame(
-        session.keys.module_to_server,
+        session.keys.lease.module_to_server,
         wire::frame_contents{
             .header =
                 wire::frame_header{
@@ -160,7 +161,7 @@ auto lease_client::accept(std::span<const std::byte> frame) -> result<entitlemen
         return std::unexpected(malformed);
     }
     const crypto::secret_bytes plain =
-        LUCENT_TRY(wire::open_frame(session.keys.server_to_module, sealed));
+        LUCENT_TRY(wire::open_frame(session.keys.lease.server_to_module, sealed));
     const wire::lease granted = LUCENT_TRY(wire::decode_lease(plain.as_bytes()));
     LUCENT_TRY(wire::verify_lease(granted, m_identity.lease_key));
     if (granted.session != session.held.session

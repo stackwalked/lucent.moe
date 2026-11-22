@@ -2,6 +2,7 @@ lucent_library(wire
     HEADERS
         include/lucent/wire/container.hpp
         include/lucent/wire/container_stream.hpp
+        include/lucent/wire/data.hpp
         include/lucent/wire/enrollment.hpp
         include/lucent/wire/frame.hpp
         include/lucent/wire/ids.hpp
@@ -14,6 +15,7 @@ lucent_library(wire
         src/codec.cpp
         src/container.cpp
         src/container_stream.cpp
+        src/data.cpp
         src/enrollment.cpp
         src/frame.cpp
         src/lease.cpp

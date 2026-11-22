@@ -13,6 +13,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <lucent/crypto/crypto.hpp>
+#include <lucent/wire/data.hpp>
 #include <lucent/wire/enrollment.hpp>
 #include <lucent/wire/frame.hpp>
 #include <lucent/wire/lease.hpp>
@@ -63,6 +64,21 @@ auto messages() -> std::vector<message> {
             .name = "lease renewal",
             .bytes = encode_lease_renewal(fixtures::renewal()),
             .decode = [](auto bytes) { return error_of(decode_lease_renewal(bytes)); },
+        },
+        message{
+            .name = "data request",
+            .bytes = encode_data_request(fixtures::data_request_of()),
+            .decode = [](auto bytes) { return error_of(decode_data_request(bytes)); },
+        },
+        message{
+            .name = "data request without features",
+            .bytes = encode_data_request(fixtures::data_request_everything()),
+            .decode = [](auto bytes) { return error_of(decode_data_request(bytes)); },
+        },
+        message{
+            .name = "data response",
+            .bytes = encode_data_response(fixtures::first_data()),
+            .decode = [](auto bytes) { return error_of(decode_data_response(bytes)); },
         },
         message{
             .name = "start request",
@@ -168,17 +184,15 @@ TEST_CASE("a session hello with an unknown image kind or a non-canonical X25519 
 // Whether the bytes decode as a frame that opens under the renewal frame's key.
 auto is_openable(std::span<const std::byte> bytes) -> bool {
     const result<frame> decoded = decode_frame(bytes);
-    return decoded && open_frame(fixtures::keys().module_to_server, *decoded).has_value();
+    return decoded && open_frame(fixtures::keys().lease.module_to_server, *decoded).has_value();
 }
 
 TEST_CASE("a frame cut short of its header and tag is malformed") {
     const std::vector<std::byte> sealed = encode_frame(fixtures::renewal_frame());
-    const std::vector<std::byte> reply = encode_session_reply(fixtures::reply());
 
     for (usize size = 0; size < 81 + crypto::aead_tag_size; ++size) {
         CHECK(error_of(decode_frame(std::span{sealed}.first(size))) == malformed);
     }
-    CHECK(error_of(decode_session_reply(std::span{reply}.first(191))) == malformed);
 }
 
 // The frame and the session reply ending in one run to the end of the body that carries them, so
@@ -204,11 +218,28 @@ TEST_CASE("a frame with an unknown direction or no room for a tag is malformed")
     CHECK(error_of(decode_frame(tagless)) == malformed);
 }
 
-TEST_CASE("a session reply whose frame runs the wrong way or names another session is malformed") {
+TEST_CASE("a session reply's frames both run server to module and name the exchange's session") {
     const std::vector<std::byte> reply = encode_session_reply(fixtures::reply());
-    // The frame starts after the 192-byte exchange: its session at 224, its direction at 240.
-    CHECK(error_of(decode_session_reply(with_byte(reply, 240, 1))) == malformed);
-    CHECK(error_of(decode_session_reply(with_byte(reply, 224, 0x12))) == malformed);
+    // The context at 0, the 192-byte exchange from 32, the lease frame's size at 224 and the frame
+    // at 228, its session 32 bytes in and its direction 48. The data frame follows it.
+    const usize lease_frame = 228;
+    const usize data_frame = lease_frame + encode_frame(fixtures::reply().first_lease).size();
+
+    CHECK(error_of(decode_session_reply(with_byte(reply, lease_frame + 48, 1))) == malformed);
+    CHECK(error_of(decode_session_reply(with_byte(reply, lease_frame + 32, 0x12))) == malformed);
+    CHECK(error_of(decode_session_reply(with_byte(reply, data_frame + 48, 1))) == malformed);
+    CHECK(error_of(decode_session_reply(with_byte(reply, data_frame + 32, 0x12))) == malformed);
+}
+
+TEST_CASE("a session reply whose lease frame size overruns or leaves no data frame is malformed") {
+    const std::vector<std::byte> reply = encode_session_reply(fixtures::reply());
+    const usize lease_size = encode_frame(fixtures::reply().first_lease).size();
+
+    CHECK(error_of(decode_session_reply(with_byte(reply, 224, 0xff))) == malformed);
+    CHECK(error_of(decode_session_reply(std::span{reply}.first(228 + lease_size))) == malformed);
+    CHECK(
+        error_of(decode_session_reply(with_byte(reply, 22, '1'))) == error_code::version_mismatch
+    );
 }
 
 TEST_CASE("a lease with a zero duration or challenge, or a bad product, is malformed") {
@@ -287,7 +318,11 @@ TEST_CASE("a refusal's code is never 0 and its retry-after flag is 0 or 1") {
     CHECK(error_of(decode_refusal(with_byte(refused, 33, 2))) == malformed);
 }
 
-TEST_CASE("module and server derive the same two session keys, and the two differ") {
+auto same_key(const crypto::secret_key& left, const crypto::secret_key& right) -> bool {
+    return std::ranges::equal(left.as_bytes(), right.as_bytes());
+}
+
+TEST_CASE("module and server derive the same six session keys, and no two differ by nothing") {
     const crypto::exchange_key module = crypto::exchange_key::from_seed(fixtures::module_seed);
     const crypto::exchange_key server = crypto::exchange_key::from_seed(fixtures::server_seed);
     const result<crypto::secret_key> module_shared = module.shared_secret(server.public_part());
@@ -303,25 +338,32 @@ TEST_CASE("module and server derive the same two session keys, and the two diffe
         *server_shared,
         exchange_halves{.module_key = module.public_part(), .server_key = server.public_part()}
     );
+    const std::array<const crypto::secret_key*, 6> keys{
+        &module_side.lease.module_to_server,
+        &module_side.lease.server_to_module,
+        &module_side.data.module_to_server,
+        &module_side.data.server_to_module,
+        &module_side.reports.module_to_server,
+        &module_side.reports.server_to_module,
+    };
+    const std::array<const crypto::secret_key*, 6> other_side{
+        &server_side.lease.module_to_server,
+        &server_side.lease.server_to_module,
+        &server_side.data.module_to_server,
+        &server_side.data.server_to_module,
+        &server_side.reports.module_to_server,
+        &server_side.reports.server_to_module,
+    };
 
-    CHECK(
-        std::ranges::equal(
-            module_side.module_to_server.as_bytes(), server_side.module_to_server.as_bytes()
-        )
-    );
-    CHECK(
-        std::ranges::equal(
-            module_side.server_to_module.as_bytes(), server_side.server_to_module.as_bytes()
-        )
-    );
-    CHECK_FALSE(
-        std::ranges::equal(
-            module_side.module_to_server.as_bytes(), module_side.server_to_module.as_bytes()
-        )
-    );
+    for (usize index = 0; index < keys.size(); ++index) {
+        CHECK(same_key(*keys.at(index), *other_side.at(index)));
+        for (usize other = index + 1; other < keys.size(); ++other) {
+            CHECK_FALSE(same_key(*keys.at(index), *keys.at(other)));
+        }
+    }
 }
 
-TEST_CASE("a frame opens only under its direction's key and with its header unchanged") {
+TEST_CASE("a frame opens only under its route and direction's key and with its header unchanged") {
     const session_keys keys = fixtures::keys();
     const frame sealed = fixtures::renewal_frame();
     frame replayed_later = sealed;
@@ -331,14 +373,60 @@ TEST_CASE("a frame opens only under its direction's key and with its header unch
     frame other_session = sealed;
     other_session.header.session.bytes.front() = std::byte{0x12};
 
-    const result<crypto::secret_bytes> opened = open_frame(keys.module_to_server, sealed);
+    const result<crypto::secret_bytes> opened = open_frame(keys.lease.module_to_server, sealed);
 
     REQUIRE(opened.has_value());
     CHECK(std::ranges::equal(opened->as_bytes(), encode_lease_renewal(fixtures::renewal())));
-    CHECK_FALSE(open_frame(keys.server_to_module, sealed).has_value());
-    CHECK_FALSE(open_frame(keys.module_to_server, replayed_later).has_value());
-    CHECK_FALSE(open_frame(keys.module_to_server, reflected).has_value());
-    CHECK_FALSE(open_frame(keys.module_to_server, other_session).has_value());
+    CHECK_FALSE(open_frame(keys.lease.server_to_module, sealed).has_value());
+    CHECK_FALSE(open_frame(keys.data.module_to_server, sealed).has_value());
+    CHECK_FALSE(open_frame(keys.reports.module_to_server, sealed).has_value());
+    CHECK_FALSE(open_frame(keys.lease.module_to_server, replayed_later).has_value());
+    CHECK_FALSE(open_frame(keys.lease.module_to_server, reflected).has_value());
+    CHECK_FALSE(open_frame(keys.lease.module_to_server, other_session).has_value());
+}
+
+TEST_CASE("a data request's feature flag is 0 or 1, and its ids are sorted, unique and non-zero") {
+    const std::vector<std::byte> request = encode_data_request(fixtures::data_request_of());
+    const std::vector<std::byte> everything =
+        encode_data_request(fixtures::data_request_everything());
+    // The two modules end at 32 + 1 + 32 = 65: the flag at 65, the count at 66, ids from 70.
+    CHECK(error_of(decode_data_request(with_byte(request, 65, 2))) == malformed);
+    CHECK(error_of(decode_data_request(with_bytes(request, 70, little_u64(0)))) == malformed);
+    CHECK(
+        error_of(decode_data_request(with_bytes(request, 78, little_u64(0x0123'4567'89ab'cdef))))
+        == malformed
+    );
+    CHECK(error_of(decode_data_request(with_byte(everything, 65, 1))) == malformed);
+    CHECK(error_of(decode_data_request(with_byte(request, 66, 255))) == malformed);
+    CHECK(decode_data_request(request) == fixtures::data_request_of());
+    CHECK(decode_data_request(everything) == fixtures::data_request_everything());
+}
+
+TEST_CASE(
+    "a data request's modules are sorted and unique, and both messages bound their module count"
+) {
+    const std::vector<std::byte> request = encode_data_request(fixtures::data_request_of());
+    // The count at 32, the modules from 33, 16 bytes each: the first written over the second
+    // repeats it.
+    const std::vector<std::byte> first_module{request.begin() + 33, request.begin() + 49};
+    const std::vector<std::byte> response = encode_data_response(fixtures::first_data());
+
+    CHECK(error_of(decode_data_request(with_bytes(request, 49, first_module))) == malformed);
+    CHECK(error_of(decode_data_request(with_byte(request, 32, 65))) == malformed);
+    CHECK(
+        error_of(decode_data_response(with_byte(response, response.size() - 17, 65))) == malformed
+    );
+    CHECK(decode_data_response(response) == fixtures::first_data());
+}
+
+TEST_CASE("a data response may hold an empty bundle, but not one longer than what follows") {
+    const data_response empty{.data_revision = 0, .bundle_bytes = {}, .unsupported = {}};
+    const std::vector<std::byte> response = encode_data_response(fixtures::first_data());
+
+    CHECK(decode_data_response(encode_data_response(empty)) == empty);
+    // The bundle's size at 40: past a frame's plaintext bound, and past what follows.
+    CHECK(error_of(decode_data_response(with_byte(response, 43, 0x7f))) == malformed);
+    CHECK(error_of(decode_data_response(with_byte(response, 41, 0x0f))) == malformed);
 }
 
 TEST_CASE("a lease or exchange verifies only under the lease key and only as signed") {
@@ -404,7 +492,7 @@ TEST_CASE("the lease response's frame opens to the renewed lease, signed by the 
         crypto::signing_key::from_seed(fixtures::lease_seed).public_part();
 
     const result<crypto::secret_bytes> plain =
-        open_frame(fixtures::keys().server_to_module, response.lease);
+        open_frame(fixtures::keys().lease.server_to_module, response.lease);
     REQUIRE(plain.has_value());
     const result<lease> granted = decode_lease(plain->as_bytes());
 

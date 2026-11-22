@@ -8,8 +8,8 @@
 #include <lucent/wire/ids.hpp>
 
 // The session's frame: everything between module and server after the key exchange, sealed with
-// XChaCha20-Poly1305 under the direction's session key. The loader relays frames and sees only
-// their headers.
+// XChaCha20-Poly1305 under the session key of its route and direction. The loader relays frames
+// and sees only their headers.
 //
 // A receiver accepts a frame only when its sequence is above the highest it has accepted in that
 // direction: replays and reordering are refused, a lost frame costs nothing. The nonce is random
@@ -17,6 +17,15 @@
 // process) still never repeats one under a key.
 
 namespace lucent::wire {
+
+// The channel a frame travels on: each route has its own key and sequence per direction, so one
+// route's traffic never stales another's. The route is implied by the endpoint, not carried in the
+// frame.
+enum class frame_route : u8 {
+    lease = 1,
+    data = 2,
+    reports = 3,
+};
 
 enum class direction : u8 {
     module_to_server = 1,

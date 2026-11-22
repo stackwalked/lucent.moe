@@ -5,7 +5,7 @@
   "sequence": 1,
   "nonce": "77777777777777777777777777777777",
   "duration_ms": 60000,
-  "bundle_revision": 7,
+  "data_revision": 7,
   "challenge": {
     "nonce": "99999999999999999999999999999999",
     "offset": 4096,

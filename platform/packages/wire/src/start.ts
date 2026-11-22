@@ -1,7 +1,14 @@
 import { compareModules, type ModuleKey } from "@lucent/bundle/fact-set";
-import { createWriter, type FormatError, malformed, openReader } from "@lucent/bundle/wire";
+import {
+    createWriter,
+    type FormatError,
+    malformed,
+    openReader,
+    type Reader,
+    type Writer,
+} from "@lucent/bundle/wire";
 import { invariant } from "@lucent/core/contain";
-import type { Result } from "@lucent/core/result";
+import { ok, type Result } from "@lucent/core/result";
 import { finish, ID_SIZE, readContext, readProduct, writeContext, writeProduct } from "./codec.ts";
 
 // POST /v1/starts, as native/libs/wire/src/start.cpp reads and writes it.
@@ -41,28 +48,57 @@ export type StartReply = {
     readonly releaseSeal: Uint8Array;
 };
 
-function isSortedAndUnique(modules: readonly ModuleKey[]): boolean {
-    return modules.every((module, index) => {
-        const previous = modules[index - 1];
-        return previous === undefined || compareModules(previous, module) < 0;
-    });
+// Sorted ascending without repeats, within MAX_START_MODULES.
+export function isModuleList(modules: readonly ModuleKey[]): boolean {
+    return (
+        modules.length <= MAX_START_MODULES &&
+        modules.every((module, index) => {
+            const previous = modules[index - 1];
+            return previous === undefined || compareModules(previous, module) < 0;
+        })
+    );
+}
+
+// A module list: u8 count, then per module u64 name hash, u32 time-date stamp, u32 size of image.
+export function writeModules(out: Writer, modules: readonly ModuleKey[]): void {
+    invariant(isModuleList(modules), "modules aren't sorted and unique within the bound");
+    out.u8(modules.length);
+    for (const module of modules) {
+        out.u64(module.nameHash);
+        out.u32(module.timeDateStamp);
+        out.u32(module.sizeOfImage);
+    }
+}
+
+// Sorted, unique, at most MAX_START_MODULES, or malformed.
+export function readModules(input: Reader): Result<ModuleKey[], FormatError> {
+    if (input.remaining() < 1) {
+        return malformed();
+    }
+    const count = input.u8();
+    if (count > MAX_START_MODULES || input.remaining() < count * MODULE_KEY_SIZE) {
+        return malformed();
+    }
+    const modules: ModuleKey[] = [];
+    for (let index = 0; index < count; index += 1) {
+        modules.push({
+            nameHash: input.u64(),
+            timeDateStamp: input.u32(),
+            sizeOfImage: input.u32(),
+        });
+    }
+    return isModuleList(modules) ? ok(modules) : malformed();
 }
 
 export function toStartRequestBytes(request: StartRequest): Uint8Array<ArrayBuffer> {
     invariant(request.loaderRelease.byteLength === ID_SIZE, "release id size");
-    invariant(request.modules.length <= MAX_START_MODULES, "too many modules");
-    invariant(isSortedAndUnique(request.modules), "modules aren't sorted and unique");
+
     const out = createWriter();
     writeContext(out, "start request", REQUEST_VERSION);
     out.u8(CHANNELS.indexOf(request.channel));
     out.bytes(request.loaderRelease);
     writeProduct(out, request.product);
-    out.u8(request.modules.length);
-    for (const module of request.modules) {
-        out.u64(module.nameHash);
-        out.u32(module.timeDateStamp);
-        out.u32(module.sizeOfImage);
-    }
+    writeModules(out, request.modules);
     return out.finish();
 }
 
@@ -82,25 +118,19 @@ export function parseStartRequest(bytes: Uint8Array): Result<StartRequest, Forma
     if (!product.ok) {
         return product;
     }
-    if (channel === undefined || input.remaining() < 1) {
+    if (channel === undefined) {
         return malformed();
     }
-    const count = input.u8();
-    if (count > MAX_START_MODULES || input.remaining() < count * MODULE_KEY_SIZE) {
-        return malformed();
+    const modules = readModules(input);
+    if (!modules.ok) {
+        return modules;
     }
-    const modules: ModuleKey[] = [];
-    for (let index = 0; index < count; index += 1) {
-        modules.push({
-            nameHash: input.u64(),
-            timeDateStamp: input.u32(),
-            sizeOfImage: input.u32(),
-        });
-    }
-    if (!isSortedAndUnique(modules)) {
-        return malformed();
-    }
-    return finish(input, { product: product.value, channel, loaderRelease, modules });
+    return finish(input, {
+        product: product.value,
+        channel,
+        loaderRelease,
+        modules: modules.value,
+    });
 }
 
 export function toStartReplyBytes(reply: StartReply): Uint8Array<ArrayBuffer> {

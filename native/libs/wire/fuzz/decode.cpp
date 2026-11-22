@@ -5,6 +5,7 @@
 #include <vector>
 
 #include <lucent/fuzzing/run_one.hpp>
+#include <lucent/wire/data.hpp>
 #include <lucent/wire/enrollment.hpp>
 #include <lucent/wire/frame.hpp>
 #include <lucent/wire/lease.hpp>
@@ -45,6 +46,8 @@ auto run_one(std::span<const std::byte> input) -> void {
     check_round_trip(input, wire::decode_lease_renewal, wire::encode_lease_renewal);
     check_round_trip(input, wire::decode_lease_request, wire::encode_lease_request);
     check_round_trip(input, wire::decode_lease_response, wire::encode_lease_response);
+    check_round_trip(input, wire::decode_data_request, wire::encode_data_request);
+    check_round_trip(input, wire::decode_data_response, wire::encode_data_response);
     check_round_trip(input, wire::decode_start_request, wire::encode_start_request);
     check_round_trip(input, wire::decode_start_reply, wire::encode_start_reply);
     check_round_trip(input, wire::decode_enrollment_request, wire::encode_enrollment_request);

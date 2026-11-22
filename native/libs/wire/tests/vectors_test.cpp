@@ -19,6 +19,7 @@
 #include <lucent/bundle/fact_set.hpp>
 #include <lucent/crypto/crypto.hpp>
 #include <lucent/os/file.hpp>
+#include <lucent/wire/data.hpp>
 #include <lucent/wire/enrollment.hpp>
 #include <lucent/wire/frame.hpp>
 #include <lucent/wire/ids.hpp>
@@ -32,8 +33,8 @@
 
 // The /v1 messages' golden vectors in contracts/wire/v1: each is a .bin and a .json stating its
 // contents, which every implementation (this one, the TS server) must agree on. The session reply
-// and renewal frame also state the secrets behind them (seeds, shared secret, session keys,
-// plaintext), so another implementation can check its key exchange and AEAD against them.
+// and renewal frame also state the secrets behind them (seeds, shared secret, the six session
+// keys, plaintext), so another implementation can check its key exchange and AEAD against them.
 // Rewritten with LUCENT_WRITE_VECTORS=1 (`moon run wire:vectors`); review the diff.
 
 namespace lucent::wire {
@@ -116,6 +117,28 @@ auto exchange_json(const session_exchange& exchange, usize indent) -> std::strin
     );
 }
 
+auto modules_json(std::span<const bundle::module_key> modules, usize indent) -> std::string {
+    std::vector<std::string> items;
+    items.reserve(modules.size());
+    for (const bundle::module_key& module : modules) {
+        items.push_back(object(
+            {
+                field{.name = "name_hash", .value = u64_field(module.name_hash)},
+                field{
+                    .name = "time_date_stamp",
+                    .value = json_string(std::format("{:08x}", module.time_date_stamp)),
+                },
+                field{
+                    .name = "size_of_image",
+                    .value = json_string(std::format("{:08x}", module.size_of_image)),
+                },
+            },
+            indent + 2
+        ));
+    }
+    return array(items, indent);
+}
+
 auto lease_json(const lease& granted, usize indent) -> std::string {
     std::vector<std::string> features;
     features.reserve(granted.entitled.features.size());
@@ -130,7 +153,7 @@ auto lease_json(const lease& granted, usize indent) -> std::string {
             field{.name = "sequence", .value = std::format("{}", granted.sequence)},
             field{.name = "nonce", .value = hex_field(granted.nonce)},
             field{.name = "duration_ms", .value = std::format("{}", granted.duration.count())},
-            field{.name = "bundle_revision", .value = std::format("{}", granted.bundle_revision)},
+            field{.name = "data_revision", .value = std::format("{}", granted.data_revision)},
             field{
                 .name = "challenge",
                 .value = object(
@@ -193,12 +216,28 @@ auto secrets_json(usize indent) -> std::string {
             field{.name = "server_seed", .value = hex_field(fixtures::server_seed)},
             field{.name = "shared_secret", .value = hex_field(shared->as_bytes())},
             field{
-                .name = "module_to_server_key",
-                .value = hex_field(keys.module_to_server.as_bytes()),
+                .name = "lease_module_to_server_key",
+                .value = hex_field(keys.lease.module_to_server.as_bytes()),
             },
             field{
-                .name = "server_to_module_key",
-                .value = hex_field(keys.server_to_module.as_bytes()),
+                .name = "lease_server_to_module_key",
+                .value = hex_field(keys.lease.server_to_module.as_bytes()),
+            },
+            field{
+                .name = "data_module_to_server_key",
+                .value = hex_field(keys.data.module_to_server.as_bytes()),
+            },
+            field{
+                .name = "data_server_to_module_key",
+                .value = hex_field(keys.data.server_to_module.as_bytes()),
+            },
+            field{
+                .name = "reports_module_to_server_key",
+                .value = hex_field(keys.reports.module_to_server.as_bytes()),
+            },
+            field{
+                .name = "reports_server_to_module_key",
+                .value = hex_field(keys.reports.server_to_module.as_bytes()),
             },
         },
         indent
@@ -260,32 +299,42 @@ auto renewal_json(const lease_renewal& renewal, usize indent) -> std::string {
 }
 
 auto start_request_json(const start_request& request) -> std::string {
-    std::vector<std::string> modules;
-    modules.reserve(request.modules.size());
-    for (const bundle::module_key& module : request.modules) {
-        modules.push_back(object(
-            {
-                field{.name = "name_hash", .value = u64_field(module.name_hash)},
-                field{
-                    .name = "time_date_stamp",
-                    .value = json_string(std::format("{:08x}", module.time_date_stamp)),
-                },
-                field{
-                    .name = "size_of_image",
-                    .value = json_string(std::format("{:08x}", module.size_of_image)),
-                },
-            },
-            4
-        ));
-    }
     return object(
         {
             field{.name = "product", .value = json_string(request.product)},
             field{.name = "channel", .value = json_string(channel_name(request.chosen))},
             field{.name = "loader_release", .value = hex_field(request.loader_release.bytes)},
-            field{.name = "modules", .value = array(modules, 2)},
+            field{.name = "modules", .value = modules_json(request.modules, 2)},
         },
         0
+    );
+}
+
+auto data_request_json(const data_request& request) -> std::string {
+    std::vector<std::string> features;
+    for (const u64 feature : request.features.value_or(std::vector<u64>{})) {
+        features.push_back(u64_field(feature));
+    }
+    return object(
+        {
+            field{.name = "modules", .value = modules_json(request.modules, 2)},
+            field{
+                .name = "features",
+                .value = request.features ? array(features, 2) : "null",
+            },
+        },
+        0
+    );
+}
+
+auto data_response_json(const data_response& response, usize indent) -> std::string {
+    return object(
+        {
+            field{.name = "data_revision", .value = std::format("{}", response.data_revision)},
+            field{.name = "bundle", .value = hex_field(response.bundle_bytes)},
+            field{.name = "unsupported", .value = modules_json(response.unsupported, indent + 2)},
+        },
+        indent
     );
 }
 
@@ -390,6 +439,15 @@ auto cases() -> std::vector<vector_case> {
                         .value = hex_field(encode_lease(fixtures::first_lease())),
                     },
                     field{.name = "first_lease", .value = lease_json(fixtures::first_lease(), 2)},
+                    field{.name = "first_data_frame", .value = frame_json(reply.first_data, 2)},
+                    field{
+                        .name = "first_data_plain",
+                        .value = hex_field(encode_data_response(fixtures::first_data())),
+                    },
+                    field{
+                        .name = "first_data",
+                        .value = data_response_json(fixtures::first_data(), 2),
+                    },
                     field{.name = "secrets", .value = secrets_json(2)},
                 },
                 0
@@ -459,6 +517,33 @@ auto cases() -> std::vector<vector_case> {
             .decode_and_encode =
                 [](std::span<const std::byte> bytes) {
                     return decode_start_reply(bytes).transform(encode_start_reply);
+                },
+        },
+        vector_case{
+            .name = "data_request",
+            .bytes = encode_data_request(fixtures::data_request_of()),
+            .json = data_request_json(fixtures::data_request_of()),
+            .decode_and_encode =
+                [](std::span<const std::byte> bytes) {
+                    return decode_data_request(bytes).transform(encode_data_request);
+                },
+        },
+        vector_case{
+            .name = "data_request_everything",
+            .bytes = encode_data_request(fixtures::data_request_everything()),
+            .json = data_request_json(fixtures::data_request_everything()),
+            .decode_and_encode =
+                [](std::span<const std::byte> bytes) {
+                    return decode_data_request(bytes).transform(encode_data_request);
+                },
+        },
+        vector_case{
+            .name = "data_response",
+            .bytes = encode_data_response(fixtures::first_data()),
+            .json = data_response_json(fixtures::first_data(), 0),
+            .decode_and_encode =
+                [](std::span<const std::byte> bytes) {
+                    return decode_data_response(bytes).transform(encode_data_response);
                 },
         },
         vector_case{
@@ -565,7 +650,7 @@ TEST_CASE("each wire golden vector is its source's encoding, and decodes back to
     }
 }
 
-TEST_CASE("the golden session reply's frame opens to its lease, signed by the lease key") {
+TEST_CASE("the golden session reply's frames open to its lease and its first data") {
     const result<std::vector<std::byte>> stored = os::read_file(directory() / "session_reply.bin");
     REQUIRE(stored.has_value());
     const result<session_reply> reply = decode_session_reply(*stored);
@@ -574,7 +659,7 @@ TEST_CASE("the golden session reply's frame opens to its lease, signed by the le
         crypto::signing_key::from_seed(fixtures::lease_seed).public_part();
 
     const result<crypto::secret_bytes> plain =
-        open_frame(fixtures::keys().server_to_module, reply->first_lease);
+        open_frame(fixtures::keys().lease.server_to_module, reply->first_lease);
     REQUIRE(plain.has_value());
     const result<lease> granted = decode_lease(plain->as_bytes());
 
@@ -582,6 +667,12 @@ TEST_CASE("the golden session reply's frame opens to its lease, signed by the le
     REQUIRE(granted.has_value());
     CHECK(*granted == fixtures::first_lease());
     CHECK(verify_lease(*granted, lease_key).has_value());
+
+    const result<crypto::secret_bytes> data_plain =
+        open_frame(fixtures::keys().data.server_to_module, reply->first_data);
+    REQUIRE(data_plain.has_value());
+    CHECK(decode_data_response(data_plain->as_bytes()) == fixtures::first_data());
+    CHECK_FALSE(open_frame(fixtures::keys().lease.server_to_module, reply->first_data).has_value());
 }
 
 }

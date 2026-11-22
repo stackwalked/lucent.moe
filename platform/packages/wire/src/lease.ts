@@ -25,7 +25,7 @@ import { MODULE_NONCE_SIZE, SIGNATURE_SIZE } from "./session.ts";
 //
 // Version 1 on the wire:
 //   lease: context "lucent lease v1" (32), session id (16), device id (16), release id (16),
-//     u64 sequence, module nonce (16), u32 duration in milliseconds, u64 bundle revision,
+//     u64 sequence, module nonce (16), u32 duration in milliseconds, u64 data revision,
 //     challenge nonce (16), u32 challenge offset, u32 challenge size, u8 product size, product,
 //     u8 everything (0 or 1), u16 feature count, u64 feature ids, Ed25519 signature (64) over
 //     everything before it.
@@ -60,7 +60,9 @@ export type Lease = {
     // The nonce of the hello or renewal this lease answers.
     readonly nonce: Uint8Array;
     readonly durationMs: number;
-    readonly bundleRevision: bigint;
+    // Rises when the session's facts or overrides change; the data route's response carries the
+    // same number.
+    readonly dataRevision: bigint;
     readonly challenge: HashChallenge;
     readonly product: string;
     readonly entitled: EntitledFeatures;
@@ -80,18 +82,24 @@ function featuresOf(entitled: EntitledFeatures): readonly bigint[] {
     return entitled.everything ? [] : entitled.features;
 }
 
-function isCanonical(lease: Omit<Lease, "signature">): boolean {
-    const features = featuresOf(lease.entitled);
+// Sorted ascending without repeats, never 0, within MAX_FEATURES.
+export function isFeatureList(features: readonly bigint[]): boolean {
     return (
-        lease.durationMs > 0 &&
-        lease.durationMs <= 0xffff_ffff &&
-        lease.challenge.size > 0 &&
-        isProduct(lease.product) &&
         features.length <= MAX_FEATURES &&
         features.every(
             (feature, index) =>
                 feature !== 0n && (index === 0 || (features[index - 1] ?? feature) < feature),
         )
+    );
+}
+
+function isCanonical(lease: Omit<Lease, "signature">): boolean {
+    return (
+        lease.durationMs > 0 &&
+        lease.durationMs <= 0xffff_ffff &&
+        lease.challenge.size > 0 &&
+        isProduct(lease.product) &&
+        isFeatureList(featuresOf(lease.entitled))
     );
 }
 
@@ -109,7 +117,7 @@ function writeLeaseFields(out: Writer, lease: Omit<Lease, "signature">): void {
     out.u64(lease.sequence);
     out.bytes(lease.nonce);
     out.u32(lease.durationMs);
-    out.u64(lease.bundleRevision);
+    out.u64(lease.dataRevision);
     out.bytes(lease.challenge.nonce);
     out.u32(lease.challenge.offset);
     out.u32(lease.challenge.size);
@@ -156,7 +164,7 @@ export function parseLease(bytes: Uint8Array): Result<Lease, FormatError> {
     const sequence = input.u64();
     const nonce = input.bytes(MODULE_NONCE_SIZE);
     const durationMs = input.u32();
-    const bundleRevision = input.u64();
+    const dataRevision = input.u64();
     const challenge = {
         nonce: input.bytes(CHALLENGE_NONCE_SIZE),
         offset: input.u32(),
@@ -192,7 +200,7 @@ export function parseLease(bytes: Uint8Array): Result<Lease, FormatError> {
         sequence,
         nonce,
         durationMs,
-        bundleRevision,
+        dataRevision,
         challenge,
         product: product.value,
         entitled: everything ? { everything: true } : { everything: false, features },

@@ -2,6 +2,12 @@ import { expect, test } from "bun:test";
 import { xchacha20poly1305 } from "@noble/ciphers/chacha.js";
 import { z } from "zod";
 import {
+    parseDataRequest,
+    parseDataResponse,
+    toDataRequestBytes,
+    toDataResponseBytes,
+} from "../src/data.ts";
+import {
     parseEnrollmentRequest,
     parseEnrollmentStatus,
     toEnrollmentRequestBytes,
@@ -83,7 +89,7 @@ const LeaseFields = z
         sequence: bigintNumber,
         nonce: hexBytes(16),
         duration_ms: z.number().int(),
-        bundle_revision: bigintNumber,
+        data_revision: bigintNumber,
         challenge: z.strictObject({
             nonce: hexBytes(16),
             offset: z.number().int(),
@@ -95,13 +101,36 @@ const LeaseFields = z
         signature: hexBytes(64),
     })
     .transform(
-        ({ duration_ms, bundle_revision, everything, features, ...rest }): Lease => ({
+        ({ duration_ms, data_revision, everything, features, ...rest }): Lease => ({
             ...rest,
             durationMs: duration_ms,
-            bundleRevision: bundle_revision,
+            dataRevision: data_revision,
             entitled: everything ? { everything: true } : { everything: false, features },
         }),
     );
+
+const ModuleKeys = z.array(
+    z
+        .strictObject({ name_hash: hexU64, time_date_stamp: hexU32, size_of_image: hexU32 })
+        .transform((module) => ({
+            nameHash: module.name_hash,
+            timeDateStamp: module.time_date_stamp,
+            sizeOfImage: module.size_of_image,
+        })),
+);
+
+const DataResponseFields = z
+    .strictObject({
+        data_revision: bigintNumber,
+        bundle: hexAny,
+        unsupported: ModuleKeys,
+    })
+    .transform(({ data_revision, ...rest }) => ({ dataRevision: data_revision, ...rest }));
+
+const DataRequestVector = z.strictObject({
+    modules: ModuleKeys,
+    features: z.array(hexU64).nullable(),
+});
 
 const SessionReplyVector = z.strictObject({
     exchange: z.strictObject({
@@ -114,13 +143,20 @@ const SessionReplyVector = z.strictObject({
     first_lease_frame: Frame,
     first_lease_plain: hexAny,
     first_lease: LeaseFields,
+    first_data_frame: Frame,
+    first_data_plain: hexAny,
+    first_data: DataResponseFields,
     secrets: z.strictObject({
         lease_public_key: hexBytes(32),
         module_seed: hexBytes(32),
         server_seed: hexBytes(32),
         shared_secret: hexBytes(32),
-        module_to_server_key: hexBytes(32),
-        server_to_module_key: hexBytes(32),
+        lease_module_to_server_key: hexBytes(32),
+        lease_server_to_module_key: hexBytes(32),
+        data_module_to_server_key: hexBytes(32),
+        data_server_to_module_key: hexBytes(32),
+        reports_module_to_server_key: hexBytes(32),
+        reports_server_to_module_key: hexBytes(32),
     }),
 });
 
@@ -164,6 +200,7 @@ test("the session reply vector decodes to what it states, and encodes back to it
             signature: stated.exchange.signature,
         },
         firstLease: stated.first_lease_frame.frame,
+        firstData: stated.first_data_frame.frame,
     };
 
     expect(parseSessionReply(bytes)).toEqual({ ok: true, value: reply });
@@ -171,9 +208,12 @@ test("the session reply vector decodes to what it states, and encodes back to it
     expect(toAssociatedData(reply.firstLease.header)).toEqual(
         stated.first_lease_frame.associatedData,
     );
+    expect(toAssociatedData(reply.firstData.header)).toEqual(
+        stated.first_data_frame.associatedData,
+    );
 });
 
-test("X25519 and the session key derivation agree with the session reply vector's secrets", async () => {
+test("X25519 and the six session keys' derivation agree with the session reply vector's secrets", async () => {
     const { stated } = await vector("session_reply", SessionReplyVector);
     const { secrets, exchange } = stated;
 
@@ -187,8 +227,18 @@ test("X25519 and the session key derivation agree with the session reply vector'
     expect(moduleShared).toEqual({ ok: true, value: secrets.shared_secret });
     expect(serverShared).toEqual({ ok: true, value: secrets.shared_secret });
     expect(deriveSessionKeys({ shared: secrets.shared_secret, moduleKey, serverKey })).toEqual({
-        moduleToServer: secrets.module_to_server_key,
-        serverToModule: secrets.server_to_module_key,
+        lease: {
+            moduleToServer: secrets.lease_module_to_server_key,
+            serverToModule: secrets.lease_server_to_module_key,
+        },
+        data: {
+            moduleToServer: secrets.data_module_to_server_key,
+            serverToModule: secrets.data_server_to_module_key,
+        },
+        reports: {
+            moduleToServer: secrets.reports_module_to_server_key,
+            serverToModule: secrets.reports_server_to_module_key,
+        },
     });
 });
 
@@ -221,6 +271,29 @@ test("the session reply vector's lease plaintext decodes to the lease it states,
 
     expect(parseLease(stated.first_lease_plain)).toEqual({ ok: true, value: stated.first_lease });
     expect(toLeaseBytes(stated.first_lease)).toEqual(stated.first_lease_plain);
+});
+
+test("the session reply vector's data plaintext decodes to the response it states, and back", async () => {
+    const { stated } = await vector("session_reply", SessionReplyVector);
+
+    expect(parseDataResponse(stated.first_data_plain)).toEqual({
+        ok: true,
+        value: stated.first_data,
+    });
+    expect(toDataResponseBytes(stated.first_data)).toEqual(stated.first_data_plain);
+});
+
+test("the data vectors decode to what they state, and encode back to their bytes", async () => {
+    for (const name of ["data_request", "data_request_everything"]) {
+        const { bytes, stated } = await vector(name, DataRequestVector);
+
+        expect(parseDataRequest(bytes)).toEqual({ ok: true, value: stated });
+        expect(toDataRequestBytes(stated)).toEqual(bytes);
+    }
+    const response = await vector("data_response", DataResponseFields);
+
+    expect(parseDataResponse(response.bytes)).toEqual({ ok: true, value: response.stated });
+    expect(toDataResponseBytes(response.stated)).toEqual(response.bytes);
 });
 
 test("the everything lease vector decodes to what it states, and encodes back to its bytes", async () => {
@@ -400,20 +473,25 @@ test("the server opens every golden frame and seals the same frames from the sam
         z.strictObject({ frame: Frame, renewal_plain: hexAny, renewal: z.unknown() }),
     );
     const response = await vector("lease_response", LeaseResponseVector);
-    const { module_to_server_key, server_to_module_key } = reply.stated.secrets;
+    const secrets = reply.stated.secrets;
     const frames = [
         {
-            key: server_to_module_key,
+            key: secrets.lease_server_to_module_key,
             frame: reply.stated.first_lease_frame.frame,
             plain: reply.stated.first_lease_plain,
         },
         {
-            key: module_to_server_key,
+            key: secrets.data_server_to_module_key,
+            frame: reply.stated.first_data_frame.frame,
+            plain: reply.stated.first_data_plain,
+        },
+        {
+            key: secrets.lease_module_to_server_key,
             frame: renewal.stated.frame.frame,
             plain: renewal.stated.renewal_plain,
         },
         {
-            key: server_to_module_key,
+            key: secrets.lease_server_to_module_key,
             frame: response.stated.lease_frame.frame,
             plain: response.stated.lease_plain,
         },
@@ -428,21 +506,29 @@ test("the server opens every golden frame and seals the same frames from the sam
 test("a golden frame opens under nothing but its own key and header", async () => {
     const reply = await vector("session_reply", SessionReplyVector);
     const frame = reply.stated.first_lease_frame.frame;
-    const { module_to_server_key, server_to_module_key } = reply.stated.secrets;
+    const secrets = reply.stated.secrets;
     const unauthentic = { ok: false, error: { code: "UNAUTHENTIC" } } as const;
 
-    expect(openFrame(module_to_server_key, frame)).toEqual(unauthentic);
+    expect(openFrame(secrets.lease_server_to_module_key, frame)).toEqual({
+        ok: true,
+        value: reply.stated.first_lease_plain,
+    });
+    expect(openFrame(secrets.lease_module_to_server_key, frame)).toEqual(unauthentic);
+    expect(openFrame(secrets.data_server_to_module_key, frame)).toEqual(unauthentic);
+    expect(openFrame(secrets.reports_server_to_module_key, frame)).toEqual(unauthentic);
     expect(
-        openFrame(server_to_module_key, { ...frame, header: { ...frame.header, sequence: 1n } }),
+        openFrame(secrets.lease_server_to_module_key, {
+            ...frame,
+            header: { ...frame.header, sequence: 1n },
+        }),
     ).toEqual(unauthentic);
     expect(
-        openFrame(server_to_module_key, {
+        openFrame(secrets.lease_server_to_module_key, {
             ...frame,
             header: { ...frame.header, direction: "module_to_server" },
         }),
     ).toEqual(unauthentic);
 });
-
 // draft-irtf-cfrg-xchacha-03, appendix A.3.1: the vector native/libs/crypto checks Monocypher with.
 test("sealing gives the XChaCha20-Poly1305 draft's ciphertext and tag", () => {
     const key = Uint8Array.fromHex(

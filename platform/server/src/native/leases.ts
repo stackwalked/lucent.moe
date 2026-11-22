@@ -1,5 +1,6 @@
 import type { ReleaseManifestV2 } from "@lucent/bundle/release-manifest";
 import type { CryptoRng } from "@lucent/core/rng";
+import { toDataResponseBytes } from "@lucent/wire/data";
 import { type Frame, NONCE_SIZE, sealFrame } from "@lucent/wire/frame";
 import {
     CHALLENGE_NONCE_SIZE,
@@ -24,7 +25,7 @@ export const RESUME_WINDOW_MS = 5 * 60 * 1_000;
 export const SESSION_CAP_MS = 12 * 60 * 60 * 1_000;
 
 // Bundles arrive with slice 3; until then every lease names the empty revision.
-const NO_BUNDLE_REVISION = 0n;
+const NO_DATA_REVISION = 0n;
 
 // How much of the image one challenge names: small enough to hash between frames.
 const MAX_CHALLENGE_SIZE = 4_096;
@@ -77,7 +78,7 @@ async function sealedLease(signer: LeaseSigner, rng: CryptoRng, state: LeaseStat
         sequence: state.sequence,
         nonce: state.nonce,
         durationMs: LEASE_DURATION_MS,
-        bundleRevision: NO_BUNDLE_REVISION,
+        dataRevision: NO_DATA_REVISION,
         challenge: state.challenge,
         product: state.product,
         entitled: state.entitled,
@@ -98,13 +99,15 @@ async function sealedLease(signer: LeaseSigner, rng: CryptoRng, state: LeaseStat
 }
 
 // POST /v1/starts/:id/session's reply: the server's half of the exchange, signed by the lease key
-// the module carries, and the first lease.
+// the module carries, the first lease and the first data.
 export async function toSessionReply(params: {
     readonly signer: LeaseSigner;
     readonly rng: CryptoRng;
     readonly state: LeaseState;
     readonly moduleKey: Uint8Array;
     readonly serverKey: Uint8Array;
+    // The data route's server-to-module key, for the first data frame.
+    readonly dataKey: Uint8Array;
 }): Promise<Uint8Array<ArrayBuffer>> {
     const unsigned = {
         session: params.state.session,
@@ -117,6 +120,21 @@ export async function toSessionReply(params: {
     return toSessionReplyBytes({
         exchange: { ...unsigned, signature },
         firstLease: await sealedLease(params.signer, params.rng, params.state),
+        firstData: sealedEmptyData(params.rng, params.state, params.dataKey),
+    });
+}
+
+// Until bundles arrive: no sets, the empty revision, nothing unsupported.
+function sealedEmptyData(rng: CryptoRng, state: LeaseState, key: Uint8Array): Frame {
+    const plain = toDataResponseBytes({
+        dataRevision: NO_DATA_REVISION,
+        bundle: new Uint8Array(0),
+        unsupported: [],
+    });
+    return sealFrame(key, {
+        header: { session: state.session, direction: "server_to_module", sequence: 0n },
+        nonce: rng.fillBytes(new Uint8Array(NONCE_SIZE)),
+        plain,
     });
 }
 

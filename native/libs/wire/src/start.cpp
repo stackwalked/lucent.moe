@@ -1,14 +1,11 @@
 #include <lucent/wire/start.hpp>
 
-#include <algorithm>
 #include <cstddef>
 #include <expected>
-#include <functional>
 #include <span>
 #include <utility>
 #include <vector>
 
-#include <lucent/bundle/fact_set.hpp>
 #include <lucent/wire/ids.hpp>
 
 #include "codec.hpp"
@@ -26,8 +23,6 @@ namespace {
 constexpr u32 request_version = 1;
 constexpr u32 reply_version = 1;
 
-constexpr usize module_key_size = 16;
-
 auto is_known(channel chosen) -> bool {
     switch (chosen) {
     case channel::stable:
@@ -39,10 +34,7 @@ auto is_known(channel chosen) -> bool {
 }
 
 auto is_canonical(const start_request& request) -> bool {
-    return is_known(request.chosen)
-           && request.modules.size() <= max_start_modules
-           && std::ranges::adjacent_find(request.modules, std::ranges::greater_equal{})
-                  == request.modules.end();
+    return is_known(request.chosen) && detail::is_canonical_modules(request.modules);
 }
 
 auto is_canonical(const start_reply& reply) -> bool {
@@ -58,12 +50,7 @@ auto encode_start_request(const start_request& request) -> std::vector<std::byte
     out.write_u8(std::to_underlying(request.chosen));
     out.write_bytes(request.loader_release.bytes);
     out.write_product(request.product);
-    out.write_u8(static_cast<u8>(request.modules.size()));
-    for (const bundle::module_key& module : request.modules) {
-        out.write_u64(module.name_hash);
-        out.write_u32(module.time_date_stamp);
-        out.write_u32(module.size_of_image);
-    }
+    out.write_modules(request.modules);
     return out.take();
 }
 
@@ -74,18 +61,7 @@ auto decode_start_request(std::span<const std::byte> bytes) -> result<start_requ
     request.chosen = static_cast<channel>(LUCENT_TRY(input.read_u8()));
     request.loader_release.bytes = LUCENT_TRY(input.read_array<id_size>());
     request.product = LUCENT_TRY(input.read_product());
-    const u8 count = LUCENT_TRY(input.read_u8());
-    if (count > max_start_modules || usize{count} * module_key_size > input.remaining()) {
-        return std::unexpected(detail::malformed);
-    }
-    request.modules.reserve(count);
-    for (u8 index = 0; index < count; ++index) {
-        bundle::module_key module;
-        module.name_hash = LUCENT_TRY(input.read_u64());
-        module.time_date_stamp = LUCENT_TRY(input.read_u32());
-        module.size_of_image = LUCENT_TRY(input.read_u32());
-        request.modules.push_back(module);
-    }
+    request.modules = LUCENT_TRY(input.read_modules());
     if (!is_canonical(request)) {
         return std::unexpected(detail::malformed);
     }

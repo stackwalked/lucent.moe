@@ -12,6 +12,7 @@
 #include <string_view>
 #include <vector>
 
+#include <lucent/bundle/fact_set.hpp>
 #include <lucent/wire/ids.hpp>
 
 // The encoding every /v1 message shares: little-endian fixed-width integers, nothing aligned or
@@ -57,6 +58,10 @@ public:
     }
 
     auto write_product(std::string_view product) -> void;
+
+    // A module list: u8 count, then per module u64 name hash, u32 time-date stamp, u32 size of
+    // image.
+    auto write_modules(std::span<const bundle::module_key> modules) -> void;
 
     auto bytes() const -> std::span<const std::byte> {
         return m_bytes;
@@ -142,6 +147,9 @@ public:
 
     auto read_product() -> result<std::string>;
 
+    // Sorted, unique, at most max_start_modules, or malformed.
+    auto read_modules() -> result<std::vector<bundle::module_key>>;
+
     auto remaining() const -> usize {
         return m_bytes.size() - m_offset;
     }
@@ -165,6 +173,12 @@ private:
     std::span<const std::byte> m_bytes;
     usize m_offset = 0;
 };
+
+// Sorted ascending without repeats, within max_start_modules.
+auto is_canonical_modules(std::span<const bundle::module_key> modules) -> bool;
+
+// Sorted ascending without repeats, never 0, within max_features.
+auto is_canonical_features(std::span<const u64> features) -> bool;
 
 // Fails as malformed unless the whole input was read.
 template <std::move_constructible T>

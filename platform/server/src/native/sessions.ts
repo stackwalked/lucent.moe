@@ -381,8 +381,8 @@ export async function openSession(
                      lease_issued_at, lease_expires_at, frame_in_sequence, frame_out_sequence)
                 values (${sessionId}, ${params.startId}, ${accountId}, ${start.device_id},
                         ${start.product_id}, ${start.channel}, ${start.release_id}, ${generation},
-                        ${hello.moduleKey}, ${serverKey}, ${keys.moduleToServer},
-                        ${keys.serverToModule}, ${hello.boot.bootInfoVersion},
+                        ${hello.moduleKey}, ${serverKey}, ${keys.lease.moduleToServer},
+                        ${keys.lease.serverToModule}, ${hello.boot.bootInfoVersion},
                         ${hello.boot.imageKind}, ${hello.boot.imageBase}, ${hello.boot.imageSize},
                         ${entitled.everything},
                         ${entitled.everything ? [] : entitled.features}::numeric[],
@@ -400,18 +400,27 @@ export async function openSession(
         if (!recorded.ok) return recorded;
         return ok(inserted.value);
     });
-    keys.moduleToServer.fill(0);
-    keys.serverToModule.fill(0);
-    if (!opened.ok) return opened;
-    return ok(
-        await toSessionReply({
-            signer: params.signer,
-            rng,
-            state: leaseStateOf(opened.value),
-            moduleKey: opened.value.module_key,
-            serverKey: opened.value.server_key,
-        }),
-    );
+    // Only the lease route's keys are stored so far; the data key lives just long enough to seal
+    // the first data frame.
+    for (const route of [keys.lease, keys.reports]) {
+        route.moduleToServer.fill(0);
+        route.serverToModule.fill(0);
+    }
+    keys.data.moduleToServer.fill(0);
+    if (!opened.ok) {
+        keys.data.serverToModule.fill(0);
+        return opened;
+    }
+    const reply = await toSessionReply({
+        signer: params.signer,
+        rng,
+        state: leaseStateOf(opened.value),
+        moduleKey: opened.value.module_key,
+        serverKey: opened.value.server_key,
+        dataKey: keys.data.serverToModule,
+    });
+    keys.data.serverToModule.fill(0);
+    return ok(reply);
 }
 
 export type RenewRefusal =
