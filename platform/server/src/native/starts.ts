@@ -1,3 +1,4 @@
+import { coreFactKeys, parseReleaseManifestV2 } from "@lucent/bundle/release-manifest";
 import type { ProductCatalog } from "@lucent/catalog/catalog";
 import { invariant } from "@lucent/core/contain";
 import { err, ok, type Result } from "@lucent/core/result";
@@ -6,14 +7,28 @@ import { ChannelId, EpochMs, type OperationId, ProductId, toHex } from "@lucent/
 import { CONTAINER_KEY_SIZE, type StartReply, type StartRequest } from "@lucent/wire/start";
 import { z } from "zod";
 import { readEffectiveProductAccess } from "../authority/entitlements.ts";
-import { type Db, type DbFailure, execute, queryOne, sql, toTimestamptz } from "../db/pool.ts";
+import {
+    type Db,
+    type DbFailure,
+    execute,
+    type Queryable,
+    queryOne,
+    sql,
+    toTimestamptz,
+} from "../db/pool.ts";
 import { type ReceiptRefusal, readReplay, recordReceipt, toOperationKey } from "../db/receipt.ts";
 import { withTx } from "../db/tx.ts";
 import { type AccountInactive, lockActiveAccount } from "./accounts.ts";
 import { findDeviceByKey, lockDevice } from "./devices.ts";
 import type { DpopProof } from "./dpop.ts";
+import { readCoveredFactKeys } from "./fact-sets.ts";
 import { newWireId } from "./ids.ts";
-import { findCurrentRelease, LOADER_CHANNEL, LOADER_PRODUCT } from "./releases.ts";
+import {
+    findCurrentRelease,
+    findReleaseManifest,
+    LOADER_CHANNEL,
+    LOADER_PRODUCT,
+} from "./releases.ts";
 import type { TokenHolder } from "./sign-in.ts";
 
 // A start is the server's yes to running a module: every check in one transaction, then the
@@ -34,6 +49,7 @@ export type StartRefusal =
           | "CHANNEL_NOT_ALLOWED"
           | "LOADER_UPDATE_REQUIRED"
           | "RELEASE_UNAVAILABLE"
+          | "GAME_BUILD_UNSUPPORTED"
           | "START_EXPIRED"
       >;
 
@@ -48,9 +64,9 @@ const StartRowSchema = z.object({
 
 // The order is the order a member would fix things in: who they are and which PC, what they are
 // entitled to, then whether the loader and the release are current. The slot never refuses (the
-// newest session takes it) and is taken by the session, not here. Core coverage of the reported
-// game builds needs fact sets, which arrive with slice 3; until then every build starts and the
-// module reports a capability it can't cover.
+// newest session takes it) and is taken by the session, not here. Last comes core coverage: the
+// release's current fact sets for the reported game builds must hold every fact a core capability
+// needs; anything less optional degrades in the module, never here.
 export async function createStart(
     db: Db,
     params: {
@@ -144,6 +160,9 @@ export async function createStart(
         if (!release.ok) return release;
         if (release.value === null) return err({ code: "RELEASE_UNAVAILABLE" });
         invariant(release.value.hasContainer, "a module product's current release has a container");
+        const covered = await coversCoreFacts(tx, release.value.id, request.modules);
+        if (!covered.ok) return covered;
+        if (!covered.value) return err({ code: "GAME_BUILD_UNSUPPORTED" });
 
         const inserted = await execute(
             tx,
@@ -160,6 +179,26 @@ export async function createStart(
         if (!recorded.ok) return recorded;
         return ok({ start: startId, containerKey, releaseSeal: release.value.seal });
     });
+}
+
+// The manifest doesn't say which module a core fact lives in, so the rule is the union: every
+// core fact must be in some current set for the reported builds. A release with no core
+// capability needs no set at all.
+async function coversCoreFacts(
+    q: Queryable,
+    releaseId: Uint8Array,
+    builds: StartRequest["modules"],
+): Promise<Result<boolean, DbFailure>> {
+    const bytes = await findReleaseManifest(q, releaseId);
+    if (!bytes.ok) return bytes;
+    invariant(bytes.value !== null, "a module release has a manifest");
+    const manifest = parseReleaseManifestV2(bytes.value);
+    invariant(manifest.ok, "a stored release manifest was verified when it was published");
+    const needed = coreFactKeys(manifest.value);
+    if (needed.length === 0) return ok(true);
+    const covered = await readCoveredFactKeys(q, { releaseId, builds });
+    if (!covered.ok) return covered;
+    return ok(needed.every((key) => covered.value.has(key)));
 }
 
 export type StartContainer = {

@@ -196,3 +196,19 @@ test("ops publishes only under a configured code key, and refuses a malformed on
         },
     });
 });
+
+test("ops publishes fact sets only under configured facts keys, and refuses a malformed one", () => {
+    const first = new Uint8Array(32).fill(7);
+    const second = new Uint8Array(32).fill(9);
+    const encode = (key: Uint8Array) => key.toBase64({ alphabet: "base64url", omitPadding: true });
+
+    const absent = readOpsConfig(env({}));
+    const several = readOpsConfig(
+        env({ LUCENT_FACTS_PUBLIC_KEYS: `${encode(first)}, ${encode(second)}` }),
+    );
+    const malformed = readOpsConfig(env({ LUCENT_FACTS_PUBLIC_KEYS: `${encode(first)},nope` }));
+
+    expect(absent.ok && absent.value.factsPublicKeys).toEqual([]);
+    expect(several.ok && several.value.factsPublicKeys).toEqual([first, second]);
+    expect(malformed.ok).toBe(false);
+});

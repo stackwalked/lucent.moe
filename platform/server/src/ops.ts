@@ -9,6 +9,7 @@ import { bootstrapRootAccount, recoverRootAccount } from "./authority/writers.ts
 import { processEnvironment, readOpsConfig } from "./config.ts";
 import { migrateDatabase, verifySchemaCurrent } from "./db/migrate.ts";
 import { openPool } from "./db/pool.ts";
+import { describePublishedFactSet, publishFactSet } from "./native/fact-sets.ts";
 import { describePublished, publishLoaderRelease, publishModuleRelease } from "./native/publish.ts";
 
 // Operator verbs, run against the database the server uses. Exit 1 on any refusal; the reason
@@ -19,6 +20,7 @@ const USAGE = `usage:
   ops recover-root
   ops publish-release --seal <file> --container <file> --manifest <file>
   ops publish-loader --seal <file> --loader <file> --host <file> --artifact-dir <dir>
+  ops publish-fact-set --release <hex id> --set <file>
 `;
 
 // Publishing reads its artifacts whole: a container is a few MiB, the seal bounds the rest.
@@ -59,6 +61,8 @@ const args = trySync(
                 loader: { type: "string" },
                 host: { type: "string" },
                 "artifact-dir": { type: "string" },
+                release: { type: "string" },
+                set: { type: "string" },
             },
         }),
     () => null,
@@ -68,7 +72,7 @@ const { positionals, values } = args.value;
 const [verb, ...extra] = positionals;
 if (extra.length > 0) usage();
 
-const { codePublicKey } = config.value;
+const { codePublicKey, factsPublicKeys } = config.value;
 
 const db = openPool({
     databaseUrl: config.value.databaseUrl,
@@ -177,6 +181,26 @@ async function run(): Promise<number> {
                 return 1;
             }
             report("stdout", { staged: describePublished(published.value) });
+            return 0;
+        }
+        case "publish-fact-set": {
+            const { release, set } = values;
+            if (release === undefined || set === undefined) usage();
+            if (!/^[0-9a-f]{32}$/.test(release)) usage();
+            if (factsPublicKeys.length === 0) {
+                report("stderr", { code: "NO_FACTS_KEY" });
+                return 1;
+            }
+            const published = await publishFactSet(db, {
+                factsKeys: factsPublicKeys,
+                releaseId: Uint8Array.fromHex(release),
+                bundle: await readArtifact(set),
+            });
+            if (!published.ok) {
+                report("stderr", published.error);
+                return 1;
+            }
+            report("stdout", { staged: describePublishedFactSet(published.value) });
             return 0;
         }
         default:

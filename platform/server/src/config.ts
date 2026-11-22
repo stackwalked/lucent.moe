@@ -47,6 +47,10 @@ export type OpsConfig = {
     // The offline code key's public half (Ed25519, 32 bytes): every seal ops publishes must verify
     // under it. Null when LUCENT_CODE_PUBLIC_KEY is absent; ops then refuses to publish.
     readonly codePublicKey: Uint8Array | null;
+    // The offline facts key's public half, or several while one rotates out: a fact set ops
+    // publishes must verify under one of them. Empty when LUCENT_FACTS_PUBLIC_KEYS is absent; ops
+    // then refuses to publish fact sets.
+    readonly factsPublicKeys: readonly Uint8Array[];
 };
 
 // Names the variables and what's wrong with them, never their values: some of them are secrets.
@@ -70,6 +74,7 @@ export type Environment = {
     readonly LUCENT_LEASE_SIGNING_KEY?: string | undefined;
     readonly LUCENT_ARTIFACT_DIR?: string | undefined;
     readonly LUCENT_CODE_PUBLIC_KEY?: string | undefined;
+    readonly LUCENT_FACTS_PUBLIC_KEYS?: string | undefined;
 };
 
 const POSTGRES_URL = /^postgres(?:ql)?:\/\/./;
@@ -290,10 +295,24 @@ export function readOpsConfig(env: Environment): Result<OpsConfig, ConfigError> 
     if (rawCodeKey !== undefined && codePublicKey === null) {
         problems.push("LUCENT_CODE_PUBLIC_KEY must be a 32-byte Ed25519 public key in base64url");
     }
+    const factsPublicKeys: Uint8Array[] = [];
+    const rawFactsKeys = env.LUCENT_FACTS_PUBLIC_KEYS;
+    if (rawFactsKeys !== undefined) {
+        for (const raw of rawFactsKeys.split(",")) {
+            const key = parseCodePublicKey(raw.trim());
+            if (key === null) {
+                problems.push(
+                    "LUCENT_FACTS_PUBLIC_KEYS must be 32-byte Ed25519 public keys in base64url, comma-separated",
+                );
+                break;
+            }
+            factsPublicKeys.push(key);
+        }
+    }
     if (problems.length > 0) {
         return err({ code: "CONFIG_INVALID", problems });
     }
-    return ok({ databaseUrl, codePublicKey });
+    return ok({ databaseUrl, codePublicKey, factsPublicKeys });
 }
 
 // The one read of the process environment (ast-grep: ts-no-ambient-env).
@@ -313,6 +332,7 @@ export function processEnvironment(): Environment {
         LUCENT_LEASE_SIGNING_KEY,
         LUCENT_ARTIFACT_DIR,
         LUCENT_CODE_PUBLIC_KEY,
+        LUCENT_FACTS_PUBLIC_KEYS,
     } = process.env;
     return {
         LUCENT_DATABASE_URL,
@@ -329,5 +349,6 @@ export function processEnvironment(): Environment {
         LUCENT_LEASE_SIGNING_KEY,
         LUCENT_ARTIFACT_DIR,
         LUCENT_CODE_PUBLIC_KEY,
+        LUCENT_FACTS_PUBLIC_KEYS,
     };
 }
