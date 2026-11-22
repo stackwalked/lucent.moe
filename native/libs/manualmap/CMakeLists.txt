@@ -1,7 +1,7 @@
 lucent_library(manualmap
     HEADERS include/lucent/manualmap/map.hpp
     SOURCES src/image_bytes.cpp src/imports.cpp src/map.cpp src/resolver.cpp
-    DEPS lucent::os lucent::pe lucent::wire
+    DEPS lucent::crypto lucent::os lucent::pe lucent::wire
 )
 
 lucent_test(manualmap

@@ -15,6 +15,7 @@
 
 #include <lucent/core/match.hpp>
 #include <lucent/core/narrow.hpp>
+#include <lucent/crypto/crypto.hpp>
 #include <lucent/os/process.hpp>
 #include <lucent/os/remote_call.hpp>
 #include <lucent/os/remote_memory.hpp>
@@ -175,11 +176,14 @@ auto protect_container(os::remote_region& region, const wire::container& image) 
     return {};
 }
 
-// The container's sections at their RVAs, zeros elsewhere: the image before relocation.
-auto container_layout(const wire::container& image) -> std::vector<std::byte> {
-    std::vector<std::byte> local(image.image_size);
+// The container's sections at their RVAs, zeros elsewhere: the image before relocation. Wiped when
+// it goes, on every path: it is the release module in plaintext, and the copy in the target is the
+// one that has to exist.
+auto container_layout(const wire::container& image) -> crypto::secret_bytes {
+    crypto::secret_bytes local = crypto::secret_bytes::zeroed(image.image_size);
+    const std::span<std::byte> bytes = local.as_writable_bytes();
     for (const wire::container_section& section : image.sections) {
-        std::ranges::copy(section.data, local.begin() + narrow<isize>(section.rva));
+        std::ranges::copy(section.data, bytes.begin() + narrow<isize>(section.rva));
     }
     return local;
 }
@@ -243,7 +247,8 @@ auto map_container(const os::process& target, const wire::container& image) -> r
         os::remote_region::allocate(target, image.image_size, os::page_access::read_write)
     );
     const uptr base = image_region.base();
-    std::vector<std::byte> local = container_layout(image);
+    crypto::secret_bytes laid_out = container_layout(image);
+    const std::span<std::byte> local = laid_out.as_writable_bytes();
     LUCENT_TRY(apply_container_relocations(image, local, base));
     LUCENT_TRY(detail::bind_hashed_imports(target, image, local));
     std::optional<os::remote_region> trampolines =

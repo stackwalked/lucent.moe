@@ -63,8 +63,30 @@ auto seal_container_stream(
     return stream;
 }
 
+namespace {
+
+// Appends without leaving a copy behind: growing a vector frees its old buffer as it is, so the
+// growth is done here, the old buffer wiped first. The plaintext is the release module.
+auto append_wiping(std::vector<std::byte>& into, std::span<const std::byte> more) -> void {
+    if (into.capacity() - into.size() < more.size()) {
+        std::vector<std::byte> grown;
+        grown.reserve(std::max(into.capacity() * 2, into.size() + more.size()));
+        grown.insert(grown.end(), into.begin(), into.end());
+        crypto::wipe(into);
+        into.swap(grown);
+    }
+    into.insert(into.end(), more.begin(), more.end());
+}
+
+}
+
 container_stream_opener::container_stream_opener(const crypto::secret_key& key)
     : m_key{&key} {}
+
+container_stream_opener::~container_stream_opener() {
+    // finish() moves the plaintext out; whatever is left (a failed stream's chunks) goes here.
+    crypto::wipe(m_plain);
+}
 
 auto container_stream_opener::open_chunk(std::span<const std::byte> sealed, chunk_position position)
     -> result<void> {
@@ -85,7 +107,7 @@ auto container_stream_opener::open_chunk(std::span<const std::byte> sealed, chun
     if (position == chunk_position::last && plain.as_bytes().empty() && m_index != 0) {
         return std::unexpected(detail::malformed);
     }
-    m_plain.insert(m_plain.end(), plain.as_bytes().begin(), plain.as_bytes().end());
+    append_wiping(m_plain, plain.as_bytes());
     ++m_index;
     return {};
 }

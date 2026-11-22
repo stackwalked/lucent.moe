@@ -7,10 +7,12 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <variant>
 #include <vector>
 
 #include <lucent/bundle/fact_set.hpp>
+#include <lucent/core/match.hpp>
 #include <lucent/crypto/crypto.hpp>
 #include <lucent/kit/boot_info.hpp>
 #include <lucent/launch/boot.hpp>
@@ -36,6 +38,59 @@ constexpr usize max_stream_size =
     wire::max_container_image_size
     + (((wire::max_container_image_size / wire::container_chunk_size) + 1)
         * wire::sealed_chunk_overhead);
+
+// Plaintext module bytes, wiped when this goes.
+class plaintext final {
+public:
+    explicit plaintext(std::vector<std::byte> bytes)
+        : m_bytes{std::move(bytes)} {}
+
+    plaintext(const plaintext&) = delete ("the module in plaintext has one copy");
+    auto operator=(const plaintext&) -> plaintext& = delete ("one copy");
+    plaintext(plaintext&&) = delete ("wiped where it is");
+    auto operator=(plaintext&&) -> plaintext& = delete ("wiped where it is");
+
+    ~plaintext() {
+        crypto::wipe(m_bytes);
+    }
+
+    auto bytes() const -> std::span<const std::byte> {
+        return m_bytes;
+    }
+
+    // Hands the bytes on, leaving nothing here to wipe; the taker wipes them.
+    auto take() -> std::vector<std::byte> {
+        return std::exchange(m_bytes, {});
+    }
+
+private:
+    std::vector<std::byte> m_bytes;
+};
+
+// An unpacked container, its sections wiped when this goes.
+class unpacked_image final {
+public:
+    explicit unpacked_image(wire::container image)
+        : m_image{std::move(image)} {}
+
+    unpacked_image(const unpacked_image&) = delete ("the module in plaintext has one copy");
+    auto operator=(const unpacked_image&) -> unpacked_image& = delete ("one copy");
+    unpacked_image(unpacked_image&&) = delete ("wiped where it is");
+    auto operator=(unpacked_image&&) -> unpacked_image& = delete ("wiped where it is");
+
+    ~unpacked_image() {
+        for (wire::container_section& section : m_image.sections) {
+            crypto::wipe(section.data);
+        }
+    }
+
+    auto image() const -> const wire::container& {
+        return m_image;
+    }
+
+private:
+    wire::container m_image;
+};
 
 auto malformed() -> std::unexpected<error> {
     return std::unexpected(error{.code = error_code::malformed});
@@ -90,11 +145,11 @@ auto fetch_container(
     if (refused) {
         return *refused;
     }
-    std::vector<std::byte> packed = LUCENT_TRY(opener.finish());
-    if (crypto::hash(packed) != container_digest_of(seal)) {
+    plaintext packed{LUCENT_TRY(opener.finish())};
+    if (crypto::hash(packed.bytes()) != container_digest_of(seal)) {
         return malformed();
     }
-    return packed;
+    return packed.take();
 }
 
 // Maps the container into the game and runs its boot entry with a session channel of its own.
@@ -159,17 +214,30 @@ auto start_module(
     if (seal.number < inputs.highest_seen) {
         return stale_release{.served = seal.number, .highest = inputs.highest_seen};
     }
-    const answer fetched = LUCENT_TRY(fetch_container(api, access_token, reply, seal));
+    answer fetched = LUCENT_TRY(fetch_container(api, access_token, reply, seal));
     if (const std::optional<wire::refusal> refused = refusal_in(fetched)) {
         return *refused;
     }
-    const wire::container image = LUCENT_TRY(wire::unpack_container(body_in(fetched)));
-    if (image.release != seal.release) {
+    // The module exists in plaintext here only until it's in the game: the packed bytes go once
+    // unpacked, the sections once mapped, on every path.
+    result<wire::container> unpacked = [&fetched] {
+        const plaintext packed{match(
+            fetched,
+            [](std::vector<std::byte>& bytes) { return std::move(bytes); },
+            [](const wire::refusal&) { return std::vector<std::byte>{}; }
+        )};
+        return wire::unpack_container(packed.bytes());
+    }();
+    if (!unpacked) {
+        return std::unexpected(unpacked.error());
+    }
+    const unpacked_image image{*std::move(unpacked)};
+    if (image.image().release != seal.release) {
         return malformed();
     }
     return started_module{
         .start = reply.start,
-        .channel = LUCENT_TRY(map_and_boot(game, image)),
+        .channel = LUCENT_TRY(map_and_boot(game, image.image())),
         .seal_number = seal.number,
     };
 }

@@ -40,10 +40,20 @@ public:
     // The key is borrowed for the opener's lifetime.
     explicit container_stream_opener(const crypto::secret_key& key);
 
+    container_stream_opener(const container_stream_opener&) = delete ("holds plaintext");
+    auto operator=(const container_stream_opener&)
+        -> container_stream_opener& = delete ("holds plaintext");
+    container_stream_opener(container_stream_opener&&) = delete ("borrows its key in place");
+    auto operator=(container_stream_opener&&)
+        -> container_stream_opener& = delete ("borrows its key in place");
+    // Wipes whatever plaintext it still holds.
+    ~container_stream_opener();
+
     // Fails as malformed at the first chunk that doesn't open; the opener is spent then.
     auto feed(std::span<const std::byte> bytes) -> result<void>;
 
-    // The packed container. Fails as malformed when the last chunk doesn't open as the last.
+    // The packed container, in plaintext: the caller wipes it once done (crypto::wipe). Fails as
+    // malformed when the last chunk doesn't open as the last.
     auto finish() -> result<std::vector<std::byte>>;
 
 private:

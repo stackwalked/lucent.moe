@@ -355,17 +355,18 @@ auto unpack_container(std::span<const std::byte> packed) -> result<container> {
         return std::unexpected(detail::malformed);
     }
     const std::span<const std::byte> block = LUCENT_TRY(input.read_bytes(block_size));
-    std::vector<std::byte> body(body_size);
+    // The decoded body is the module in plaintext: wiped when it goes, on every path.
+    crypto::secret_bytes body = crypto::secret_bytes::zeroed(body_size);
     const i32 decompressed = LZ4_decompress_safe(
         as_chars(block),
-        as_writable_chars(body),
+        as_writable_chars(body.as_writable_bytes()),
         narrow<i32>(block.size()),
-        narrow<i32>(body.size())
+        narrow<i32>(body.as_bytes().size())
     );
     if (decompressed < 0 || narrow<u32>(decompressed) != body_size) {
         return std::unexpected(detail::malformed);
     }
-    return decode_container_body(body);
+    return decode_container_body(body.as_bytes());
 }
 
 }
