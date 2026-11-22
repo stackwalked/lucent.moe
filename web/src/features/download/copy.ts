@@ -1,11 +1,8 @@
 export const DOWNLOAD_COPY = {
     title: "download",
-    intro: "the lucent loader signs you in and starts your products. download it for a channel you have.",
-    channels: "your channels",
-    channel: "channel",
-    released: "released",
-    notOut: "not out yet",
-    none: "you have no loader channel yet. ask staff.",
+    intro: "the lucent loader signs you in and starts your products. it has no channels of its own.",
+    loader: "loader",
+    none: "you have no product yet. ask staff.",
     unavailable: "downloads aren't open on lucent.moe yet.",
     warnings: "what windows will say",
     unsigned:

@@ -150,7 +150,7 @@ test("the start's container arrives in 64 KiB chunks only its key opens, and a c
         const container = rng.fillBytes(new Uint8Array(CONTAINER_CHUNK_SIZE * 2 + 123));
         const loaderRelease = await publishRelease(nativeDb, rng, {
             product: "lucent-loader",
-            channel: "alpha",
+            channel: "stable",
         });
         const moduleRelease = await publishRelease(nativeDb, rng, {
             product: "cs2",

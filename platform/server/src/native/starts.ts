@@ -13,7 +13,7 @@ import { type AccountInactive, lockActiveAccount } from "./accounts.ts";
 import { findDeviceByKey, lockDevice } from "./devices.ts";
 import type { DpopProof } from "./dpop.ts";
 import { newWireId } from "./ids.ts";
-import { findCurrentRelease, LOADER_PRODUCT } from "./releases.ts";
+import { findCurrentRelease, LOADER_CHANNEL, LOADER_PRODUCT } from "./releases.ts";
 import type { TokenHolder } from "./sign-in.ts";
 
 // A start is the server's yes to running a module: every check in one transaction, then the
@@ -131,7 +131,10 @@ export async function createStart(
         const channel = ChannelId.parse(request.channel);
         if (!access.value.channels.includes(channel)) return err({ code: "CHANNEL_NOT_ALLOWED" });
 
-        const loader = await findCurrentRelease(tx, { productId: LOADER_PRODUCT, channel });
+        const loader = await findCurrentRelease(tx, {
+            productId: LOADER_PRODUCT,
+            channel: LOADER_CHANNEL,
+        });
         if (!loader.ok) return loader;
         if (loader.value === null) return err({ code: "RELEASE_UNAVAILABLE" });
         if (toHex(loader.value.id) !== toHex(request.loaderRelease)) {

@@ -82,7 +82,7 @@ test("a member's PC signs in, enrolls, starts, holds a lease and closes, end to 
         const container = rng.fillBytes(new Uint8Array(150_000));
         const loaderRelease = await publishRelease(seeding, rng, {
             product: "lucent-loader",
-            channel: "alpha",
+            channel: "stable",
         });
         const moduleRelease = await publishRelease(seeding, rng, {
             product: "cs2",

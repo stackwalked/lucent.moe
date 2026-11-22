@@ -406,13 +406,12 @@ export function createNativeApp(deps: NativeDeps): Hono {
         return reply(closed, () => new Response(null, { status: 204 }));
     });
 
-    app.get("/v1/loader/:channel", async (c) => {
+    app.get("/v1/loader", async (c) => {
         const caller = await authenticated(c, "loader.seal");
         if (!caller.ok) return refusalResponse(caller.error);
         const seal = await readLoaderSeal(deps.db, {
             catalog: deps.catalog,
             accountId: caller.value.holder.accountId,
-            channel: c.req.param("channel"),
         });
         return reply(seal, (bytes) => binaryResponse(new Uint8Array(bytes)));
     });

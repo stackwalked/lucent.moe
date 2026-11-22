@@ -407,7 +407,7 @@ export async function publishBoth(
     channel: Channel = "alpha",
 ): Promise<Releases> {
     return {
-        loader: await publishRelease(db, rng, { product: "lucent-loader", channel }),
+        loader: await publishRelease(db, rng, { product: "lucent-loader", channel: "stable" }),
         module: await publishRelease(db, rng, { product: "cs2", channel }),
     };
 }

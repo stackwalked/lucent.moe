@@ -137,11 +137,15 @@ const HOST = new TextEncoder().encode("lucent-host's executable");
 
 async function publishLoader(
     db: Db,
-    params: { readonly number: bigint; readonly release: Uint8Array },
+    params: {
+        readonly number: bigint;
+        readonly release: Uint8Array;
+        readonly channel?: Channel;
+    },
 ) {
     const seal = await signed({
         product: "lucent-loader",
-        channel: "alpha",
+        channel: params.channel ?? "stable",
         number: params.number,
         release: params.release,
         bootInfoVersion: BOOT_INFO_VERSION,
@@ -335,6 +339,26 @@ test("a loader release is checked against its executables' digests and stored st
     });
 });
 
+test("a loader seal signed for any channel but stable is refused and stores nothing", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ nativeDb }) => {
+        const release = new Uint8Array(16).fill(0x45);
+        const { published } = await publishLoader(nativeDb, {
+            number: 1n,
+            release,
+            channel: "alpha",
+        });
+        const stored = await queryAll(
+            nativeDb,
+            z.object({ n: z.coerce.number() }),
+            sql`select count(*) as n from release_seal where product_id = 'lucent-loader'`,
+        );
+
+        expect(published).toEqual({ ok: false, error: { code: "LOADER_CHANNEL_INVALID" } });
+        expect(stored).toEqual({ ok: true, value: [{ n: 0 }] });
+    });
+});
+
 test("once promoted, a start serves the published container and seal, whose digest it matches", async () => {
     const cluster = await sharedTestCluster();
     await cluster.withTestDb(async ({ nativeDb }) => {
@@ -347,11 +371,14 @@ test("once promoted, a start serves the published container and seal, whose dige
         const seal = await moduleSeal({ number: 1n });
         expect((await publishModule(nativeDb, seal)).ok).toBe(true);
         // Web's promotion, as it will write it.
-        for (const product of ["lucent-loader", "cs2"]) {
+        for (const [product, channel] of [
+            ["lucent-loader", "stable"],
+            ["cs2", "alpha"],
+        ]) {
             const promoted = await execute(
                 nativeDb,
                 sql`insert into current_release (product_id, channel, number)
-                    values (${product}, 'alpha', 1)`,
+                    values (${product}, ${channel}, 1)`,
             );
             invariant(promoted.ok, "promoting failed");
         }

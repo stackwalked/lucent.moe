@@ -2,8 +2,10 @@ import { ok, type Result } from "@lucent/core/result";
 import { z } from "zod";
 import { type DbFailure, type Queryable, queryOne, sql } from "../db/pool.ts";
 
-// The loader is a product of its own, released per channel like any other.
+// The loader is a product of its own with one release line: channels belong to the products it
+// starts, so every loader seal is signed for this one.
 export const LOADER_PRODUCT = "lucent-loader";
+export const LOADER_CHANNEL = "stable";
 
 const Bytes = z.instanceof(Uint8Array);
 

@@ -6,7 +6,6 @@ import { blake2b256 } from "@lucent/bundle/crypto";
 import { invariant } from "@lucent/core/contain";
 import { createSeededRng, type SeededRng } from "@lucent/core/rng";
 import { toReleaseSealBytes } from "@lucent/wire/release-seal";
-import type { Channel } from "@lucent/wire/start";
 import { type Db, execute, sql } from "../src/db/pool.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 import {
@@ -32,7 +31,7 @@ type PromotedLoader = {
 async function promoteLoader(
     db: Db,
     rng: SeededRng,
-    params: { readonly channel: Channel; readonly number: bigint; readonly artifactDir: string },
+    params: { readonly number: bigint; readonly artifactDir: string },
 ): Promise<PromotedLoader> {
     const loader = rng.fillBytes(new Uint8Array(3_000));
     const host = rng.fillBytes(new Uint8Array(2_000));
@@ -42,7 +41,7 @@ async function promoteLoader(
     const release = rng.fillBytes(new Uint8Array(16));
     const seal = toReleaseSealBytes({
         product: "lucent-loader",
-        channel: params.channel,
+        channel: "stable",
         number: params.number,
         release,
         bootInfoVersion: 1,
@@ -55,19 +54,19 @@ async function promoteLoader(
     const stored = await execute(
         db,
         sql`insert into release (id, product_id, channel, container, manifest)
-            values (${release}, 'lucent-loader', ${params.channel}, null, null)`,
+            values (${release}, 'lucent-loader', 'stable', null, null)`,
     );
     invariant(stored.ok, "inserting the release failed");
     const sealed = await execute(
         db,
         sql`insert into release_seal (product_id, channel, number, release_id, seal)
-            values ('lucent-loader', ${params.channel}, ${params.number}, ${release}, ${seal})`,
+            values ('lucent-loader', 'stable', ${params.number}, ${release}, ${seal})`,
     );
     invariant(sealed.ok, "inserting the seal failed");
     const promoted = await execute(
         db,
         sql`insert into current_release (product_id, channel, number)
-            values ('lucent-loader', ${params.channel}, ${params.number})
+            values ('lucent-loader', 'stable', ${params.number})
             on conflict (product_id, channel) do update set number = excluded.number`,
     );
     invariant(promoted.ok, "promoting the release failed");
@@ -108,48 +107,41 @@ async function withLoaderServer(
     await rm(artifactDir, { recursive: true, force: true });
 }
 
-test("the current loader seal is served on a channel the account holds", async () => {
+const entitlementsEnded = sql`update entitlement set status = 'suspended'`;
+
+test("the current loader seal is served to an account entitled to a product on any channel", async () => {
     await withLoaderServer(async ({ db, rng, artifactDir, signedIn }) => {
         const loader = await signedIn(["alpha"]);
-        const released = await promoteLoader(db, rng, {
-            channel: "alpha",
-            number: 1n,
-            artifactDir,
-        });
-        const sent = await loader.send({ method: "GET", path: "/v1/loader/alpha" });
+        const released = await promoteLoader(db, rng, { number: 1n, artifactDir });
+        const sent = await loader.send({ method: "GET", path: "/v1/loader" });
         expect(sent.status).toBe(200);
         expect(sent.bytes).toEqual(released.seal);
     });
 });
 
-test("a loader channel the account does not hold is refused, even with a release promoted", async () => {
+test("the loader seal is refused to an account entitled to nothing now, even with a release promoted", async () => {
     await withLoaderServer(async ({ db, rng, artifactDir, signedIn }) => {
-        const loader = await signedIn(["alpha"]);
-        await promoteLoader(db, rng, { channel: "stable", number: 1n, artifactDir });
-        const sent = await loader.send({ method: "GET", path: "/v1/loader/stable" });
+        const loader = await signedIn(["stable"]);
+        await promoteLoader(db, rng, { number: 1n, artifactDir });
+        await execute(db, entitlementsEnded);
+        const sent = await loader.send({ method: "GET", path: "/v1/loader" });
         expect(sent.status).toBe(403);
-        expect(refusalCodeOf(sent)).toBe("CHANNEL_NOT_ALLOWED");
+        expect(refusalCodeOf(sent)).toBe("ENTITLEMENT_INACTIVE");
     });
 });
 
-test("a loader channel with nothing promoted is unavailable, and an unknown channel is not found", async () => {
+test("the loader seal is unavailable while nothing is promoted", async () => {
     await withLoaderServer(async ({ signedIn }) => {
         const loader = await signedIn(["alpha"]);
-        const none = await loader.send({ method: "GET", path: "/v1/loader/alpha" });
+        const none = await loader.send({ method: "GET", path: "/v1/loader" });
         expect(refusalCodeOf(none)).toBe("RELEASE_UNAVAILABLE");
-        const unknown = await loader.send({ method: "GET", path: "/v1/loader/nightly" });
-        expect(refusalCodeOf(unknown)).toBe("NOT_FOUND");
     });
 });
 
 test("an artifact of the current loader seal streams with its exact bytes", async () => {
     await withLoaderServer(async ({ db, rng, artifactDir, signedIn }) => {
         const loader = await signedIn(["alpha"]);
-        const released = await promoteLoader(db, rng, {
-            channel: "alpha",
-            number: 1n,
-            artifactDir,
-        });
+        const released = await promoteLoader(db, rng, { number: 1n, artifactDir });
         for (const bytes of [released.loader, released.host]) {
             const path = `/v1/artifacts/${blake2b256(bytes).toHex()}`;
             const sent = await loader.send({ method: "GET", path });
@@ -159,7 +151,7 @@ test("an artifact of the current loader seal streams with its exact bytes", asyn
     });
 });
 
-test("a digest outside every current seal is not found even when its file exists", async () => {
+test("a digest outside the current seal is not found even when its file exists", async () => {
     await withLoaderServer(async ({ rng, artifactDir, signedIn }) => {
         const loader = await signedIn(["alpha"]);
         const stray = rng.fillBytes(new Uint8Array(500));
@@ -176,8 +168,8 @@ test("a digest outside every current seal is not found even when its file exists
 test("the artifacts of a replaced loader seal are no longer served", async () => {
     await withLoaderServer(async ({ db, rng, artifactDir, signedIn }) => {
         const loader = await signedIn(["alpha"]);
-        const first = await promoteLoader(db, rng, { channel: "alpha", number: 1n, artifactDir });
-        const second = await promoteLoader(db, rng, { channel: "alpha", number: 2n, artifactDir });
+        const first = await promoteLoader(db, rng, { number: 1n, artifactDir });
+        const second = await promoteLoader(db, rng, { number: 2n, artifactDir });
         const old = await loader.send({
             method: "GET",
             path: `/v1/artifacts/${blake2b256(first.loader).toHex()}`,
@@ -191,13 +183,14 @@ test("the artifacts of a replaced loader seal are no longer served", async () =>
     });
 });
 
-test("the artifacts of a channel the account does not hold are not found", async () => {
+test("the artifacts of the current loader seal are not found for an account entitled to nothing now", async () => {
     await withLoaderServer(async ({ db, rng, artifactDir, signedIn }) => {
-        const loader = await signedIn(["alpha"]);
-        const stable = await promoteLoader(db, rng, { channel: "stable", number: 1n, artifactDir });
+        const loader = await signedIn(["stable"]);
+        const released = await promoteLoader(db, rng, { number: 1n, artifactDir });
+        await execute(db, entitlementsEnded);
         const sent = await loader.send({
             method: "GET",
-            path: `/v1/artifacts/${blake2b256(stable.host).toHex()}`,
+            path: `/v1/artifacts/${blake2b256(released.host).toHex()}`,
         });
         expect(refusalCodeOf(sent)).toBe("NOT_FOUND");
     });
@@ -206,11 +199,7 @@ test("the artifacts of a channel the account does not hold are not found", async
 test("a current artifact whose file is missing is a server failure, not a not-found", async () => {
     await withLoaderServer(async ({ db, rng, artifactDir, signedIn }) => {
         const loader = await signedIn(["alpha"]);
-        const released = await promoteLoader(db, rng, {
-            channel: "alpha",
-            number: 1n,
-            artifactDir,
-        });
+        const released = await promoteLoader(db, rng, { number: 1n, artifactDir });
         await rm(join(artifactDir, blake2b256(released.loader).toHex()));
         const sent = await loader.send({
             method: "GET",

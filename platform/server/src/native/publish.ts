@@ -15,7 +15,7 @@ import {
 import { z } from "zod";
 import { type Db, type DbFailure, execute, queryOne, sql, type Tx } from "../db/pool.ts";
 import { withTx } from "../db/tx.ts";
-import { LOADER_PRODUCT } from "./releases.ts";
+import { LOADER_CHANNEL, LOADER_PRODUCT } from "./releases.ts";
 
 // `ops publish-release` and `ops publish-loader`: a seal enters staged, verified against the
 // offline code key, its number above every number signed for its product and channel before it,
@@ -33,6 +33,7 @@ export type PublishRefusal =
     | { readonly code: "CONTAINER_DISAGREES"; readonly field: "release" | "boot_info_version" }
     | { readonly code: "MANIFEST_INVALID" }
     | { readonly code: "MANIFEST_DISAGREES" }
+    | { readonly code: "LOADER_CHANNEL_INVALID" }
     | { readonly code: "NUMBER_TOO_LARGE" }
     | { readonly code: "RELEASE_DIFFERS" };
 
@@ -99,6 +100,7 @@ function checkLoader(seal: ReleaseSeal, artifacts: LoaderArtifacts): Result<null
     if (isModuleSeal(seal) || seal.product !== LOADER_PRODUCT) {
         return err({ code: "WRONG_KIND", expected: "loader" });
     }
+    if (seal.channel !== LOADER_CHANNEL) return err({ code: "LOADER_CHANNEL_INVALID" });
     if (!matches(seal, "loader", artifacts.loader)) {
         return err({ code: "DIGEST_MISMATCH", artifact: "loader" });
     }
