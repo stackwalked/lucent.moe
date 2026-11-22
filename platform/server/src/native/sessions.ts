@@ -56,6 +56,7 @@ import {
 } from "./leases.ts";
 import { findReleaseManifest } from "./releases.ts";
 import type { TokenHolder } from "./sign-in.ts";
+import { StartModules } from "./starts.ts";
 
 // A module's session: its hello consumes the start and takes the product slot; its renewals keep
 // the lease; close or a lapsed lease ends it. Every refusal that ends a session commits the end,
@@ -265,17 +266,6 @@ export type OpenRefusal =
       >;
 
 const SessionReceipt = z.object({ session: z.string().regex(/^[0-9a-f]{32}$/) });
-
-// The builds a start reported, as session_start.modules stores them.
-const StartModules = z
-    .array(z.tuple([z.string(), z.number(), z.number()]))
-    .transform((builds): ModuleKey[] =>
-        builds.map(([nameHash, timeDateStamp, sizeOfImage]) => ({
-            nameHash: BigInt(nameHash),
-            timeDateStamp,
-            sizeOfImage,
-        })),
-    );
 
 const StartRowSchema = z.object({
     device_id: Bytes,

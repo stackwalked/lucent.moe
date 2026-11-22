@@ -184,58 +184,64 @@ async function readApplicableSets(
     q: Queryable,
     params: BuildsAsked,
 ): Promise<Result<{ setIds: string[]; unsupported: ModuleKey[] }, DbFailure>> {
+    if (params.builds.length === 0) return ok({ setIds: [], unsupported: [] });
     const reported = new Set([...params.builds, ...(params.loaded ?? [])].map(buildId));
+    // One query for every asked build's current set, in the order asked, and one for what those
+    // sets list: a start reports up to 64 builds, and the product page asks per channel.
+    const current = await queryAll(
+        q,
+        z.object({ set_id: z.string().nullable() }),
+        sql`select b.set_id::text as set_id
+            from unnest(${params.builds.map((build) => build.nameHash.toString())}::numeric[],
+                        ${params.builds.map((build) => build.timeDateStamp)}::bigint[],
+                        ${params.builds.map((build) => build.sizeOfImage)}::bigint[])
+                 with ordinality as a(name_hash, time_date_stamp, size_of_image, ordinal)
+            left join current_fact_set c
+              on c.release_id = ${params.releaseId} and c.name_hash = a.name_hash
+             and c.time_date_stamp = a.time_date_stamp and c.size_of_image = a.size_of_image
+            left join fact_set_build b
+              on b.release_id = c.release_id and b.name_hash = c.name_hash
+             and b.time_date_stamp = c.time_date_stamp and b.size_of_image = c.size_of_image
+             and b.revision = c.revision
+            order by a.ordinal`,
+    );
+    if (!current.ok) return current;
+    invariant(current.value.length === params.builds.length, "one row per asked build");
+    const found = [...new Set(current.value.flatMap((row) => row.set_id ?? []))];
+    const listed = await queryAll(
+        q,
+        z.object({
+            set_id: z.string(),
+            name_hash: z.string(),
+            time_date_stamp: z.coerce.number(),
+            size: z.coerce.number(),
+        }),
+        sql`select set_id::text as set_id, name_hash::text as name_hash, time_date_stamp,
+                   size_of_image as size
+            from fact_set_build where set_id = any(${found}::bigint[])`,
+    );
+    if (!listed.ok) return listed;
+    const applies = new Map(found.map((setId) => [setId, true]));
+    for (const row of listed.value) {
+        const isReported = reported.has(
+            buildId({
+                nameHash: BigInt(row.name_hash),
+                timeDateStamp: row.time_date_stamp,
+                sizeOfImage: row.size,
+            }),
+        );
+        if (!isReported) applies.set(row.set_id, false);
+    }
     const setIds: string[] = [];
     const unsupported: ModuleKey[] = [];
-    const checked = new Map<string, boolean>();
-    for (const build of params.builds) {
-        const row = await queryOne(
-            q,
-            z.object({ set_id: z.string() }),
-            sql`select b.set_id::text as set_id
-                from current_fact_set c
-                join fact_set_build b
-                  on b.release_id = c.release_id and b.name_hash = c.name_hash
-                 and b.time_date_stamp = c.time_date_stamp and b.size_of_image = c.size_of_image
-                 and b.revision = c.revision
-                where c.release_id = ${params.releaseId}
-                  and c.name_hash = ${build.nameHash.toString()}::numeric
-                  and c.time_date_stamp = ${build.timeDateStamp}
-                  and c.size_of_image = ${build.sizeOfImage}`,
-        );
-        if (!row.ok) return row;
-        const setId = row.value?.set_id ?? null;
-        if (setId === null) {
+    params.builds.forEach((build, index) => {
+        const setId = current.value[index]?.set_id ?? null;
+        if (setId === null || applies.get(setId) !== true) {
             unsupported.push(build);
-            continue;
+            return;
         }
-        let applies = checked.get(setId);
-        if (applies === undefined) {
-            const listed = await queryAll(
-                q,
-                z.object({
-                    name_hash: z.string(),
-                    time_date_stamp: z.coerce.number(),
-                    size: z.coerce.number(),
-                }),
-                sql`select name_hash::text as name_hash, time_date_stamp, size_of_image as size
-                    from fact_set_build where set_id = ${setId}::bigint`,
-            );
-            if (!listed.ok) return listed;
-            applies = listed.value.every((listedBuild) =>
-                reported.has(
-                    buildId({
-                        nameHash: BigInt(listedBuild.name_hash),
-                        timeDateStamp: listedBuild.time_date_stamp,
-                        sizeOfImage: listedBuild.size,
-                    }),
-                ),
-            );
-            checked.set(setId, applies);
-            if (applies) setIds.push(setId);
-        }
-        if (!applies) unsupported.push(build);
-    }
+        if (!setIds.includes(setId)) setIds.push(setId);
+    });
     return ok({ setIds, unsupported });
 }
 

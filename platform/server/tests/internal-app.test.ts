@@ -29,6 +29,7 @@ test("a superseded process answers internal RPC with 503", async () => {
             auth: await createTestAuthDeps(nativeDb, createSeededRng(1)),
             epochGuard: guard,
             webInternalKey: PEER_KEY,
+            artifactDir: null,
             logger: { write: () => {} },
         });
         const res = await app.fetch(

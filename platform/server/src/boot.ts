@@ -187,6 +187,7 @@ export async function startServer(params: {
         catalog: catalog.value,
         epochGuard,
         webInternalKey: config.webInternalKey,
+        artifactDir: config.native?.artifactDir ?? null,
         logger,
     }).fetch;
     if (config.native !== null && nativeDb !== null) {

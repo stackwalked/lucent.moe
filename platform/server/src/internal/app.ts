@@ -5,6 +5,7 @@ import type { Hono } from "hono";
 import type { AuthDeps } from "../auth/deps.ts";
 import type { Logger } from "../core/log.ts";
 import type { EpochGuard } from "../db/epoch-guard.ts";
+import { mountLoaderDownload } from "./download.ts";
 import { webProcedures } from "./web-rpc.ts";
 
 export function createInternalWebApp(deps: {
@@ -12,9 +13,11 @@ export function createInternalWebApp(deps: {
     readonly auth: AuthDeps;
     readonly epochGuard: EpochGuard;
     readonly webInternalKey: string;
+    // Where `ops publish-loader` wrote the loader's bytes; null without the loaders' listener.
+    readonly artifactDir: string | null;
     readonly logger: Logger;
 }): Hono {
-    return mountInternalRpc({
+    const app = mountInternalRpc({
         path: "/internal/web/rpc",
         peerKey: deps.webInternalKey,
         procedures: webProcedures,
@@ -28,4 +31,13 @@ export function createInternalWebApp(deps: {
             deps.logger.write("error", kind, { origin: "internal-web", detail, requestId });
         },
     });
+    // Registered after the mount's middleware, so behind the same peer-key check and containment.
+    mountLoaderDownload(app, {
+        db: deps.auth.db,
+        catalog: deps.catalog,
+        artifactDir: deps.artifactDir,
+        isSuperseded: deps.epochGuard.isSuperseded,
+        logger: deps.logger,
+    });
+    return app;
 }

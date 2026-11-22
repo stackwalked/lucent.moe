@@ -148,7 +148,10 @@ test("a member's products are the ones entitled now, each channel with its promo
                 features: "*",
                 channels: [
                     { channel: "stable", release: null },
-                    { channel: "alpha", release: { promotedAt: expect.any(Number) } },
+                    {
+                        channel: "alpha",
+                        release: { promotedAt: expect.any(Number), supported: true },
+                    },
                 ],
             },
         ]);

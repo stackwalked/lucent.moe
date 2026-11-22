@@ -56,7 +56,10 @@ import {
     renameDevice,
 } from "../native/devices.ts";
 import { decideSignInRequest, readSignInRequest, SignInRequestId } from "../native/sign-in.ts";
+import { readLoaderOffer } from "./download.ts";
+import { listReleaseFactSets, promoteFactSet } from "./fact-sets.ts";
 import { listMemberProducts } from "./products.ts";
+import { listReleaseLines, promoteRelease } from "./releases.ts";
 
 export type WebRpcContext = {
     readonly catalog: ProductCatalog;
@@ -381,6 +384,15 @@ const handlers: Handlers<WebRpcContext, WebContract> = {
             ),
         ),
 
+    "download.loader": async (ctx, _input, { session }) =>
+        served(
+            mapOk(
+                await readLoaderOffer(ctx.auth.db, { catalog: ctx.catalog, sessionToken: session }),
+                (offer) =>
+                    offer.state === "ready" ? { state: offer.state, number: offer.number } : offer,
+            ),
+        ),
+
     "admin.accounts.list": (ctx, input, call) =>
         asStaff(ctx, call, (caller) => listAccounts(ctx.auth.db, { caller, ...input })),
     "admin.accounts.get": (ctx, input, call) =>
@@ -510,6 +522,35 @@ const handlers: Handlers<WebRpcContext, WebContract> = {
                     roleId: input.roleId,
                 }),
             ),
+        ),
+
+    "admin.releases.list": (ctx, _input, call) =>
+        asStaff(ctx, call, async (caller) =>
+            mapOk(
+                await listReleaseLines(ctx.auth.db, { catalog: ctx.catalog, caller }),
+                (lines) => ({
+                    lines,
+                }),
+            ),
+        ),
+    "admin.releases.promote": (ctx, input, call) =>
+        asStaff(ctx, call, (caller) =>
+            promoteRelease(ctx.auth.db, { catalog: ctx.catalog, caller, ...input }),
+        ),
+    "admin.facts.list": (ctx, input, call) =>
+        asStaff(ctx, call, (caller) =>
+            listReleaseFactSets(ctx.auth.db, {
+                caller,
+                releaseId: Uint8Array.fromHex(input.releaseId),
+            }),
+        ),
+    "admin.facts.promote": (ctx, input, call) =>
+        asStaff(ctx, call, (caller) =>
+            promoteFactSet(ctx.auth.db, {
+                caller,
+                releaseId: Uint8Array.fromHex(input.releaseId),
+                setId: input.setId,
+            }),
         ),
 
     "admin.audit.list": (ctx, input, call) =>

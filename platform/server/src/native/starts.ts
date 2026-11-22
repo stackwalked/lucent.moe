@@ -1,3 +1,4 @@
+import type { ModuleKey } from "@lucent/bundle/fact-set";
 import { parseReleaseManifestV3 } from "@lucent/bundle/release-manifest";
 import type { ProductCatalog } from "@lucent/catalog/catalog";
 import { invariant } from "@lucent/core/contain";
@@ -17,7 +18,7 @@ import {
     toTimestamptz,
 } from "../db/pool.ts";
 import { type ReceiptRefusal, readReplay, recordReceipt, toOperationKey } from "../db/receipt.ts";
-import { withTx } from "../db/tx.ts";
+import { errCommit, withTx } from "../db/tx.ts";
 import { type AccountInactive, lockActiveAccount } from "./accounts.ts";
 import { findDeviceByKey, lockDevice } from "./devices.ts";
 import type { DpopProof } from "./dpop.ts";
@@ -161,9 +162,21 @@ export async function createStart(
         if (!release.ok) return release;
         if (release.value === null) return err({ code: "RELEASE_UNAVAILABLE" });
         invariant(release.value.hasContainer, "a module product's current release has a container");
+        const modules = toModulesJson(request.modules);
+        const reported = await execute(
+            tx,
+            sql`insert into game_build_report (product_id, modules, reported_at)
+                values (${product.id}, ${modules}::jsonb, ${toTimestamptz(txNow)}::timestamptz)
+                on conflict (product_id) do update
+                set modules = excluded.modules, reported_at = excluded.reported_at
+                where game_build_report.reported_at <= excluded.reported_at`,
+        );
+        if (!reported.ok) return reported;
         const covered = await coversCoreFacts(tx, release.value.id, request.modules);
         if (!covered.ok) return covered;
-        if (!covered.value) return err({ code: "GAME_BUILD_UNSUPPORTED" });
+        // Committed with the report: the builds a refused start brought are what the product page
+        // checks, so it says "not yet supported" after a game update.
+        if (!covered.value) return errCommit({ code: "GAME_BUILD_UNSUPPORTED" as const });
 
         const inserted = await execute(
             tx,
@@ -174,13 +187,7 @@ export async function createStart(
                         ${release.value.id}, ${release.value.number}, ${containerKey},
                         ${toTimestamptz(txNow)}::timestamptz,
                         ${toTimestamptz(EpochMs.parse(txNow + START_TTL_MS))}::timestamptz,
-                        ${JSON.stringify(
-                            request.modules.map((module) => [
-                                module.nameHash.toString(),
-                                module.timeDateStamp,
-                                module.sizeOfImage,
-                            ]),
-                        )}::jsonb)`,
+                        ${modules}::jsonb)`,
         );
         if (!inserted.ok) return inserted;
         const recorded = await recordReceipt(tx, op, { start: toHex(startId) });
@@ -193,10 +200,10 @@ export async function createStart(
 // fact's) is among the reported builds: then every one of its facts must be in some current set
 // for the reported builds. One with a module not reported waits for that module to load, and kit
 // refuses then if it stays uncovered. A release with no core capability needs no set at all.
-async function coversCoreFacts(
+export async function coversCoreFacts(
     q: Queryable,
     releaseId: Uint8Array,
-    builds: StartRequest["modules"],
+    builds: readonly ModuleKey[],
 ): Promise<Result<boolean, DbFailure>> {
     const bytes = await findReleaseManifest(q, releaseId);
     if (!bytes.ok) return bytes;
@@ -220,6 +227,24 @@ async function coversCoreFacts(
     const covered = await readCoveredFactKeys(q, { releaseId, builds });
     if (!covered.ok) return covered;
     return ok([...needed].every((key) => covered.value.has(key)));
+}
+
+// The builds a start reported, as session_start.modules and game_build_report.modules store them:
+// [name hash, time-date stamp, size of image], the name hash a decimal string, being a u64.
+export const StartModules = z
+    .array(z.tuple([z.string(), z.number(), z.number()]))
+    .transform((builds): ModuleKey[] =>
+        builds.map(([nameHash, timeDateStamp, sizeOfImage]) => ({
+            nameHash: BigInt(nameHash),
+            timeDateStamp,
+            sizeOfImage,
+        })),
+    );
+
+function toModulesJson(builds: readonly ModuleKey[]): string {
+    return JSON.stringify(
+        builds.map((build) => [build.nameHash.toString(), build.timeDateStamp, build.sizeOfImage]),
+    );
 }
 
 export type StartContainer = {

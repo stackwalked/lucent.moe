@@ -1,3 +1,5 @@
+import { join } from "node:path";
+import { blake2b256 } from "@lucent/bundle/crypto";
 import { type ReleaseManifestV3, toReleaseManifestV3Bytes } from "@lucent/bundle/release-manifest";
 import type { ProductCatalog } from "@lucent/catalog/catalog";
 import { type Clock, systemClock } from "@lucent/core/clock";
@@ -34,6 +36,7 @@ import {
 } from "@lucent/wire/lease";
 import { parseLeaseResponse, toLeaseRequestBytes } from "@lucent/wire/lease-exchange";
 import { parseRefusal, type RefusalCode } from "@lucent/wire/refusal";
+import { toReleaseSealBytes } from "@lucent/wire/release-seal";
 import {
     deriveSessionKeys,
     parseSessionReply,
@@ -405,6 +408,59 @@ export async function publishRelease(
     );
     invariant(promoted.ok, "promoting the release failed");
     return { id, seal };
+}
+
+export type PromotedLoader = {
+    readonly seal: Uint8Array;
+    readonly loader: Uint8Array;
+    readonly host: Uint8Array;
+};
+
+// A loader release with a parseable seal (its signature isn't checked here; publishing does
+// that), its two artifacts written under `artifactDir` by digest, promoted at once.
+export async function promoteLoader(
+    db: Db,
+    rng: SeededRng,
+    params: { readonly number: bigint; readonly artifactDir: string },
+): Promise<PromotedLoader> {
+    const loader = rng.fillBytes(new Uint8Array(3_000));
+    const host = rng.fillBytes(new Uint8Array(2_000));
+    for (const bytes of [loader, host]) {
+        await Bun.write(join(params.artifactDir, blake2b256(bytes).toHex()), bytes);
+    }
+    const release = rng.fillBytes(new Uint8Array(16));
+    const seal = toReleaseSealBytes({
+        product: "lucent-loader",
+        channel: "stable",
+        number: params.number,
+        release,
+        bootInfoVersion: 1,
+        artifacts: [
+            { kind: "loader", digest: blake2b256(loader) },
+            { kind: "host", digest: blake2b256(host) },
+        ],
+        signature: new Uint8Array(64),
+    });
+    const stored = await execute(
+        db,
+        sql`insert into release (id, product_id, channel, container, manifest)
+            values (${release}, 'lucent-loader', 'stable', null, null)`,
+    );
+    invariant(stored.ok, "inserting the release failed");
+    const sealed = await execute(
+        db,
+        sql`insert into release_seal (product_id, channel, number, release_id, seal)
+            values ('lucent-loader', 'stable', ${params.number}, ${release}, ${seal})`,
+    );
+    invariant(sealed.ok, "inserting the seal failed");
+    const promoted = await execute(
+        db,
+        sql`insert into current_release (product_id, channel, number)
+            values ('lucent-loader', 'stable', ${params.number})
+            on conflict (product_id, channel) do update set number = excluded.number`,
+    );
+    invariant(promoted.ok, "promoting the release failed");
+    return { seal, loader, host };
 }
 
 export type Releases = { readonly loader: PublishedRelease; readonly module: PublishedRelease };

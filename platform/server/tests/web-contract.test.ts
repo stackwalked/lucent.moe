@@ -42,6 +42,7 @@ const inputs: SinglePurpose = {
     "devices.rename": { deviceId: "0".repeat(32), name: "desk" },
     "devices.remove": { operationId: OPERATION, deviceId: "0".repeat(32) },
     "products.list": {},
+    "download.loader": {},
     "admin.accounts.list": {
         filter: { status: null, roleId: null, text: null },
         sort: "newest",
@@ -71,6 +72,10 @@ const inputs: SinglePurpose = {
     },
     "admin.roles.assign": { accountId: SOMEONE, roleId: "role_support", expiresAt: null },
     "admin.roles.unassign": { accountId: SOMEONE, roleId: "role_support" },
+    "admin.releases.list": {},
+    "admin.releases.promote": { productId: "cs2", channel: "alpha", number: "1" },
+    "admin.facts.list": { releaseId: "0".repeat(32) },
+    "admin.facts.promote": { releaseId: "0".repeat(32), setId: "1" },
     "admin.audit.list": {
         filter: { actorId: null, targetAccountId: null, operation: null, before: null },
         cursor: null,
