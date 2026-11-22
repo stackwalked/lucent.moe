@@ -184,6 +184,32 @@ const Entitlement = z.object({
     products: z.array(ProductGrant).readonly(),
 });
 
+// The internal listener's streaming route for the current loader's bytes: a GET with the peer
+// key and `Lucent-Session`, answered with the bytes, or a refusal as JSON (401 SESSION_INVALID,
+// 404 NOT_FOUND when `download.loader` isn't "ready", 503).
+export const LOADER_DOWNLOAD_PATH = "/internal/web/downloads/loader";
+
+// Seal numbers are u64 on the wire and bigint in the database: decimal strings, past JSON's safe
+// integers.
+const SealNumber = z.string().regex(/^[1-9][0-9]{0,18}$/);
+const ReleaseLine = z.object({
+    productId: ProductId,
+    name: z.string(),
+    kind: z.string(),
+    channel: ChannelId,
+    current: z.object({ number: SealNumber, promotedAt: EpochMs }).nullable(),
+    seals: z
+        .array(z.object({ number: SealNumber, releaseId: WireId, stagedAt: EpochMs }))
+        .readonly(),
+});
+const FactSetId = z.string().regex(/^[1-9][0-9]{0,18}$/);
+// A game module build: its name hash as 16 hex digits, TimeDateStamp and SizeOfImage.
+const ModuleBuild = z.object({
+    nameHash: z.string().regex(/^[0-9a-f]{16}$/),
+    timeDateStamp: z.number().int().nonnegative(),
+    sizeOfImage: z.number().int().nonnegative(),
+});
+
 export const webContract = defineContract({
     "health.check": {
         session: "none",
@@ -517,7 +543,8 @@ export const webContract = defineContract({
     },
 
     // The products the member is entitled to now, in catalog order, with the channels they may run
-    // and each channel's current release (null: none promoted there yet).
+    // and each channel's current release (null: none promoted there yet). supported: the release's
+    // current fact sets cover the game's latest reported builds, by the start's own rule.
     "products.list": {
         session: "member",
         effect: "read",
@@ -534,7 +561,9 @@ export const webContract = defineContract({
                             .array(
                                 z.object({
                                     channel: ChannelId,
-                                    release: z.object({ promotedAt: EpochMs }).nullable(),
+                                    release: z
+                                        .object({ promotedAt: EpochMs, supported: z.boolean() })
+                                        .nullable(),
                                 }),
                             )
                             .readonly(),
@@ -542,6 +571,21 @@ export const webContract = defineContract({
                 )
                 .readonly(),
         }),
+        error: SessionRefusal,
+    },
+
+    // Whether the member may download the loader now: "no_product" without an entitlement to a
+    // product other than the loader, "no_release" while none is promoted. The bytes come from the
+    // internal listener's download route, not through RPC.
+    "download.loader": {
+        session: "member",
+        effect: "read",
+        input: z.strictObject({}),
+        output: z.discriminatedUnion("state", [
+            z.object({ state: z.literal("ready"), number: SealNumber }),
+            z.object({ state: z.literal("no_product") }),
+            z.object({ state: z.literal("no_release") }),
+        ]),
         error: SessionRefusal,
     },
 
@@ -723,6 +767,78 @@ export const webContract = defineContract({
         input: z.strictObject({ accountId: AccountId, roleId: RoleId }),
         output: Done,
         error: z.discriminatedUnion("code", [...StaffRefusals, refusal("NOT_FOUND")]),
+    },
+
+    // Every product and channel in catalog order, with its current seal and the seals at or above
+    // it, highest first.
+    "admin.releases.list": {
+        session: "member",
+        effect: "read",
+        input: z.strictObject({}),
+        output: z.object({ lines: z.array(ReleaseLine).readonly() }),
+        error: ReadRefusal,
+    },
+    // Makes the seal current for its product and channel. One below the current seal is refused:
+    // clients refuse a number below one they've seen. The current one again changes nothing.
+    "admin.releases.promote": {
+        session: "member",
+        effect: "write",
+        input: z.strictObject({ productId: ProductId, channel: ChannelId, number: SealNumber }),
+        output: z.object({ changed: z.boolean() }),
+        error: z.discriminatedUnion("code", [
+            ...StaffRefusals,
+            refusal("NOT_FOUND"),
+            z.object({ code: z.literal("SEAL_BELOW_CURRENT"), current: SealNumber }),
+        ]),
+    },
+    // A module release's fact sets: each build's current set, and the newest sets first.
+    "admin.facts.list": {
+        session: "member",
+        effect: "read",
+        input: z.strictObject({ releaseId: WireId }),
+        output: z.object({
+            releaseId: WireId,
+            productId: z.string(),
+            channel: z.string(),
+            builds: z
+                .array(
+                    z.object({
+                        build: ModuleBuild,
+                        current: z
+                            .object({
+                                setId: FactSetId,
+                                revision: z.number().int(),
+                                promotedAt: EpochMs,
+                            })
+                            .nullable(),
+                    }),
+                )
+                .readonly(),
+            sets: z
+                .array(
+                    z.object({
+                        setId: FactSetId,
+                        revision: z.number().int(),
+                        stagedAt: EpochMs,
+                        builds: z.array(ModuleBuild).readonly(),
+                    }),
+                )
+                .readonly(),
+        }),
+        error: ReadRefusal,
+    },
+    // Makes the set current for every build it lists. A set below the current revision of any of
+    // them is refused; one current for all of them already changes nothing.
+    "admin.facts.promote": {
+        session: "member",
+        effect: "write",
+        input: z.strictObject({ releaseId: WireId, setId: FactSetId }),
+        output: z.object({ changed: z.boolean() }),
+        error: z.discriminatedUnion("code", [
+            ...StaffRefusals,
+            refusal("NOT_FOUND"),
+            z.object({ code: z.literal("REVISION_BELOW_CURRENT"), current: z.number().int() }),
+        ]),
     },
 
     "admin.audit.list": {
