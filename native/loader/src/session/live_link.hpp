@@ -1,7 +1,10 @@
 #pragma once
 
+#include <chrono>
 #include <cstddef>
+#include <optional>
 #include <span>
+#include <string_view>
 
 #include <lucent/wire/ids.hpp>
 
@@ -26,7 +29,11 @@ public:
     auto close(const wire::session_id& session) -> result<void> override;
 
 private:
-    auto post(std::string_view path, std::span<const std::byte> body) -> result<answer>;
+    auto post(
+        std::string_view path,
+        std::span<const std::byte> body,
+        std::optional<std::chrono::milliseconds> receive_timeout
+    ) -> result<answer>;
 
     server* m_api;
     credentials* m_tokens;

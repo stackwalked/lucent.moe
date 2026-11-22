@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <cstddef>
 #include <optional>
 #include <span>
@@ -26,6 +27,8 @@ struct request {
     std::string_view path;
     std::span<const header> headers;
     std::span<const std::byte> body;
+    // How long the response may take once the request is sent; none for the client's own 30 s.
+    std::optional<std::chrono::milliseconds> receive_timeout = std::nullopt;
 };
 
 struct response {

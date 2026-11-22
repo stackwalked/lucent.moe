@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <cstddef>
 #include <optional>
 #include <span>
@@ -33,6 +34,8 @@ struct call {
     std::span<const std::byte> body;
     operation kind = operation::none;
     usize max_body = usize{1} << 20U;
+    // Each try's, of the two a refused proof allows; none for the client's own.
+    std::optional<std::chrono::milliseconds> receive_timeout = std::nullopt;
 };
 
 // The two OAuth endpoints answer in OAuth's words: a status and a JSON object.

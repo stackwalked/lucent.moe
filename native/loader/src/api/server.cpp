@@ -130,6 +130,7 @@ auto server::exchange(const call& asked, http::body_sink sink) -> result<http::r
                 .path = asked.path,
                 .headers = headers,
                 .body = asked.body,
+                .receive_timeout = asked.receive_timeout,
             },
             asked.max_body,
             sink

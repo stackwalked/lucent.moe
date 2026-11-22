@@ -1,6 +1,7 @@
 #include "http/client.hpp"
 
 #include <array>
+#include <chrono>
 #include <cstddef>
 #include <expected>
 #include <optional>
@@ -222,6 +223,17 @@ auto client::stream(const request& asked, usize max_body, body_sink sink) -> res
         m_scheme == scheme::https ? WINHTTP_FLAG_SECURE : 0
     )};
     if (handle.native() == nullptr) {
+        return std::unexpected(system_failure());
+    }
+    // On the request handle, so one call's patience leaves the session's for every other.
+    if (asked.receive_timeout
+        && WinHttpSetTimeouts(
+               handle.native(),
+               connect_timeout_ms,
+               connect_timeout_ms,
+               connect_timeout_ms,
+               narrow<i32>(asked.receive_timeout->count())
+           ) == FALSE) {
         return std::unexpected(system_failure());
     }
     // A redirect would carry the DPoP proof to a URL it doesn't name; the server never sends one.
