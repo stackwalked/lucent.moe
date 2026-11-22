@@ -1,0 +1,147 @@
+name: lucent-staging
+
+x-service: &service
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "4" }
+
+x-build: &build
+  context: ..
+  dockerfile: infra/images/lucent.Containerfile
+  args:
+    BUN_IMAGE: oven/bun:1.4.4@sha256:1d22548f177f4ff38e0c15baa3c2c46c6c2060ba2d1bc573bb4720b407548f1d
+
+x-health: &health
+  interval: 10s
+  timeout: 5s
+  start_period: 30s
+  retries: 5
+
+services:
+  postgres:
+    <<: *service
+    image: postgres:18.7@sha256:eb63372c1e05c755f55fa30cbd07aecc443676fc6c0fa90b9002d01537841e1a
+    user: "999:999"
+    network_mode: none
+    environment:
+      POSTGRES_DB: lucent
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set the database password}
+    command:
+      - postgres
+      - -c
+      - listen_addresses=
+      - -c
+      - unix_socket_directories=/var/run/postgresql,/run/lucent/db
+      - -c
+      - unix_socket_permissions=0770
+      - -c
+      - hba_file=/etc/lucent/pg_hba.conf
+    tmpfs:
+      - /var/run/postgresql:uid=999,gid=999,mode=0750
+      - /tmp:mode=1777
+    volumes:
+      - /var/lib/lucent/postgres:/var/lib/postgresql
+      - /var/lib/lucent/db-socket:/run/lucent/db
+      - ./postgres/pg_hba.conf:/etc/lucent/pg_hba.conf:ro
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/10-lucent.sql:ro
+    healthcheck:
+      <<: *health
+      # Don't migrate against the entrypoint's temporary initdb server.
+      test:
+        - CMD-SHELL
+        - test "$$(head -1 "$$PGDATA/postmaster.pid")" = 1 && pg_isready -q -d lucent
+
+  platform-server:
+    <<: *service
+    build:
+      <<: *build
+      target: platform-server
+    user: "21001:21100"
+    group_add: ["999"]
+    networks: [platform-egress]
+    environment:
+      LUCENT_DATABASE_URL: postgres://lucent@localhost/lucent?host=/run/lucent/db
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set the database password}
+      LUCENT_INTERNAL_LISTEN: unix:/run/lucent/internal/http.sock
+      LUCENT_NATIVE_LISTEN: unix:/run/lucent/native/http.sock
+      LUCENT_NATIVE_ORIGIN: https://api.lucent.moe
+      LUCENT_PRODUCTS_DIR: /app/products
+      LUCENT_ARTIFACT_DIR: /artifacts
+      LUCENT_WEBAUTHN_RP_ID: lucent.moe
+      LUCENT_WEBAUTHN_ORIGIN: https://lucent.moe
+      LUCENT_WEB_INTERNAL_KEY: ${LUCENT_WEB_INTERNAL_KEY:?set the web peer key}
+      LUCENT_TOTP_KEYS: ${LUCENT_TOTP_KEYS:?set the TOTP keyring}
+      LUCENT_LEASE_SIGNING_KEY: ${LUCENT_LEASE_SIGNING_KEY:?set the lease signing seed}
+      LUCENT_CODE_PUBLIC_KEY: ${LUCENT_CODE_PUBLIC_KEY:?set the public code key}
+      LUCENT_FACTS_PUBLIC_KEYS: ${LUCENT_FACTS_PUBLIC_KEYS:?set the public facts keys}
+    volumes:
+      - /var/lib/lucent/db-socket:/run/lucent/db:ro
+      - /var/lib/lucent/internal-socket:/run/lucent/internal
+      - /var/lib/lucent/native-socket:/run/lucent/native
+      - /var/lib/lucent/artifacts:/artifacts:ro
+    healthcheck:
+      <<: *health
+      test:
+        - CMD
+        - bun
+        - -e
+        - |
+          const r = await fetch("http://localhost/internal/web/rpc", {
+            unix: "/run/lucent/internal/http.sock", method: "POST",
+            headers: {authorization: "Bearer " + process.env.LUCENT_WEB_INTERNAL_KEY,
+                      "content-type": "application/json"},
+            body: JSON.stringify({procedure: "health.check", input: {}})
+          }); process.exit(r.ok && (await r.json()).ok === true ? 0 : 1)
+
+  web:
+    <<: *service
+    build:
+      <<: *build
+      target: web
+    user: "21002:21100"
+    group_add: ["21002"]
+    network_mode: none
+    environment:
+      LUCENT_PLATFORM_INTERNAL_URL: unix:/run/lucent/internal/http.sock
+      LUCENT_WEB_LISTEN: unix:/run/lucent/web/http.sock
+      LUCENT_PUBLIC_ORIGIN: https://lucent.moe
+      LUCENT_WEB_INTERNAL_KEY: ${LUCENT_WEB_INTERNAL_KEY:?set the web peer key}
+    volumes:
+      - /var/lib/lucent/internal-socket:/run/lucent/internal:ro
+      - /var/lib/lucent/web-socket:/run/lucent/web
+    healthcheck:
+      <<: *health
+      test:
+        - CMD
+        - bun
+        - -e
+        - |
+          const r = await fetch("http://localhost/_health?deep", {unix:"/run/lucent/web/http.sock"});
+          process.exit(r.ok ? 0 : 1)
+
+  caddy:
+    <<: *service
+    image: caddy:2.11.9-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0
+    user: "21003:21003"
+    group_add: ["21100"]
+    cap_add: [NET_BIND_SERVICE]
+    networks: [edge]
+    ports: ["80:80", "443:443", "443:443/udp"]
+    volumes:
+      - ./caddy:/etc/caddy:ro
+      - /var/lib/lucent/web-socket:/run/lucent/web:ro
+      - /var/lib/lucent/native-socket:/run/lucent/native:ro
+      - /var/lib/lucent/caddy-data:/data
+      - /var/lib/lucent/caddy-config:/config
+    healthcheck:
+      <<: *health
+      test: [CMD, wget, -q, -O, /dev/null, "http://127.0.0.1:2020/_health"]
+
+networks:
+  edge: {}
+  platform-egress: {}

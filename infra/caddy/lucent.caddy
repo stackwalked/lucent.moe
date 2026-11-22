@@ -1,0 +1,54 @@
+(access) {
+	log {
+		output stdout
+		format filter {
+			wrap json
+			fields {
+				# Setup/download tokens can occur in paths, not just in queries;
+				# Location, Referer, Cookie, Authorization and DPoP are never audit data.
+				request delete
+				resp_headers delete
+				user_id delete
+			}
+		}
+	}
+}
+
+(direct_client) {
+	# reverse_proxy now builds its X-Forwarded-* headers from this connection.
+	request_header -Forwarded
+	request_header -X-Real-IP
+	request_header -X-Forwarded-*
+}
+
+lucent.moe {
+	import access
+	import direct_client
+	encode zstd gzip
+	reverse_proxy unix//run/lucent/web/http.sock
+}
+
+api.lucent.moe {
+	import access
+	handle /v1/* {
+		import direct_client
+		reverse_proxy unix//run/lucent/native/http.sock {
+			header_up -Cookie
+			header_down -Set-Cookie
+			header_down -Access-Control-*
+		}
+	}
+	handle {
+		respond 404
+	}
+}
+
+http://api.lucent.moe {
+	import access
+	respond 404
+}
+
+http://127.0.0.1:2020 {
+	bind 127.0.0.1
+	respond /_health 200
+}

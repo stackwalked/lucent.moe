@@ -1,0 +1,9 @@
+{
+	admin off
+	log default {
+		# Reverse-proxy failure records carry the original request as well.
+		exclude http.log.access http.log.error
+	}
+}
+
+import lucent.caddy

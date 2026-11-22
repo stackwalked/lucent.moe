@@ -9,6 +9,7 @@ and the platform that holds accounts, entitlements and sessions for them.
 | ------------- | ---------------------------------------------------------------- |
 | `native/`     | C++ for Windows: libraries, the in-game kit, game targets, tools |
 | `platform/`   | TypeScript on Bun: services                                      |
+| `infra/`      | Staging Compose stack, Caddy routes and host scripts             |
 | `contracts/`  | Formats shared across runtimes, pinned by golden vectors         |
 | `products/`   | One TOML per product                                             |
 | `tools/`      | Linters, repo-wide checks, proto plugins                         |

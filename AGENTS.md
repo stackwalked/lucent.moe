@@ -13,6 +13,7 @@ Rules a tool can check live in that tool's config. This file holds only what can
 ## Structure
 
 - Split by runtime: `native/`, `platform/`, `web/`. Shared at the root: `contracts/`, `products/`.
+- `infra/` holds staging container images, origin routing and host operations.
 - Structure is extracted from working code, not built ahead of it. A directory or project
   exists only when code needs it; no placeholders. A new layer appears in the commit that
   extracts it, and that commit says why.

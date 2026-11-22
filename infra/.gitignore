@@ -1,0 +1,16 @@
+# Operator inputs, host state and backups never belong in this tree.
+*
+!/.gitignore
+!/compose.yml
+!/images/
+!/images/*.Containerfile
+!/images/*.Containerfile.dockerignore
+!/caddy/
+!/caddy/Caddyfile
+!/caddy/lucent.caddy
+!/postgres/
+!/postgres/pg_hba.conf
+!/postgres/init.sql
+!/ops/
+!/ops/*.sh
+!/ops/env.example

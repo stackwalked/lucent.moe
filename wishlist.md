@@ -81,7 +81,7 @@ product, one feature. Built end to end, native and server together.
   seed's generation and archiving beside the release id; the production facts key list, for the
   release guard to compare against (today it only refuses the dev key) and for the release module
   to trust (it trusts none, so every release start is refused as `GAME_BUILD_UNSUPPORTED`).
-- `infra/`: compose and Caddy. Backups and uptime monitoring are the owner's, outside this plan.
+- Prove `infra/` on staging; uptime monitoring and off-host backup custody are the owner's.
 
 Gate: on a PC that has never seen us, a member downloads the loader from the member area, signs
 in, enrolls, starts cs2 on `alpha` and sees the feature. Suspending the account ends it within the
@@ -1001,15 +1001,12 @@ live in `wishlist/protection.md`.
     with dev keys rejected by release builds, fixed loopback origins (`http://localhost:4710` for
     WebAuthn, `127.0.0.1:4711`–`4712` for `platform-server`), seed rows written through real server
     writers, and a dev-only `/dev/kit` UI workbench aliased to 404 in production builds.
-- `infra/` (created only when deployment lands, added to root `AGENTS.md` then):
-  - Holds `compose.yml` (`postgres:18.7` in its own container so backend deploys never restart
-    PostgreSQL, plus `platform-server`, `web`, `discord` and `caddy` with digest-pinned base images,
-    read-only rootfs, dropped capabilities, and `0750` socket volumes for `/var/run/postgresql` and
-    `/run/lucent`), `images/*.Containerfile` sharing one `BUN_IMAGE` digest pin, `caddy/`
-    (`Caddyfile`, `lucent.caddy` and redacted access-log audit), and `ops/` (`backup.sh`,
-    `restore.sh`, `provision.sh`, `env.example`).
-  - CI stays in `.github/workflows`, toolchains in `.prototools`/`tools/proto/`, and migrations and
-    DB operator verbs in `platform/server/`.
+- Staging acceptance for `infra/compose.yml`, `infra/caddy/` and `infra/ops/`:
+  - On a fresh host with real DNS, TLS and secrets, bootstrap and finish setup through Caddy;
+    publish and promote a loader and download it as a member. Audit the redacted proxy logs.
+  - Redeploy a migration with the same PostgreSQL instance; verify epoch handover and the web
+    skew window. Restore a backup on an empty host, verify schema, root sign-in and download.
+  - Add Discord when its connector lands. CI is separate; migrations and DB verbs stay in platform.
 
 ## osu
 
