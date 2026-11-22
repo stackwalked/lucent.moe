@@ -10,13 +10,17 @@
 #include <lucent/wire/release_seal.hpp>
 
 // Whether the loader is the one the server serves now (protection.md, Delivery): a seal acts only
-// when the code key signed it, names this product and channel, and is numbered at least as high as
-// any seal seen before for that channel. Going back is the old code signed again under a new
+// when the code key signed it, names the loader, and is numbered at least as high as any loader
+// seal seen before. Going back is the old code signed again under a new
 // number, never an old seal served again.
 
 namespace lucent::loader {
 
 inline constexpr std::string_view loader_product = "lucent-loader";
+
+// The loader is one release line, not a product with channels: its seals are all signed for
+// stable, and the channel a member picks is the product's.
+inline constexpr wire::channel loader_channel = wire::channel::stable;
 
 struct up_to_date {
     wire::release_seal seal;
@@ -37,13 +41,12 @@ using update_decision = std::variant<up_to_date, update_needed, rollback_refused
 struct update_inputs {
     std::span<const std::byte> seal;
     crypto::public_key code_key{};
-    wire::channel chosen = wire::channel::stable;
     // This build's release; nothing in a dev build, which is never the one served.
     std::optional<wire::release_id> own;
     u64 highest_seen = 0;
 };
 
-// Fails as malformed when the seal doesn't verify or isn't the loader's for this channel.
+// Fails as malformed when the seal doesn't verify or isn't the loader's.
 auto decide_update(const update_inputs& inputs) -> result<update_decision>;
 
 }

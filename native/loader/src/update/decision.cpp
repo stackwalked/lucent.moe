@@ -9,9 +9,9 @@ namespace lucent::loader {
 
 auto decide_update(const update_inputs& inputs) -> result<update_decision> {
     wire::release_seal seal = LUCENT_TRY(wire::verify_release_seal(inputs.seal, inputs.code_key));
-    // The seal's artifact set already says loader or module; the product and channel say whose.
+    // The seal's artifact set already says loader or module; the product says whose.
     if (seal.product != loader_product
-        || seal.chosen != inputs.chosen
+        || seal.chosen != loader_channel
         || seal.artifacts.front().kind != wire::artifact_kind::loader) {
         return std::unexpected(error{.code = error_code::malformed});
     }

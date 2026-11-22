@@ -144,7 +144,7 @@ TEST_CASE(
         *key,
         proof_claims{
             .method = "GET",
-            .url = "https://api.lucent.moe/v1/loader/alpha",
+            .url = "https://api.lucent.moe/v1/loader",
             .access_token = "lat_token",
             .issued_at = 1,
             .proof_id = "BBBBBBBBBBBBBBBBBBBBBB",

@@ -28,9 +28,10 @@ auto usage() -> error {
         "       codekey public <key file>\n"
         "       codekey sign-module <key file> <out.seal> <product> <channel> <number> "
         "<container> <manifest>\n"
-        "       codekey sign-loader <key file> <out.seal> <channel> <number> <release> "
+        "       codekey sign-loader <key file> <out.seal> <number> <release> "
         "<boot_info version> <loader.exe> <host.exe>\n"
-        "channels: stable, alpha, debug. a release is 32 hex digits. the passphrase is asked for "
+        "channels: stable, alpha, debug; the loader has none. a release is 32 hex digits. the "
+        "passphrase is asked for "
         "on the console, or read as one line from standard input when that is a pipe"
     );
     return error{.code = error_code::malformed};
@@ -104,25 +105,23 @@ auto sign_module(const std::vector<std::string>& given) -> std::optional<command
 }
 
 auto sign_loader(const std::vector<std::string>& given) -> std::optional<command> {
-    if (given.size() != 9) {
+    if (given.size() != 8) {
         return std::nullopt;
     }
-    const std::optional<wire::channel> chosen = parse_channel(given.at(3));
-    const std::optional<u64> number = parse_u64(given.at(4));
-    const std::optional<wire::release_id> release = parse_release(given.at(5));
-    const std::optional<u64> boot_info_version = parse_u64(given.at(6));
-    if (!chosen || !number || !release || !boot_info_version || *boot_info_version > 0xffff'ffffU) {
+    const std::optional<u64> number = parse_u64(given.at(3));
+    const std::optional<wire::release_id> release = parse_release(given.at(4));
+    const std::optional<u64> boot_info_version = parse_u64(given.at(5));
+    if (!number || !release || !boot_info_version || *boot_info_version > 0xffff'ffffU) {
         return std::nullopt;
     }
     return sign_loader_command{
         .key_file = path_of(given.at(1)),
         .seal = path_of(given.at(2)),
-        .chosen = *chosen,
         .number = *number,
         .release = *release,
         .boot_info_version = static_cast<u32>(*boot_info_version),
-        .loader = path_of(given.at(7)),
-        .host = path_of(given.at(8)),
+        .loader = path_of(given.at(6)),
+        .host = path_of(given.at(7)),
     };
 }
 

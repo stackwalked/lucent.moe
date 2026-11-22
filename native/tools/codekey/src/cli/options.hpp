@@ -31,12 +31,12 @@ struct sign_module_command {
     std::filesystem::path manifest;
 };
 
-// `codekey sign-loader <key file> <out.seal> <channel> <number> <release> <boot_info version>
-// <loader.exe> <host.exe>`.
+// `codekey sign-loader <key file> <out.seal> <number> <release> <boot_info version> <loader.exe>
+// <host.exe>`. The loader is one release line, not a product with channels: its seal's channel is
+// always stable.
 struct sign_loader_command {
     std::filesystem::path key_file;
     std::filesystem::path seal;
-    wire::channel chosen = wire::channel::stable;
     u64 number = 0;
     wire::release_id release;
     u32 boot_info_version = 0;

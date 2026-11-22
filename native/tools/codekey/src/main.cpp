@@ -211,7 +211,7 @@ auto run(const sign_loader_command& chosen) -> outcome {
         seal_paths{.key_file = chosen.key_file, .seal = chosen.seal},
         wire::release_seal{
             .product = "lucent-loader",
-            .chosen = chosen.chosen,
+            .chosen = wire::channel::stable,
             .number = chosen.number,
             .release = chosen.release,
             .boot_info_version = chosen.boot_info_version,

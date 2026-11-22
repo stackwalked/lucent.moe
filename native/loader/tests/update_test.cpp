@@ -31,7 +31,7 @@ auto release_of(u8 fill) -> wire::release_id {
 struct seal_spec {
     u64 number = 5;
     wire::release_id release = release_of(1);
-    wire::channel chosen = wire::channel::alpha;
+    wire::channel chosen = wire::channel::stable;
     std::string_view product = loader_product;
 };
 
@@ -59,7 +59,6 @@ auto decided(const std::vector<std::byte>& seal, std::optional<wire::release_id>
         update_inputs{
             .seal = seal,
             .code_key = code_key().public_part(),
-            .chosen = wire::channel::alpha,
             .own = own,
             .highest_seen = highest,
         }
@@ -135,28 +134,31 @@ TEST_CASE("a seal numbered below one seen before is refused, even for this build
     REQUIRE(facts.highest == 5);
 }
 
-TEST_CASE("a seal the code key didn't sign, or for another channel or product, is not acted on") {
+TEST_CASE(
+    "a seal the code key didn't sign, off the loader's one line, or another product's is not acted "
+    "on"
+) {
     crypto::seed other{};
     other.fill(std::byte{8});
     const crypto::signing_key stranger = crypto::signing_key::from_seed(other);
     REQUIRE_FALSE(decided(loader_seal({}, stranger), release_of(1), 0));
     REQUIRE_FALSE(
-        decided(loader_seal({.chosen = wire::channel::stable}, code_key()), release_of(1), 0)
+        decided(loader_seal({.chosen = wire::channel::alpha}, code_key()), release_of(1), 0)
     );
     REQUIRE_FALSE(decided(loader_seal({.product = "cs2"}, code_key()), release_of(1), 0));
 }
 
-TEST_CASE("the saved state round-trips, the highest seals seen per product and channel with it") {
+TEST_CASE("the saved state round-trips, the highest seals seen with it") {
     saved_state state{
         .refresh_token = "lrt_abc",
         .is_enrolled = true,
         .chosen = wire::channel::debug,
-        .highest_loader_seal = {1, 2, 3},
+        .highest_loader_seal = 1,
         .highest_module_seal = {},
     };
-    raise_highest_seal(state, wire::channel::alpha, 9);
-    raise_highest_seal(state, wire::channel::alpha, 4);
-    REQUIRE(highest_seal_of(state, wire::channel::alpha) == 9);
+    raise_loader_seal(state, 9);
+    raise_loader_seal(state, 4);
+    REQUIRE(state.highest_loader_seal == 9);
     raise_module_seal(state, "cs2", wire::channel::stable, 12);
     raise_module_seal(state, "cs2", wire::channel::stable, 3);
     raise_module_seal(state, "osu", wire::channel::alpha, 1);

@@ -174,10 +174,10 @@ private:
     credentials m_tokens;
 };
 
-// The loader seal the server serves for the channel, or why not.
+// The loader seal the server serves, or why not.
 auto served_loader_seal(session_context& context, std::string_view token)
     -> std::expected<std::vector<std::byte>, stopped> {
-    const std::string path = std::format("/v1/loader/{}", channel_name(context.state().chosen));
+    constexpr std::string_view path = "/v1/loader";
     const result<answer> served = context.api().send(
         call{
             .method = "GET",
@@ -246,14 +246,12 @@ auto update_if_needed(session_context& context, const crypto::public_key& code_k
     }
     const std::string token = LUCENT_TRY(context.access_token());
     const std::vector<std::byte> seal_bytes = LUCENT_TRY(served_loader_seal(context, token));
-    const wire::channel chosen = context.state().chosen;
     const result<update_decision> decided = decide_update(
         update_inputs{
             .seal = seal_bytes,
             .code_key = code_key,
-            .chosen = chosen,
             .own = own,
-            .highest_seen = highest_seal_of(context.state(), chosen),
+            .highest_seen = context.state().highest_loader_seal,
         }
     );
     if (!decided) {
@@ -262,7 +260,7 @@ auto update_if_needed(session_context& context, const crypto::public_key& code_k
     const served_choice choice = LUCENT_TRY(served_choice_of(*decided));
     const std::optional<u64> running = running_release(context.root());
     if (choice.is_current && running == choice.seal.number) {
-        raise_highest_seal(context.state(), chosen, choice.seal.number);
+        raise_loader_seal(context.state(), choice.seal.number);
         if (const result<void> saved = context.save(); !saved) {
             return std::unexpected(failed("couldn't save the release seen", saved.error()));
         }

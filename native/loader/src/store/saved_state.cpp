@@ -172,13 +172,8 @@ auto read_module_seals(cursor& read, saved_state& state) -> result<void> {
 
 }
 
-auto highest_seal_of(const saved_state& state, wire::channel chosen) -> u64 {
-    return state.highest_loader_seal.at(std::to_underlying(chosen));
-}
-
-auto raise_highest_seal(saved_state& state, wire::channel chosen, u64 number) -> void {
-    u64& highest = state.highest_loader_seal.at(std::to_underlying(chosen));
-    highest = std::max(highest, number);
+auto raise_loader_seal(saved_state& state, u64 number) -> void {
+    state.highest_loader_seal = std::max(state.highest_loader_seal, number);
 }
 
 auto highest_module_seal_of(
@@ -208,10 +203,8 @@ auto encode_saved_state(const saved_state& state) -> std::vector<std::byte> {
     bytes.insert(bytes.end(), token.begin(), token.end());
     bytes.push_back(std::byte{state.is_enrolled ? u8{1} : u8{0}});
     bytes.push_back(std::byte{std::to_underlying(state.chosen)});
-    for (const u64 number : state.highest_loader_seal) {
-        const std::array<std::byte, sizeof(u64)> encoded = little_endian(number);
-        bytes.insert(bytes.end(), encoded.begin(), encoded.end());
-    }
+    const std::array<std::byte, sizeof(u64)> loader_seal = little_endian(state.highest_loader_seal);
+    bytes.insert(bytes.end(), loader_seal.begin(), loader_seal.end());
     LUCENT_INVARIANT(state.highest_module_seal.size() <= max_products);
     bytes.push_back(std::byte{narrow<u8>(state.highest_module_seal.size())});
     for (const auto [product, numbers] : state.highest_module_seal) {
@@ -248,9 +241,7 @@ auto decode_saved_state(std::span<const std::byte> bytes) -> result<saved_state>
         return malformed();
     }
     state.chosen = static_cast<wire::channel>(chosen);
-    for (u64& number : state.highest_loader_seal) {
-        number = LUCENT_TRY(read.little(sizeof(u64)));
-    }
+    state.highest_loader_seal = LUCENT_TRY(read.little(sizeof(u64)));
     LUCENT_TRY(read_module_seals(read, state));
     if (!read.is_done()) {
         return malformed();

@@ -28,17 +28,16 @@ struct saved_state {
     // isn't kept: the key proves the PC, and nothing the loader sends names the device.
     bool is_enrolled = false;
     wire::channel chosen = wire::channel::stable;
-    // The highest loader seal number seen signed per channel, indexed by wire::channel: a seal at
-    // or below it is a rollback and refused.
-    std::array<u64, channel_count> highest_loader_seal{};
-    // The same for each product's module seals, by product id.
+    // The highest loader seal number seen signed: one below it is a rollback and refused.
+    u64 highest_loader_seal = 0;
+    // The highest module seal number seen per product id and channel (indexed by wire::channel),
+    // likewise.
     std::flat_map<std::string, std::array<u64, channel_count>> highest_module_seal;
 
     auto operator==(const saved_state&) const -> bool = default;
 };
 
-auto highest_seal_of(const saved_state& state, wire::channel chosen) -> u64;
-auto raise_highest_seal(saved_state& state, wire::channel chosen, u64 number) -> void;
+auto raise_loader_seal(saved_state& state, u64 number) -> void;
 
 auto highest_module_seal_of(
     const saved_state& state, std::string_view product, wire::channel chosen
@@ -48,7 +47,7 @@ auto raise_module_seal(
 ) -> void;
 
 // Version 1: a version byte, the token (u16 length, bytes), the enrolled flag, the channel,
-// the three loader seal numbers, then a count of products and for each its id (u8 length, bytes)
+// the loader seal number, then a count of products and for each its id (u8 length, bytes)
 // and three module seal numbers; numbers little-endian.
 auto encode_saved_state(const saved_state& state) -> std::vector<std::byte>;
 
