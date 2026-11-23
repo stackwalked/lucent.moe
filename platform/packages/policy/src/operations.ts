@@ -24,6 +24,10 @@ export const AUDIT_OPERATIONS = [
     "release.promote",
     "fact_set.promote",
     "mail.delivery_dead",
+    "community.restrict",
+    "community.lift",
+    "community.remove",
+    "community.dismiss_report",
 ] as const;
 
 export const AuditOperation = z.enum(AUDIT_OPERATIONS);

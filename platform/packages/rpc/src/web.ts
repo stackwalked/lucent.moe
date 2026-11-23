@@ -9,7 +9,9 @@ import { downloadContract } from "./web/download.ts";
 import { factsContract } from "./web/facts.ts";
 import { healthContract } from "./web/health.ts";
 import { inboxContract } from "./web/inbox.ts";
+import { moderationContract } from "./web/moderation.ts";
 import { preferencesContract } from "./web/preferences.ts";
+import { privacyContract } from "./web/privacy.ts";
 import { productsContract } from "./web/products.ts";
 import { releasesContract } from "./web/releases.ts";
 
@@ -36,6 +38,8 @@ function composeWebContract() {
         ...auditContract,
         ...inboxContract,
         ...preferencesContract,
+        ...privacyContract,
+        ...moderationContract,
     });
 }
 

@@ -192,6 +192,16 @@ const inputs: SinglePurpose = {
         filter: { actorId: null, targetAccountId: null, operation: null, before: null },
         cursor: null,
     },
+    "privacy.restrictions.list": {},
+    "admin.moderation.restrictions.list": { cursor: null },
+    "admin.moderation.restrictions.set": {
+        username: "someone",
+        kind: "muted",
+        productId: null,
+        reason: "spam",
+        endsAt: null,
+    },
+    "admin.moderation.restrictions.lift": { id: "00000000-0000-4000-8000-000000000001" },
     "stepUp.finish": {
         flowToken: "f".repeat(43),
         response: {

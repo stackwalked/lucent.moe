@@ -5,6 +5,7 @@ export const ADMIN_COPY = {
     accounts: "accounts",
     roles: "roles",
     releases: "releases",
+    moderation: "moderation",
     audit: "audit",
     pending: "—",
     needsPasskey: "staff actions need a passkey. add one in security.",
@@ -35,6 +36,10 @@ export const OPERATION_LABELS: Readonly<Record<AuditOperation, string>> = {
     "release.promote": "release promoted",
     "fact_set.promote": "fact set promoted",
     "mail.delivery_dead": "email attempts stopped",
+    "community.restrict": "posting restricted",
+    "community.lift": "restriction lifted",
+    "community.remove": "content removed",
+    "community.dismiss_report": "report dismissed",
 };
 
 export function operationLabel(operation: string): string {

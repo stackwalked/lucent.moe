@@ -2,13 +2,14 @@ import { toNotFound, toPage } from "../../server/route-control.ts";
 import type { Session, Viewer } from "../../viewer.ts";
 import { memberOf, viewerCan } from "../../viewer.ts";
 
-export type AdminSection = "accounts" | "roles" | "releases" | "audit";
+export type AdminSection = "accounts" | "roles" | "releases" | "moderation" | "audit";
 
 // In the order the nav lists them.
 export const SECTION_PATHS = [
     ["accounts", "/admin/accounts"],
     ["roles", "/admin/roles"],
     ["releases", "/admin/releases"],
+    ["moderation", "/admin/moderation"],
     ["audit", "/admin/audit"],
 ] as const satisfies readonly (readonly [AdminSection, string])[];
 
@@ -19,6 +20,7 @@ export function adminSections(viewer: Viewer): Readonly<Record<AdminSection, boo
         accounts: viewerCan(viewer, "accounts:read"),
         roles: viewerCan(viewer, "roles:assign") || viewerCan(viewer, "roles:manage"),
         releases: viewerCan(viewer, "releases:promote") || viewerCan(viewer, "facts:promote"),
+        moderation: viewerCan(viewer, "moderation:remove"),
         audit: viewerCan(viewer, "audit:read"),
     };
 }
