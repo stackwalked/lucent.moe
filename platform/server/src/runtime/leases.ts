@@ -11,7 +11,6 @@ import {
 import { toLeaseResponseBytes } from "@lucent/wire/lease-exchange";
 import { toExchangeSignedBytes, toSessionReplyBytes } from "@lucent/wire/session";
 import type { FeatureSelection } from "../authority/entitlements.ts";
-import { NO_DATA_REVISION } from "./data.ts";
 import type { LeaseSigner } from "./lease-key.ts";
 
 // The lease and what it carries, as the server signs and seals it for the module. Renewed every
@@ -62,6 +61,8 @@ export type LeaseState = {
     readonly challenge: HashChallenge;
     readonly loaderChallenge: HashChallenge;
     readonly entitled: EntitledFeatures;
+    // Rises when what the data route would send the session changes (runtime/revisions.ts).
+    readonly dataRevision: bigint;
     readonly keyToModule: Uint8Array;
     // The sequence of the frame carrying this lease.
     readonly frameSequence: bigint;
@@ -75,7 +76,7 @@ async function sealedLease(signer: LeaseSigner, rng: CryptoRng, state: LeaseStat
         sequence: state.sequence,
         nonce: state.nonce,
         durationMs: LEASE_DURATION_MS,
-        dataRevision: NO_DATA_REVISION,
+        dataRevision: state.dataRevision,
         challenge: state.challenge,
         product: state.product,
         entitled: state.entitled,

@@ -189,6 +189,16 @@ const inputs: SinglePurpose = {
     "admin.releases.promote": { productId: "cs2", channel: "alpha", number: "1" },
     "admin.facts.list": { releaseId: "0".repeat(32) },
     "admin.facts.promote": { releaseId: "0".repeat(32), setId: "1" },
+    "admin.overrides.list": { releaseId: "0".repeat(32) },
+    "admin.overrides.set": {
+        releaseId: "0".repeat(32),
+        kind: "feature",
+        key: "0".repeat(16),
+        off: true,
+    },
+    "admin.review.list": { state: "open" },
+    "admin.review.decide": { itemId: "1", outcome: "no_action", note: null },
+    "admin.updates.list": {},
     "admin.audit.list": {
         filter: { actorId: null, targetAccountId: null, operation: null, before: null },
         cursor: null,

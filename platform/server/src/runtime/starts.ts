@@ -180,6 +180,12 @@ export async function createStart(
                 where game_build_report.reported_at <= excluded.reported_at`,
         );
         if (!reported.ok) return reported;
+        const seen = await recordBuildsSeen(tx, {
+            productId: product.id,
+            modules: request.modules,
+            txNow,
+        });
+        if (!seen.ok) return seen;
         const covered = await coversCoreFacts(tx, release.value.id, request.modules);
         if (!covered.ok) return covered;
         // Committed with the report: the builds a refused start brought are what the product page
@@ -239,10 +245,47 @@ export const StartModules = z
         })),
     );
 
-function toModulesJson(builds: readonly ModuleKey[]): string {
+export function toModulesJson(builds: readonly ModuleKey[]): string {
     return JSON.stringify(
         builds.map((build) => [build.nameHash.toString(), build.timeDateStamp, build.sizeOfImage]),
     );
+}
+
+// The first report of each build, for update-day latency. A build some release of the product
+// already runs a current set for was covered before anyone reported it: its promotion time is the
+// earliest still on record, and the latency reads as none. The request's modules are sorted, so
+// concurrent starts insert in the same order.
+async function recordBuildsSeen(
+    tx: Queryable,
+    params: {
+        readonly productId: string;
+        readonly modules: readonly ModuleKey[];
+        readonly txNow: EpochMs;
+    },
+): Promise<Result<void, DbFailure>> {
+    if (params.modules.length === 0) return ok(undefined);
+    const inserted = await execute(
+        tx,
+        sql`insert into module_build_seen
+                (product_id, name_hash, time_date_stamp, size_of_image, first_reported_at,
+                 first_covered_at)
+            select ${params.productId}, m.name_hash::numeric, m.tds, m.size,
+                   ${toTimestamptz(params.txNow)}::timestamptz,
+                   (select min(c.promoted_at) from current_fact_set c
+                    join release r on r.id = c.release_id
+                    where r.product_id = ${params.productId} and c.name_hash = m.name_hash::numeric
+                      and c.time_date_stamp = m.tds and c.size_of_image = m.size)
+            from jsonb_to_recordset(${JSON.stringify(
+                params.modules.map((m) => ({
+                    name_hash: m.nameHash.toString(),
+                    tds: m.timeDateStamp,
+                    size: m.sizeOfImage,
+                })),
+            )}::jsonb) as m(name_hash text, tds bigint, size bigint)
+            on conflict do nothing`,
+    );
+    if (!inserted.ok) return inserted;
+    return ok(undefined);
 }
 
 export type StartContainer = {

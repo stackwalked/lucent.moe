@@ -1,0 +1,24 @@
+import type { Handlers } from "@lucent/rpc/mount";
+import type { WebContract } from "@lucent/rpc/web";
+import { decideReviewItem, listReviewItems } from "../../risk/review.ts";
+import { asStaff, done, mapOk, type WebRpcContext } from "./web-shared.ts";
+
+export const reviewHandlers = {
+    "admin.review.list": (ctx, input, call) =>
+        asStaff(ctx, call, async (caller) =>
+            mapOk(await listReviewItems(ctx.auth.db, { caller, state: input.state }), (items) => ({
+                items,
+            })),
+        ),
+    "admin.review.decide": (ctx, input, call) =>
+        asStaff(ctx, call, async (caller) =>
+            done(
+                await decideReviewItem(ctx.auth.db, {
+                    caller,
+                    itemId: input.itemId,
+                    outcome: input.outcome,
+                    note: input.note === null || input.note === "" ? null : input.note,
+                }),
+            ),
+        ),
+} satisfies Partial<Handlers<WebRpcContext, WebContract>>;

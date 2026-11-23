@@ -18,12 +18,14 @@ import { claimServiceEpoch, openEpochGuard } from "./db/epoch-guard.ts";
 import type { MigrationError, MigrationFile } from "./db/migrate.ts";
 import { verifySchemaCurrent } from "./db/migrate.ts";
 import { openPool } from "./db/pool.ts";
+import { retentionJob } from "./jobs/retention.ts";
 import { type Every, startJobs } from "./jobs/runner.ts";
 import { createInternalWebApp } from "./listeners/internal/app.ts";
 import { createNativeApp } from "./listeners/native/app.ts";
 import { refusalResponse } from "./listeners/native/http.ts";
 import { restrictionExpiryJob } from "./moderation/restrictions.ts";
 import { mailDeliveryJob, unsentMailJob } from "./notify/mail.ts";
+import { riskScoringJob } from "./risk/scoring.ts";
 import { nativeExpiryJob } from "./runtime/expiry.ts";
 import { createLeaseSigner } from "./runtime/lease-key.ts";
 
@@ -218,6 +220,8 @@ export async function startServer(params: {
         jobs: [
             expiredAuthJob(db),
             restrictionExpiryJob(db),
+            retentionJob(db),
+            riskScoringJob(db),
             ...(nativeDb === null ? [] : [nativeExpiryJob(nativeDb)]),
             ...(mail === undefined
                 ? [unsentMailJob(db)]

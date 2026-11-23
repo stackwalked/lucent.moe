@@ -31,11 +31,14 @@ import { type AuthRequired, lockTokenHolder, type TokenHolder } from "../devices
 import { readFactDelivery } from "../facts/publishing.ts";
 import type { DpopProof } from "../listeners/native/dpop.ts";
 import { findReleaseManifest } from "../releases/reads.ts";
+import { decideOpenSignals, decideRenewalSignals } from "../risk/signals.rules.ts";
+import { appendSignals } from "../risk/signals.ts";
 import {
     assembleData,
     type DataTooLarge,
     FIRST_DATA_ANSWERS,
     FIRST_DATA_SEQUENCE,
+    INITIAL_DATA_REVISION,
     sealData,
 } from "./data.ts";
 import type { LeaseSigner } from "./lease-key.ts";
@@ -46,6 +49,7 @@ import {
     toLeaseResponse,
     toSessionReply,
 } from "./leases.ts";
+import { decideAskedBuilds } from "./revisions.rules.ts";
 import {
     decideCloseSession,
     decideLiveSession,
@@ -60,7 +64,7 @@ import {
     type SessionEnded,
 } from "./sessions.rules.ts";
 import { decideStartStillOpen } from "./starts.rules.ts";
-import { StartModules } from "./starts.ts";
+import { StartModules, toModulesJson } from "./starts.ts";
 
 // A module's session: its hello consumes the start and takes the product slot; its renewals keep
 // the lease; close or a lapsed lease ends it. Every refusal that ends a session commits the end,
@@ -104,6 +108,8 @@ const SessionRowSchema = z.object({
     data_key_to_module: Bytes.nullable(),
     data_in_sequence: U64,
     data_out_sequence: U64,
+    data_revision: U64,
+    asked_modules: StartModules,
     end_reason: z
         .enum(["closed", "slot_taken", "suspended", "device_revoked", "expired", "capped"])
         .nullable(),
@@ -115,7 +121,8 @@ const SESSION_COLUMNS = sql`id, account_id, device_id, product_id, release_id, s
     entitled_features, created_at, lease_sequence, lease_nonce, lease_challenge_nonce,
     lease_challenge_offset, lease_challenge_size, loader_challenge_nonce, loader_challenge_offset,
     loader_challenge_size, lease_expires_at, frame_in_sequence, frame_out_sequence,
-    data_key_to_server, data_key_to_module, data_in_sequence, data_out_sequence, end_reason`;
+    data_key_to_server, data_key_to_module, data_in_sequence, data_out_sequence, data_revision,
+    asked_modules, end_reason`;
 
 function leaseStateOf(row: SessionRow): LeaseState {
     invariant(row.key_to_module !== null, "a live session holds its keys");
@@ -139,6 +146,7 @@ function leaseStateOf(row: SessionRow): LeaseState {
         entitled: row.entitled_everything
             ? { everything: true }
             : { everything: false, features: row.entitled_features },
+        dataRevision: row.data_revision,
         keyToModule: row.key_to_module,
         frameSequence: row.frame_out_sequence,
     };
@@ -226,12 +234,22 @@ export type DataUnsendable = DataTooLarge;
 // The data_response the session reply carries: the sets for the start's own builds.
 async function assembleFirstData(
     tx: Tx,
-    releaseId: Uint8Array,
-    startBuilds: readonly ModuleKey[],
+    params: {
+        readonly releaseId: Uint8Array;
+        readonly startBuilds: readonly ModuleKey[];
+        readonly dataRevision: bigint;
+    },
 ): Promise<Result<Uint8Array<ArrayBuffer>, DataUnsendable | DbFailure>> {
-    const delivery = await readFactDelivery(tx, { releaseId, builds: startBuilds });
+    const delivery = await readFactDelivery(tx, {
+        releaseId: params.releaseId,
+        builds: params.startBuilds,
+    });
     if (!delivery.ok) return delivery;
-    return assembleData({ answers: FIRST_DATA_ANSWERS, delivery: delivery.value });
+    return assembleData({
+        answers: FIRST_DATA_ANSWERS,
+        dataRevision: params.dataRevision,
+        delivery: delivery.value,
+    });
 }
 
 export type OpenRefusal =
@@ -359,7 +377,11 @@ export async function openSession(
             if (!live.ok) return live;
             const sequence = decideReplaySequence(row.lease_sequence, 1n);
             if (!sequence.ok) return sequence;
-            const plain = await assembleFirstData(tx, row.release_id, start.modules);
+            const plain = await assembleFirstData(tx, {
+                releaseId: row.release_id,
+                startBuilds: start.modules,
+                dataRevision: row.data_revision,
+            });
             if (!plain.ok) return plain;
             return ok({ session: row, plain: plain.value });
         }
@@ -379,8 +401,21 @@ export async function openSession(
         const manifest = parseReleaseManifestV3(manifestBytes.value);
         invariant(manifest.ok, "a published release manifest parses");
         const entitled = entitledFeaturesOf(access.value.features, manifest.value);
+        // A promotion or kill switch on the release either committed before this reads what the
+        // session starts with, or waits and then finds the session to raise: their writers hold
+        // these locks exclusively until they commit.
+        const serialized = await execute(
+            tx,
+            sql`select pg_advisory_xact_lock_shared(hashtextextended(${`lucent.fact-set:${toHex(start.release_id)}`}, 0)),
+                       pg_advisory_xact_lock_shared(hashtextextended(${`lucent.fact-override:${toHex(start.release_id)}`}, 0))`,
+        );
+        if (!serialized.ok) return serialized;
         // Before the start is consumed: a response no frame can carry must leave it usable.
-        const plain = await assembleFirstData(tx, start.release_id, start.modules);
+        const plain = await assembleFirstData(tx, {
+            releaseId: start.release_id,
+            startBuilds: start.modules,
+            dataRevision: INITIAL_DATA_REVISION,
+        });
         if (!plain.ok) return plain;
 
         const { generation, deadline } = plan.value;
@@ -426,8 +461,25 @@ export async function openSession(
         );
         if (!inserted.ok) return inserted;
         invariant(inserted.value !== null, "insert returning yields its row");
+        const storage = await queryOne(
+            tx,
+            z.object({ storage: z.enum(["tpm", "software"]) }),
+            sql`select storage from device where id = ${start.device_id}`,
+        );
+        if (!storage.ok) return storage;
+        invariant(storage.value !== null, "the locked device exists");
+        const kinds = decideOpenSignals(storage.value);
+        if (!kinds.ok) return kinds;
         const recorded = await recordReceipt(tx, op, { session: toHex(sessionId) });
         if (!recorded.ok) return recorded;
+        const signalled = await appendSignals(tx, {
+            accountId,
+            releaseId: start.release_id,
+            sessionId,
+            kinds: kinds.value,
+            at: txNow,
+        });
+        if (!signalled.ok) return signalled;
         return ok({ session: inserted.value, plain: plain.value });
     });
     // The lease and data routes' keys are stored; the reports route's wait for something that
@@ -586,8 +638,21 @@ export async function renewLease(
         );
         if (!updated.ok) return updated;
         invariant(updated.value !== null, "update returning yields its row");
+        const kinds = decideRenewalSignals({
+            heldSequence: session.lease_sequence,
+            loaderAnswered: params.request.loaderAnswer !== null,
+        });
+        if (!kinds.ok) return kinds;
         const recorded = await recordReceipt(tx, op, { sequence: sequence.toString() });
         if (!recorded.ok) return recorded;
+        const signalled = await appendSignals(tx, {
+            accountId,
+            releaseId: session.release_id,
+            sessionId: session.id,
+            kinds: kinds.value,
+            at: txNow,
+        });
+        if (!signalled.ok) return signalled;
         return ok(updated.value);
     });
     if (!renewed.ok) return renewed;
@@ -707,16 +772,28 @@ export async function serveData(
             loaded: started.value.modules,
         });
         if (!delivery.ok) return delivery;
-        const answer = assembleData({ answers: frame.header.sequence, delivery: delivery.value });
+        const answer = assembleData({
+            answers: frame.header.sequence,
+            dataRevision: session.data_revision,
+            delivery: delivery.value,
+        });
         if (!answer.ok) return answer;
         if (replayed !== null) return ok({ session, answer: answer.value, sequence: replayed });
 
+        const asked = decideAskedBuilds({
+            started: started.value.modules,
+            asked: session.asked_modules,
+            requested: request.value.modules,
+        });
+        if (!asked.ok) return asked;
         const sequence = session.data_out_sequence;
         const advanced = await execute(
             tx,
             sql`update runtime_session
                 set data_in_sequence = ${frame.header.sequence},
-                    data_out_sequence = data_out_sequence + 1
+                    data_out_sequence = data_out_sequence + 1,
+                    asked_modules = coalesce(${asked.value === null ? null : toModulesJson(asked.value)}::jsonb,
+                                             asked_modules)
                 where id = ${session.id}`,
         );
         if (!advanced.ok) return advanced;

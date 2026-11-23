@@ -7,11 +7,10 @@ import type { FactDelivery } from "../facts/publishing.ts";
 // Bundles reach a module as data_response plaintexts, sealed on the data route: the first in the
 // session reply (server-to-module sequence 0), the rest from POST /v1/sessions/:id/data.
 
-// No live revisions exist yet, so every response names the empty one (the lease's data_revision
-// says the same).
-export const NO_DATA_REVISION = 0n;
-
 export const FIRST_DATA_SEQUENCE = 0n;
+
+// A new session's, as runtime_session.data_revision defaults to.
+export const INITIAL_DATA_REVISION = 0n;
 
 // The first data answers the hello, not a data-route frame.
 export const FIRST_DATA_ANSWERS = 0n;
@@ -24,6 +23,8 @@ export type DataTooLarge = { readonly code: "DATA_TOO_LARGE"; readonly size: num
 export function assembleData(params: {
     // The sequence of the module's data-route frame this answers.
     readonly answers: bigint;
+    // The session's, as its lease carries it.
+    readonly dataRevision: bigint;
     readonly delivery: FactDelivery;
 }): Result<Uint8Array<ArrayBuffer>, DataTooLarge> {
     const { bundle, unsupported } = params.delivery;
@@ -32,7 +33,7 @@ export function assembleData(params: {
     }
     const plain = toDataResponseBytes({
         answers: params.answers,
-        dataRevision: NO_DATA_REVISION,
+        dataRevision: params.dataRevision,
         bundle,
         unsupported,
     });

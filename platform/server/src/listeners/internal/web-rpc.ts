@@ -13,14 +13,17 @@ import { guidesHandlers } from "./web-guides.ts";
 import { healthHandlers } from "./web-health.ts";
 import { inboxHandlers } from "./web-inbox.ts";
 import { moderationHandlers } from "./web-moderation.ts";
+import { overridesHandlers } from "./web-overrides.ts";
 import { preferencesHandlers } from "./web-preferences.ts";
 import { privacyHandlers } from "./web-privacy.ts";
 import { productsHandlers } from "./web-products.ts";
 import { profileHandlers } from "./web-profile.ts";
 import { releasesHandlers } from "./web-releases.ts";
+import { reviewHandlers } from "./web-review.ts";
 import { searchHandlers } from "./web-search.ts";
 import type { WebRpcContext } from "./web-shared.ts";
 import { shoutsHandlers } from "./web-shouts.ts";
+import { updatesHandlers } from "./web-updates.ts";
 
 export type { WebRpcContext } from "./web-shared.ts";
 export const webProcedures = implement<WebRpcContext, WebContract>(webContract, {
@@ -44,4 +47,7 @@ export const webProcedures = implement<WebRpcContext, WebContract>(webContract, 
     ...commentsHandlers,
     ...shoutsHandlers,
     ...searchHandlers,
+    ...overridesHandlers,
+    ...reviewHandlers,
+    ...updatesHandlers,
 });

@@ -14,11 +14,13 @@ import {
     toTimestamptz,
 } from "../db/pool.ts";
 import { withTx } from "../db/tx.ts";
+import { bumpDataRevisions } from "../runtime/revisions.ts";
 
 // Promotion of staged fact sets (publishing.ts stores them). One current revision per
 // release and module build; promoting a set makes it current for every build it lists, and a set
 // whose revision is below the current one of any of them is refused: a bad revision is fixed by
-// the next one. A promotion reaches the next session; running ones keep what they started with.
+// the next one. A promotion reaches the next session at its start, and a running session on one of
+// the builds at its next lease, whose data revision rises.
 
 // A module build as staff read it: the name hash as 16 hex digits, the rest as numbers.
 export type BuildKey = {
@@ -220,6 +222,29 @@ export async function promoteFactSet(
             );
             if (!promoted.ok) return promoted;
         }
+        const covered = await execute(
+            tx,
+            sql`update module_build_seen b set first_covered_at = ${toTimestamptz(txNow)}::timestamptz
+                from release r,
+                     jsonb_to_recordset(${JSON.stringify(moving)}::jsonb)
+                         as m(name_hash text, time_date_stamp bigint, size_of_image bigint)
+                where r.id = ${params.releaseId} and b.product_id = r.product_id
+                  and b.name_hash = m.name_hash::numeric and b.time_date_stamp = m.time_date_stamp
+                  and b.size_of_image = m.size_of_image and b.first_covered_at is null`,
+        );
+        if (!covered.ok) return covered;
+        const bumped = await bumpDataRevisions(tx, {
+            releaseId: params.releaseId,
+            change: {
+                kind: "promotion",
+                builds: moving.map((row) => ({
+                    nameHash: BigInt(row.name_hash),
+                    timeDateStamp: row.time_date_stamp,
+                    sizeOfImage: row.size_of_image,
+                })),
+            },
+        });
+        if (!bumped.ok) return bumped;
         const audited = await appendAudit(tx, {
             actorId: params.caller.accountId,
             client: params.caller.client,
