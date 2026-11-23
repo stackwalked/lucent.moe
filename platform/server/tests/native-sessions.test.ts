@@ -9,7 +9,7 @@ import { recoverAccount } from "../src/authority/writers.ts";
 import { execute, queryOne, sql } from "../src/db/pool.ts";
 import { sweepNative } from "../src/runtime/expiry.ts";
 import { registerPasskey, seedRootOnce } from "./auth-fixtures.ts";
-import { scalar, steppedUp } from "./authority-fixtures.ts";
+import { catalog, product, scalar, steppedUp } from "./authority-fixtures.ts";
 import { createTestAuthDeps } from "./harness/auth.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 import {
@@ -26,6 +26,7 @@ import {
     refusalCodeOf,
     sessionPath,
     signIn,
+    startBody,
     startOk,
     type TestLoader,
     type TestModule,
@@ -272,6 +273,34 @@ test("a suspension ends the session at its next renewal", async () => {
             sql`update account set status = 'active' where id = ${member.accountId}`,
         );
         expect(refusalCodeOf(await renew(running))).toBe("ACCOUNT_SUSPENDED");
+    });
+});
+
+test("retiring a product stops new starts and leaves a running session to renew", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ nativeDb }) => {
+        const rng = createSeededRng(9_314);
+        const products = new Map(catalog());
+        const harness = await createNativeHarness(nativeDb, rng, { catalog: products });
+        const releases = await publishBoth(nativeDb, rng);
+        const member = await entitledMember(harness, {
+            email: "retired@lucent.test",
+            channels: ["alpha"],
+        });
+        const loader = await enrolledLoader(harness, member);
+        const running = await run(harness, loader, releases);
+        const cs2 = product("cs2");
+        products.set(cs2.id, { ...cs2, state: "retired" });
+        const renewed = await renew(running);
+        expect(renewed.status).toBe(200);
+        expect((await running.module.acceptLease(renewed.bytes)).sequence).toBe(2n);
+        expect((await renew(running)).status).toBe(200);
+        const started = await loader.send({
+            method: "POST",
+            path: "/v1/starts",
+            body: startBody({ loaderRelease: releases.loader.id }),
+        });
+        expect(refusalCodeOf(started)).toBe("RELEASE_UNAVAILABLE");
     });
 });
 

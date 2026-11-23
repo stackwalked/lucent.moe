@@ -466,7 +466,8 @@ const RenewalReceipt = z.object({ sequence: z.string().regex(/^\d+$/) });
 
 // POST /v1/sessions/:id/lease: the loader's DPoP around the module's frame. The renewal asks for
 // the next lease (the held one's sequence plus one) in a frame newer than any accepted; the reply
-// is that lease, signed and sealed, valid for another minute.
+// is that lease, signed and sealed, valid for another minute. The product's lifecycle state is
+// not asked: retiring a product stops new starts and lets running sessions run out (decided).
 export async function renewLease(
     db: Db,
     params: {
