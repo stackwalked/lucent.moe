@@ -137,6 +137,10 @@ export function Entitlements({
     readonly catalog: Catalog;
     readonly canIssue: boolean;
 }) {
+    // The catalog here is what can be issued now: a product retired since shows by its id.
+    const names = new Map(
+        catalog.ok ? catalog.value.map((p) => [p.id, productName(p.name)] as const) : [],
+    );
     return (
         <Section
             caption={ACCOUNTS_COPY.entitlements}
@@ -158,7 +162,10 @@ export function Entitlements({
                             header: ACCOUNTS_COPY.product,
                             cell: (e: Entitlement) =>
                                 e.products
-                                    .map((p) => `${p.productId} (${p.channels.join(", ")})`)
+                                    .map(
+                                        (p) =>
+                                            `${names.get(p.productId) ?? p.productId} (${p.channels.join(", ")})`,
+                                    )
                                     .join("; "),
                         },
                         {
