@@ -1,5 +1,6 @@
 import { err, ok, type Result } from "@lucent/core/result";
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "@lucent/core/rules";
+import type { AuthDeps } from "./deps.ts";
 
 export type PasswordHasher = {
     readonly hash: (password: string) => Promise<string>;
@@ -41,6 +42,14 @@ export function parseNewPassword(raw: string): Result<string, PasswordRejected> 
 
 export function normalizePasswordAttempt(raw: string): string {
     return raw.normalize("NFKC");
+}
+
+export async function prepareNewPassword(deps: AuthDeps, raw: string) {
+    const parsed = parseNewPassword(raw);
+    if (!parsed.ok) return parsed;
+    if ((await deps.breachCheck(parsed.value)) === "breached")
+        return err({ code: "PASSWORD_BREACHED" } as const);
+    return ok(await deps.passwords.hash(parsed.value));
 }
 
 // Verifies against a real hash when the account has none (or doesn't exist), so "no such user"

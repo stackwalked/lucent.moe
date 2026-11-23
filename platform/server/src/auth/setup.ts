@@ -8,6 +8,7 @@ import { type DbFailure, execute, queryOne, sql, type Tx, toTimestamptz } from "
 import { withTx } from "../db/tx.ts";
 import { lockAccount } from "./accounts.ts";
 import type { AuthDeps } from "./deps.ts";
+import { revokeAccess } from "./revoke-access.ts";
 import { lockSession, mintSession, type SessionRefusal } from "./sessions.ts";
 import { hashToken, issueToken } from "./tokens.ts";
 
@@ -57,13 +58,12 @@ export async function clearCredentials(
         sql`delete from passkey where account_id = ${accountId}`,
         sql`delete from password_credential where account_id = ${accountId}`,
         sql`delete from totp_credential where account_id = ${accountId}`,
-        sql`delete from auth_flow where account_id = ${accountId}`,
-        sql`delete from browser_session where account_id = ${accountId}`,
+        sql`update account set reset_lock = false where id = ${accountId}`,
     ]) {
         const res = await execute(tx, statement);
         if (!res.ok) return res;
     }
-    return ok(undefined);
+    return await revokeAccess(tx, accountId);
 }
 
 export type SetupRefusal =

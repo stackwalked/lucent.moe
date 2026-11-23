@@ -1,6 +1,7 @@
 import { AccountId, EpochMs } from "@lucent/core/scalars";
 import { z } from "zod";
 import { parseQuery } from "../query.ts";
+import { AUDIT_COPY } from "./copy.ts";
 
 export const AUDIT_KEYS = ["actor", "target", "op", "before"] as const;
 
@@ -97,6 +98,15 @@ export function auditDetail(
     operation: string,
     detail: Readonly<Record<string, unknown>>,
 ): AuditDetail {
+    if (operation === "mail.delivery_dead") {
+        const reference = z.uuid().safeParse(detail["deliveryId"]);
+        const outcome =
+            detail["outcome"] === "refused" ? AUDIT_COPY.refusedMail : AUDIT_COPY.unconfirmedMail;
+        return {
+            kind: "reason",
+            reason: reference.success ? `${outcome} · ${reference.data}` : outcome,
+        };
+    }
     const reason = Reason.safeParse(detail);
     if (reason.success) return { kind: "reason", reason: reason.data.reason };
     if (operation === "account.rename") {

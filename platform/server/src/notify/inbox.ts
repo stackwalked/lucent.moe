@@ -11,6 +11,7 @@ import {
     type MemberCatalog,
 } from "../products/visibility.ts";
 import { withMember, written } from "./account.ts";
+import { notificationMail } from "./copy.ts";
 import { decideDeliveries } from "./deliveries.rules.ts";
 import { findProductPreference } from "./preferences.ts";
 
@@ -52,16 +53,28 @@ async function planDelivery(tx: Tx, recipient: AccountId, notice: Notification) 
 }
 
 // Writers holding later locks must lock recipient accounts first, in canonical order. The
-// inbox insert and any future mail enqueue belong to the event's transaction.
+// inbox insert and mail enqueue belong to the event's transaction.
 export async function recordNotification(tx: Tx, recipient: AccountId, notice: Notification) {
     const plan = await planDelivery(tx, recipient, notice);
-    if (!plan.ok || !plan.value.inbox) return plan;
-    const inserted = await execute(
-        tx,
-        sql`insert into inbox_entry (account_id, kind, product_id)
+    if (!plan.ok) return plan;
+    if (plan.value.mail) {
+        const mail = notificationMail(notice);
+        const queued = await execute(
+            tx,
+            sql`insert into mail_outbox (recipient, subject, body)
+                values ((select email from account where id = ${recipient}), ${mail.subject}, ${mail.body})`,
+        );
+        if (!queued.ok) return queued;
+    }
+    if (plan.value.inbox) {
+        const inserted = await execute(
+            tx,
+            sql`insert into inbox_entry (account_id, kind, product_id)
             values (${recipient}, ${notice.kind}, ${notice.productId})`,
-    );
-    return inserted.ok ? plan : inserted;
+        );
+        if (!inserted.ok) return inserted;
+    }
+    return plan;
 }
 
 const PAGE_SIZE = 25;

@@ -9,7 +9,7 @@ import { memberOf } from "../viewer.ts";
 // else says so first.
 export const Route = createFileRoute("/_auth")({
     beforeLoad: async ({ context, location }) => {
-        if (location.pathname === "/setup") return;
+        if (location.pathname === "/setup" || location.pathname === "/reset-password") return;
         if (memberOf(context.session) !== null) toPage(await landing());
     },
     component: () => (

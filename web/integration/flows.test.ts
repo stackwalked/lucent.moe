@@ -187,6 +187,31 @@ describe("web against a real platform", () => {
         expect((await page.get("/account/security")).status).toBe(200);
     });
 
+    test("the public reset page and POSTs use a separate per-address limit for known and unknown addresses", async () => {
+        const page = browser();
+        const response = await page.get("/reset-password");
+        expect(response.status).toBe(200);
+        for (const email of [
+            "root@lucent.test",
+            "absent@lucent.test",
+            "absent@lucent.test",
+            "root@lucent.test",
+            "root@lucent.test",
+        ]) {
+            accepted(
+                z.null(),
+                await page.call("features.auth.reset-server--requestReset", { email }),
+            );
+        }
+        expect(
+            refusedCode(
+                await page.call("features.auth.reset-server--requestReset", {
+                    email: "absent@lucent.test",
+                }),
+            ),
+        ).toBe("THROTTLED");
+    });
+
     test("a passkey alone signs in", async () => {
         const page = browser();
         const options = accepted(

@@ -1,7 +1,8 @@
 import type { CryptoRng } from "@lucent/core/rng";
 import { BearerToken, toBase64Url } from "@lucent/core/scalars";
 
-// Only a token's SHA-256 is stored, so a database read never yields a usable token.
+// Authentication tables store only the SHA-256. A reset mail's bearer exists in the outbox
+// only while the provider still needs its envelope.
 export type IssuedToken = {
     readonly token: BearerToken;
     readonly hash: Uint8Array;

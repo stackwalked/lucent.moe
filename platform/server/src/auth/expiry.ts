@@ -17,6 +17,8 @@ export async function deleteExpiredAuth(db: Db): Promise<Result<Deleted, DbFailu
     if (!flows.ok) return flows;
     const setupLinks = await execute(db, sql`delete from setup_token where expires_at <= now()`);
     if (!setupLinks.ok) return setupLinks;
+    const resets = await execute(db, sql`delete from password_reset where expires_at <= now()`);
+    if (!resets.ok) return resets;
     return ok({ sessions: sessions.value, flows: flows.value, setupLinks: setupLinks.value });
 }
 

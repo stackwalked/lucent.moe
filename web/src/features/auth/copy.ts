@@ -1,3 +1,13 @@
+export const RESET_COPY = {
+    title: "reset your password",
+    request: "request a link",
+    email: "email",
+    password: "new password",
+    redeem: "change password",
+    sent: "if your account can use email reset, check your email. staff accounts use staff recovery.",
+    changed: "your password has changed. sign in with your enrolled factor.",
+    signIn: "sign in",
+};
 export const SIGN_IN_COPY = {
     title: "sign in",
     username: "username",

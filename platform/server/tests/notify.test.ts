@@ -6,8 +6,9 @@ import { newEntitlementId, ProductId } from "@lucent/core/scalars";
 import { createRpcClient } from "@lucent/rpc/client";
 import { mountInternalRpc } from "@lucent/rpc/mount";
 import { webContract } from "@lucent/rpc/web";
+import { z } from "zod";
 import { mintSession } from "../src/auth/sessions.ts";
-import { type Db, execute, sql } from "../src/db/pool.ts";
+import { type Db, execute, queryAll, sql } from "../src/db/pool.ts";
 import { withTx } from "../src/db/tx.ts";
 import { webProcedures } from "../src/listeners/internal/web-rpc.ts";
 import { withMember } from "../src/notify/account.ts";
@@ -135,6 +136,13 @@ test("a notification rolls back with its writer and follows only the recipient's
             ok(undefined),
         );
         expect(await alice.emit(productId)).toEqual(ok({ inbox: false, mail: false }));
+        expect(
+            await queryAll(
+                db,
+                z.object({ recipient: z.string() }),
+                sql`select recipient from mail_outbox`,
+            ),
+        ).toEqual(ok([{ recipient: "alice@lucent.test" }, { recipient: "alice@lucent.test" }]));
         expect(
             await execute(db, sql`update account set is_locked = true where id = ${alice.id}`),
         ).toEqual(ok(1));

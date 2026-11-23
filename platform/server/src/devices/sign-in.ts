@@ -163,6 +163,7 @@ async function findPendingRequest(
     q: Queryable,
     params: {
         readonly id: SignInRequestId;
+        readonly accountId: AccountId;
         readonly txNow: EpochMs;
         readonly lock: "for update" | "no lock";
     },
@@ -173,6 +174,8 @@ async function findPendingRequest(
         sql`select jkt, redirect_uri, code_challenge, state, created_at, expires_at, account_id,
                    decision, code_expires_at, redeemed_at, family_id
             from native_auth_request where id = ${params.id}
+            and not exists (select from account where account.id = ${params.accountId}
+                and native_auth_request.created_at <= account.sign_in_cutoff)
             ${params.lock === "for update" ? sql`for update` : sql``}`,
     );
     if (!row.ok) return row;
@@ -202,6 +205,7 @@ export async function readSignInRequest(
         });
         if (!session.ok) return session;
         const request = await findPendingRequest(tx, {
+            accountId: session.value.accountId,
             id: params.requestId,
             txNow,
             lock: "no lock",
@@ -239,6 +243,7 @@ export async function answerSignInRequest(
         });
         if (!session.ok) return session;
         const request = await findPendingRequest(tx, {
+            accountId: session.value.accountId,
             id: params.requestId,
             txNow,
             lock: "for update",
@@ -500,6 +505,21 @@ export type TokenHolder = {
 };
 
 export type AuthRequired = { readonly code: "AUTH_REQUIRED" };
+
+// Authentication at the HTTP boundary precedes the writer transaction. After waiting for
+// the account lock an already-revoked family must not create a fresh start or enrollment.
+export async function lockTokenHolder(tx: Tx, holder: TokenHolder, txNow: EpochMs) {
+    const account = await lockActiveAccount(tx, holder.accountId, txNow);
+    if (!account.ok) return account;
+    const family = await queryOne(
+        tx,
+        z.object({ account_id: AccountId }),
+        sql`select account_id from native_token_family
+        where id = ${holder.familyId} and account_id = ${holder.accountId} and revoked_at is null`,
+    );
+    if (!family.ok) return family;
+    return family.value === null ? err({ code: "AUTH_REQUIRED" } as const) : ok(undefined);
+}
 
 const AccessRowSchema = z.object({
     account_id: AccountId,

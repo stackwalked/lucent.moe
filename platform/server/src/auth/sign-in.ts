@@ -75,12 +75,20 @@ async function finishSignIn(
         readonly accountId: AccountId;
         readonly txNow: EpochMs;
         readonly client: ClientInfo | null;
+        readonly factorVerified: boolean;
     },
 ): Promise<Result<SignedIn, SignInRefusal>> {
     const account = await lockAccount(tx, params.accountId);
     if (!account.ok) return account;
     if (account.value === null || !account.value.isActive) {
         return err({ code: "ACCOUNT_UNAVAILABLE" });
+    }
+    if (params.factorVerified) {
+        const cleared = await execute(
+            tx,
+            sql`update account set reset_lock = false where id = ${params.accountId} and reset_lock`,
+        );
+        if (!cleared.ok) return cleared;
     }
     const session = await mintSession(tx, {
         rng: deps.rng,
@@ -127,8 +135,20 @@ export async function signInWithPassword(
     return await withTx(
         deps.db,
         async (tx, txNow): Promise<Result<PasswordAccepted, SignInRefusal>> => {
-            if (deps.passwordOnly === true) {
+            const locked = await lockAccount(tx, found.id);
+            if (!locked.ok) return locked;
+            // A recovery may have committed while the slow password verification ran.
+            const current = await queryOne(
+                tx,
+                z.object({ reset_lock: z.boolean() }),
+                sql`select a.reset_lock from account a join password_credential p on a.id = p.account_id
+                    where a.id = ${found.id} and p.hash = ${found.hash}`,
+            );
+            if (!current.ok) return current;
+            if (!current.value) return err({ code: "INVALID_CREDENTIALS" });
+            if (deps.passwordOnly === true && !current.value.reset_lock) {
                 const signedIn = await finishSignIn(tx, deps, {
+                    factorVerified: false,
                     accountId: found.id,
                     txNow,
                     client: params.client ?? null,
@@ -223,7 +243,12 @@ export async function signInWithTotp(
         if (!used.ok) return used;
         const ended = await endFlow(tx, flow.value.tokenHash);
         if (!ended.ok) return ended;
-        return await finishSignIn(tx, deps, { accountId, txNow, client: params.client ?? null });
+        return await finishSignIn(tx, deps, {
+            accountId,
+            txNow,
+            factorVerified: true,
+            client: params.client ?? null,
+        });
     });
 }
 
@@ -294,21 +319,39 @@ export async function finishPasskeySignIn(
 ): Promise<Result<SignedIn, SignInRefusal>> {
     const tokenHash = await hashToken(params.flowToken);
     return await withTx(deps.db, async (tx, txNow) => {
-        const passkey = await findPasskey(tx, rawIdOf(params.response));
-        if (!passkey.ok) return passkey;
-        const accountId = passkey.value?.accountId ?? null;
+        const rawId = rawIdOf(params.response);
+        const owner = await queryOne(
+            tx,
+            z.object({ id: AccountId }),
+            sql`select a.id from account a
+            join passkey p on a.id = p.account_id where p.id = ${rawId} for update of a`,
+        );
+        if (!owner.ok) return owner;
+        const accountId = owner.value?.id ?? null;
         if (accountId !== null) {
-            const account = await lockAccount(tx, accountId);
-            if (!account.ok) return account;
+            const usable = await queryOne(
+                tx,
+                z.object({ id: AccountId }),
+                sql`select a.id from account a
+                join auth_flow f on f.token_hash = ${tokenHash}
+                where a.id = ${accountId}
+                and (a.sign_in_cutoff is null or f.created_at > a.sign_in_cutoff)`,
+            );
+            if (!usable.ok) return usable;
+            if (usable.value === null) return err({ code: "FLOW_INVALID" });
         }
         const flow = await lockFlow(tx, { tokenHash, kind: "sign_in", txNow });
         if (!flow.ok) return flow;
         const challenge = flow.value.challenge;
         if (challenge === null) return err({ code: "FLOW_INVALID" });
+        // The key (and its sign counter) may have changed while the account lock was pending.
+        const passkey = await findPasskey(tx, rawId);
+        if (!passkey.ok) return passkey;
 
         // A password flow belongs to one account; its passkey must be that account's.
         const belongs =
             passkey.value !== null &&
+            passkey.value.accountId === accountId &&
             (flow.value.accountId === null || flow.value.accountId === accountId);
         const verified =
             passkey.value !== null && belongs
@@ -337,6 +380,11 @@ export async function finishPasskeySignIn(
         if (!used.ok) return used;
         const ended = await endFlow(tx, tokenHash);
         if (!ended.ok) return ended;
-        return await finishSignIn(tx, deps, { accountId, txNow, client: params.client ?? null });
+        return await finishSignIn(tx, deps, {
+            accountId,
+            txNow,
+            factorVerified: true,
+            client: params.client ?? null,
+        });
     });
 }

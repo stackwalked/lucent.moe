@@ -12,11 +12,7 @@ import type { LeaseRequest } from "@lucent/wire/lease-exchange";
 import { deriveSessionKeys, type SessionHello } from "@lucent/wire/session";
 import { exchangePublicKey, sharedSecret } from "@lucent/wire/session-crypto";
 import { z } from "zod";
-import {
-    type AccountInactive,
-    lockAccountStanding,
-    lockActiveAccount,
-} from "../authority/accounts.ts";
+import { type AccountInactive, lockAccountStanding } from "../authority/accounts.ts";
 import { readEffectiveProductAccess } from "../authority/entitlements.ts";
 import { newWireId } from "../core/ids.ts";
 import {
@@ -31,7 +27,7 @@ import {
 import { type ReceiptRefusal, readReplay, recordReceipt, toOperationKey } from "../db/receipt.ts";
 import { errCommit, withTx } from "../db/tx.ts";
 import { lockDevice } from "../devices/devices.ts";
-import type { TokenHolder } from "../devices/sign-in.ts";
+import { type AuthRequired, lockTokenHolder, type TokenHolder } from "../devices/sign-in.ts";
 import { readFactDelivery } from "../facts/publishing.ts";
 import type { DpopProof } from "../listeners/native/dpop.ts";
 import { findReleaseManifest } from "../releases/reads.ts";
@@ -242,6 +238,7 @@ async function assembleFirstData(
 
 export type OpenRefusal =
     | AccountInactive
+    | AuthRequired
     | ReceiptRefusal
     | SessionEnded
     | DataUnsendable
@@ -327,7 +324,7 @@ export async function openSession(
         if (startRow.value === null) return err({ code: "NOT_FOUND" });
         const start = startRow.value;
 
-        const account = await lockActiveAccount(tx, accountId, txNow);
+        const account = await lockTokenHolder(tx, params.holder, txNow);
         if (!account.ok) return account;
         const device = await lockDevice(tx, start.device_id);
         if (!device.ok) return device;

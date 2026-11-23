@@ -1,11 +1,16 @@
 import { expect, test } from "bun:test";
 import { invariant } from "@lucent/core/contain";
 import { createSeededRng } from "@lucent/core/rng";
-import { EpochMs, newOperationId, toHex } from "@lucent/core/scalars";
+import { BearerToken, EpochMs, newOperationId, toHex } from "@lucent/core/scalars";
+import { createTestAuthenticator } from "@lucent/testing/authenticator";
 import { z } from "zod";
-import { execute, sql } from "../src/db/pool.ts";
+import { redeemPasswordReset, requestPasswordReset } from "../src/auth/password-reset.ts";
+import { recoverAccount } from "../src/authority/writers.ts";
+import { execute, queryOne, sql } from "../src/db/pool.ts";
 import { sweepNative } from "../src/runtime/expiry.ts";
-import { scalar } from "./authority-fixtures.ts";
+import { registerPasskey, seedRootOnce } from "./auth-fixtures.ts";
+import { scalar, steppedUp } from "./authority-fixtures.ts";
+import { createTestAuthDeps } from "./harness/auth.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 import {
     createNativeHarness,
@@ -63,6 +68,92 @@ function renew(running: Running, operationId?: string) {
         ...(operationId === undefined ? {} : { operationId }),
     });
 }
+
+test.each(["staff recovery", "email reset"] as const)(
+    "%s ends a running module, wipes outstanding starts and invalidates both loader tokens",
+    async (mode) => {
+        await (await sharedTestCluster()).withTestDb(async ({ nativeDb: db }) => {
+            const rng = createSeededRng(8310);
+            const harness = await createNativeHarness(db, rng);
+            const releases = await publishBoth(db, rng);
+            const member = await entitledMember(harness, {
+                email: "member@lucent.test",
+                channels: ["alpha"],
+            });
+            const loader = await enrolledLoader(harness, member);
+            const running = await run(harness, loader, releases);
+            await startOk(loader, releases);
+            if (mode === "staff recovery") {
+                expect(
+                    (
+                        await recoverAccount({
+                            db,
+                            rng,
+                            caller: await steppedUp(db, await seedRootOnce(db, rng)),
+                            targetAccountId: member.accountId,
+                        })
+                    ).ok,
+                ).toBe(true);
+            } else {
+                const deps = await createTestAuthDeps(db, rng);
+                expect(
+                    (
+                        await execute(
+                            db,
+                            sql`update account set username='member' where id=${member.accountId}`,
+                        )
+                    ).ok,
+                ).toBe(true);
+                await registerPasskey(
+                    deps,
+                    member.browserSession,
+                    await createTestAuthenticator({ rng }),
+                );
+                expect((await requestPasswordReset(deps, "member@lucent.test")).ok).toBe(true);
+                const letter = await queryOne(
+                    db,
+                    z.object({ body: z.string() }),
+                    sql`select body from mail_outbox where reset_hash is not null`,
+                );
+                invariant(letter.ok && letter.value !== null, "queued reset");
+                const token = BearerToken.parse(letter.value.body.split("#")[1]?.split("\n")[0]);
+                expect(
+                    (
+                        await redeemPasswordReset(deps, {
+                            token,
+                            password: "a different member password",
+                        })
+                    ).ok,
+                ).toBe(true);
+            }
+            expect(refusalCodeOf(await renew(running))).toBe("AUTH_REQUIRED");
+            expect(
+                (
+                    await loader.form("/v1/auth/token", {
+                        client_id: "lucent-loader",
+                        grant_type: "refresh_token",
+                        refresh_token: loader.refreshToken(),
+                    })
+                ).json,
+            ).toEqual({ error: "invalid_grant" });
+            expect(
+                await scalar(
+                    db,
+                    z.coerce.number(),
+                    sql`select count(*) as value from session_start where account_id=${member.accountId} and (consumed_at is null or container_key is not null)`,
+                ),
+            ).toBe(0);
+            expect(
+                await scalar(
+                    db,
+                    z.coerce.number(),
+                    sql`select count(*) as value from runtime_session where account_id=${member.accountId}
+            and ended_at is not null and end_reason='closed' and key_to_server is null and data_key_to_module is null`,
+                ),
+            ).toBe(1);
+        });
+    },
+);
 
 test("a session's first lease binds its device, release and entitled features, and renewals move its sequence on", async () => {
     const cluster = await sharedTestCluster();

@@ -34,6 +34,7 @@ export const OPERATION_LABELS: Readonly<Record<AuditOperation, string>> = {
     "entitlement.issue": "entitlement issued",
     "release.promote": "release promoted",
     "fact_set.promote": "fact set promoted",
+    "mail.delivery_dead": "email attempts stopped",
 };
 
 export function operationLabel(operation: string): string {

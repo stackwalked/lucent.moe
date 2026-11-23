@@ -7,7 +7,7 @@ import type { CryptoRng } from "@lucent/core/rng";
 import { EpochMs, type OperationId, toHex } from "@lucent/core/scalars";
 import { CONTAINER_KEY_SIZE, type StartReply, type StartRequest } from "@lucent/wire/start";
 import { z } from "zod";
-import { type AccountInactive, lockActiveAccount } from "../authority/accounts.ts";
+import type { AccountInactive } from "../authority/accounts.ts";
 import { readEffectiveProductAccess } from "../authority/entitlements.ts";
 import { newWireId } from "../core/ids.ts";
 import {
@@ -22,7 +22,7 @@ import {
 import { type ReceiptRefusal, readReplay, recordReceipt, toOperationKey } from "../db/receipt.ts";
 import { errCommit, withTx } from "../db/tx.ts";
 import { findDeviceByKey, lockDevice } from "../devices/devices.ts";
-import type { TokenHolder } from "../devices/sign-in.ts";
+import { type AuthRequired, lockTokenHolder, type TokenHolder } from "../devices/sign-in.ts";
 import { readCoveredFactKeys } from "../facts/publishing.ts";
 import type { DpopProof } from "../listeners/native/dpop.ts";
 import {
@@ -52,6 +52,7 @@ type Code<C extends string> = { readonly code: C };
 
 export type StartRefusal =
     | AccountInactive
+    | AuthRequired
     | ReceiptRefusal
     | Code<
           | "DEVICE_REVOKED"
@@ -112,7 +113,7 @@ export async function createStart(
     const containerKey = new Uint8Array(params.rng.fillBytes(new Uint8Array(CONTAINER_KEY_SIZE)));
 
     return await withTx(db, async (tx, txNow) => {
-        const account = await lockActiveAccount(tx, accountId, txNow);
+        const account = await lockTokenHolder(tx, params.holder, txNow);
         if (!account.ok) return account;
         const found = await findDeviceByKey(tx, { accountId, jkt: params.proof.jkt });
         if (!found.ok) return found;

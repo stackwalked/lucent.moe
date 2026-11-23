@@ -1,5 +1,7 @@
 import { err, ok, type Result } from "@lucent/core/result";
 import { isStrongPeerKey, MIN_PEER_KEY_LENGTH } from "@lucent/rpc/contract";
+import { z } from "zod";
+import type { MailConfig } from "./adapters/mail/mail.ts";
 import { PWNED_PASSWORDS_URL } from "./auth/breach.ts";
 import type { RelyingParty } from "./auth/passkeys.ts";
 
@@ -10,6 +12,7 @@ export type ListenAddress =
     | { readonly kind: "loopback"; readonly hostname: "127.0.0.1" | "::1"; readonly port: number };
 
 export type ServerConfig = {
+    readonly mail?: MailConfig;
     readonly databaseUrl: string;
     readonly internalListen: ListenAddress;
     readonly webInternalKey: string;
@@ -60,6 +63,9 @@ export type ConfigError = {
 };
 
 export type Environment = {
+    readonly LUCENT_MAIL_PROVIDER?: string | undefined;
+    readonly LUCENT_MAIL_API_KEY?: string | undefined;
+    readonly LUCENT_MAIL_FROM?: string | undefined;
     readonly LUCENT_DATABASE_URL: string | undefined;
     readonly LUCENT_INTERNAL_LISTEN: string | undefined;
     readonly LUCENT_WEB_INTERNAL_KEY: string | undefined;
@@ -204,6 +210,7 @@ function readDatabaseUrl(env: Environment, problems: string[]): string {
 
 export function readServerConfig(env: Environment): Result<ServerConfig, ConfigError> {
     const problems: string[] = [];
+    const mail = readMailConfig(env, problems);
     const databaseUrl = readDatabaseUrl(env, problems);
     const internalListen = parseListen(env.LUCENT_INTERNAL_LISTEN ?? "");
     if (internalListen === null) {
@@ -269,6 +276,7 @@ export function readServerConfig(env: Environment): Result<ServerConfig, ConfigE
         return err({ code: "CONFIG_INVALID", problems });
     }
     return ok({
+        ...(mail === null ? {} : { mail }),
         databaseUrl,
         internalListen,
         webInternalKey,
@@ -318,6 +326,9 @@ export function readOpsConfig(env: Environment): Result<OpsConfig, ConfigError> 
 // The one read of the process environment (ast-grep: ts-no-ambient-env).
 export function processEnvironment(): Environment {
     const {
+        LUCENT_MAIL_PROVIDER,
+        LUCENT_MAIL_API_KEY,
+        LUCENT_MAIL_FROM,
         LUCENT_DATABASE_URL,
         LUCENT_INTERNAL_LISTEN,
         LUCENT_WEB_INTERNAL_KEY,
@@ -335,6 +346,9 @@ export function processEnvironment(): Environment {
         LUCENT_FACTS_PUBLIC_KEYS,
     } = process.env;
     return {
+        LUCENT_MAIL_PROVIDER,
+        LUCENT_MAIL_API_KEY,
+        LUCENT_MAIL_FROM,
         LUCENT_DATABASE_URL,
         LUCENT_INTERNAL_LISTEN,
         LUCENT_WEB_INTERNAL_KEY,
@@ -351,4 +365,22 @@ export function processEnvironment(): Environment {
         LUCENT_CODE_PUBLIC_KEY,
         LUCENT_FACTS_PUBLIC_KEYS,
     };
+}
+
+function readMailConfig(env: Environment, problems: string[]): MailConfig | null {
+    const provider = env.LUCENT_MAIL_PROVIDER ?? "";
+    const apiKey = env.LUCENT_MAIL_API_KEY ?? "";
+    const sender = env.LUCENT_MAIL_FROM ?? "";
+    if (provider === "" && !apiKey && !sender) return null;
+    if (provider === "log" && !apiKey && !sender) return { provider };
+    if (
+        (provider === "resend" || provider === "brevo") &&
+        /^[\x21-\x7e]{1,1024}$/.test(apiKey) &&
+        z.email().max(254).safeParse(sender).success
+    )
+        return { provider, apiKey, sender };
+    problems.push(
+        "mail requires log without credentials, or resend/brevo with LUCENT_MAIL_API_KEY and LUCENT_MAIL_FROM",
+    );
+    return null;
 }
