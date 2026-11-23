@@ -1,6 +1,6 @@
 import { invariant } from "@lucent/core/contain";
 import type { SeededRng } from "@lucent/core/rng";
-import { type AccountId, type BearerToken, RoleId } from "@lucent/core/scalars";
+import { type AccountId, type BearerToken, newEntitlementId, RoleId } from "@lucent/core/scalars";
 import type { Caller } from "@lucent/policy/policy";
 import { mintSession } from "../src/auth/sessions.ts";
 import { type Db, execute, sql } from "../src/db/pool.ts";
@@ -42,4 +42,23 @@ export async function moderator(
     const id = await seedAccount(db, rng, email);
     await grantRole(db, { accountId: id, roleId });
     return { id, caller: await steppedUp(db, id), token: await sessionFor(db, rng, id) };
+}
+
+// An entitlement that makes a seed product listed for the account.
+export async function holdProduct(
+    db: Db,
+    rng: SeededRng,
+    accountId: AccountId,
+    productId: string,
+): Promise<void> {
+    const id = newEntitlementId(rng);
+    await execute(
+        db,
+        sql`insert into entitlement (id, account_id, valid_from) values (${id}, ${accountId}, now())`,
+    );
+    await execute(
+        db,
+        sql`insert into entitlement_product (entitlement_id, product_id, features, channels)
+            values (${id}, ${productId}, '"*"'::jsonb, '{stable}')`,
+    );
 }

@@ -1,0 +1,6 @@
+@layer features {
+    .body {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+    }
+}

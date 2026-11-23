@@ -1,18 +1,32 @@
-import { getRouteApi } from "@tanstack/react-router";
+import { getRouteApi, Link, useRouteContext } from "@tanstack/react-router";
 import { Empty } from "../../ui/Empty/Empty.tsx";
 import { Page } from "../../ui/Page/Page.tsx";
 import { Section } from "../../ui/Section/Section.tsx";
 import { Table } from "../../ui/Table/Table.tsx";
 import { Time } from "../../ui/Time/Time.tsx";
+import { memberOf } from "../../viewer.ts";
 import { RefusalNote } from "../auth/RefusalNote.tsx";
-import { PRIVACY_COPY, PRIVACY_TITLE } from "./copy.ts";
+import { PRIVACY_COPY } from "./copy.ts";
+import { PRIVACY_TITLE } from "./title.ts";
 
 const route = getRouteApi("/_member/account/privacy");
 
 export function PrivacyPage() {
     const outcome = route.useLoaderData();
+    const { session } = useRouteContext({ from: "__root__" });
+    const viewer = memberOf(session);
     return (
-        <Page title={PRIVACY_TITLE} width="narrow">
+        <Page
+            title={PRIVACY_TITLE}
+            width="narrow"
+            actions={
+                viewer?.username == null ? null : (
+                    <Link to="/members/$username" params={{ username: viewer.username }}>
+                        {PRIVACY_COPY.yourProfile}
+                    </Link>
+                )
+            }
+        >
             <RefusalNote refused={outcome.ok ? null : outcome.refused} />
             {outcome.ok ? (
                 <Section caption={PRIVACY_COPY.standing}>

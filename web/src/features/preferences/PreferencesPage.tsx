@@ -1,4 +1,4 @@
-import { getRouteApi, useRouter } from "@tanstack/react-router";
+import { getRouteApi, Link, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
 import type { Refused } from "../../server/outcome.ts";
 import { Button } from "../../ui/Button/Button.tsx";
@@ -7,6 +7,7 @@ import { Page } from "../../ui/Page/Page.tsx";
 import { Section } from "../../ui/Section/Section.tsx";
 import { Stack } from "../../ui/Stack/Stack.tsx";
 import { RefusalNote } from "../auth/RefusalNote.tsx";
+import { PRIVACY_TITLE } from "../privacy/title.ts";
 import { PREFERENCES_COPY, PREFERENCES_TITLE } from "./copy.ts";
 import { savePreference, saveSubscription } from "./server.ts";
 
@@ -24,7 +25,11 @@ export function PreferencesPage() {
         if (reply.ok) await router.invalidate();
     };
     return (
-        <Page title={PREFERENCES_TITLE} width="narrow">
+        <Page
+            title={PREFERENCES_TITLE}
+            width="narrow"
+            actions={<Link to="/account/privacy">{PRIVACY_TITLE}</Link>}
+        >
             <RefusalNote refused={outcome.ok ? refused : outcome.refused} />
             {outcome.ok ? (
                 <>

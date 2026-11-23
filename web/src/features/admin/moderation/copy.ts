@@ -1,5 +1,4 @@
 export const MODERATION_COPY = {
-    title: "moderation",
     restrictions: "restrictions",
     noRestrictions: "no active restrictions.",
     table: "active restrictions",

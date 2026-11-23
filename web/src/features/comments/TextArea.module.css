@@ -1,0 +1,23 @@
+@layer features {
+    .field {
+        display: flex;
+        flex-direction: column;
+        gap: var(--s-1);
+    }
+
+    .label {
+        color: var(--ink-2);
+        font-size: var(--size-13);
+    }
+
+    .area {
+        min-block-size: calc(var(--control-h) * 3);
+        padding: var(--s-2);
+        border: 1px solid var(--line-2);
+        border-radius: var(--r);
+        background: var(--sunken);
+        color: var(--ink);
+        font-size: var(--size-13);
+        resize: vertical;
+    }
+}

@@ -1,0 +1,17 @@
+export const GUIDES_COPY = {
+    forProduct: "guides",
+    none: "no guides yet.",
+    table: "guides",
+    guide: "guide",
+    author: "by",
+    updated: "updated",
+    write: "write a guide",
+    titleField: "title",
+    bodyField: "guide",
+    publish: "publish",
+    edit: "edit",
+    save: "save",
+    back: "back to the product",
+    search: "search guides and accounts",
+    by: (name: string | null) => `by ${name ?? "—"}`,
+} as const;

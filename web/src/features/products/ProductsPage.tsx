@@ -22,7 +22,10 @@ export function ProductsPage() {
     }
     const products = loaded.value;
     return (
-        <Page title={PRODUCTS_COPY.title}>
+        <Page
+            title={PRODUCTS_COPY.title}
+            actions={<Link to="/shouts">{PRODUCTS_COPY.shouts}</Link>}
+        >
             <Section caption={PRODUCTS_COPY.title}>
                 {products.length === 0 ? (
                     <Empty>{PRODUCTS_COPY.none}</Empty>

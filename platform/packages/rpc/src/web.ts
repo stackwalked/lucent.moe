@@ -4,16 +4,20 @@ import { authContract } from "./web/auth.ts";
 import { authorityContract, AccountStatus as Status } from "./web/authority.ts";
 import { catalogContract } from "./web/catalog.ts";
 import { cloudContract } from "./web/cloud.ts";
+import { commentsContract } from "./web/comments.ts";
 import { devicesContract } from "./web/devices.ts";
 import { downloadContract } from "./web/download.ts";
 import { factsContract } from "./web/facts.ts";
+import { guidesContract } from "./web/guides.ts";
 import { healthContract } from "./web/health.ts";
 import { inboxContract } from "./web/inbox.ts";
 import { moderationContract } from "./web/moderation.ts";
 import { preferencesContract } from "./web/preferences.ts";
 import { privacyContract } from "./web/privacy.ts";
 import { productsContract } from "./web/products.ts";
+import { profileContract } from "./web/profile.ts";
 import { releasesContract } from "./web/releases.ts";
+import { shoutsContract } from "./web/shouts.ts";
 
 export const AccountStatus = Status;
 export type AccountStatus = Status;
@@ -40,6 +44,10 @@ function composeWebContract() {
         ...preferencesContract,
         ...privacyContract,
         ...moderationContract,
+        ...profileContract,
+        ...guidesContract,
+        ...commentsContract,
+        ...shoutsContract,
     });
 }
 

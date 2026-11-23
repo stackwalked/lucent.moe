@@ -21,6 +21,7 @@ export const PRODUCTS_COPY = {
         "nothing runs on this channel yet. after a game update this lasts until support for the new build is out.",
     loader: "the loader starts it.",
     download: "download the loader",
+    shouts: "shouts",
 } as const;
 
 export const PRODUCT_DESCRIPTIONS: Readonly<Record<string, string>> = {

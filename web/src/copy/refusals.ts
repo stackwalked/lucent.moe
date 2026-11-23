@@ -70,6 +70,7 @@ export const REFUSALS: Readonly<Record<RefusalCode, string>> = {
     INVALID_WINDOW: "the end has to come after the start.",
     SEAL_BELOW_CURRENT: "a higher seal is current. sign the old release anew to go back.",
     REVISION_BELOW_CURRENT: "a newer revision is current. publish the fix as the next one.",
+    POSTING_RESTRICTED: "you can't post here right now.",
 };
 // The text for one refusal, a form's own wording first where it has one.
 export function refusalText(

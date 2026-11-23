@@ -6,6 +6,7 @@ import { Stack } from "../../ui/Stack/Stack.tsx";
 import { Status } from "../../ui/Status/Status.tsx";
 import { Table } from "../../ui/Table/Table.tsx";
 import { Time } from "../../ui/Time/Time.tsx";
+import { GuidesSection } from "../guides/GuidesSection.tsx";
 import { PRODUCT_DESCRIPTIONS, PRODUCTS_COPY } from "./copy.ts";
 import { productName } from "./view.ts";
 
@@ -26,7 +27,14 @@ export function ProductPage() {
             width="narrow"
             trail={<Link to="/products">{PRODUCTS_COPY.title}</Link>}
         >
-            <Section caption={PRODUCTS_COPY.product}>
+            <Section
+                caption={PRODUCTS_COPY.product}
+                actions={
+                    <Link to="/shouts" search={{ product: product.productId }}>
+                        {PRODUCTS_COPY.shouts}
+                    </Link>
+                }
+            >
                 {description ? <p>{description}</p> : null}
                 <Pairs
                     items={[
@@ -93,6 +101,7 @@ export function ProductPage() {
                     </Stack>
                 </Section>
             ) : null}
+            <GuidesSection productId={product.productId} outcome={product.guides} />
         </Page>
     );
 }

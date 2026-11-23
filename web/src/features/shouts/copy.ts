@@ -1,0 +1,15 @@
+export const SHOUTS_COPY = {
+    none: "no shouts yet.",
+    table: "shouts",
+    author: "from",
+    body: "shout",
+    time: "posted",
+    about: "about",
+    you: "you",
+    post: "post",
+    productField: "product",
+    productHint: "leave empty for a shout about nothing in particular",
+    productFormat: "that isn't a product id.",
+    allShouts: "all shouts",
+    forProduct: (product: string) => `shouts about ${product}`,
+} as const;
