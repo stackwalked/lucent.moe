@@ -46,6 +46,7 @@ export const REFUSALS: Readonly<Record<RefusalCode, string>> = {
     ACCOUNT_UNAVAILABLE: "this account is suspended.",
     NO_SECOND_FACTOR: "this account isn't fully set up. ask staff for a new setup link.",
     SETUP_INVALID: "this setup link has expired or was already used. ask staff for a new one.",
+    RESET_INVALID: "this reset link no longer works. request a new one.",
     INVALID_USERNAME: RULES_COPY.username,
     USERNAME_ALREADY_SET: "this account already has a username.",
     USERNAME_TAKEN: "that name is taken or too close to an existing one.",

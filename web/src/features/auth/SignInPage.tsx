@@ -1,4 +1,4 @@
-import { useRouter } from "@tanstack/react-router";
+import { Link, useRouter } from "@tanstack/react-router";
 import { useActionState, useEffect, useEffectEvent, useState } from "react";
 import type { Outcome, Refused } from "../../server/outcome.ts";
 import { Button } from "../../ui/Button/Button.tsx";
@@ -8,7 +8,7 @@ import { Stack } from "../../ui/Stack/Stack.tsx";
 import { TextField } from "../../ui/TextField/TextField.tsx";
 import { forgetSession } from "../../viewer.ts";
 import { assertPasskey, conditionalAvailable } from "../../webauthn.ts";
-import { SIGN_IN_COPY, SIGN_IN_REFUSALS } from "./copy.ts";
+import { RESET_COPY, SIGN_IN_COPY, SIGN_IN_REFUSALS } from "./copy.ts";
 import { RefusalNote } from "./RefusalNote.tsx";
 import styles from "./SignInPage.module.css";
 import {
@@ -248,6 +248,7 @@ export function SignInPage() {
                     </Stack>
                 </fieldset>
             </form>
+            <Link to="/reset-password">{RESET_COPY.title}</Link>
         </Stack>
     );
 }

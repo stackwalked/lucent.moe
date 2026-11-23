@@ -17,7 +17,7 @@ import {
     type SessionInvalid,
     type SessionRefusal,
 } from "../auth/sessions.ts";
-import { type AccountInactive, lockActiveAccount } from "../authority/accounts.ts";
+import type { AccountInactive } from "../authority/accounts.ts";
 import { matchCodeOf, newWireId } from "../core/ids.ts";
 import {
     type Db,
@@ -41,7 +41,7 @@ import {
     decidePendingEnrollment,
     decidePendingRequest,
 } from "./devices.rules.ts";
-import type { TokenHolder } from "./sign-in.ts";
+import { type AuthRequired, lockTokenHolder, type TokenHolder } from "./sign-in.ts";
 
 // A device is a PC's key bound to an account. A member enrolls a PC from its loader (proven by the
 // candidate key) and confirms it in the browser, matching the code both show. An account holds
@@ -179,6 +179,7 @@ const ENROLLMENT_COLUMNS = sql`id, account_id, jkt, public_key, storage, created
 
 export type EnrollmentRefusal =
     | AccountInactive
+    | AuthRequired
     | ReceiptRefusal
     | { readonly code: "ALREADY_ENROLLED" | "KEY_IN_USE" | "ENROLLMENT_LIMIT" };
 
@@ -207,7 +208,7 @@ export async function requestEnrollment(
     const newId = newWireId(params.rng);
 
     return await withTx(db, async (tx, txNow) => {
-        const account = await lockActiveAccount(tx, accountId, txNow);
+        const account = await lockTokenHolder(tx, params.holder, txNow);
         if (!account.ok) return account;
         const live = await lockLiveDevices(tx, accountId);
         if (!live.ok) return live;

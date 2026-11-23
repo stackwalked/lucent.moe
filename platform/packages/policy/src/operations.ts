@@ -23,6 +23,7 @@ export const AUDIT_OPERATIONS = [
     "entitlement.issue",
     "release.promote",
     "fact_set.promote",
+    "mail.delivery_dead",
 ] as const;
 
 export const AuditOperation = z.enum(AUDIT_OPERATIONS);

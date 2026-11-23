@@ -134,7 +134,7 @@ async function findSession(
 // What the session may do is decided against its account's standing in this transaction, so a
 // suspension takes effect on the next request. Locking the account (never the session row) keeps
 // the canonical lock order: every writer that changes an account's sessions locks it first.
-export function lockSession(
+export async function lockSession(
     tx: Tx,
     params: {
         readonly token: BearerToken;
@@ -142,7 +142,11 @@ export function lockSession(
         readonly purposes: readonly SessionPurpose[];
     },
 ): Promise<Result<BrowserSession, SessionInvalid | DbFailure>> {
-    return findSession(tx, { ...params, lockAccount: "for update" });
+    const seen = await findSession(tx, { ...params, lockAccount: "for update" });
+    if (!seen.ok) return seen;
+    // The join snapshot predates a wait for the account lock: a recovery could have deleted
+    // the session meanwhile. Re-read after acquiring the lock before granting writer access.
+    return findSession(tx, { ...params, lockAccount: "no lock" });
 }
 
 export function readSession(

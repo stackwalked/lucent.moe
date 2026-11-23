@@ -4,6 +4,7 @@ import { systemClock } from "@lucent/core/clock";
 import { describeUnknownError, ignoreErrorsSync, invariant, trySync } from "@lucent/core/contain";
 import { err, ok, type Result } from "@lucent/core/result";
 import { systemCryptoRng } from "@lucent/core/rng";
+import { createMailTransport, type MailConfig } from "./adapters/mail/mail.ts";
 import { createPwnedPasswordsCheck } from "./auth/breach.ts";
 import { createAuthDeps } from "./auth/deps.ts";
 import { expiredAuthJob } from "./auth/expiry.ts";
@@ -20,6 +21,7 @@ import { type Every, startJobs } from "./jobs/runner.ts";
 import { createInternalWebApp } from "./listeners/internal/app.ts";
 import { createNativeApp } from "./listeners/native/app.ts";
 import { refusalResponse } from "./listeners/native/http.ts";
+import { mailDeliveryJob } from "./notify/mail.ts";
 import { nativeExpiryJob } from "./runtime/expiry.ts";
 import { createLeaseSigner } from "./runtime/lease-key.ts";
 
@@ -93,6 +95,7 @@ export async function startServer(params: {
     readonly epochPollIntervalMs?: number;
     readonly passwords?: PasswordHasher;
     readonly every?: Every;
+    readonly mail?: MailConfig;
 }): Promise<Result<RunningServer, BootFailure>> {
     const { config, logger } = params;
     const db = openPool({
@@ -206,8 +209,20 @@ export async function startServer(params: {
             logger,
         }).fetch;
     }
+    const mail = params.mail ?? config.mail;
     const jobs = startJobs({
-        jobs: [expiredAuthJob(db), ...(nativeDb === null ? [] : [nativeExpiryJob(nativeDb)])],
+        jobs: [
+            expiredAuthJob(db),
+            ...(nativeDb === null ? [] : [nativeExpiryJob(nativeDb)]),
+            ...(mail === undefined
+                ? []
+                : [
+                      mailDeliveryJob({
+                          db,
+                          mail: await createMailTransport(mail),
+                      }),
+                  ]),
+        ],
         logger,
         isSuperseded: epochGuard.isSuperseded,
         ...(params.every === undefined ? {} : { every: params.every }),

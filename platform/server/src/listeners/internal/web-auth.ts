@@ -13,6 +13,7 @@ import {
     removeCredential,
     setPassword,
 } from "../../auth/credentials.ts";
+import { redeemPasswordReset, requestPasswordReset } from "../../auth/password-reset.ts";
 import { listSessions, signOut, signOutOthers, signOutSession } from "../../auth/sessions.ts";
 import { chooseUsername, redeemSetupLink } from "../../auth/setup.ts";
 import {
@@ -30,6 +31,10 @@ function from(call: { readonly client: ClientInfo | null }): { readonly client?:
 }
 
 export const authHandlers = {
+    "reset.password.request": async (ctx, input) =>
+        served(done(await requestPasswordReset(ctx.auth, input.email))),
+    "reset.password.redeem": async (ctx, input) =>
+        served(done(await redeemPasswordReset(ctx.auth, input))),
     "signIn.password": async (ctx, input, call) =>
         served(await signInWithPassword(ctx.auth, { ...input, ...from(call) })),
     "signIn.totp": async (ctx, input, call) =>

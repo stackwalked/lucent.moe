@@ -114,6 +114,9 @@ export async function startPlatform(params: {
             LUCENT_WEBAUTHN_RP_ID: new URL(params.webOrigin).hostname,
             LUCENT_WEBAUTHN_ORIGIN: params.webOrigin,
             LUCENT_PWNED_PASSWORDS_URL: range.url,
+            LUCENT_MAIL_PROVIDER: "log",
+            LUCENT_MAIL_API_KEY: "",
+            LUCENT_MAIL_FROM: "",
             ...native,
         },
     });

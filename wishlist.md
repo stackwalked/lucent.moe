@@ -126,7 +126,7 @@ Beside phases 2 and 3; nothing native waits on it except cutover.
 
 - Slice 3, the rest: licensing and health signals, the scoring job and review queue, live
   revisions over the session, online overrides, the retention tiers.
-- `ops transfer-superadmin` and `replay-removals`; the mail adapter.
+- `ops transfer-superadmin` and `replay-removals`.
 - Slice 4: cloud-held configs and inventory (old lucent's `userdata-cloud` design: account-held
   items, no file mirror), crash reports, tickets and appeals, review rules with DB-IP geo, the
   waitlist, resources.
@@ -932,8 +932,7 @@ live in `wishlist/protection.md`.
     - Permanent confusable-checked `username_claim`: the fold table is every Unicode
       `confusables.txt` 18.0.0 entry whose source is an ASCII letter, digit or underscore, after
       case folding (0→o, 1→l, i→l, m→rn, `_` dropped); single-use 7-day account-only invites (no
-      cohorts) with inviter strike attribution; non-admin timing-padded email reset setting
-      `reset_lock`.
+      cohorts) with inviter strike attribution.
 - Native contracts, lease channel and bundle pipeline:
   - `contracts/` holds canonical little-endian versioned binary container definitions, `/v1` wire
     Zod schemas, and committed golden `.bin`/`.json` vectors verified by both `ctest` and
@@ -978,8 +977,7 @@ live in `wishlist/protection.md`.
     5s-bounded `env: {}` `Bun.spawn` child process with WASM linear memory rewritten to `640 MiB`
     max, stripping metadata and storing 256px/64px WebPs by SHA-256 in Postgres; release binaries
     and `<= 64 MiB` resources stream to `ARTIFACT_DIR`.
-  - Plain `fetch` mail adapter (`resend` | `brevo` | `log`, `10s` timeout, outside `Tx`) and offline
-    `mmdb-lib@3.0.5` DB-IP Lite reader.
+  - Offline `mmdb-lib@3.0.5` DB-IP Lite reader.
   - Unref'd periodic jobs (`1m` challenges/nonces/receipts/refusals; `10m` retention, risk scoring,
     `.mmdb` reload, 7d idle ticket auto-close) with explicit 30d / 90d / 365d / forever retention
     tiers; closed-field JSONL logger with fail-closed `loggablePath` allowlist, `removed` lines for

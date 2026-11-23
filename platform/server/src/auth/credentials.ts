@@ -29,7 +29,7 @@ import {
     verifyAssertion,
     verifyRegistration,
 } from "./passkeys.ts";
-import { type PasswordRejected, parseNewPassword } from "./password.ts";
+import { type PasswordRejected, prepareNewPassword } from "./password.ts";
 import {
     type BrowserSession,
     endOtherSessions,
@@ -214,13 +214,9 @@ export async function setPassword(
         readonly client?: ClientInfo;
     },
 ): Promise<Result<void, CredentialRefusal>> {
-    const parsed = parseNewPassword(params.password);
-    if (!parsed.ok) return parsed;
-    if ((await deps.breachCheck(parsed.value)) === "breached") {
-        return err({ code: "PASSWORD_BREACHED" });
-    }
-    // Hashed before the transaction: argon2id would hold the account lock meanwhile.
-    const hash = await deps.passwords.hash(parsed.value);
+    const prepared = await prepareNewPassword(deps, params.password);
+    if (!prepared.ok) return prepared;
+    const hash = prepared.value;
     return await withTx(deps.db, async (tx, txNow) => {
         const change = await beginCredentialChange(tx, {
             sessionToken: params.sessionToken,

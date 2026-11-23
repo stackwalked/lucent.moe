@@ -10,6 +10,7 @@ export type Throttle = {
 export type Bucket = { readonly name: string; readonly perMinute: number };
 
 export const BUCKETS = {
+    passwordReset: { name: "password-reset", perMinute: 5 },
     overall: { name: "overall", perMinute: 300 },
     signIn: { name: "signIn", perMinute: 10 },
     setupRedeem: { name: "setup.redeem", perMinute: 5 },

@@ -59,6 +59,28 @@ const SignedIn = z.object({ sessionToken: BearerToken, expiresAt: EpochMs });
 const PasskeyChallenge = z.object({ flowToken: BearerToken, options: RequestOptions });
 
 export const authContract = defineContract({
+    "reset.password.request": {
+        session: "none",
+        effect: "write",
+        input: z.strictObject({ email: z.email().max(254) }),
+        output: Done,
+        error: Unavailable,
+    },
+    "reset.password.redeem": {
+        session: "none",
+        effect: "write",
+        input: z.strictObject({ token: BearerToken, password: Password }),
+        output: Done,
+        error: z.discriminatedUnion("code", [
+            Unavailable,
+            refusal("RESET_INVALID"),
+            refusal("PASSWORD_BREACHED"),
+            z.object({
+                code: z.literal("PASSWORD_REJECTED"),
+                reason: z.enum(["too_short", "too_long"]),
+            }),
+        ]),
+    },
     "signIn.password": {
         session: "none",
         effect: "write",

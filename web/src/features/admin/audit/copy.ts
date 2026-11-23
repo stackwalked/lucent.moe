@@ -1,4 +1,6 @@
 export const AUDIT_COPY = {
+    unconfirmedMail: "provider acceptance unconfirmed",
+    refusedMail: "provider refused the request",
     title: "audit",
     search: "search",
     searchHint: "actor: target: op: before:",

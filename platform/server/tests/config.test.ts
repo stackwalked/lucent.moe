@@ -3,6 +3,29 @@ import { type Environment, readOpsConfig, readServerConfig } from "../src/config
 
 const KEY = "k".repeat(43);
 
+test("mail configuration is optional, complete per provider, and invalid values stay out of errors", () => {
+    const secret = "private-fixture",
+        sender = "from@lucent.test";
+    for (const provider of ["resend", "brevo"] as const) {
+        const config = readServerConfig(
+            env({
+                LUCENT_MAIL_PROVIDER: provider,
+                LUCENT_MAIL_API_KEY: secret,
+                LUCENT_MAIL_FROM: sender,
+            }),
+        );
+        expect(config.ok && config.value.mail).toEqual({ provider, apiKey: secret, sender });
+    }
+    const logged = readServerConfig(env({ LUCENT_MAIL_PROVIDER: "log" }));
+    expect(logged.ok && logged.value.mail).toEqual({ provider: "log" });
+    const invalid = readServerConfig(
+        env({ LUCENT_MAIL_API_KEY: secret, LUCENT_MAIL_FROM: sender }),
+    );
+    expect(invalid.ok).toBe(false);
+    expect(JSON.stringify(invalid)).not.toContain(secret);
+    expect(JSON.stringify(invalid)).not.toContain(sender);
+});
+
 function env(overrides: Partial<Environment>): Environment {
     return {
         LUCENT_DATABASE_URL: "postgres://server@127.0.0.1:5432/lucent",

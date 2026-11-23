@@ -56,6 +56,7 @@ function currentRequest(): WebRequest {
 }
 
 function bucketFor(name: Name): Bucket | null {
+    if (name.startsWith("reset.password.")) return BUCKETS.passwordReset;
     if (name.startsWith("signIn.")) return BUCKETS.signIn;
     if (name.startsWith("stepUp.")) return BUCKETS.stepUp;
     if (name === "setup.redeem") return BUCKETS.setupRedeem;
