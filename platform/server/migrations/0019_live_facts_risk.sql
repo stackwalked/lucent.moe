@@ -10,6 +10,14 @@ alter table runtime_session
     add column data_revision bigint not null default 0 check (data_revision >= 0),
     add column asked_modules jsonb not null default '[]';
 
+-- A promotion or kill switch locks the release's live sessions while it holds the release's
+-- lock, which starts on that release wait for: the lookup must not grow with ended sessions.
+create index runtime_session_live_release_idx on runtime_session (release_id)
+    where ended_at is null;
+
+-- The retention job sweeps renewals by age.
+create index lease_renewal_received_idx on lease_renewal (received_at);
+
 -- Product-scoped, through its release: the kill switches staff set on one module release. A row
 -- forces one feature (its keyed id from the release manifest) or one capability off for every
 -- session on that release; clearing the switch deletes the row, and the audit keeps the history.
