@@ -1,4 +1,5 @@
-import { EpochMs } from "./scalars.ts";
+import { type EpochMs, isEpochMs } from "./brands.ts";
+import { invariant } from "./contain.ts";
 
 export type Clock = {
     readonly now: () => EpochMs;
@@ -6,7 +7,11 @@ export type Clock = {
 
 // The one ambient clock (ast-grep: ts-no-ambient-effects); everything else takes a Clock.
 export const systemClock: Clock = {
-    now: () => EpochMs.parse(Date.now()),
+    now: () => {
+        const now = Date.now();
+        invariant(isEpochMs(now), "the system clock reads after 1970");
+        return now;
+    },
 };
 
 export function toIsoTimestamp(at: EpochMs): string {
