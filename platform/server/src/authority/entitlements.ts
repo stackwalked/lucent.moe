@@ -89,10 +89,13 @@ export async function readEffectiveProductAccess(
     params: {
         readonly accountId: AccountId;
         readonly product: ProductDefinition;
-        readonly at: EpochMs;
+        readonly at: EpochMs | "transaction";
     },
 ): Promise<Result<EffectiveProductAccess, DbFailure>> {
-    const atIso = toTimestamptz(params.at);
+    // A PostgreSQL deadline may carry microseconds. For a current membership check, comparing
+    // to the database's transaction timestamp avoids reviving it in the last rounded millisecond.
+    const at =
+        params.at === "transaction" ? sql`now()` : sql`${toTimestamptz(params.at)}::timestamptz`;
 
     const grantsRes = await queryAll(
         q,
@@ -104,8 +107,8 @@ export async function readEffectiveProductAccess(
             where e.account_id = ${params.accountId}
               and a.status = 'active'
               and e.status = 'active'
-              and e.valid_from <= ${atIso}::timestamptz
-              and (e.valid_until is null or e.valid_until > ${atIso}::timestamptz)
+              and e.valid_from <= ${at}
+              and (e.valid_until is null or e.valid_until > ${at})
               and ep.product_id = ${params.product.id}`,
     );
     if (!grantsRes.ok) return grantsRes;
@@ -117,7 +120,7 @@ export async function readEffectiveProductAccess(
             from account_role ar
             join role r on r.id = ar.role_id
             where ar.account_id = ${params.accountId}
-              and (ar.expires_at is null or ar.expires_at > ${atIso}::timestamptz)`,
+              and (ar.expires_at is null or ar.expires_at > ${at})`,
     );
     if (!rolesRes.ok) return rolesRes;
 

@@ -7,19 +7,12 @@ import { type BearerToken, ChannelId, EpochMs, ProductId } from "@lucent/core/sc
 import type { Caller } from "@lucent/policy/policy";
 import { z } from "zod";
 import { readSession, type SessionInvalid } from "../auth/sessions.ts";
-import { type FeatureSelection, readEffectiveProductAccess } from "../authority/entitlements.ts";
+import type { FeatureSelection } from "../authority/entitlements.ts";
 import { readAsStaff } from "../authority/staff.ts";
-import {
-    type Db,
-    type DbFailure,
-    type Queryable,
-    queryAll,
-    queryOne,
-    sql,
-    toTimestamptz,
-} from "../db/pool.ts";
+import { type Db, type DbFailure, type Queryable, queryAll, queryOne, sql } from "../db/pool.ts";
 import { withTx } from "../db/tx.ts";
 import { coversCoreFacts, StartModules } from "../runtime/starts.ts";
+import { readMemberProduct } from "./visibility.ts";
 
 export type MemberProduct = {
     readonly productId: ProductId;
@@ -101,16 +94,6 @@ export async function listMemberProducts(
             purposes: ["member"],
         });
         if (!session.ok) return session;
-        const history = await queryAll(
-            tx,
-            z.object({ product_id: ProductId }),
-            sql`select distinct ep.product_id from entitlement_product ep
-                join entitlement e on e.id = ep.entitlement_id
-                where e.account_id = ${session.value.accountId}
-                  and e.valid_from <= ${toTimestamptz(txNow)}::timestamptz`,
-        );
-        if (!history.ok) return history;
-        const held = new Set(history.value.map((row) => row.product_id));
         const promoted = await queryAll(
             tx,
             z.object({
@@ -128,21 +111,15 @@ export async function listMemberProducts(
 
         const products: MemberProduct[] = [];
         for (const product of params.catalog.values()) {
-            const access = await readEffectiveProductAccess(tx, {
+            const memberProduct = await readMemberProduct(tx, {
                 accountId: session.value.accountId,
                 product,
-                at: txNow,
             });
-            if (!access.ok) return access;
-            const holding = access.value.isEntitled
-                ? "current"
-                : held.has(product.id)
-                  ? "past"
-                  : "none";
-            const lifecycle = decideProductLifecycle(product.state, holding).value;
+            if (!memberProduct.ok) return memberProduct;
+            const { access, lifecycle } = memberProduct.value;
             if (!lifecycle.listed) continue;
             const channels: MemberProduct["channels"][number][] = [];
-            for (const channel of lifecycle.startRefusal === null ? access.value.channels : []) {
+            for (const channel of lifecycle.startRefusal === null ? access.channels : []) {
                 const current = promoted.value.find(
                     (row) => row.product_id === product.id && row.channel === channel,
                 );
@@ -168,7 +145,7 @@ export async function listMemberProducts(
                 name: product.name,
                 kind: product.kind,
                 state: product.state,
-                features: lifecycle.startRefusal === null ? access.value.features : [],
+                features: lifecycle.startRefusal === null ? access.features : [],
                 channels,
             });
         }

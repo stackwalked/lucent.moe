@@ -8,12 +8,13 @@ import {
 import { type ReactNode, useEffect } from "react";
 import { SITE_COPY } from "../copy/site.ts";
 import { isUnavailable } from "../failure.ts";
+import { fetchUnread } from "../features/inbox/unread.ts";
 import { StepUpProvider } from "../features/step-up/StepUp.tsx";
 import { currentTheme } from "../theme.ts";
 import { currentTimeZone, reportTimeZone } from "../time-zone.ts";
 import { TimeProvider } from "../ui/Time/TimeProvider.tsx";
 import { ToastProvider } from "../ui/Toast/Toast.tsx";
-import { loadSession, rememberSession } from "../viewer.ts";
+import { loadSession, memberOf, rememberSession } from "../viewer.ts";
 import "../ui/global.css";
 import "virtual:lucent/tokens.css";
 import plex400 from "../ui/fonts/ibm-plex-sans-400.woff2?url";
@@ -62,11 +63,15 @@ function Failure({ error }: ErrorComponentProps) {
 }
 
 export const Route = createRootRoute({
-    beforeLoad: async () => ({
-        session: await loadSession(),
-        now: systemClock.now(),
-        timeZone: currentTimeZone(),
-    }),
+    beforeLoad: async () => {
+        const session = await loadSession();
+        return {
+            session,
+            unreadCount: memberOf(session) === null ? null : await fetchUnread(),
+            now: systemClock.now(),
+            timeZone: currentTimeZone(),
+        };
+    },
     head: () => ({
         meta: [
             { charSet: "utf-8" },

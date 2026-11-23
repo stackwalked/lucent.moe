@@ -8,6 +8,8 @@ import { devicesHandlers } from "./web-devices.ts";
 import { downloadHandlers } from "./web-download.ts";
 import { factsHandlers } from "./web-facts.ts";
 import { healthHandlers } from "./web-health.ts";
+import { inboxHandlers } from "./web-inbox.ts";
+import { preferencesHandlers } from "./web-preferences.ts";
 import { productsHandlers } from "./web-products.ts";
 import { releasesHandlers } from "./web-releases.ts";
 import type { WebRpcContext } from "./web-shared.ts";
@@ -24,4 +26,6 @@ export const webProcedures = implement<WebRpcContext, WebContract>(webContract, 
     ...releasesHandlers,
     ...factsHandlers,
     ...auditHandlers,
+    ...inboxHandlers,
+    ...preferencesHandlers,
 });

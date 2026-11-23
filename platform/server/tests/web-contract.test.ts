@@ -123,6 +123,12 @@ type SinglePurpose = {
 // An input each procedure accepts, so the call gets as far as its session check. The type makes
 // a procedure added with a single purpose fail to compile until it is listed here.
 const inputs: SinglePurpose = {
+    "inbox.entries.list": { cursor: null },
+    "inbox.entries.read": { id: "00000000-0000-4000-8000-000000000001" },
+    "inbox.unread.count": {},
+    "preferences.channels.list": {},
+    "preferences.channels.set": { kind: "product_status", inbox: true, mail: false },
+    "preferences.subscriptions.set": { productId: "cs2", following: true },
     "session.list": {},
     "session.endOthers": {},
     "setup.username.choose": { username: "unclaimed" },

@@ -7,6 +7,7 @@ import { forgetSession, memberOf, type Viewer } from "../../viewer.ts";
 import { ADMIN_COPY } from "../admin/copy.ts";
 import { isStaff } from "../admin/sections.ts";
 import { signOut } from "../auth/session.ts";
+import { inboxLabel } from "../inbox/copy.ts";
 import { SHELL_COPY } from "./copy.ts";
 import styles from "./SiteShell.module.css";
 
@@ -52,7 +53,7 @@ export function SiteShell({
     readonly side?: ReactNode;
     readonly children: ReactNode;
 }) {
-    const { session } = useRouteContext({ from: "__root__" });
+    const { session, unreadCount } = useRouteContext({ from: "__root__" });
     const viewer = memberOf(session);
     return (
         <Shell
@@ -90,6 +91,13 @@ export function SiteShell({
                             activeProps={{ "aria-current": "page" }}
                         >
                             {SHELL_COPY.account}
+                        </Link>
+                        <Link
+                            to="/account/inbox"
+                            className={styles.place}
+                            activeProps={{ "aria-current": "page" }}
+                        >
+                            {inboxLabel(unreadCount)}
                         </Link>
                         {isStaff(viewer) ? (
                             <Link

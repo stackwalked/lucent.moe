@@ -7,6 +7,8 @@ import { devicesContract } from "./web/devices.ts";
 import { downloadContract } from "./web/download.ts";
 import { factsContract } from "./web/facts.ts";
 import { healthContract } from "./web/health.ts";
+import { inboxContract } from "./web/inbox.ts";
+import { preferencesContract } from "./web/preferences.ts";
 import { productsContract } from "./web/products.ts";
 import { releasesContract } from "./web/releases.ts";
 
@@ -30,6 +32,8 @@ function composeWebContract() {
         ...releasesContract,
         ...factsContract,
         ...auditContract,
+        ...inboxContract,
+        ...preferencesContract,
     });
 }
 
