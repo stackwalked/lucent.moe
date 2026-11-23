@@ -124,13 +124,19 @@ the new module only.
 
 Beside phases 2 and 3; nothing native waits on it except cutover.
 
-- Slice 3, the rest: licensing and health signals, the scoring job and review queue, live
-  revisions over the session, online overrides, the retention tiers.
+- Slice 3, the rest (scoring, the review queue, retention tiers, update-day latency, data
+  revisions raised by promotions and kill switches landed; a kill switch is recorded, not yet
+  enforced): the signed override document and its delivery on `/data`, the reports route and the
+  signals from it, the renewal's integrity bits and checked challenge answers. Each waits on a
+  format the human decides; a review action of its own in place of `accounts:suspend`.
 - `ops transfer-superadmin` and `replay-removals`.
-- Slice 4: cloud-held configs and inventory (old lucent's `userdata-cloud` design: account-held
-  items, no file mirror), crash reports, tickets and appeals, review rules with DB-IP geo, the
-  waitlist, resources.
-- Slice 5: profiles, avatars, comments, shouts, inbox, presence, guides, `connectors/discord`.
+- Slice 4 (account-held items with history, share links and the member pages landed): items
+  served to and written by a session over `/data` (a format to decide), crash reports, tickets
+  and appeals, review rules with DB-IP geo, the waitlist, resources.
+- Slice 5 (profiles, guides, comments, shouts, the inbox, reports and removal, posting
+  restrictions apart from the licence, blocking, the data export, search, a presence stream
+  landed): avatars (the codecs are dependencies to approve), presence shown in web, self-service
+  account deletion (what survives it is undecided), `connectors/discord`.
 - The public record: product status, known issues, the changelog, recovery time per game update,
   refusal-code pages, legal pages. Old lucent had no privacy or terms page.
 - Member docs.
