@@ -9,6 +9,7 @@ import { createAuthDeps } from "./auth/deps.ts";
 import { expiredAuthJob } from "./auth/expiry.ts";
 import { createArgon2idHasher, type PasswordHasher } from "./auth/password.ts";
 import { createTotpKeyring } from "./auth/totp.ts";
+import { CLOUD_LIMITS, type CloudLimits } from "./cloud/items.rules.ts";
 import type { ListenAddress, NativeListenAddress, ServerConfig } from "./config.ts";
 import type { Logger } from "./core/log.ts";
 import { claimServiceEpoch, openEpochGuard } from "./db/epoch-guard.ts";
@@ -85,6 +86,7 @@ function listen(
 }
 
 export async function startServer(params: {
+    readonly cloudLimits?: CloudLimits;
     readonly config: ServerConfig;
     readonly logger: Logger;
     readonly migrations?: readonly MigrationFile[];
@@ -183,6 +185,7 @@ export async function startServer(params: {
         });
     }
     serve = createInternalWebApp({
+        cloudLimits: params.cloudLimits ?? CLOUD_LIMITS,
         auth,
         catalog: catalog.value,
         epochGuard,

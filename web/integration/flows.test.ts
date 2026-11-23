@@ -526,4 +526,78 @@ describe("web against a real platform", () => {
         expect(stranger.status).toBe(303);
         expect(stranger.headers.get("location")).toEndWith("/download");
     });
+
+    test("the member cloud page serves only metadata and issued links never enter HTML or request logs", async () => {
+        const db = new SQL(platform.databaseUrl);
+        const [root] = await db`select id from account where username='root'`;
+        const grant = `ent_${"c".repeat(22)}`;
+        await db`insert into entitlement (id,account_id,valid_from) values (${grant},${root.id},now())`;
+        await db`insert into entitlement_product (entitlement_id,product_id,features,channels)
+            values (${grant},'cs2','"*"'::jsonb,'{stable}')`;
+        await db`insert into cloud_scope (account_id,product_id) values (${root.id},'cs2')`;
+        const [item] = await db`insert into cloud_item (account_id,product_id,kind)
+            values (${root.id},'cs2','script') returning item_id::text as id`;
+        const body = "only-in-the-cloud-item-body";
+        await db`insert into cloud_version (account_id,product_id,item_id,revision,name,bytes)
+            values (${root.id},'cs2',${item.id},1,'test loadout',convert_to(${body},'UTF8'))`;
+        await db.close();
+        expect((await browser().get("/cloud")).status).toBe(303);
+        expect(await (await member.get("/cloud")).text()).toContain("cs2");
+        expect(await (await member.get("/cloud?product=cs2")).text()).toContain("test loadout");
+        const key = { productId: "cs2", itemId: item.id };
+        const newItem = {
+            productId: "cs2",
+            kind: "config",
+            name: "empty profile",
+            operationId: newOperationId(createSeededRng(7011)),
+        };
+        const created = z.object({ itemId: z.string() });
+        const create = () => member.call("features.cloud.server--createEmptyItem", newItem);
+        const empty = accepted(created, await create());
+        expect(accepted(created, await create())).toEqual(empty);
+        expect(
+            refusedCode(
+                await member.call("features.cloud.server--createEmptyItem", {
+                    ...newItem,
+                    name: "different",
+                }),
+            ),
+        ).toBe("IDEMPOTENCY_CONFLICT");
+        const createdPage = await member.get(`/cloud?product=cs2&item=${empty.itemId}`);
+        expect(createdPage.status).toBe(200);
+        expect(await createdPage.text()).toContain("empty profile");
+        const link = accepted(
+            z.object({ token: z.string(), shareId: z.string() }),
+            await member.call("features.cloud.server--createShare", key),
+        );
+        const detail = await member.get(`/cloud?product=cs2&item=${item.id}`);
+        expect(detail.status).toBe(200);
+        const html = await detail.text();
+        expect(html).toContain("test loadout");
+        expect(html).toContain("revoke");
+        expect(html).not.toContain(link.token);
+        expect(html).not.toContain(body);
+        const landing = await member.get(`/share#cs2/${link.token}`);
+        expect(landing.status).toBe(200);
+        expect(landing.headers.get("referrer-policy")).toBe("no-referrer");
+        expect(await landing.text()).not.toContain(link.token);
+        const guest = await browser().get(`/share#cs2/${link.token}`);
+        expect(guest.status).toBe(200);
+        expect(await guest.text()).toContain("open the link again");
+        const importLink = () =>
+            member.call("features.cloud.server--importShare", {
+                productId: "cs2",
+                token: link.token,
+            });
+        expect(accepted(created, await importLink()).itemId).not.toBe(item.id);
+        accepted(
+            z.null(),
+            await member.call("features.cloud.server--revokeShare", {
+                productId: "cs2",
+                shareId: link.shareId,
+            }),
+        );
+        expect(refusedCode(await importLink())).toBe("NOT_FOUND");
+        expect(web.output()).not.toContain(link.token);
+    });
 });

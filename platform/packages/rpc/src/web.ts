@@ -3,6 +3,7 @@ import { auditContract } from "./web/audit.ts";
 import { authContract } from "./web/auth.ts";
 import { authorityContract, AccountStatus as Status } from "./web/authority.ts";
 import { catalogContract } from "./web/catalog.ts";
+import { cloudContract } from "./web/cloud.ts";
 import { devicesContract } from "./web/devices.ts";
 import { downloadContract } from "./web/download.ts";
 import { factsContract } from "./web/facts.ts";
@@ -24,6 +25,7 @@ function composeWebContract() {
     return defineContract({
         ...healthContract,
         ...catalogContract,
+        ...cloudContract,
         ...authContract,
         ...devicesContract,
         ...productsContract,

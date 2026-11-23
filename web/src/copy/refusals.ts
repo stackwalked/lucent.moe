@@ -24,6 +24,11 @@ export const UNEXPECTED: ReadonlySet<RefusalCode> = new Set<RefusalCode>([
 ]);
 
 export const REFUSALS: Readonly<Record<RefusalCode, string>> = {
+    INVALID_BASE: "reload the item's history and try again.",
+    ITEM_LIMIT: "remove an item to make room.",
+    VERSION_LIMIT: "this item has reached its version limit.",
+    SIZE_LIMIT: "this version is too large.",
+    STORAGE_LIMIT: "remove an item to free storage.",
     SERVICE_UNAVAILABLE: "lucent.moe can't reach its server right now. try again in a moment.",
     AUTH_REQUIRED: "something went wrong on our side.",
     INVALID_REQUEST: "something went wrong on our side.",

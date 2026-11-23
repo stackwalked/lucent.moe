@@ -4,6 +4,7 @@ import { auditHandlers } from "./web-audit.ts";
 import { authHandlers } from "./web-auth.ts";
 import { authorityHandlers } from "./web-authority.ts";
 import { catalogHandlers } from "./web-catalog.ts";
+import { cloudHandlers } from "./web-cloud.ts";
 import { devicesHandlers } from "./web-devices.ts";
 import { downloadHandlers } from "./web-download.ts";
 import { factsHandlers } from "./web-facts.ts";
@@ -18,6 +19,7 @@ export type { WebRpcContext } from "./web-shared.ts";
 export const webProcedures = implement<WebRpcContext, WebContract>(webContract, {
     ...healthHandlers,
     ...catalogHandlers,
+    ...cloudHandlers,
     ...authHandlers,
     ...devicesHandlers,
     ...productsHandlers,

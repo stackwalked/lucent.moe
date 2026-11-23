@@ -1,4 +1,5 @@
 export const SHELL_COPY = {
+    cloud: "cloud",
     account: "account",
     products: "products",
     devices: "devices",

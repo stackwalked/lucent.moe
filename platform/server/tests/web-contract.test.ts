@@ -123,6 +123,16 @@ type SinglePurpose = {
 // An input each procedure accepts, so the call gets as far as its session check. The type makes
 // a procedure added with a single purpose fail to compile until it is listed here.
 const inputs: SinglePurpose = {
+    "cloud.products.list": {},
+    "cloud.items.list": { productId: "cs2" },
+    "cloud.items.create": { productId: "cs2", operationId: OPERATION, name: "one", kind: "config" },
+    "cloud.items.history": { productId: "cs2", itemId: "1" },
+    "cloud.items.rename": { productId: "cs2", itemId: "1", base: 1, name: "one" },
+    "cloud.items.restore": { productId: "cs2", itemId: "1", base: 1, revision: 1 },
+    "cloud.items.delete": { productId: "cs2", itemId: "1" },
+    "cloud.shares.create": { productId: "cs2", itemId: "1" },
+    "cloud.shares.revoke": { productId: "cs2", shareId: "1" },
+    "cloud.shares.import": { productId: "cs2", token: "a".repeat(43) },
     "inbox.entries.list": { cursor: null },
     "inbox.entries.read": { id: "00000000-0000-4000-8000-000000000001" },
     "inbox.unread.count": {},

@@ -1141,8 +1141,8 @@ not live handles.
 - The seed: 30 to 50 people approached directly, free, a `founding` mark kept afterwards.
 - The public record is the marketing: status with a named staff contact, the changelog, recovery
   time per update. Never "undetected", never feature-list comparisons, no resellers.
-- Config sharing: share links, import as a new item, history and restore, a config editor on the
-  site from the release's settings manifest, support reading a config with per-ticket consent.
+- Configs: a site editor from the release's settings manifest, support reading a config with
+  per-ticket consent.
 - Payments (after the seed's gates): old lucent's design stands as the starting point, to be
   re-decided when it starts: stablecoins, self-hosted, a derived address per account, a watcher
   with two providers, a spend-only ledger, plans and renewal as entitlements with an end, the

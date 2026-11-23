@@ -7,6 +7,13 @@ export type CloudLimits = {
     readonly maxVersionsPerItem: number;
 };
 
+export const CLOUD_LIMITS: CloudLimits = {
+    maxItems: 100,
+    maxVersionBytes: 48 * 1024,
+    maxStoredBytes: 8 * 1024 * 1024,
+    maxVersionsPerItem: 64,
+};
+
 export type CloudUsage = { readonly items: number; readonly storedBytes: number };
 type Refusal = {
     readonly code: "INVALID_BASE" | "ITEM_LIMIT" | "VERSION_LIMIT" | "SIZE_LIMIT" | "STORAGE_LIMIT";
