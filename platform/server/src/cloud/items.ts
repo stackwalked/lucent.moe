@@ -1,6 +1,7 @@
 import { invariant } from "@lucent/core/contain";
 import { err, ok } from "@lucent/core/result";
 import type { AccountId, ProductId } from "@lucent/core/scalars";
+import { ItemKind } from "@lucent/rpc/cloud-item";
 import { z } from "zod";
 import { execute, type Queryable, queryAll, queryOne, sql, type Tx } from "../db/pool.ts";
 import { type CloudLimits, decideAppend } from "./items.rules.ts";
@@ -8,7 +9,8 @@ import { type CloudLimits, decideAppend } from "./items.rules.ts";
 // The transport derives this from authenticated authority, never from an item's claimed owner.
 export type CloudScope = { readonly accountId: AccountId; readonly productId: ProductId };
 export type CloudItem = CloudScope & { readonly itemId: string };
-export const ItemKind = z.enum(["config", "inventory", "script"]);
+export { ItemKind };
+
 type Content = { readonly name: string; readonly bytes: Uint8Array };
 const Metadata = z.object({
     itemId: z.string(),
@@ -53,7 +55,9 @@ export async function readItem(q: Queryable, item: CloudItem, revision?: number)
     return version.value === null ? err({ code: "NOT_FOUND" }) : ok(version.value);
 }
 
-// Take before gathering usage or a head, including first-ever writers in an empty scope.
+// Take before gathering usage or a head, including first-ever writers in an empty scope. The
+// caller already holds the scope's account lock: nothing here takes it, and a writer that
+// skipped it would race a suspension.
 const scopeLock = Symbol("cloud.scopeLock");
 type LockedScope = CloudScope & { readonly [scopeLock]: Tx };
 
