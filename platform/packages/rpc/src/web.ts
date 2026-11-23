@@ -12,13 +12,16 @@ import { guidesContract } from "./web/guides.ts";
 import { healthContract } from "./web/health.ts";
 import { inboxContract } from "./web/inbox.ts";
 import { moderationContract } from "./web/moderation.ts";
+import { overridesContract } from "./web/overrides.ts";
 import { preferencesContract } from "./web/preferences.ts";
 import { privacyContract } from "./web/privacy.ts";
 import { productsContract } from "./web/products.ts";
 import { profileContract } from "./web/profile.ts";
 import { releasesContract } from "./web/releases.ts";
+import { reviewContract } from "./web/review.ts";
 import { searchContract } from "./web/search.ts";
 import { shoutsContract } from "./web/shouts.ts";
+import { updatesContract } from "./web/updates.ts";
 
 export const AccountStatus = Status;
 export type AccountStatus = Status;
@@ -55,6 +58,9 @@ function composeWebContract() {
         ...commentsContract,
         ...shoutsContract,
         ...searchContract,
+        ...overridesContract,
+        ...reviewContract,
+        ...updatesContract,
     });
 }
 
