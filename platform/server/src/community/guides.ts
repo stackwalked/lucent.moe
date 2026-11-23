@@ -4,6 +4,7 @@ import { type BearerToken, EpochMs, ProductId } from "@lucent/core/scalars";
 import { z } from "zod";
 import { type Db, execute, queryAll, queryOne, sql } from "../db/pool.ts";
 import { withMember } from "../notify/account.ts";
+import { notBlockedWith } from "./blocks.ts";
 import { withMemberAt } from "./member.ts";
 import { type NotFound, PAGE_SIZE, pageOf, requireListed } from "./page.ts";
 import { mayPostHere } from "./standing.ts";
@@ -42,7 +43,8 @@ export function listGuides(
             Summary,
             sql`select g.id, g.title, a.username, g.created_at as "createdAt", g.updated_at as "updatedAt"
                 from guide g join account a on a.id = g.author_id
-                where g.product_id = ${params.productId} and g.removed_at is null ${after}
+                where g.product_id = ${params.productId} and g.removed_at is null
+                  and ${notBlockedWith(accountId, sql`g.author_id`)} ${after}
                 order by g.created_at desc, g.id desc limit ${PAGE_SIZE + 1}`,
         );
         if (!rows.ok) return rows;
@@ -69,7 +71,8 @@ export function readGuide(
             sql`select g.id, g.title, g.body, g.product_id as "productId", g.author_id as "authorId", a.username,
                        g.created_at as "createdAt", g.updated_at as "updatedAt"
                 from guide g join account a on a.id = g.author_id
-                where g.id = ${params.id}::uuid and g.removed_at is null`,
+                where g.id = ${params.id}::uuid and g.removed_at is null
+                  and ${notBlockedWith(accountId, sql`g.author_id`)}`,
         );
         if (!row.ok) return row;
         if (row.value === null) return err<NotFound>({ code: "NOT_FOUND" });

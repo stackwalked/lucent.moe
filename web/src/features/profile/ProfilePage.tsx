@@ -10,6 +10,7 @@ import { Time } from "../../ui/Time/Time.tsx";
 import { RefusalNote } from "../auth/RefusalNote.tsx";
 import { postingNote } from "../comments/posting.ts";
 import { TextArea } from "../comments/TextArea.tsx";
+import { blockAccount } from "../privacy/server.ts";
 import { PROFILE_COPY } from "./copy.ts";
 import { saveBio } from "./server.ts";
 import { PROFILE_TITLE } from "./title.ts";
@@ -46,6 +47,22 @@ export function ProfilePage() {
                     ]}
                 />
                 <p>{profile.bio === "" ? PROFILE_COPY.noBio : profile.bio}</p>
+                {profile.isSelf ? null : (
+                    <div>
+                        <Button
+                            tone="danger"
+                            onClick={async () => {
+                                const reply = await blockAccount({
+                                    data: { username: profile.username, blocked: true },
+                                });
+                                if (!reply.ok) return setRefused(reply.refused);
+                                await router.navigate({ to: "/account/privacy" });
+                            }}
+                        >
+                            {PROFILE_COPY.block}
+                        </Button>
+                    </div>
+                )}
                 {profile.isSelf ? (
                     <Section caption={PROFILE_COPY.edit}>
                         <form action={save} key={profile.bio}>

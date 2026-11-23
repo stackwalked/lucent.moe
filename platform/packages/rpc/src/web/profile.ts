@@ -2,6 +2,7 @@ import { EpochMs } from "@lucent/core/scalars";
 import { z } from "zod";
 import { defineContract } from "../contract.ts";
 import { PostRefusal, ViewRefusal } from "./community.ts";
+import { ProfileVisibility } from "./privacy.ts";
 import { Done } from "./shared.ts";
 
 export const Bio = z.string().max(500);
@@ -14,6 +15,7 @@ export const profileContract = defineContract({
         output: z.object({
             username: z.string(),
             bio: Bio,
+            visibility: ProfileVisibility,
             joinedAt: EpochMs,
             isSelf: z.boolean(),
         }),

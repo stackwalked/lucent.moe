@@ -1,6 +1,17 @@
+import { EpochMs, ProductId } from "@lucent/core/scalars";
 import { z } from "zod";
-import { PostingRestricted } from "./privacy.ts";
 import { refusal, Unavailable } from "./shared.ts";
+
+export const RestrictionKind = z.enum(["muted", "barred"]);
+
+// Refused when the account's community standing closes the place it tried to write. The reason
+// staff gave is not part of it.
+export const PostingRestricted = z.object({
+    code: z.literal("POSTING_RESTRICTED"),
+    kind: RestrictionKind,
+    productId: ProductId.nullable(),
+    endsAt: EpochMs.nullable(),
+});
 
 // What a member reading community content can be refused with: gone (or not theirs to see) is
 // one answer, so a hidden thing and a missing one look the same.

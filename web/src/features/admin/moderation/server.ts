@@ -1,5 +1,5 @@
 import { EpochMs, ProductId } from "@lucent/core/scalars";
-import { RestrictionKind } from "@lucent/rpc/web/privacy";
+import { RestrictionKind } from "@lucent/rpc/web/community";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { done, refuse } from "../../../server/outcome.ts";

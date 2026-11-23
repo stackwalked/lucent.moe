@@ -4,6 +4,7 @@ import { type BearerToken, EpochMs, ProductId } from "@lucent/core/scalars";
 import { z } from "zod";
 import { type Db, queryAll, queryOne, sql, type Tx } from "../db/pool.ts";
 import { withMember } from "../notify/account.ts";
+import { notBlockedWith } from "./blocks.ts";
 import { withMemberAt } from "./member.ts";
 import { type NotFound, PAGE_SIZE, pageOf, requireListed } from "./page.ts";
 import { mayPostHere } from "./standing.ts";
@@ -22,7 +23,8 @@ async function guideProduct(
         tx,
         z.object({ productId: ProductId }),
         sql`select product_id as "productId" from guide
-            where id = ${params.guideId}::uuid and removed_at is null`,
+            where id = ${params.guideId}::uuid and removed_at is null
+              and ${notBlockedWith(params.accountId, sql`author_id`)}`,
     );
     if (!guide.ok) return guide;
     if (guide.value === null) return err<NotFound>({ code: "NOT_FOUND" });
@@ -64,7 +66,8 @@ export function listComments(
             Row,
             sql`select c.id, a.username, c.author_id as "authorId", c.body, c.created_at as "createdAt"
                 from comment c join account a on a.id = c.author_id
-                where c.guide_id = ${params.guideId}::uuid and c.removed_at is null ${after}
+                where c.guide_id = ${params.guideId}::uuid and c.removed_at is null
+                  and ${notBlockedWith(accountId, sql`c.author_id`)} ${after}
                 order by c.created_at, c.id limit ${PAGE_SIZE + 1}`,
         );
         if (!rows.ok) return rows;

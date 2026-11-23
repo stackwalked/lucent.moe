@@ -1,8 +1,7 @@
 import { AccountId, EpochMs, ProductId } from "@lucent/core/scalars";
 import { z } from "zod";
 import { defineContract } from "../contract.ts";
-import { ViewRefusal } from "./community.ts";
-import { RestrictionKind } from "./privacy.ts";
+import { RestrictionKind, ViewRefusal } from "./community.ts";
 import { Done, refusal, StaffRefusals } from "./shared.ts";
 
 export const QueueId = z.uuid();

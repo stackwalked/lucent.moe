@@ -5,6 +5,7 @@ import { z } from "zod";
 import { type Db, queryAll, queryOne, sql, type Tx } from "../db/pool.ts";
 import { withMember } from "../notify/account.ts";
 import { filterListedProducts, type MemberCatalog } from "../products/visibility.ts";
+import { notBlockedWith } from "./blocks.ts";
 import { withMemberAt } from "./member.ts";
 import { type NotFound, PAGE_SIZE, pageOf, requireListed } from "./page.ts";
 import { mayPostHere } from "./standing.ts";
@@ -63,7 +64,8 @@ export function listShouts(
             sql`select s.id, a.username, s.author_id as "authorId", s.product_id as "productId", s.body,
                        s.created_at as "createdAt"
                 from shout s join account a on a.id = s.author_id
-                where s.removed_at is null and ${scope.value} ${after}
+                where s.removed_at is null and ${notBlockedWith(accountId, sql`s.author_id`)}
+                  and ${scope.value} ${after}
                 order by s.created_at desc, s.id desc limit ${PAGE_SIZE + 1}`,
         );
         if (!rows.ok) return rows;

@@ -5,6 +5,7 @@ import { authorize, type Caller } from "@lucent/policy/policy";
 import type { ReportKind, ReportReason } from "@lucent/rpc/web/moderation";
 import { z } from "zod";
 import { lockCallerWith } from "../authority/standing.ts";
+import { notBlockedWith } from "../community/blocks.ts";
 import { type NotFound, requireListed } from "../community/page.ts";
 import { appendAudit } from "../db/audit.ts";
 import { type Db, execute, queryAll, queryOne, sql, type Tx } from "../db/pool.ts";
@@ -66,6 +67,14 @@ export function createReport(
         const target = await findTarget(tx, params.kind, params.targetId);
         if (!target.ok) return target;
         if (target.value === null) return err<NotFound>({ code: "NOT_FOUND" });
+        // What a block hides from the reporter is not theirs to flag either.
+        const visible = await queryOne(
+            tx,
+            z.object({ visible: z.boolean() }),
+            sql`select ${notBlockedWith(accountId, sql`${target.value.authorId}::text`)} as visible`,
+        );
+        if (!visible.ok) return visible;
+        if (visible.value?.visible !== true) return err<NotFound>({ code: "NOT_FOUND" });
         if (target.value.productId !== null) {
             const listed = await requireListed(tx, {
                 accountId,
