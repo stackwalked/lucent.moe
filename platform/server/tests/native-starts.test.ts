@@ -5,6 +5,7 @@ import { newOperationId, newSessionId } from "@lucent/core/scalars";
 import { CONTAINER_CHUNK_SIZE } from "@lucent/wire/container-stream";
 import { parseStartReply } from "@lucent/wire/start";
 import { execute, sql } from "../src/db/pool.ts";
+import { catalog, product } from "./authority-fixtures.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 import {
     createNativeHarness,
@@ -118,6 +119,51 @@ test("each start check refuses with its own reason", async () => {
             sql`update account set status = 'suspended' where id = ${accountId}`,
         );
         expect(await start({ loaderRelease: releases.loader.id })).toBe("ACCOUNT_SUSPENDED");
+    });
+});
+
+test("a lifecycle change refuses fresh and replayed starts without a new wire code", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ nativeDb }) => {
+        const rng = createSeededRng(9303);
+        const products = new Map(catalog());
+        const harness = await createNativeHarness(nativeDb, rng, { catalog: products });
+        const releases = await publishBoth(nativeDb, rng);
+        const { loader } = await enrolledLoader(harness, {
+            email: "state@lucent.test",
+            channels: ["alpha"],
+        });
+        const cs2 = product("cs2");
+        const body = startBody({ loaderRelease: releases.loader.id });
+        const operationId = newOperationId(rng);
+        const replay = () => loader.send({ method: "POST", path: "/v1/starts", body, operationId });
+        expect(parseStartReply((await replay()).bytes).ok).toBe(true);
+        const started = await startOk(loader, releases);
+        for (const [state, code] of [
+            ["announced", "NOT_FOUND"],
+            ["retired", "RELEASE_UNAVAILABLE"],
+        ] as const) {
+            products.set(cs2.id, { ...cs2, state });
+            expect(refusalCodeOf(await replay())).toBe(code);
+            expect(
+                refusalCodeOf(
+                    await loader.send({ method: "GET", path: `${started.path}/container` }),
+                ),
+            ).toBe("START_EXPIRED");
+            expect(
+                refusalCodeOf(await loader.send({ method: "POST", path: "/v1/starts", body })),
+            ).toBe(code);
+        }
+        const module = createTestModule(rng, harness.signer.publicKey);
+        expect(
+            refusalCodeOf(
+                await loader.send({
+                    method: "POST",
+                    path: `${started.path}/session`,
+                    body: await module.hello(releases.module.id),
+                }),
+            ),
+        ).toBe("START_EXPIRED");
     });
 });
 

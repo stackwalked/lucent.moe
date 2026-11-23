@@ -1,6 +1,9 @@
 import { ChannelId, ProductId } from "@lucent/core/scalars";
 import { z } from "zod";
 
+export const ProductState = z.enum(["announced", "seed", "live", "retired"]);
+export type ProductState = z.output<typeof ProductState>;
+
 // A product as the rest of lucent sees it. Apart from catalog.ts, which reads products/*.toml
 // from disk, so the web contract can carry the shape without filesystem code.
 export const ProductDefinition = z
@@ -8,6 +11,7 @@ export const ProductDefinition = z
         id: ProductId,
         name: z.string().min(1).max(64),
         kind: z.enum(["module", "standalone"]),
+        state: ProductState,
         channels: z.array(ChannelId).min(1).max(16).readonly(),
         concurrentSlots: z.number().int().min(1).max(16),
     })

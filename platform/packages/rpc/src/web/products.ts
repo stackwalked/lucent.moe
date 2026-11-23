@@ -1,10 +1,11 @@
+import { ProductState } from "@lucent/catalog/product";
 import { ChannelId, EpochMs, ProductId } from "@lucent/core/scalars";
 import { z } from "zod";
 import { defineContract } from "../contract.ts";
 import { Features, SessionRefusal } from "./shared.ts";
 
 export const productsContract = defineContract({
-    // The products the member is entitled to now, in catalog order, with the channels they may run
+    // The products visible to the member, in catalog order, with the channels they may run
     // and each channel's current release (null: none promoted there yet). supported: the release's
     // current fact sets cover the game's latest reported builds, by the start's own rule.
     "products.list": {
@@ -18,6 +19,7 @@ export const productsContract = defineContract({
                         productId: ProductId,
                         name: z.string(),
                         kind: z.string(),
+                        state: ProductState,
                         features: Features,
                         channels: z
                             .array(

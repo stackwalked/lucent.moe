@@ -22,6 +22,7 @@ import { type Db, type DbFailure, execute, queryOne, sql, toTimestamptz } from "
 import { type ReceiptRefusal, readReplay, recordReceipt, toOperationKey } from "../db/receipt.ts";
 import { withTx } from "../db/tx.ts";
 import type { FeatureSelection } from "./entitlements.ts";
+import { decideIssueEntitlement, type IssueRefusal } from "./issue.rules.ts";
 import {
     type ChannelGrant,
     lockCallerWith,
@@ -41,14 +42,7 @@ export type WriterFailure =
     | { readonly code: "EMAIL_TAKEN" }
     | { readonly code: "USERNAME_TAKEN" }
     | { readonly code: "INVALID_RANK" }
-    | { readonly code: "UNKNOWN_PRODUCT"; readonly productId: ProductId }
-    | {
-          readonly code: "UNKNOWN_CHANNEL";
-          readonly productId: ProductId;
-          readonly channel: ChannelId;
-      }
-    | { readonly code: "NO_PRODUCTS" }
-    | { readonly code: "INVALID_WINDOW" }
+    | IssueRefusal
     | { readonly code: "ROLE_NAME_TAKEN" };
 
 // What a staff-facing writer can refuse with, besides its own codes: every one locks the caller
@@ -579,17 +573,8 @@ export async function issueEntitlement(params: {
 }): Promise<
     Result<{ readonly entitlementId: EntitlementId; readonly replayed: boolean }, WriterFailure>
 > {
-    if (params.products.length === 0) {
-        return err({ code: "NO_PRODUCTS" });
-    }
-    if (params.validUntil !== null && params.validUntil <= params.validFrom) {
-        return err({ code: "INVALID_WINDOW" });
-    }
-
     const products: EntitlementProductInput[] = [];
     for (const item of params.products) {
-        const checked = checkChannels(params.catalog, item.productId, item.channels);
-        if (!checked.ok) return checked;
         products.push({
             productId: item.productId,
             features: item.features === "*" ? "*" : sortedUnique(item.features),
@@ -635,6 +620,8 @@ export async function issueEntitlement(params: {
         if (replay.value.replayed) {
             return ok({ entitlementId: replay.value.result.entitlementId, replayed: true });
         }
+        const eligible = decideIssueEntitlement(params);
+        if (!eligible.ok) return eligible;
 
         const untilIso = params.validUntil === null ? null : toTimestamptz(params.validUntil);
         const insEnt = await execute(

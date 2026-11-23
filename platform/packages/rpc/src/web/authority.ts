@@ -192,6 +192,7 @@ export const authorityContract = defineContract({
             Reused,
             refusal("NOT_FOUND"),
             refusal("UNKNOWN_PRODUCT"),
+            refusal("PRODUCT_NOT_ISSUABLE"),
             refusal("UNKNOWN_CHANNEL"),
             refusal("INVALID_WINDOW"),
         ]),

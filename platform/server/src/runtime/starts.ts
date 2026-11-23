@@ -125,6 +125,13 @@ export async function createStart(
 
         const replay = await readReplay(tx, op, StartReceipt);
         if (!replay.ok) return replay;
+        const selected = decideStartProduct(params.catalog, request.product);
+        if (!selected.ok) return selected;
+        const product = selected.value;
+        const access = await readEffectiveProductAccess(tx, { accountId, product, at: txNow });
+        if (!access.ok) return access;
+        const allowed = decideStartAccess(access.value, request.channel);
+        if (!allowed.ok) return allowed;
         if (replay.value.replayed) {
             const id = Uint8Array.fromHex(replay.value.result.start);
             const row = await queryOne(
@@ -141,13 +148,6 @@ export async function createStart(
             return decideStartReplay(id, row.value, txNow);
         }
 
-        const selected = decideStartProduct(params.catalog, request.product);
-        if (!selected.ok) return selected;
-        const product = selected.value;
-        const access = await readEffectiveProductAccess(tx, { accountId, product, at: txNow });
-        if (!access.ok) return access;
-        const allowed = decideStartAccess(access.value, request.channel);
-        if (!allowed.ok) return allowed;
         const channel = allowed.value;
 
         const loader = await findCurrentRelease(tx, {
@@ -250,6 +250,7 @@ export async function readStartContainer(
         readonly holder: TokenHolder;
         readonly proof: DpopProof;
         readonly startId: Uint8Array;
+        readonly catalog: ProductCatalog;
     },
 ): Promise<
     Result<
@@ -262,6 +263,7 @@ export async function readStartContainer(
             tx,
             z.object({
                 account_active: z.boolean(),
+                product_id: z.string(),
                 device_revoked: z.boolean(),
                 container_key: z.instanceof(Uint8Array).nullable(),
                 expires_at: EpochMs,
@@ -270,7 +272,7 @@ export async function readStartContainer(
             }),
             sql`select a.status = 'active' and not a.is_locked as account_active,
                        d.revoked_at is not null as device_revoked,
-                       s.container_key, s.expires_at, s.consumed_at, r.container
+                       s.product_id, s.container_key, s.expires_at, s.consumed_at, r.container
                 from session_start s
                 join account a on a.id = s.account_id
                 join device d on d.id = s.device_id
@@ -283,6 +285,8 @@ export async function readStartContainer(
         const start = row.value;
         if (!start.account_active) return err({ code: "ACCOUNT_SUSPENDED" });
         if (start.device_revoked) return err({ code: "DEVICE_REVOKED" });
+        if (!decideStartProduct(params.catalog, start.product_id).ok)
+            return err({ code: "START_EXPIRED" });
         if (
             start.consumed_at !== null ||
             start.expires_at <= txNow ||

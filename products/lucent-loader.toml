@@ -1,6 +1,7 @@
 id = "lucent-loader"
 name = "Lucent Loader"
 kind = "standalone"
+state = "live"
 channels = ["stable"]
 
 [defaults]

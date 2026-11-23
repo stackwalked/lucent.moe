@@ -22,7 +22,7 @@ function catalogDirWith(file: string, toml: string): string {
 test("a product file named differently from its id is refused", () => {
     const dir = catalogDirWith(
         "wrong.toml",
-        'id = "cs2"\nname = "CS2"\nkind = "module"\nchannels = ["stable"]\n[defaults]\nconcurrent_slots = 1\n',
+        'id = "cs2"\nname = "CS2"\nkind = "module"\nstate = "live"\nchannels = ["stable"]\n[defaults]\nconcurrent_slots = 1\n',
     );
     expect(loadProductCatalog(dir)).toMatchObject({
         ok: false,
@@ -33,7 +33,18 @@ test("a product file named differently from its id is refused", () => {
 test("a product listing a channel twice is refused", () => {
     const dir = catalogDirWith(
         "cs2.toml",
-        'id = "cs2"\nname = "CS2"\nkind = "module"\nchannels = ["stable", "stable"]\n[defaults]\nconcurrent_slots = 1\n',
+        'id = "cs2"\nname = "CS2"\nkind = "module"\nstate = "seed"\nchannels = ["stable", "stable"]\n[defaults]\nconcurrent_slots = 1\n',
+    );
+    expect(loadProductCatalog(dir)).toMatchObject({
+        ok: false,
+        error: { code: "CATALOG_INVALID", file: "cs2.toml" },
+    });
+});
+
+test("a product without a lifecycle state is refused by filename", () => {
+    const dir = catalogDirWith(
+        "cs2.toml",
+        'id = "cs2"\nname = "CS2"\nkind = "module"\nchannels = ["stable"]\n[defaults]\nconcurrent_slots = 1\n',
     );
     expect(loadProductCatalog(dir)).toMatchObject({
         ok: false,

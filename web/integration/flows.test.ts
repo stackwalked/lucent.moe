@@ -121,6 +121,23 @@ afterAll(async () => {
 });
 
 describe("web against a real platform", () => {
+    test("the signed-out home lists the live loader and not the seed game", async () => {
+        const home = await browser().get("/");
+        expect(home.status).toBe(200);
+        const cells: string[] = [];
+        await new HTMLRewriter()
+            .on("main tbody td", {
+                text: (chunk) => {
+                    cells.push(chunk.text);
+                },
+            })
+            .transform(home)
+            .text();
+        const text = cells.join("").toLowerCase();
+        expect(text).toContain("lucent loader");
+        expect(text).not.toContain("counter-strike 2");
+    });
+
     test("a setup link is stored and redirected, redeemed once, and ends with every credential", async () => {
         const page = browser();
         const link = await page.get(platform.rootSetupPath);
@@ -336,7 +353,7 @@ describe("web against a real platform", () => {
         expect(after.replaceableFrom).not.toBeNull();
     });
 
-    test("staff issue an entitlement and see it on the account; the member's own products are only theirs", async () => {
+    test("issuing a seed product to another account does not reveal it on your own products page", async () => {
         const page = member;
         const listed = accepted(
             z.object({ items: z.array(z.object({ accountId: z.string() })) }),
@@ -378,8 +395,13 @@ describe("web against a real platform", () => {
             { status: "active", products: [{ productId: "cs2", channels: ["alpha"] }] },
         ]);
         // Root holds no entitlement of its own.
-        expect(accepted(z.array(z.unknown()), await page.read(fn.fetchProducts))).toEqual([]);
+        const visible = accepted(
+            z.array(z.object({ productId: z.string(), state: z.string() })),
+            await page.read(fn.fetchProducts),
+        );
+        expect(visible).toEqual([{ productId: "lucent-loader", state: "live" }]);
         expect((await page.get("/products")).status).toBe(200);
+        expect((await page.get("/products/lucent-loader")).status).toBe(200);
         expect((await page.get("/download")).status).toBe(200);
         expect((await page.get("/products/cs2")).status).toBe(404);
     });

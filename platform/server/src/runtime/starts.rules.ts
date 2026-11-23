@@ -1,6 +1,7 @@
 import type { ModuleKey } from "@lucent/bundle/fact-set";
 import type { ReleaseManifestV3 } from "@lucent/bundle/release-manifest";
 import type { ProductCatalog } from "@lucent/catalog/catalog";
+import { decideProductLifecycle } from "@lucent/catalog/lifecycle.rules";
 import type { ProductDefinition } from "@lucent/catalog/product";
 import { invariant } from "@lucent/core/contain";
 import { err, ok, type Result } from "@lucent/core/result";
@@ -44,12 +45,12 @@ export function decideStartReplay(
 export function decideStartProduct(
     catalog: ProductCatalog,
     requested: string,
-): Result<ProductDefinition, Code<"NOT_FOUND">> {
+): Result<ProductDefinition, Code<"NOT_FOUND" | "RELEASE_UNAVAILABLE">> {
     const id = ProductId.safeParse(requested);
     const product = id.success ? catalog.get(id.data) : undefined;
-    return product === undefined || product.kind !== "module"
-        ? err({ code: "NOT_FOUND" })
-        : ok(product);
+    if (product === undefined || product.kind !== "module") return err({ code: "NOT_FOUND" });
+    const { startRefusal } = decideProductLifecycle(product.state).value;
+    return startRefusal === null ? ok(product) : err({ code: startRefusal });
 }
 
 export function decideStartAccess(

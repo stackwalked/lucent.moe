@@ -122,7 +122,7 @@ test("a PC is renamed only by its own account", async () => {
     });
 });
 
-test("a member's products are the ones entitled now, each channel with its promoted release or none", async () => {
+test("a seed holder sees their channels and a live product without any grant", async () => {
     const cluster = await sharedTestCluster();
     await cluster.withTestDb(async ({ nativeDb }) => {
         const rng = createSeededRng(9_304);
@@ -145,6 +145,7 @@ test("a member's products are the ones entitled now, each channel with its promo
                 productId: "cs2",
                 name: "Counter-Strike 2",
                 kind: "module",
+                state: "seed",
                 features: "*",
                 channels: [
                     { channel: "stable", release: null },
@@ -153,6 +154,14 @@ test("a member's products are the ones entitled now, each channel with its promo
                         release: { promotedAt: expect.any(Number), supported: true },
                     },
                 ],
+            },
+            {
+                productId: "lucent-loader",
+                name: "Lucent Loader",
+                kind: "standalone",
+                state: "live",
+                features: [],
+                channels: [],
             },
         ]);
     });

@@ -7,7 +7,8 @@ import {
     ProductId,
     RoleId,
 } from "@lucent/core/scalars";
-import { AccountStatus, type WebContract } from "@lucent/rpc/web";
+import type { WebContract } from "@lucent/rpc/web";
+import { AccountStatus } from "@lucent/rpc/web/authority";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { done, type Outcome, refuse } from "../../../server/outcome.ts";
@@ -140,10 +141,8 @@ export const takeRole = createServerFn({ method: "POST" })
         return reply.ok ? done(null) : refuse(reply.error);
     });
 
-// The products an entitlement can name, for the form that issues one. Public: the catalog is
-// no secret.
 export const fetchCatalog = createServerFn({ method: "GET" }).handler(async () => {
-    const reply = await callPlatform("catalog.list", {});
+    const reply = await callPlatform("admin.entitlements.listProducts", {});
     return reply.ok ? done([...reply.value]) : refuse(reply.error);
 });
 

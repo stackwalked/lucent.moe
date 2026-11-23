@@ -2,11 +2,10 @@ import { getRouteApi, Link } from "@tanstack/react-router";
 import { Empty } from "../../ui/Empty/Empty.tsx";
 import { Page } from "../../ui/Page/Page.tsx";
 import { Section } from "../../ui/Section/Section.tsx";
-import { Status } from "../../ui/Status/Status.tsx";
 import { Table } from "../../ui/Table/Table.tsx";
 import { RefusalNote } from "../auth/RefusalNote.tsx";
 import { PRODUCTS_COPY } from "./copy.ts";
-import { isGameProduct, productName } from "./view.ts";
+import { productName } from "./view.ts";
 
 const route = getRouteApi("/_member/products/");
 
@@ -21,7 +20,7 @@ export function ProductsPage() {
             </Page>
         );
     }
-    const products = loaded.value.filter(isGameProduct);
+    const products = loaded.value;
     return (
         <Page title={PRODUCTS_COPY.title}>
             <Section caption={PRODUCTS_COPY.title}>
@@ -45,12 +44,7 @@ export function ProductsPage() {
                                 key: "state",
                                 header: PRODUCTS_COPY.state,
                                 align: "end",
-                                cell: (p) =>
-                                    p.channels.some((c) => c.release?.supported === true) ? (
-                                        <Status icon="check">{PRODUCTS_COPY.ready}</Status>
-                                    ) : (
-                                        <Status tone="shu">{PRODUCTS_COPY.notYetSupported}</Status>
-                                    ),
+                                cell: (p) => PRODUCTS_COPY.lifecycle[p.state],
                             },
                         ]}
                         rows={products}

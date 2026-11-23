@@ -1,6 +1,5 @@
 import { systemClock } from "@lucent/core/clock";
 import { invariant } from "@lucent/core/contain";
-import { EpochMs } from "@lucent/core/scalars";
 import { useState } from "react";
 import { Check } from "../../../ui/Check/Check.tsx";
 import { Empty } from "../../../ui/Empty/Empty.tsx";
@@ -16,7 +15,7 @@ import { productName } from "../../products/view.ts";
 import { AccountAction } from "./AccountAction.tsx";
 import styles from "./AccountPage.module.css";
 import { ACCOUNTS_COPY, ENTITLEMENT_STATE_COPY } from "./copy.ts";
-import { entitlementState, type GrantForm, type GrantProblem, parseGrant } from "./grant.ts";
+import { entitlementState, type GrantForm, parseGrant } from "./grant.ts";
 import type { fetchAccount, fetchCatalog } from "./server.ts";
 import { issueEntitlement } from "./server.ts";
 
@@ -25,13 +24,6 @@ type Entitlement = Account["entitlements"][number];
 type Catalog = Awaited<ReturnType<typeof fetchCatalog>>;
 type Product = Extract<Catalog, { ok: true }>["value"][number];
 
-const PROBLEMS: Readonly<Record<GrantProblem, string>> = {
-    unknownProduct: ACCOUNTS_COPY.unknownProduct,
-    noChannel: ACCOUNTS_COPY.noChannel,
-    badFeature: ACCOUNTS_COPY.badFeature,
-    untilPast: ACCOUNTS_COPY.untilPast,
-};
-
 function readForm(form: FormData): GrantForm {
     return {
         productId: String(form.get("productId") ?? ""),
@@ -39,10 +31,6 @@ function readForm(form: FormData): GrantForm {
         features: String(form.get("features") ?? ""),
         until: String(form.get("until") ?? ""),
     };
-}
-
-function now(): EpochMs {
-    return EpochMs.parse(systemClock.now());
 }
 
 // The product's channels follow the product picked; every one is ticked to start with.
@@ -110,17 +98,17 @@ function Issue({
             icon="plus"
             fields={<GrantFields products={products} />}
             validate={(form) => {
-                const grant = parseGrant(readForm(form), products, now());
-                return grant.ok ? undefined : PROBLEMS[grant.error];
+                const grant = parseGrant(readForm(form), products, systemClock.now());
+                return grant.ok ? undefined : ACCOUNTS_COPY[grant.error];
             }}
             run={(form, operationId) => {
-                const grant = parseGrant(readForm(form), products, now());
+                const grant = parseGrant(readForm(form), products, systemClock.now());
                 invariant(grant.ok, "validate let only a readable form through");
                 return issueEntitlement({
                     data: {
                         operationId,
                         accountId: account.accountId,
-                        validFrom: now(),
+                        validFrom: systemClock.now(),
                         validUntil: grant.value.validUntil,
                         productId: grant.value.productId,
                         features: grant.value.features === "*" ? "*" : [...grant.value.features],
@@ -133,7 +121,7 @@ function Issue({
 }
 
 function StateBadge({ entitlement }: { readonly entitlement: Entitlement }) {
-    const state = entitlementState(entitlement, now());
+    const state = entitlementState(entitlement, systemClock.now());
     const tone = state === "active" ? "pink" : state === "upcoming" ? "neutral" : "shu";
     return <Status tone={tone}>{ENTITLEMENT_STATE_COPY[state]}</Status>;
 }
@@ -149,14 +137,11 @@ export function Entitlements({
     readonly catalog: Catalog;
     readonly canIssue: boolean;
 }) {
-    const names = new Map(
-        catalog.ok ? catalog.value.map((p) => [p.id, productName(p.name)] as const) : [],
-    );
     return (
         <Section
             caption={ACCOUNTS_COPY.entitlements}
             actions={
-                canIssue && catalog.ok ? (
+                canIssue && catalog.ok && catalog.value.length > 0 ? (
                     <Issue account={account} products={catalog.value} />
                 ) : undefined
             }
@@ -173,10 +158,7 @@ export function Entitlements({
                             header: ACCOUNTS_COPY.product,
                             cell: (e: Entitlement) =>
                                 e.products
-                                    .map(
-                                        (p) =>
-                                            `${names.get(p.productId) ?? p.productId} (${p.channels.join(", ")})`,
-                                    )
+                                    .map((p) => `${p.productId} (${p.channels.join(", ")})`)
                                     .join("; "),
                         },
                         {

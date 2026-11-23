@@ -1,12 +1,23 @@
 import type { ModuleKey } from "@lucent/bundle/fact-set";
 import type { ProductCatalog } from "@lucent/catalog/catalog";
+import { decideProductLifecycle } from "@lucent/catalog/lifecycle.rules";
 import type { ProductDefinition } from "@lucent/catalog/product";
 import { ok, type Result } from "@lucent/core/result";
 import { type BearerToken, ChannelId, EpochMs, ProductId } from "@lucent/core/scalars";
+import type { Caller } from "@lucent/policy/policy";
 import { z } from "zod";
 import { readSession, type SessionInvalid } from "../auth/sessions.ts";
 import { type FeatureSelection, readEffectiveProductAccess } from "../authority/entitlements.ts";
-import { type Db, type DbFailure, type Queryable, queryAll, queryOne, sql } from "../db/pool.ts";
+import { readAsStaff } from "../authority/staff.ts";
+import {
+    type Db,
+    type DbFailure,
+    type Queryable,
+    queryAll,
+    queryOne,
+    sql,
+    toTimestamptz,
+} from "../db/pool.ts";
 import { withTx } from "../db/tx.ts";
 import { coversCoreFacts, StartModules } from "../runtime/starts.ts";
 
@@ -14,6 +25,7 @@ export type MemberProduct = {
     readonly productId: ProductId;
     readonly name: string;
     readonly kind: ProductDefinition["kind"];
+    readonly state: ProductDefinition["state"];
     readonly features: FeatureSelection;
     readonly channels: readonly {
         readonly channel: ChannelId;
@@ -55,9 +67,29 @@ async function readGameBuilds(
     );
 }
 
-// What the member may run now, for their products page: the same effective access a start is
-// checked against, which of those channels has a release promoted, and whether that release's
-// current fact sets cover the game's builds by the start's own rule (runtime/starts.ts).
+export function listPublicProducts(catalog: ProductCatalog): readonly ProductDefinition[] {
+    return [...catalog.values()].filter((p) => decideProductLifecycle(p.state).value.listed);
+}
+
+export function listIssuableProducts(
+    db: Db,
+    params: { readonly catalog: ProductCatalog; readonly caller: Caller },
+) {
+    return readAsStaff<readonly ProductDefinition[], never>(
+        db,
+        { caller: params.caller, actions: ["entitlements:issue"] },
+        () =>
+            Promise.resolve(
+                ok(
+                    [...params.catalog.values()].filter(
+                        (p) => decideProductLifecycle(p.state).value.issuable,
+                    ),
+                ),
+            ),
+    );
+}
+
+// History can make a product visible, but only current access can supply channels or features.
 export async function listMemberProducts(
     db: Db,
     params: { readonly catalog: ProductCatalog; readonly sessionToken: BearerToken },
@@ -69,6 +101,16 @@ export async function listMemberProducts(
             purposes: ["member"],
         });
         if (!session.ok) return session;
+        const history = await queryAll(
+            tx,
+            z.object({ product_id: ProductId }),
+            sql`select distinct ep.product_id from entitlement_product ep
+                join entitlement e on e.id = ep.entitlement_id
+                where e.account_id = ${session.value.accountId}
+                  and e.valid_from <= ${toTimestamptz(txNow)}::timestamptz`,
+        );
+        if (!history.ok) return history;
+        const held = new Set(history.value.map((row) => row.product_id));
         const promoted = await queryAll(
             tx,
             z.object({
@@ -92,9 +134,15 @@ export async function listMemberProducts(
                 at: txNow,
             });
             if (!access.ok) return access;
-            if (!access.value.isEntitled || access.value.channels.length === 0) continue;
+            const holding = access.value.isEntitled
+                ? "current"
+                : held.has(product.id)
+                  ? "past"
+                  : "none";
+            const lifecycle = decideProductLifecycle(product.state, holding).value;
+            if (!lifecycle.listed) continue;
             const channels: MemberProduct["channels"][number][] = [];
-            for (const channel of access.value.channels) {
+            for (const channel of lifecycle.startRefusal === null ? access.value.channels : []) {
                 const current = promoted.value.find(
                     (row) => row.product_id === product.id && row.channel === channel,
                 );
@@ -119,7 +167,8 @@ export async function listMemberProducts(
                 productId: product.id,
                 name: product.name,
                 kind: product.kind,
-                features: access.value.features,
+                state: product.state,
+                features: lifecycle.startRefusal === null ? access.value.features : [],
                 channels,
             });
         }

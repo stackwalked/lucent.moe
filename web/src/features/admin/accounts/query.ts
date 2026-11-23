@@ -1,5 +1,5 @@
 import { RoleId } from "@lucent/core/scalars";
-import { type AccountStatus, AccountStatus as Status } from "@lucent/rpc/web";
+import { AccountStatus } from "@lucent/rpc/web/authority";
 import { parseQuery } from "../query.ts";
 
 const KEYS = ["status", "role"] as const;
@@ -16,7 +16,7 @@ export function readAccountQuery(q: string | undefined): {
     readonly ignored: readonly string[];
 } {
     const query = parseQuery(q, KEYS);
-    const status = Status.safeParse(query.tokens.status);
+    const status = AccountStatus.safeParse(query.tokens.status);
     const role = RoleId.safeParse(query.tokens.role);
     const unfit = [
         ...(query.tokens.status !== undefined && !status.success

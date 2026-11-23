@@ -89,9 +89,10 @@ export async function createNativeHarness(
         readonly clock?: Clock;
         readonly rateLimits?: Readonly<Record<string, RateRule>>;
         readonly artifactDir?: string;
+        readonly catalog?: ProductCatalog;
     },
 ): Promise<NativeHarness> {
-    const products = catalog();
+    const products = options?.catalog ?? catalog();
     const signer = await createLeaseSigner(LEASE_SEED);
     const app = createNativeApp({
         db,

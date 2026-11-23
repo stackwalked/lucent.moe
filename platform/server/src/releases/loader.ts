@@ -1,6 +1,7 @@
 import type { ProductCatalog } from "@lucent/catalog/catalog";
+import { decideProductLifecycle } from "@lucent/catalog/lifecycle.rules";
 import { err, ok, type Result } from "@lucent/core/result";
-import { type AccountId, type EpochMs, toHex } from "@lucent/core/scalars";
+import { type AccountId, type EpochMs, ProductId, toHex } from "@lucent/core/scalars";
 import { digestOf, parseReleaseSeal } from "@lucent/wire/release-seal";
 import { type AccountInactive, lockActiveAccount } from "../authority/accounts.ts";
 import { readEffectiveProductAccess } from "../authority/entitlements.ts";
@@ -27,8 +28,25 @@ async function isEntitledToAProduct(
         readonly txNow: EpochMs;
     },
 ): Promise<Result<boolean, DbFailure>> {
+    const loader = params.catalog.get(ProductId.parse(LOADER_PRODUCT));
+    if (loader === undefined) return ok(false);
+    const lifecycle = decideProductLifecycle(loader.state).value;
+    if (lifecycle.startRefusal !== null) return ok(false);
+    if (!lifecycle.listed) {
+        const access = await readEffectiveProductAccess(tx, {
+            accountId: params.accountId,
+            product: loader,
+            at: params.txNow,
+        });
+        if (!access.ok) return access;
+        if (!access.value.isEntitled) return ok(false);
+    }
     for (const product of params.catalog.values()) {
-        if (product.id === LOADER_PRODUCT) continue;
+        if (
+            product.id === LOADER_PRODUCT ||
+            decideProductLifecycle(product.state).value.startRefusal !== null
+        )
+            continue;
         const access = await readEffectiveProductAccess(tx, {
             accountId: params.accountId,
             product,

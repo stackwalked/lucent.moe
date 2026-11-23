@@ -59,6 +59,7 @@ export const REFUSALS: Readonly<Record<RefusalCode, string>> = {
     IDEMPOTENCY_CONFLICT: "this form changed since it was sent. reload and try again.",
     DEVICE_CHANGE_TOO_SOON: "you changed a pc in the last 7 days. wait until the window opens.",
     UNKNOWN_PRODUCT: "that product isn't in the catalog anymore. reload and try again.",
+    PRODUCT_NOT_ISSUABLE: "you can't grant access to this product. choose another product.",
     UNKNOWN_CHANNEL: "that channel isn't one this product has. reload and try again.",
     INVALID_WINDOW: "the end has to come after the start.",
     SEAL_BELOW_CURRENT: "a higher seal is current. sign the old release anew to go back.",

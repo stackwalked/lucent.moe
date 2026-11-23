@@ -50,6 +50,7 @@ type IssueRefusal = Extract<
             | "RECEIPT_UNREADABLE"
             | "NOT_FOUND"
             | "UNKNOWN_PRODUCT"
+            | "PRODUCT_NOT_ISSUABLE"
             | "UNKNOWN_CHANNEL"
             | "INVALID_WINDOW"
             | "STATEMENT_TIMEOUT"
@@ -67,6 +68,7 @@ const ISSUE_CODES: ReadonlySet<string> = new Set<IssueRefusal["code"]>([
     "RECEIPT_UNREADABLE",
     "NOT_FOUND",
     "UNKNOWN_PRODUCT",
+    "PRODUCT_NOT_ISSUABLE",
     "UNKNOWN_CHANNEL",
     "INVALID_WINDOW",
     "STATEMENT_TIMEOUT",

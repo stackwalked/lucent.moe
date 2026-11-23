@@ -1,6 +1,7 @@
 id = "cs2"
 name = "Counter-Strike 2"
 kind = "module"
+state = "seed"
 channels = ["stable", "alpha", "debug"]
 
 [defaults]

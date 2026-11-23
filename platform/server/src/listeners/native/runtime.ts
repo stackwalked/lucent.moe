@@ -45,7 +45,11 @@ export function mountRuntime(
         if (!caller.ok) return refusalResponse(caller.error);
         const startId = parseIdSegment(c.req.param("id"));
         if (startId === null) return refusalResponse({ code: "NOT_FOUND" });
-        const found = await readStartContainer(deps.db, { ...caller.value, startId });
+        const found = await readStartContainer(deps.db, {
+            ...caller.value,
+            startId,
+            catalog: deps.catalog,
+        });
         return reply(
             found,
             (start) =>

@@ -1,6 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { Page } from "../../ui/Page/Page.tsx";
+import { PublicProductsPage } from "../../features/products/PublicProductsPage.tsx";
+import { fetchPublicProducts } from "../../features/products/server.ts";
 
 export const Route = createFileRoute("/_public/")({
-    component: () => <Page title="lucent.moe">{null}</Page>,
+    loader: () => fetchPublicProducts(),
+    component: PublicProductsPage,
 });

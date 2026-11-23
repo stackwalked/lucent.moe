@@ -1,6 +1,13 @@
 export const PRODUCTS_COPY = {
+    lifecycle: {
+        announced: "coming soon",
+        seed: "early access",
+        live: "live",
+        retired: "retired",
+    },
     title: "products",
     none: "you have no products yet.",
+    noneListed: "no products are listed.",
     product: "product",
     channels: "channels",
     channel: "channel",
@@ -15,3 +22,8 @@ export const PRODUCTS_COPY = {
     loader: "the loader starts it.",
     download: "download the loader",
 } as const;
+
+export const PRODUCT_DESCRIPTIONS: Readonly<Record<string, string>> = {
+    cs2: "for counter-strike 2.",
+    "lucent-loader": "starts the products you have access to.",
+};

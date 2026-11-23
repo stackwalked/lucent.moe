@@ -4,14 +4,7 @@ import type { ProductCatalog } from "@lucent/catalog/catalog";
 import { invariant } from "@lucent/core/contain";
 import { err, ok, type Result } from "@lucent/core/result";
 import type { CryptoRng } from "@lucent/core/rng";
-import {
-    AccountId,
-    EpochMs,
-    type OperationId,
-    ProductId,
-    toBase64Url,
-    toHex,
-} from "@lucent/core/scalars";
+import { AccountId, EpochMs, type OperationId, toBase64Url, toHex } from "@lucent/core/scalars";
 import { parseDataRequest } from "@lucent/wire/data";
 import { type Frame, openFrame, toFrameBytes } from "@lucent/wire/frame";
 import { parseLeaseRenewal } from "@lucent/wire/lease";
@@ -68,6 +61,7 @@ import {
     decideSessionAccess,
     decideSessionStanding,
 } from "./sessions.rules.ts";
+import { decideStartProduct } from "./starts.rules.ts";
 import { StartModules } from "./starts.ts";
 
 // A module's session: its hello consumes the start and takes the product slot; its renewals keep
@@ -339,8 +333,9 @@ export async function openSession(
         if (!device.ok) return device;
         const allowedDevice = decideOpenDevice(device.value, params.proof.jkt);
         if (!allowedDevice.ok) return allowedDevice;
-        const product = params.catalog.get(ProductId.parse(start.product_id));
-        invariant(product !== undefined, "a start's product is in the catalog");
+        const selected = decideStartProduct(params.catalog, start.product_id);
+        if (!selected.ok) return err({ code: "START_EXPIRED" });
+        const product = selected.value;
         const access = await readEffectiveProductAccess(tx, { accountId, product, at: txNow });
         if (!access.ok) return access;
         const allowedAccess = decideSessionAccess(access.value, start.channel);

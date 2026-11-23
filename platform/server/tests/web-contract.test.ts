@@ -12,12 +12,107 @@ import { hashToken } from "../src/auth/tokens.ts";
 import { execute, sql } from "../src/db/pool.ts";
 import { webProcedures } from "../src/listeners/internal/web-rpc.ts";
 import { memberSession, newSetupLink, seedRootOnce } from "./auth-fixtures.ts";
+import { catalog, product, seedAccount } from "./authority-fixtures.ts";
 import { createTestAuthDeps } from "./harness/auth.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 
 const PEER_KEY = "test-peer-key-0123456789abcdefghijklmnopqrstuvwxyz";
 const SOMEONE = `acc_${"a".repeat(22)}`;
 const OPERATION = "op-0123456789abcdef";
+
+test("catalog RPCs separate public listings, grant options and a member's past holdings", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ nativeDb }) => {
+        const rng = createSeededRng(303);
+        const auth = await createTestAuthDeps(nativeDb, rng);
+        const root = await memberSession(auth, await seedRootOnce(nativeDb, rng));
+        const accountId = await seedAccount(nativeDb, rng, "holder@lucent.test");
+        const member = await memberSession(auth, accountId);
+        const stranger = await memberSession(
+            auth,
+            await seedAccount(nativeDb, rng, "stranger@lucent.test"),
+        );
+        const products = new Map(catalog());
+        const cs2 = product("cs2");
+        const app = mountInternalRpc({
+            path: "/rpc",
+            peerKey: PEER_KEY,
+            procedures: webProcedures,
+            createContext: () => Promise.resolve(ok({ catalog: products, auth })),
+            onUnhandledError: () => {},
+        });
+        const client = createRpcClient(webContract, {
+            endpointUrl: "http://localhost/rpc",
+            peerKey: PEER_KEY,
+            fetcher: async (req) => await app.fetch(req),
+        });
+        const listed = async (session: typeof member) => {
+            const reply = await client.call("products.list", {}, { session });
+            invariant(reply.ok, "member catalog loaded");
+            return reply.value.products.find((p) => p.productId === cs2.id) ?? null;
+        };
+        const grant = (session: typeof member) =>
+            client.call(
+                "admin.entitlements.issue",
+                {
+                    operationId: newOperationId(rng),
+                    accountId,
+                    validFrom: 0,
+                    validUntil: null,
+                    products: [{ productId: cs2.id, channels: ["stable"], features: "*" }],
+                },
+                { session },
+            );
+        const tokenHash = await hashToken(root);
+        await execute(
+            nativeDb,
+            sql`update browser_session set step_up_at = now() where token_hash = ${tokenHash}`,
+        );
+        const publicIds = async (procedure: "catalog.products.list" | "catalog.list") => {
+            const reply = await client.call(procedure, {});
+            invariant(reply.ok, "public catalog loaded");
+            return reply.value.map((p) => String(p.id));
+        };
+        expect(await publicIds("catalog.list")).toEqual(["lucent-loader"]);
+        expect(await publicIds("catalog.products.list")).toEqual(["lucent-loader"]);
+        expect(await listed(member)).toBeNull();
+        expect(
+            await client.call("admin.entitlements.listProducts", {}, { session: member }),
+        ).toEqual(err({ code: "FORBIDDEN" }));
+        const options = await client.call("admin.entitlements.listProducts", {}, { session: root });
+        invariant(options.ok, "staff grant options loaded");
+        expect(options.value.map((p) => String(p.id))).toEqual(["cs2", "lucent-loader"]);
+        expect((await grant(root)).ok).toBe(true);
+        expect(await listed(member)).toMatchObject({ state: "seed", features: "*" });
+        for (const state of ["announced", "retired"] as const) {
+            products.set(cs2.id, { ...cs2, state });
+            expect(await grant(member)).toEqual(err({ code: "FORBIDDEN" }));
+            expect(await grant(root)).toEqual(err({ code: "PRODUCT_NOT_ISSUABLE" }));
+            expect(await publicIds("catalog.products.list")).toEqual(
+                state === "announced" ? ["cs2", "lucent-loader"] : ["lucent-loader"],
+            );
+            expect(await listed(member)).toMatchObject({ state, features: [], channels: [] });
+            expect((await listed(stranger))?.state ?? null).toBe(
+                state === "announced" ? state : null,
+            );
+        }
+        for (const end of [sql`valid_until = now()`, sql`status = 'revoked', valid_until = null`]) {
+            const ended = await execute(
+                nativeDb,
+                sql`update entitlement set ${end} where account_id = ${accountId}`,
+            );
+            expect(ended).toEqual(ok(1));
+            products.set(cs2.id, cs2);
+            expect(await listed(member)).toBeNull();
+            products.set(cs2.id, { ...cs2, state: "retired" });
+            expect(await listed(member)).toMatchObject({
+                state: "retired",
+                features: [],
+                channels: [],
+            });
+        }
+    });
+});
 
 type SinglePurpose = {
     [K in keyof WebContract as WebContract[K]["session"] extends "member" | "setup"
@@ -42,6 +137,7 @@ const inputs: SinglePurpose = {
     "devices.rename": { deviceId: "0".repeat(32), name: "desk" },
     "devices.remove": { operationId: OPERATION, deviceId: "0".repeat(32) },
     "products.list": {},
+    "admin.entitlements.listProducts": {},
     "download.loader": {},
     "admin.accounts.list": {
         filter: { status: null, roleId: null, text: null },

@@ -21,6 +21,7 @@ import { findCurrentRelease } from "../src/releases/reads.ts";
 import { memberSession, seedRootOnce } from "./auth-fixtures.ts";
 import {
     catalog,
+    product,
     scalar,
     seedAccount,
     seedRole,
@@ -401,6 +402,17 @@ test("the loader download serves the current loader's bytes to a member entitled
         ).toEqual({ ok: true, value: { state: "no_product" } });
         expect((await download(null)).status).toBe(400);
         expect((await download(member.browserSession, `${peerKey}x`)).status).toBe(401);
+        for (const id of ["cs2", "lucent-loader"]) {
+            const definitions = new Map(catalog());
+            const original = product(id);
+            definitions.set(original.id, { ...original, state: "retired" });
+            expect(
+                await readLoaderOffer(nativeDb, {
+                    catalog: definitions,
+                    sessionToken: member.browserSession,
+                }),
+            ).toEqual({ ok: true, value: { state: "no_product" } });
+        }
         guard.close();
     });
     await rm(artifactDir, { recursive: true, force: true });
