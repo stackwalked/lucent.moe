@@ -1,0 +1,15 @@
+export const SEARCH_COPY = {
+    title: "search",
+    field: "guides and accounts",
+    hint: "words from a guide, or the start of a username",
+    go: "search",
+    guides: "guides",
+    accounts: "accounts",
+    noGuides: "no guides match.",
+    noAccounts: "no accounts match.",
+    guide: "guide",
+    product: "product",
+    author: "by",
+    table: "guides found",
+    accountsTable: "accounts found",
+} as const;

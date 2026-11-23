@@ -17,6 +17,7 @@ import { privacyContract } from "./web/privacy.ts";
 import { productsContract } from "./web/products.ts";
 import { profileContract } from "./web/profile.ts";
 import { releasesContract } from "./web/releases.ts";
+import { searchContract } from "./web/search.ts";
 import { shoutsContract } from "./web/shouts.ts";
 
 export const AccountStatus = Status;
@@ -48,6 +49,7 @@ function composeWebContract() {
         ...guidesContract,
         ...commentsContract,
         ...shoutsContract,
+        ...searchContract,
     });
 }
 

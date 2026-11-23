@@ -4,6 +4,7 @@ import { Page } from "../../ui/Page/Page.tsx";
 import { Section } from "../../ui/Section/Section.tsx";
 import { Table } from "../../ui/Table/Table.tsx";
 import { RefusalNote } from "../auth/RefusalNote.tsx";
+import { SearchSection } from "../search/SearchSection.tsx";
 import { PRODUCTS_COPY } from "./copy.ts";
 import { productName } from "./view.ts";
 
@@ -60,6 +61,7 @@ export function ProductsPage() {
                     />
                 )}
             </Section>
+            <SearchSection />
         </Page>
     );
 }

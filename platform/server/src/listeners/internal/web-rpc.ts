@@ -21,6 +21,7 @@ import { privacyHandlers } from "./web-privacy.ts";
 import { productsHandlers } from "./web-products.ts";
 import { profileHandlers } from "./web-profile.ts";
 import { releasesHandlers } from "./web-releases.ts";
+import { searchHandlers } from "./web-search.ts";
 import type { WebRpcContext } from "./web-shared.ts";
 import { shoutsHandlers } from "./web-shouts.ts";
 
@@ -45,4 +46,5 @@ export const webProcedures = implement<WebRpcContext, WebContract>(webContract, 
     ...guidesHandlers,
     ...commentsHandlers,
     ...shoutsHandlers,
+    ...searchHandlers,
 });

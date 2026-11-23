@@ -194,6 +194,7 @@ const inputs: SinglePurpose = {
         cursor: null,
     },
     "privacy.restrictions.list": {},
+    "search.results.list": { q: "guide" },
     "privacy.blocks.list": {},
     "privacy.blocks.set": { username: "someone", blocked: true },
     "privacy.visibility.set": { visibility: "private" },
