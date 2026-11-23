@@ -12,6 +12,7 @@ import {
 import { ActionSchema } from "@lucent/policy/actions";
 import { z } from "zod";
 import { defineContract } from "../contract.ts";
+import { ACCOUNT_STATUSES } from "./account-status.ts";
 import {
     AuditEntry,
     Cursor,
@@ -27,9 +28,7 @@ import {
     Username,
 } from "./shared.ts";
 
-// "setup_pending": no way to sign in yet (no passkey, and not both a password and confirmed
-// TOTP), whether new or recovered.
-export const AccountStatus = z.enum(["active", "suspended", "locked", "setup_pending"]);
+export const AccountStatus = z.enum(ACCOUNT_STATUSES);
 
 export type AccountStatus = z.output<typeof AccountStatus>;
 
