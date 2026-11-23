@@ -4,11 +4,8 @@ import { auditHandlers } from "./web-audit.ts";
 import { authHandlers } from "./web-auth.ts";
 import { authorityHandlers } from "./web-authority.ts";
 import { catalogHandlers } from "./web-catalog.ts";
-<<<<<<< HEAD
 import { cloudHandlers } from "./web-cloud.ts";
-=======
 import { commentsHandlers } from "./web-comments.ts";
->>>>>>> 0d15ea4 (server/community: add profiles, comments, shouts and guides)
 import { devicesHandlers } from "./web-devices.ts";
 import { downloadHandlers } from "./web-download.ts";
 import { factsHandlers } from "./web-facts.ts";

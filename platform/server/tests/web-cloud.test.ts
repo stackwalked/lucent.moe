@@ -15,6 +15,7 @@ import { withTx } from "../src/db/tx.ts";
 import { webProcedures } from "../src/listeners/internal/web-rpc.ts";
 import { memberSession } from "./auth-fixtures.ts";
 import { catalog, product, seedAccount } from "./authority-fixtures.ts";
+import { NO_LOG } from "./community-fixtures.ts";
 import { createTestAuthDeps } from "./harness/auth.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 
@@ -42,7 +43,9 @@ test("cloud RPCs derive ownership from the member and import only with current p
             peerKey,
             procedures: webProcedures,
             createContext: () =>
-                Promise.resolve(ok({ auth, catalog: products, cloudLimits: limits })),
+                Promise.resolve(
+                    ok({ auth, catalog: products, cloudLimits: limits, logger: NO_LOG }),
+                ),
             onUnhandledError: () => {},
         });
         const client = createRpcClient(webContract, {
