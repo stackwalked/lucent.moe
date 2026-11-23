@@ -37,9 +37,11 @@ import {
     decideStartAccess,
     decideStartDevice,
     decideStartLoader,
+    decideStartOpen,
     decideStartProduct,
     decideStartRelease,
     decideStartReplay,
+    decideStartStillOpen,
 } from "./starts.rules.ts";
 
 // A start is the server's yes to running a module: every check in one transaction, then the
@@ -75,7 +77,9 @@ const StartRowSchema = z.object({
 });
 
 // The order is the order a member would fix things in: who they are and which PC, what they are
-// entitled to, then whether the loader and the release are current. The slot never refuses (the
+// entitled to, then whether the loader and the release are current. A retired product refuses
+// where a missing release would. A replayed start is answered only while the account could still
+// make it: after the entitlement check, and not for a product retired since. The slot never refuses (the
 // newest session takes it) and is taken by the session, not here. Last comes core coverage: the
 // release's current fact sets for the reported game builds must hold every fact of each core
 // capability whose modules are all reported; anything less optional degrades in the module, never
@@ -134,6 +138,8 @@ export async function createStart(
         const allowed = decideStartAccess(access.value, request.channel);
         if (!allowed.ok) return allowed;
         if (replay.value.replayed) {
+            const stillOpen = decideStartOpen(product);
+            if (!stillOpen.ok) return stillOpen;
             const id = Uint8Array.fromHex(replay.value.result.start);
             const row = await queryOne(
                 tx,
@@ -158,6 +164,8 @@ export async function createStart(
         if (!loader.ok) return loader;
         const current = decideStartLoader(loader.value?.id ?? null, request.loaderRelease);
         if (!current.ok) return current;
+        const open = decideStartOpen(product);
+        if (!open.ok) return open;
         const foundRelease = await findCurrentRelease(tx, { productId: product.id, channel });
         if (!foundRelease.ok) return foundRelease;
         const release = decideStartRelease(foundRelease.value);
@@ -286,7 +294,7 @@ export async function readStartContainer(
         const start = row.value;
         if (!start.account_active) return err({ code: "ACCOUNT_SUSPENDED" });
         if (start.device_revoked) return err({ code: "DEVICE_REVOKED" });
-        if (!decideStartProduct(params.catalog, start.product_id).ok)
+        if (!decideStartStillOpen(params.catalog, start.product_id).ok)
             return err({ code: "START_EXPIRED" });
         if (
             start.consumed_at !== null ||

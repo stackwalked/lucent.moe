@@ -58,10 +58,7 @@ import { z } from "zod";
 import { issueEntitlement } from "../src/authority/writers.ts";
 import { type Db, execute, sql } from "../src/db/pool.ts";
 import { approveEnrollment } from "../src/devices/devices.ts";
-import {
-    answerSignInRequest as decideSignInRequest,
-    SignInRequestId,
-} from "../src/devices/sign-in.ts";
+import { answerSignInRequest, SignInRequestId } from "../src/devices/sign-in.ts";
 import { createNativeApp } from "../src/listeners/native/app.ts";
 import type { RateRule } from "../src/listeners/native/rate-limit.ts";
 import { DEFAULT_RATE_LIMITS } from "../src/listeners/native/route-context.ts";
@@ -270,7 +267,7 @@ export async function signIn(
     invariant(pushed.status === 201, `pushing the request failed: ${JSON.stringify(pushed)}`);
     const requestUri = z.object({ request_uri: z.string() }).parse(pushed.json).request_uri;
     const requestId = SignInRequestId.parse(requestUri.split(":").at(-1));
-    const decided = await decideSignInRequest(harness.db, {
+    const decided = await answerSignInRequest(harness.db, {
         rng: harness.rng,
         sessionToken: browserSession,
         requestId,

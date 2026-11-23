@@ -42,15 +42,36 @@ export function decideStartReplay(
     return ok({ start: id, containerKey: row.container_key, releaseSeal: row.seal });
 }
 
+// A product that isn't open yet answers exactly as one that doesn't exist.
 export function decideStartProduct(
     catalog: ProductCatalog,
     requested: string,
-): Result<ProductDefinition, Code<"NOT_FOUND" | "RELEASE_UNAVAILABLE">> {
+): Result<ProductDefinition, Code<"NOT_FOUND">> {
     const id = ProductId.safeParse(requested);
     const product = id.success ? catalog.get(id.data) : undefined;
     if (product === undefined || product.kind !== "module") return err({ code: "NOT_FOUND" });
     const { startRefusal } = decideProductLifecycle(product.state).value;
-    return startRefusal === null ? ok(product) : err({ code: startRefusal });
+    return startRefusal === "NOT_FOUND" ? err({ code: "NOT_FOUND" }) : ok(product);
+}
+
+// A retired product answers as one with no release, and where a missing release would: after
+// entitlement and the loader, so an account that never held it learns nothing from the refusal.
+export function decideStartOpen(
+    product: ProductDefinition,
+): Result<void, Code<"RELEASE_UNAVAILABLE">> {
+    const { startRefusal } = decideProductLifecycle(product.state).value;
+    return startRefusal === null ? ok(undefined) : err({ code: "RELEASE_UNAVAILABLE" });
+}
+
+// For a start already made: whether its product still takes starts at all.
+export function decideStartStillOpen(
+    catalog: ProductCatalog,
+    productId: string,
+): Result<ProductDefinition, Code<"NOT_FOUND" | "RELEASE_UNAVAILABLE">> {
+    const product = decideStartProduct(catalog, productId);
+    if (!product.ok) return product;
+    const open = decideStartOpen(product.value);
+    return open.ok ? product : open;
 }
 
 export function decideStartAccess(

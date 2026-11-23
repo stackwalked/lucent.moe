@@ -4,12 +4,42 @@ import { LEASE_DURATION_MS, RESUME_WINDOW_MS, SESSION_CAP_MS } from "../src/runt
 import {
     decideCloseSession,
     decideLiveSession,
+    decideOpenDevice,
     decideOpenSession,
     decideRenewalFrame,
     decideRenewLease,
     decideReplaySequence,
+    decideSessionAccess,
     decideSessionStanding,
 } from "../src/runtime/sessions.rules.ts";
+
+test.each([
+    [100, "other", "DEVICE_REVOKED"],
+    [100, "jkt", "DEVICE_REVOKED"],
+    [null, "other", "START_MISMATCH"],
+    [null, "jkt", null],
+] as const)(
+    "a revoked PC is refused before a start made on another: revoked %s, key %s",
+    (revokedAt, jkt, expected) => {
+        const r = decideOpenDevice(
+            { revokedAt: revokedAt === null ? null : EpochMs.parse(revokedAt), jkt: "jkt" },
+            jkt,
+        );
+        expect(r.ok ? null : r.error.code).toBe(expected);
+    },
+);
+test.each([
+    [false, "beta", "ENTITLEMENT_INACTIVE"],
+    [false, "stable", "ENTITLEMENT_INACTIVE"],
+    [true, "beta", "CHANNEL_NOT_ALLOWED"],
+    [true, "stable", null],
+] as const)(
+    "a session opens only on a channel the account still holds: entitled %s, %s",
+    (isEntitled, channel, expected) => {
+        const r = decideSessionAccess({ isEntitled, channels: ["stable"] }, channel);
+        expect(r.ok ? null : r.error.code).toBe(expected);
+    },
+);
 
 const now = EpochMs.parse(SESSION_CAP_MS + RESUME_WINDOW_MS);
 test.each([

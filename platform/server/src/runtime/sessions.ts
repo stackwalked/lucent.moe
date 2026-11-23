@@ -56,8 +56,10 @@ import {
     decideReplaySequence,
     decideSessionAccess,
     decideSessionStanding,
+    type EndReason,
+    type SessionEnded,
 } from "./sessions.rules.ts";
-import { decideStartProduct } from "./starts.rules.ts";
+import { decideStartStillOpen } from "./starts.rules.ts";
 import { StartModules } from "./starts.ts";
 
 // A module's session: its hello consumes the start and takes the product slot; its renewals keep
@@ -70,7 +72,7 @@ const U32 = z.coerce.number().int().nonnegative();
 
 type Code<C extends string> = { readonly code: C };
 
-export type EndReason = NonNullable<SessionRow["end_reason"]>;
+export type { EndReason, SessionEnded };
 
 const SessionRowSchema = z.object({
     id: Bytes,
@@ -217,10 +219,6 @@ async function endSession(
     return ok(undefined);
 }
 
-export type SessionEnded = Code<
-    "SESSION_ENDED" | "SLOT_TAKEN" | "ACCOUNT_SUSPENDED" | "DEVICE_REVOKED"
->;
-
 // A data response that no frame can carry: the server's own failure, shown as unavailable and
 // logged by the route, never a refusal of the member.
 export type DataUnsendable = DataTooLarge;
@@ -330,7 +328,7 @@ export async function openSession(
         if (!device.ok) return device;
         const allowedDevice = decideOpenDevice(device.value, params.proof.jkt);
         if (!allowedDevice.ok) return allowedDevice;
-        const selected = decideStartProduct(params.catalog, start.product_id);
+        const selected = decideStartStillOpen(params.catalog, start.product_id);
         if (!selected.ok) return err({ code: "START_EXPIRED" });
         const product = selected.value;
         const access = await readEffectiveProductAccess(tx, { accountId, product, at: txNow });

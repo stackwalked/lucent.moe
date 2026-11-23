@@ -5,11 +5,7 @@ import { BearerToken, sha256Base64Url, toBase64Url } from "@lucent/core/scalars"
 import { z } from "zod";
 import { hashToken } from "../src/auth/tokens.ts";
 import { execute, sql } from "../src/db/pool.ts";
-import {
-    answerSignInRequest as decideSignInRequest,
-    readSignInRequest,
-    SignInRequestId,
-} from "../src/devices/sign-in.ts";
+import { answerSignInRequest, readSignInRequest, SignInRequestId } from "../src/devices/sign-in.ts";
 import { dbNow, scalar } from "./authority-fixtures.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 import {
@@ -58,7 +54,7 @@ test("a loader signs in through its pushed request, the browser's approval and i
         invariant(shown.ok, "web reads the pending request");
         expect(shown.value.matchCode).toMatch(/^[0-9A-Z]{4}-[0-9A-Z]{4}$/);
 
-        const decided = await decideSignInRequest(nativeDb, {
+        const decided = await answerSignInRequest(nativeDb, {
             rng,
             sessionToken: member.browserSession,
             requestId,
@@ -117,7 +113,7 @@ test("a code is redeemed only with the key that pushed the request", async () =>
             state: "state-0123456789abcdef",
         });
         const requestUri = z.object({ request_uri: z.string() }).parse(pushed.json).request_uri;
-        const decided = await decideSignInRequest(nativeDb, {
+        const decided = await answerSignInRequest(nativeDb, {
             rng,
             sessionToken: member.browserSession,
             requestId: SignInRequestId.parse(requestUri.split(":").at(-1)),
@@ -156,7 +152,7 @@ test("a denied request sends the browser back with access_denied and never yield
         const requestId = SignInRequestId.parse(
             z.object({ request_uri: z.string() }).parse(pushed.json).request_uri.split(":").at(-1),
         );
-        const denied = await decideSignInRequest(nativeDb, {
+        const denied = await answerSignInRequest(nativeDb, {
             rng,
             sessionToken: member.browserSession,
             requestId,
@@ -165,7 +161,7 @@ test("a denied request sends the browser back with access_denied and never yield
         invariant(denied.ok, "denying succeeds");
         expect(new URL(denied.value.redirectTo).searchParams.get("error")).toBe("access_denied");
         expect(
-            await decideSignInRequest(nativeDb, {
+            await answerSignInRequest(nativeDb, {
                 rng,
                 sessionToken: member.browserSession,
                 requestId,

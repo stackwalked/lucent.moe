@@ -1,12 +1,81 @@
 import { expect, test } from "bun:test";
+import { ProductDefinition } from "@lucent/catalog/product";
 import { ChannelId, EpochMs } from "@lucent/core/scalars";
 import {
     decideNeededFacts,
     decideStart,
     decideStartAccess,
+    decideStartDevice,
     decideStartLoader,
+    decideStartOpen,
+    decideStartProduct,
+    decideStartRelease,
     decideStartReplay,
+    decideStartStillOpen,
 } from "../src/runtime/starts.rules.ts";
+
+function definition(kind: string, state: string): ProductDefinition {
+    return ProductDefinition.parse({
+        id: "cs2",
+        name: "Counter-Strike 2",
+        kind,
+        channels: ["stable"],
+        concurrentSlots: 1,
+        state,
+    });
+}
+
+test.each([
+    [null, "DEVICE_REVOKED"],
+    [100, "DEVICE_REVOKED"],
+    ["live", null],
+] as const)("only an enrolled, unrevoked PC may start: %s", (device, expected) => {
+    const r = decideStartDevice(
+        device === null
+            ? null
+            : {
+                  id: Uint8Array.of(1),
+                  jkt: "jkt",
+                  revokedAt: device === "live" ? null : EpochMs.parse(device),
+              },
+    );
+    expect(r.ok ? null : r.error.code).toBe(expected);
+});
+// What a start on each product answers at the product step, and over both steps: a product that
+// passes the first is refused, if at all, only at the release step.
+test.each([
+    ["cs2", "module", "live", null, null],
+    ["cs2", "module", "seed", null, null],
+    ["cs2", "module", "retired", null, "RELEASE_UNAVAILABLE"],
+    ["cs2", "module", "announced", "NOT_FOUND", "NOT_FOUND"],
+    ["cs2", "standalone", "live", "NOT_FOUND", "NOT_FOUND"],
+    ["osu", "module", "live", "NOT_FOUND", "NOT_FOUND"],
+    ["Not A Product!", "module", "live", "NOT_FOUND", "NOT_FOUND"],
+] as const)(
+    "an unopened product is unknown and a retired one has no release: %s as a %s, %s",
+    (requested, kind, state, atProduct, overall) => {
+        const product = definition(kind, state);
+        const catalog = new Map([[product.id, product]]);
+        const selected = decideStartProduct(catalog, requested);
+        expect(selected.ok ? null : selected.error.code).toBe(atProduct);
+        if (selected.ok) {
+            const open = decideStartOpen(selected.value);
+            expect<string | null>(open.ok ? null : open.error.code).toBe(overall);
+        }
+        const still = decideStartStillOpen(catalog, requested);
+        expect(still.ok ? null : still.error.code).toBe(overall);
+    },
+);
+test.each([
+    [false, "RELEASE_UNAVAILABLE"],
+    [true, null],
+] as const)("a start needs a promoted release: %s", (promoted, expected) => {
+    const bytes = Uint8Array.of(1);
+    const r = decideStartRelease(
+        promoted ? { id: bytes, seal: bytes, number: 1n, hasContainer: true } : null,
+    );
+    expect(r.ok ? null : r.error.code).toBe(expected);
+});
 
 test.each([
     [false, "invalid channel!", "ENTITLEMENT_INACTIVE"],

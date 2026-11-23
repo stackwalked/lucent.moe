@@ -2,9 +2,21 @@ import { err, ok, type Result } from "@lucent/core/result";
 import { EpochMs, toHex } from "@lucent/core/scalars";
 import { LEASE_DURATION_MS, RESUME_WINDOW_MS, SESSION_CAP_MS } from "./leases.ts";
 
-import type { EndReason, SessionEnded } from "./sessions.ts";
-
 type Code<C extends string> = { readonly code: C };
+
+// Why a session ended, as runtime_session.end_reason stores it.
+export type EndReason =
+    | "closed"
+    | "slot_taken"
+    | "suspended"
+    | "device_revoked"
+    | "expired"
+    | "capped";
+
+// What an ended session answers from then on: the reason it ended, where the loader shows one.
+export type SessionEnded = Code<
+    "SESSION_ENDED" | "SLOT_TAKEN" | "ACCOUNT_SUSPENDED" | "DEVICE_REVOKED"
+>;
 
 function refusalOf(reason: EndReason): SessionEnded {
     switch (reason) {
