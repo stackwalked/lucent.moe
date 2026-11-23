@@ -21,7 +21,7 @@ import { type Every, startJobs } from "./jobs/runner.ts";
 import { createInternalWebApp } from "./listeners/internal/app.ts";
 import { createNativeApp } from "./listeners/native/app.ts";
 import { refusalResponse } from "./listeners/native/http.ts";
-import { mailDeliveryJob } from "./notify/mail.ts";
+import { mailDeliveryJob, unsentMailJob } from "./notify/mail.ts";
 import { nativeExpiryJob } from "./runtime/expiry.ts";
 import { createLeaseSigner } from "./runtime/lease-key.ts";
 
@@ -215,7 +215,7 @@ export async function startServer(params: {
             expiredAuthJob(db),
             ...(nativeDb === null ? [] : [nativeExpiryJob(nativeDb)]),
             ...(mail === undefined
-                ? []
+                ? [unsentMailJob(db)]
                 : [
                       mailDeliveryJob({
                           db,

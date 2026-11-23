@@ -187,7 +187,7 @@ describe("web against a real platform", () => {
         expect((await page.get("/account/security")).status).toBe(200);
     });
 
-    test("the public reset page and POSTs use a separate per-address limit for known and unknown addresses", async () => {
+    test("the public reset page and POSTs use a separate per-ip limit for known and unknown addresses", async () => {
         const page = browser();
         const response = await page.get("/reset-password");
         expect(response.status).toBe(200);

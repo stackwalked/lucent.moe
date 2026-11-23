@@ -9,7 +9,13 @@ import { listAudit } from "../src/authority/reads.ts";
 import { type Db, queryOne, sql } from "../src/db/pool.ts";
 import { withTx } from "../src/db/tx.ts";
 import { recordNotification } from "../src/notify/inbox.ts";
-import { claimMail, mailDeliveryJob, sendClaim, settleMail } from "../src/notify/mail.ts";
+import {
+    claimMail,
+    mailDeliveryJob,
+    sendClaim,
+    settleMail,
+    unsentMailJob,
+} from "../src/notify/mail.ts";
 import { dbNow, grantRole, seedAccount, seedRole, steppedUp } from "./authority-fixtures.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 
@@ -61,6 +67,24 @@ test("the mail drain cannot see an uncommitted event and rollback leaves nothing
         expect(result).toEqual(err({ code: "ABORT" }));
         expect(await mailDeliveryJob(f.worker).run()).toEqual(ok(null));
         expect(f.requests).toEqual([]);
+    });
+});
+
+test("with no provider a queued notice is dropped, address and text with it", async () => {
+    await (await sharedTestCluster()).withTestDb(async ({ nativeDb: db }) => {
+        const f = await fixture(db);
+        expect((await f.emit()).ok).toBe(true);
+        const job = unsentMailJob(db);
+        expect(await job.run()).toEqual(ok("dropped 1"));
+        expect(await job.run()).toEqual(ok(null));
+        expect(
+            await queryOne(
+                db,
+                z.object({ rows: z.coerce.number() }),
+                sql`select count(*) as rows from mail_outbox`,
+            ),
+        ).toEqual(ok({ rows: 0 }));
+        expect(await mailDeliveryJob(f.worker).run()).toEqual(ok(null));
     });
 });
 

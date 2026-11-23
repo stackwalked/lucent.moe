@@ -163,6 +163,23 @@ export function settleMail(worker: Worker, claim: MailClaim, outcome: MailOutcom
     });
 }
 
+// Without a provider nothing drains the queue, so a notice's address and text would sit in it for
+// good. A reset's mail is left alone: it goes with its link, within fifteen minutes.
+export function unsentMailJob(db: Db): Job {
+    return {
+        name: "unsent mail",
+        everyMs: 60_000,
+        run: async () => {
+            const dropped = await execute(
+                db,
+                sql`delete from mail_outbox where state = 'pending' and reset_hash is null`,
+            );
+            if (!dropped.ok) return dropped;
+            return ok(dropped.value === 0 ? null : `dropped ${dropped.value}`);
+        },
+    };
+}
+
 export function mailDeliveryJob(worker: Worker): Job {
     return {
         name: "mail delivery",
