@@ -34,15 +34,17 @@ const ReviewItem = z.object({
 });
 
 export const reviewContract = defineContract({
-    // The risk review queue: open items most urgent first, or the latest decided ones.
+    // The risk review queue: open items most urgent first, or the latest decided ones, at most a
+    // fixed number; `truncated` says there were more.
     "admin.review.list": {
         session: "member",
         effect: "read",
         input: z.strictObject({ state: z.enum(["open", "decided"]) }),
-        output: z.object({ items: z.array(ReviewItem).readonly() }),
+        output: z.object({ items: z.array(ReviewItem).readonly(), truncated: z.boolean() }),
         error: z.discriminatedUnion("code", [...StaffRefusals]),
     },
     // Closes an open item with its outcome. What staff did about the account is its own action.
+    // An item about the caller's own account is FORBIDDEN.
     "admin.review.decide": {
         session: "member",
         effect: "write",

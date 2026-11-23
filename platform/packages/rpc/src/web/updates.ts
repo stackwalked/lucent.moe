@@ -31,6 +31,8 @@ export const updatesContract = defineContract({
                     }),
                 )
                 .readonly(),
+            // More builds were reported than the list holds.
+            truncated: z.boolean(),
         }),
         error: z.discriminatedUnion("code", [...StaffRefusals]),
     },
