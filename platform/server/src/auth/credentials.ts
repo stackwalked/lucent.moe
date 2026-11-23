@@ -230,6 +230,13 @@ export async function setPassword(
                 on conflict (account_id) do update set hash = excluded.hash, updated_at = now()`,
         );
         if (!stored.ok) return stored;
+        // A reset link asked for before this change would still set another password; its queued
+        // mail goes with it.
+        const unlinked = await execute(
+            tx,
+            sql`delete from password_reset where account_id = ${change.value.session.accountId}`,
+        );
+        if (!unlinked.ok) return unlinked;
         return await finishCredentialChange(tx, {
             change: change.value,
             operation: "credential.password_set",

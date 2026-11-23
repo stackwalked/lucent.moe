@@ -9,6 +9,7 @@ import { webContract } from "@lucent/rpc/web";
 import { AuthenticationResponse } from "@lucent/rpc/webauthn";
 import { z } from "zod";
 import { createMailTransport } from "../src/adapters/mail/mail.ts";
+import { setPassword } from "../src/auth/credentials.ts";
 import type { AuthDeps } from "../src/auth/deps.ts";
 import { redeemPasswordReset, requestPasswordReset } from "../src/auth/password-reset.ts";
 import { issueSetupToken, redeemSetupLink } from "../src/auth/setup.ts";
@@ -174,81 +175,88 @@ test("reset requests for missing, staff and eligible accounts have the same padd
     });
 });
 
-test.each(["staff recovery", "suspension", "promotion", "expiry", "lock", "lost factors"] as const)(
-    "redemption rechecks %s and never changes a now-ineligible account",
-    async (change) => {
-        await (await sharedTestCluster()).withTestDb(async ({ browserDb: db }) => {
-            const rng = createSeededRng(8202);
-            const deps = await createTestAuthDeps(db, rng);
-            const member = await newMember(deps, rng, { username: "alice", with: "all" });
-            expect(await requestPasswordReset(deps, "alice@lucent.test")).toEqual(ok(undefined));
-            const token = await receive(db);
-            if (change === "lost factors") {
-                expect(
-                    (
-                        await execute(
-                            db,
-                            sql`delete from passkey where account_id=${member.accountId}`,
-                        )
-                    ).ok,
-                ).toBe(true);
-                expect(
-                    (
-                        await execute(
-                            db,
-                            sql`delete from totp_credential where account_id=${member.accountId}`,
-                        )
-                    ).ok,
-                ).toBe(true);
-                expect(
-                    await signInWithPassword(deps, {
-                        username: "alice",
-                        password: MEMBER_PASSWORD,
-                    }),
-                ).toEqual(err({ code: "NO_SECOND_FACTOR" }));
-            }
-            if (change === "staff recovery") {
-                const caller = await steppedUp(db, await seedRootOnce(db, rng));
-                expect(
-                    (await recoverAccount({ db, rng, caller, targetAccountId: member.accountId }))
-                        .ok,
-                ).toBe(true);
-            }
-            if (change === "promotion")
-                await grantRole(db, {
-                    accountId: member.accountId,
-                    roleId: await seedRole(db, {
-                        id: "role_helper",
-                        rank: 10,
-                        permissions: ["audit:read"],
-                    }),
-                });
-            if (change === "suspension")
-                expect(
-                    (
-                        await execute(
-                            db,
-                            sql`update account set status = 'suspended' where id = ${member.accountId}`,
-                        )
-                    ).ok,
-                ).toBe(true);
-            if (change === "lock")
-                expect(
-                    (
-                        await execute(
-                            db,
-                            sql`update account set is_locked = true where id = ${member.accountId}`,
-                        )
-                    ).ok,
-                ).toBe(true);
-            if (change === "expiry")
-                expect(
-                    (await execute(db, sql`update password_reset set expires_at = now()`)).ok,
-                ).toBe(true);
-            expect(await redeemPasswordReset(deps, { token, password })).toEqual(invalid);
-        });
-    },
-);
+test.each([
+    "staff recovery",
+    "suspension",
+    "promotion",
+    "expiry",
+    "lock",
+    "lost factors",
+    "password change",
+] as const)("redemption rechecks %s and never changes a now-ineligible account", async (change) => {
+    await (await sharedTestCluster()).withTestDb(async ({ browserDb: db }) => {
+        const rng = createSeededRng(8202);
+        const deps = await createTestAuthDeps(db, rng);
+        const member = await newMember(deps, rng, { username: "alice", with: "all" });
+        expect(await requestPasswordReset(deps, "alice@lucent.test")).toEqual(ok(undefined));
+        const token = await receive(db);
+        if (change === "lost factors") {
+            expect(
+                (await execute(db, sql`delete from passkey where account_id=${member.accountId}`))
+                    .ok,
+            ).toBe(true);
+            expect(
+                (
+                    await execute(
+                        db,
+                        sql`delete from totp_credential where account_id=${member.accountId}`,
+                    )
+                ).ok,
+            ).toBe(true);
+            expect(
+                await signInWithPassword(deps, {
+                    username: "alice",
+                    password: MEMBER_PASSWORD,
+                }),
+            ).toEqual(err({ code: "NO_SECOND_FACTOR" }));
+        }
+        if (change === "staff recovery") {
+            const caller = await steppedUp(db, await seedRootOnce(db, rng));
+            expect(
+                (await recoverAccount({ db, rng, caller, targetAccountId: member.accountId })).ok,
+            ).toBe(true);
+        }
+        if (change === "promotion")
+            await grantRole(db, {
+                accountId: member.accountId,
+                roleId: await seedRole(db, {
+                    id: "role_helper",
+                    rank: 10,
+                    permissions: ["audit:read"],
+                }),
+            });
+        if (change === "suspension")
+            expect(
+                (
+                    await execute(
+                        db,
+                        sql`update account set status = 'suspended' where id = ${member.accountId}`,
+                    )
+                ).ok,
+            ).toBe(true);
+        if (change === "lock")
+            expect(
+                (
+                    await execute(
+                        db,
+                        sql`update account set is_locked = true where id = ${member.accountId}`,
+                    )
+                ).ok,
+            ).toBe(true);
+        if (change === "password change")
+            expect(
+                await setPassword(deps, {
+                    sessionToken: member.sessionToken,
+                    password: "a password chosen while signed in",
+                }),
+            ).toEqual(ok(undefined));
+        if (change === "expiry")
+            expect((await execute(db, sql`update password_reset set expires_at = now()`)).ok).toBe(
+                true,
+            );
+        expect(await redeemPasswordReset(deps, { token, password })).toEqual(invalid);
+    });
+});
 
 test("a fresh enrolled passkey clears the reset gate without a password-only session", async () => {
     await (await sharedTestCluster()).withTestDb(async ({ browserDb: db }) => {
