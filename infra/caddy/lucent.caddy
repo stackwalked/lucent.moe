@@ -4,11 +4,18 @@
 		format filter {
 			wrap json
 			fields {
-				# Setup/download tokens can occur in paths, not just in queries;
-				# Location, Referer, Cookie, Authorization and DPoP are never audit data.
-				request delete
+				# Kept: method, host, remote address, status, size, duration, path.
+				# Setup and device tokens ride in paths and queries; Cookie, Authorization,
+				# DPoP, Set-Cookie and the Lucent-* headers are never audit data. Header maps
+				# are dropped whole: delete has no wildcard, so Lucent-* cannot be named.
+				# The same filter is repeated for the default logger in Caddyfile.
+				request>headers delete
 				resp_headers delete
 				user_id delete
+				# A field takes one filter, so one regexp does both jobs: drop everything
+				# from the first "?", and remove the token segment of /setup/<token> and
+				# /auth/device/<id>, keeping the prefix.
+				request>uri regexp "^(?:(/setup/|/auth/device/)[^/?]*)?([^?]*)(?:\?.*)?$" "${1}${2}"
 			}
 		}
 	}

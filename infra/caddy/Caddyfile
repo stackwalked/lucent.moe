@@ -1,8 +1,19 @@
 {
 	admin off
 	log default {
-		# Reverse-proxy failure records carry the original request as well.
-		exclude http.log.access http.log.error
+		# Access records go to the per-site loggers. Errors (reverse-proxy failures
+		# included) stay here and carry the original request, so they get the same
+		# redaction as in lucent.caddy; keep the two filters identical.
+		exclude http.log.access
+		format filter {
+			wrap json
+			fields {
+				request>headers delete
+				resp_headers delete
+				user_id delete
+				request>uri regexp "^(?:(/setup/|/auth/device/)[^/?]*)?([^?]*)(?:\?.*)?$" "${1}${2}"
+			}
+		}
 	}
 }
 
