@@ -72,6 +72,8 @@ export const REFUSALS: Readonly<Record<RefusalCode, string>> = {
     REVISION_BELOW_CURRENT: "a newer revision is current. publish the fix as the next one.",
     POSTING_RESTRICTED: "you can't post here right now.",
     LIMIT_REACHED: "you've reached the limit for that. try again later.",
+    UNKNOWN_TARGET: "this release doesn't have that feature or capability. reload and try again.",
+    ALREADY_DECIDED: "someone already closed this item. reload to see the outcome.",
 };
 // The text for one refusal, a form's own wording first where it has one.
 export function refusalText(

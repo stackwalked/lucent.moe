@@ -2,24 +2,38 @@ import { toNotFound, toPage } from "../../server/route-control.ts";
 import type { Session, Viewer } from "../../viewer.ts";
 import { memberOf, viewerCan } from "../../viewer.ts";
 
-export type AdminSection = "accounts" | "roles" | "releases" | "moderation" | "audit";
+export type AdminSection =
+    | "accounts"
+    | "roles"
+    | "releases"
+    | "overrides"
+    | "updates"
+    | "review"
+    | "moderation"
+    | "audit";
 
 // In the order the nav lists them.
 export const SECTION_PATHS = [
     ["accounts", "/admin/accounts"],
     ["roles", "/admin/roles"],
     ["releases", "/admin/releases"],
+    ["overrides", "/admin/overrides"],
+    ["updates", "/admin/updates"],
+    ["review", "/admin/review"],
     ["moderation", "/admin/moderation"],
     ["audit", "/admin/audit"],
 ] as const satisfies readonly (readonly [AdminSection, string])[];
 
-// Which admin sections a viewer may see: each needs its read permission, roles and releases either
-// of their two.
+// Which admin sections a viewer may see: each needs its read permission, roles, releases and update
+// days either of their two. The review queue is read by whoever could act on it.
 export function adminSections(viewer: Viewer): Readonly<Record<AdminSection, boolean>> {
     return {
         accounts: viewerCan(viewer, "accounts:read"),
         roles: viewerCan(viewer, "roles:assign") || viewerCan(viewer, "roles:manage"),
         releases: viewerCan(viewer, "releases:promote") || viewerCan(viewer, "facts:promote"),
+        overrides: viewerCan(viewer, "facts:override"),
+        updates: viewerCan(viewer, "releases:promote") || viewerCan(viewer, "facts:promote"),
+        review: viewerCan(viewer, "accounts:suspend"),
         moderation: viewerCan(viewer, "moderation:remove"),
         audit: viewerCan(viewer, "audit:read"),
     };
