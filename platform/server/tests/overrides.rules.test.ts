@@ -46,9 +46,10 @@ test.each([
 
 test.each([
     ["a missing item", null, "NOT_FOUND"],
-    ["a decided item", { decidedAt: EpochMs.parse(5) }, "ALREADY_DECIDED"],
-    ["an open item", { decidedAt: null }, null],
+    ["a decided item", { accountId: "acc_other", decidedAt: EpochMs.parse(5) }, "ALREADY_DECIDED"],
+    ["an item about the caller", { accountId: "acc_staff", decidedAt: null }, "FORBIDDEN"],
+    ["an open item", { accountId: "acc_other", decidedAt: null }, null],
 ] as const)("deciding %s", (_, item, code) => {
-    const decided = decideReviewOutcome(item);
+    const decided = decideReviewOutcome({ item, callerId: "acc_staff" });
     expect(decided.ok ? null : decided.error.code).toBe(code);
 });

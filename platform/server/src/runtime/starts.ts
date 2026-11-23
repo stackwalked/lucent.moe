@@ -23,6 +23,7 @@ import { type ReceiptRefusal, readReplay, recordReceipt, toOperationKey } from "
 import { errCommit, withTx } from "../db/tx.ts";
 import { findDeviceByKey, lockDevice } from "../devices/devices.ts";
 import { type AuthRequired, lockTokenHolder, type TokenHolder } from "../devices/sign-in.ts";
+import { lockBuildCoverage } from "../facts/coverage-lock.ts";
 import { readCoveredFactKeys } from "../facts/publishing.ts";
 import type { DpopProof } from "../listeners/native/dpop.ts";
 import {
@@ -171,6 +172,8 @@ export async function createStart(
         const release = decideStartRelease(foundRelease.value);
         if (!release.ok) return release;
         const modules = toModulesJson(request.modules);
+        const coverage = await lockBuildCoverage(tx, { productId: product.id, mode: "shared" });
+        if (!coverage.ok) return coverage;
         const reported = await execute(
             tx,
             sql`insert into game_build_report (product_id, modules, reported_at)

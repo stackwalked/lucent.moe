@@ -16,8 +16,8 @@ import {
 } from "../db/pool.ts";
 import { withTx } from "../db/tx.ts";
 import { decideReviewOutcome, type ReviewOutcome } from "./review.rules.ts";
+import { Contributions } from "./rows.ts";
 import type { Contribution } from "./score.rules.ts";
-import { Contributions } from "./scoring.ts";
 
 // The review queue as staff work it. Members never see an item or what contributed to it. Acting
 // on an item records the outcome; whatever staff do about the account (a suspension, a word in
@@ -82,11 +82,17 @@ function toItem(row: z.output<typeof ItemRow>): ReviewItem {
     };
 }
 
+export type ReviewQueue = {
+    readonly items: readonly ReviewItem[];
+    // More items were there than QUEUE_LIMIT.
+    readonly truncated: boolean;
+};
+
 // Open items most urgent first, then riskiest; decided ones newest first.
 export async function listReviewItems(
     db: Db,
     params: { readonly caller: Caller; readonly state: "open" | "decided" },
-): Promise<Result<readonly ReviewItem[], Forbidden | DbFailure>> {
+): Promise<Result<ReviewQueue, Forbidden | DbFailure>> {
     return await readAsStaff(db, { caller: params.caller, actions: [REVIEW_ACTION] }, async (q) => {
         const rows = await queryAll(
             q,
@@ -103,14 +109,19 @@ export async function listReviewItems(
                         ? sql`i.urgency_score desc, i.risk_score desc, i.opened_at, i.id`
                         : sql`i.decided_at desc, i.id desc`
                 }
-                limit ${QUEUE_LIMIT}`,
+                limit ${QUEUE_LIMIT + 1}`,
         );
         if (!rows.ok) return rows;
-        return ok(rows.value.map(toItem));
+        return ok({
+            items: rows.value.slice(0, QUEUE_LIMIT).map(toItem),
+            truncated: rows.value.length > QUEUE_LIMIT,
+        });
     });
 }
 
-export type DecideReviewRefusal = AuthzRefusal | { readonly code: "NOT_FOUND" | "ALREADY_DECIDED" };
+export type DecideReviewRefusal =
+    | AuthzRefusal
+    | { readonly code: "NOT_FOUND" | "ALREADY_DECIDED" | "FORBIDDEN" };
 
 export async function decideReviewItem(
     db: Db,
@@ -140,9 +151,13 @@ export async function decideReviewItem(
                 where id = ${params.itemId}::bigint for update`,
         );
         if (!item.ok) return item;
-        const allowed = decideReviewOutcome(
-            item.value === null ? null : { decidedAt: item.value.decided_at },
-        );
+        const allowed = decideReviewOutcome({
+            item:
+                item.value === null
+                    ? null
+                    : { accountId: item.value.account_id, decidedAt: item.value.decided_at },
+            callerId: params.caller.accountId,
+        });
         if (!allowed.ok) return allowed;
         invariant(item.value !== null, "an item allowed a decision exists");
         const decided = await execute(

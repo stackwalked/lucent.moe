@@ -21,10 +21,16 @@ export type UpdateDay = {
     readonly latency: UpdateDayLatency;
 };
 
+// `truncated`: more builds were reported than UPDATE_LIMIT.
 export async function listUpdateDays(
     db: Db,
     params: { readonly caller: Caller },
-): Promise<Result<readonly UpdateDay[], Forbidden | DbFailure>> {
+): Promise<
+    Result<
+        { readonly days: readonly UpdateDay[]; readonly truncated: boolean },
+        Forbidden | DbFailure
+    >
+> {
     const actions = ["facts:promote", "releases:promote"] as const;
     return await readAsStaff(db, { caller: params.caller, actions }, async (q, txNow) => {
         const rows = await queryAll(
@@ -41,11 +47,11 @@ export async function listUpdateDays(
                        first_reported_at, first_covered_at
                 from module_build_seen
                 order by first_reported_at desc, product_id, name_hash
-                limit ${UPDATE_LIMIT}`,
+                limit ${UPDATE_LIMIT + 1}`,
         );
         if (!rows.ok) return rows;
         const days: UpdateDay[] = [];
-        for (const row of rows.value) {
+        for (const row of rows.value.slice(0, UPDATE_LIMIT)) {
             const latency = decideUpdateDayLatency({
                 firstReportedAt: row.first_reported_at,
                 firstCoveredAt: row.first_covered_at,
@@ -64,6 +70,6 @@ export async function listUpdateDays(
                 latency: latency.value,
             });
         }
-        return ok(days);
+        return ok({ days, truncated: rows.value.length > UPDATE_LIMIT });
     });
 }

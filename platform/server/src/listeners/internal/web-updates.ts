@@ -6,6 +6,9 @@ import { asStaff, mapOk, type WebRpcContext } from "./web-shared.ts";
 export const updatesHandlers = {
     "admin.updates.list": (ctx, _input, call) =>
         asStaff(ctx, call, async (caller) =>
-            mapOk(await listUpdateDays(ctx.auth.db, { caller }), (builds) => ({ builds })),
+            mapOk(await listUpdateDays(ctx.auth.db, { caller }), ({ days, truncated }) => ({
+                builds: days,
+                truncated,
+            })),
         ),
 } satisfies Partial<Handlers<WebRpcContext, WebContract>>;

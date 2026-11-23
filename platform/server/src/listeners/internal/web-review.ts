@@ -1,14 +1,12 @@
 import type { Handlers } from "@lucent/rpc/mount";
 import type { WebContract } from "@lucent/rpc/web";
 import { decideReviewItem, listReviewItems } from "../../risk/review.ts";
-import { asStaff, done, mapOk, type WebRpcContext } from "./web-shared.ts";
+import { asStaff, done, type WebRpcContext } from "./web-shared.ts";
 
 export const reviewHandlers = {
     "admin.review.list": (ctx, input, call) =>
-        asStaff(ctx, call, async (caller) =>
-            mapOk(await listReviewItems(ctx.auth.db, { caller, state: input.state }), (items) => ({
-                items,
-            })),
+        asStaff(ctx, call, (caller) =>
+            listReviewItems(ctx.auth.db, { caller, state: input.state }),
         ),
     "admin.review.decide": (ctx, input, call) =>
         asStaff(ctx, call, async (caller) =>

@@ -13,6 +13,7 @@ import {
 } from "../db/pool.ts";
 import { withTx } from "../db/tx.ts";
 import type { Job } from "../jobs/runner.ts";
+import { Contributions, SignalKindSchema } from "./rows.ts";
 import {
     decideReviewItem,
     decideRiskScore,
@@ -21,26 +22,17 @@ import {
 } from "./score.rules.ts";
 
 // Every ten minutes, the accounts with signals newer than the cursor are scored again and the
-// review queue follows: an item opens, or an open one rises. Each account is its own transaction,
-// so one account's failure stalls only the cursor, and a rerun after one scores the same signals
-// to the same plan.
+// review queue follows: an item opens, or an open one rises. Each account is its own transaction:
+// a failing one doesn't stop the others, and the cursor then stays put so the next run scores it
+// again; rescoring the rest reaches the same plan.
 
 const SCORING_EVERY_MS = 10 * 60 * 1_000;
 
 const SignalRow = z.object({
-    kind: z.enum(["loader_silent", "software_device_key"]),
+    kind: SignalKindSchema,
     session_id: z.instanceof(Uint8Array).nullable(),
     observed_at: EpochMs,
 });
-
-export const Contributions = z.array(
-    z.object({
-        kind: SignalRow.shape.kind,
-        sessions: z.number().int().nonnegative(),
-        lastAt: EpochMs,
-        weight: z.number(),
-    }),
-);
 
 function toSignalsJson(score: RiskScore): string {
     return JSON.stringify(score.signals);
@@ -124,8 +116,10 @@ async function scoreAccount(tx: Tx, accountId: AccountId, txNow: EpochMs) {
     }
 }
 
-// How many accounts' items opened or rose.
-export async function scoreRisk(db: Db): Promise<Result<number, DbFailure>> {
+// How many accounts' items opened or rose, and how many couldn't be scored this run.
+export type ScoringRun = { readonly changed: number; readonly failed: number };
+
+export async function scoreRisk(db: Db): Promise<Result<ScoringRun, DbFailure>> {
     const window = await queryOne(
         db,
         z.object({ through: EpochMs.nullable(), now: EpochMs }),
@@ -135,7 +129,7 @@ export async function scoreRisk(db: Db): Promise<Result<number, DbFailure>> {
             from risk_scoring_cursor`,
     );
     if (!window.ok) return window;
-    if (window.value === null) return ok(0);
+    if (window.value === null) return ok({ changed: 0, failed: 0 });
     const { through, now } = window.value;
     const start = decideScoringFrom(through);
     if (!start.ok) return start;
@@ -149,17 +143,22 @@ export async function scoreRisk(db: Db): Promise<Result<number, DbFailure>> {
     );
     if (!accounts.ok) return accounts;
     let changed = 0;
+    let failed = 0;
     for (const { account_id: accountId } of accounts.value) {
         const scored = await withTx(db, (tx, txNow) => scoreAccount(tx, accountId, txNow));
-        if (!scored.ok) return scored;
+        if (!scored.ok) {
+            failed += 1;
+            continue;
+        }
         if (scored.value) changed += 1;
     }
+    if (failed > 0) return ok({ changed, failed });
     const moved = await execute(
         db,
         sql`update risk_scoring_cursor set scored_through = ${toTimestamptz(now)}::timestamptz`,
     );
     if (!moved.ok) return moved;
-    return ok(changed);
+    return ok({ changed, failed: 0 });
 }
 
 export function riskScoringJob(db: Db): Job {
@@ -169,7 +168,13 @@ export function riskScoringJob(db: Db): Job {
         run: async () => {
             const scored = await scoreRisk(db);
             if (!scored.ok) return scored;
-            return ok(scored.value === 0 ? null : `scored ${scored.value} accounts into review`);
+            const { changed, failed } = scored.value;
+            if (failed > 0) {
+                return ok(
+                    `scored ${changed} accounts into review; ${failed} failed, retried next run`,
+                );
+            }
+            return ok(changed === 0 ? null : `scored ${changed} accounts into review`);
         },
     };
 }

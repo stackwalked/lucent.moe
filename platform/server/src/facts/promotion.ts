@@ -15,6 +15,7 @@ import {
 } from "../db/pool.ts";
 import { withTx } from "../db/tx.ts";
 import { bumpDataRevisions } from "../runtime/revisions.ts";
+import { lockBuildCoverage } from "./coverage-lock.ts";
 
 // Promotion of staged fact sets (publishing.ts stores them). One current revision per
 // release and module build; promoting a set makes it current for every build it lists, and a set
@@ -187,6 +188,18 @@ export async function promoteFactSet(
                     ${`lucent.fact-set:${toHex(params.releaseId)}`}, 0))`,
         );
         if (!locked.ok) return locked;
+        const release = await queryOne(
+            tx,
+            z.object({ product_id: z.string() }),
+            sql`select product_id from release where id = ${params.releaseId}`,
+        );
+        if (!release.ok) return release;
+        if (release.value === null) return err({ code: "NOT_FOUND" as const });
+        const coverage = await lockBuildCoverage(tx, {
+            productId: release.value.product_id,
+            mode: "exclusive",
+        });
+        if (!coverage.ok) return coverage;
         const listed = await queryAll(
             tx,
             BuildRow.extend({ revision: z.coerce.number(), current: z.coerce.number().nullable() }),

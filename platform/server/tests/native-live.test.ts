@@ -3,10 +3,13 @@ import { deliverAll, toBundleBytes } from "@lucent/bundle/bundle";
 import { type FactSetHeader, fromLiteral, type ModuleKey } from "@lucent/bundle/fact-set";
 import { leafHash, treeRoot } from "@lucent/bundle/merkle";
 import { invariant } from "@lucent/core/contain";
+import { ok } from "@lucent/core/result";
 import { createSeededRng, type SeededRng } from "@lucent/core/rng";
 import type { AccountId } from "@lucent/core/scalars";
 import { z } from "zod";
 import { type Db, execute, queryOne, sql } from "../src/db/pool.ts";
+import { withTx } from "../src/db/tx.ts";
+import { lockBuildCoverage } from "../src/facts/coverage-lock.ts";
 import { listReleaseOverrides, setOverride } from "../src/facts/overrides.ts";
 import { promoteFactSet } from "../src/facts/promotion.ts";
 import { listUpdateDays } from "../src/facts/updates.ts";
@@ -254,7 +257,7 @@ test("the first report of a build and the promotion that covers it give its upda
         const waiting = await listUpdateDays(nativeDb, { caller });
         invariant(waiting.ok, "listing update days failed");
         expect(
-            waiting.value.map((day) => [day.productId, day.build.nameHash, day.latency.state]),
+            waiting.value.days.map((day) => [day.productId, day.build.nameHash, day.latency.state]),
         ).toEqual([["cs2", "0000000000001234", "waiting"]]);
 
         const backdated = await execute(
@@ -266,7 +269,8 @@ test("the first report of a build and the promotion that covers it give its upda
         await promoteFactSet(nativeDb, { caller, releaseId: releases.module.id, setId });
         const covered = await listUpdateDays(nativeDb, { caller });
         invariant(covered.ok, "listing update days failed");
-        const [day] = covered.value;
+        expect(covered.value.truncated).toBe(false);
+        const [day] = covered.value.days;
         invariant(day?.latency.state === "covered", "the build is covered");
         expect(day.latency.latencyMs).toBeGreaterThanOrEqual(2 * 60 * 60 * 1_000);
         expect(day.latency.latencyMs).toBeLessThan(3 * 60 * 60 * 1_000);
@@ -296,20 +300,21 @@ test("renewals the loader leaves unanswered become signals, and the scoring job 
 
         // One silent session stays below the threshold; a second, observed outside this one, opens
         // the item.
-        expect(await scoreRisk(nativeDb)).toEqual({ ok: true, value: 0 });
+        expect(await scoreRisk(nativeDb)).toEqual({ ok: true, value: { changed: 0, failed: 0 } });
         const second = await execute(
             nativeDb,
             sql`insert into risk_signal (account_id, kind, observed_at)
                 values (${running.accountId}, 'loader_silent', now())`,
         );
         invariant(second.ok, "adding a signal failed");
-        expect(await scoreRisk(nativeDb)).toEqual({ ok: true, value: 1 });
-        expect(await scoreRisk(nativeDb)).toEqual({ ok: true, value: 0 });
+        expect(await scoreRisk(nativeDb)).toEqual({ ok: true, value: { changed: 1, failed: 0 } });
+        expect(await scoreRisk(nativeDb)).toEqual({ ok: true, value: { changed: 0, failed: 0 } });
 
         const caller = await staff(nativeDb, rng);
         const open = await listReviewItems(nativeDb, { caller, state: "open" });
         invariant(open.ok, "listing the queue failed");
-        const [item] = open.value;
+        expect(open.value.truncated).toBe(false);
+        const [item] = open.value.items;
         invariant(item !== undefined, "an item opened");
         expect(item.account.id).toBe(running.accountId);
         expect([item.risk, item.urgency]).toEqual([44, 50]);
@@ -326,7 +331,7 @@ test("renewals the loader leaves unanswered become signals, and the scoring job 
         expect(await decide()).toEqual({ ok: false, error: { code: "ALREADY_DECIDED" } });
         const decided = await listReviewItems(nativeDb, { caller, state: "decided" });
         invariant(decided.ok, "listing decided items failed");
-        expect(decided.value.map((i) => i.decision?.outcome)).toEqual(["no_action"]);
+        expect(decided.value.items.map((i) => i.decision?.outcome)).toEqual(["no_action"]);
         const audited = await scalar(
             nativeDb,
             z.coerce.number(),
@@ -341,7 +346,7 @@ test("renewals the loader leaves unanswered become signals, and the scoring job 
             sql`update risk_scoring_cursor set scored_through = '-infinity'`,
         );
         invariant(backfill.ok, "rewinding the cursor failed");
-        expect(await scoreRisk(nativeDb)).toEqual({ ok: true, value: 0 });
+        expect(await scoreRisk(nativeDb)).toEqual({ ok: true, value: { changed: 0, failed: 0 } });
     });
 });
 
@@ -399,5 +404,159 @@ test("retention removes renewals past 90 days and signals past a year, and keeps
         );
         expect(kept).toBe(3);
         expect(await sweepRetention(nativeDb)).toEqual({ ok: true, value: 0 });
+    });
+});
+
+test("staff can't decide a review item about their own account", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ nativeDb }) => {
+        const rng = createSeededRng(9_908);
+        const rootId = await seedRootOnce(nativeDb, rng);
+        const caller = await steppedUp(nativeDb, rootId);
+        const item = await queryOne(
+            nativeDb,
+            z.object({ id: z.string() }),
+            sql`insert into review_item
+                    (account_id, risk_score, urgency_score, signals, opened_at, scored_at)
+                values (${rootId}, 44, 50, '[]'::jsonb, now(), now()) returning id::text as id`,
+        );
+        invariant(item.ok && item.value !== null, "opening an item failed");
+        const refused = await decideReviewItem(nativeDb, {
+            caller,
+            itemId: item.value.id,
+            outcome: "no_action",
+            note: null,
+        });
+        expect(refused).toEqual({ ok: false, error: { code: "FORBIDDEN" } });
+        const open = await scalar(
+            nativeDb,
+            z.coerce.number(),
+            sql`select count(*) as value from review_item where decided_at is null`,
+        );
+        expect(open).toBe(1);
+    });
+});
+
+test("an account that fails to score doesn't stop the others, and the cursor waits for it", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ nativeDb }) => {
+        const rng = createSeededRng(9_909);
+        const failing = await seedAccount(nativeDb, rng, "failing@lucent.test");
+        const scored = await seedAccount(nativeDb, rng, "scored@lucent.test");
+        for (const account of [failing, scored]) {
+            const added = await execute(
+                nativeDb,
+                sql`insert into risk_signal (account_id, kind, observed_at)
+                    values (${account}, 'loader_silent', now()), (${account}, 'loader_silent', now())`,
+            );
+            invariant(added.ok, "adding signals failed");
+        }
+        // A database failure for one account's item, whichever order the accounts come in.
+        const trapped = await execute(
+            nativeDb,
+            sql`create table trapped_account (id text primary key)`,
+        );
+        invariant(trapped.ok, "creating the trap table failed");
+        const marked = await execute(
+            nativeDb,
+            sql`insert into trapped_account values (${failing})`,
+        );
+        invariant(marked.ok, "marking the account failed");
+        const trap = await execute(
+            nativeDb,
+            sql`create function refuse_review_item() returns trigger language plpgsql as $$
+                begin
+                    if exists (select 1 from trapped_account where id = new.account_id) then
+                        raise exception 'refused' using errcode = 'check_violation';
+                    end if;
+                    return new;
+                end; $$`,
+        );
+        invariant(trap.ok, `creating the trap failed: ${JSON.stringify(trap)}`);
+        const armed = await execute(
+            nativeDb,
+            sql`create trigger refuse_review_item before insert on review_item
+                for each row execute function refuse_review_item()`,
+        );
+        invariant(armed.ok, "arming the trap failed");
+
+        expect(await scoreRisk(nativeDb)).toEqual({ ok: true, value: { changed: 1, failed: 1 } });
+        const through = await scalar(
+            nativeDb,
+            z.string(),
+            sql`select scored_through::text as value from risk_scoring_cursor`,
+        );
+        expect(through).toBe("-infinity");
+
+        const disarmed = await execute(
+            nativeDb,
+            sql`drop trigger refuse_review_item on review_item`,
+        );
+        invariant(disarmed.ok, "dropping the trap failed");
+        expect(await scoreRisk(nativeDb)).toEqual({ ok: true, value: { changed: 1, failed: 0 } });
+    });
+});
+
+test("a start reporting a build while a promotion covering it commits records the coverage", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ nativeDb }) => {
+        const rng = createSeededRng(9_910);
+        const harness = await createNativeHarness(nativeDb, rng);
+        const releases = await publishBoth(nativeDb, rng);
+        const member = await entitledMember(harness, {
+            email: "race@lucent.test",
+            channels: ["alpha"],
+        });
+        const loader = createTestLoader(harness, await createTestDevice(harness.rng));
+        await signIn(harness, loader, member.browserSession);
+        await enroll(harness, loader, member.browserSession);
+        const setId = await stageSet(nativeDb, releases.module.id, [GAME], 1);
+
+        // A promotion in flight, as promoteFactSet holds it: the coverage lock taken and the set
+        // current, not yet committed.
+        let release = () => {};
+        const held = new Promise<void>((resolve) => {
+            release = resolve;
+        });
+        let locked = () => {};
+        const lockTaken = new Promise<void>((resolve) => {
+            locked = resolve;
+        });
+        const promotion = withTx(nativeDb, async (tx) => {
+            const coverage = await lockBuildCoverage(tx, { productId: "cs2", mode: "exclusive" });
+            if (!coverage.ok) return coverage;
+            const current = await execute(
+                tx,
+                sql`insert into current_fact_set
+                        (release_id, name_hash, time_date_stamp, size_of_image, revision)
+                    select release_id, name_hash, time_date_stamp, size_of_image, revision
+                    from fact_set_build where set_id = ${setId}::bigint`,
+            );
+            if (!current.ok) return current;
+            locked();
+            await held;
+            return ok(undefined);
+        });
+        await lockTaken;
+        const started = startOk(loader, releases, [GAME]);
+        // Long enough for the start to reach the lock; were it not waiting, it would finish here
+        // and record the build uncovered.
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        const before = await scalar(
+            nativeDb,
+            z.coerce.number(),
+            sql`select count(*) as value from module_build_seen`,
+        );
+        release();
+        expect(before).toBe(0);
+        expect((await promotion).ok).toBe(true);
+        await started;
+
+        const covered = await scalar(
+            nativeDb,
+            z.boolean(),
+            sql`select first_covered_at is not null as value from module_build_seen`,
+        );
+        expect(covered).toBe(true);
     });
 });
