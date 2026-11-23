@@ -64,7 +64,9 @@ services:
     user: "21001:21100"
     group_add: ["999"]
     networks: [platform-egress]
-    environment:
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    environment: &platform-environment
       LUCENT_DATABASE_URL: postgres://lucent@localhost/lucent?host=/run/lucent/db
       PGPASSWORD: ${POSTGRES_PASSWORD:?set the database password}
       LUCENT_INTERNAL_LISTEN: unix:/run/lucent/internal/http.sock
@@ -101,6 +103,27 @@ services:
             body: JSON.stringify({procedure: "health.check", input: {}})
           }); process.exit(r.ok && (await r.json()).ok === true ? 0 : 1)
 
+  # Operator verbs that write the artifact store (publish-loader). Never started by
+  # `up`; `compose run platform-ops` enables the profile. Compose refuses a second
+  # mount on a target the service already has, so the read-write mount lives here
+  # instead of in a `run -v` override of platform-server.
+  platform-ops:
+    <<: *service
+    profiles: [ops]
+    restart: "no"
+    # Reuses the image deploy.sh built for platform-server (Compose's default name).
+    image: lucent-staging-platform-server
+    pull_policy: never
+    user: "21001:21100"
+    group_add: ["999"]
+    network_mode: none
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    environment: *platform-environment
+    volumes:
+      - /var/lib/lucent/db-socket:/run/lucent/db:ro
+      - /var/lib/lucent/artifacts:/artifacts
+
   web:
     <<: *service
     build:
@@ -109,6 +132,8 @@ services:
     user: "21002:21100"
     group_add: ["21002"]
     network_mode: none
+    tmpfs:
+      - /tmp:size=16m,mode=1777
     environment:
       LUCENT_PLATFORM_INTERNAL_URL: unix:/run/lucent/internal/http.sock
       LUCENT_WEB_LISTEN: unix:/run/lucent/web/http.sock
@@ -135,6 +160,9 @@ services:
     cap_add: [NET_BIND_SERVICE]
     networks: [edge]
     ports: ["80:80", "443:443", "443:443/udp"]
+    # /data and /config are the bind mounts below; only scratch space is left to provide.
+    tmpfs:
+      - /tmp:size=16m,mode=1777
     volumes:
       - ./caddy:/etc/caddy:ro
       - /var/lib/lucent/web-socket:/run/lucent/web:ro
