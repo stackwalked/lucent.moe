@@ -11,6 +11,7 @@ import { expiredAuthJob } from "./auth/expiry.ts";
 import { createArgon2idHasher, type PasswordHasher } from "./auth/password.ts";
 import { createTotpKeyring } from "./auth/totp.ts";
 import { CLOUD_LIMITS, type CloudLimits } from "./cloud/items.rules.ts";
+import { createEventHub } from "./community/events.ts";
 import type { ListenAddress, NativeListenAddress, ServerConfig } from "./config.ts";
 import type { Logger } from "./core/log.ts";
 import { claimServiceEpoch, openEpochGuard } from "./db/epoch-guard.ts";
@@ -188,7 +189,9 @@ export async function startServer(params: {
             detail: "LUCENT_DEV_PASSWORD_ONLY: no second factor, no step-up",
         });
     }
+    const events = createEventHub();
     serve = createInternalWebApp({
+        events,
         cloudLimits: params.cloudLimits ?? CLOUD_LIMITS,
         auth,
         catalog: catalog.value,
@@ -240,6 +243,8 @@ export async function startServer(params: {
         internalAddress: internal.address,
         nativeAddress: native?.address ?? null,
         stop: async () => {
+            // Open streams never end by themselves, and a listener stop waits for them.
+            events.close();
             for (const listener of listeners) await listener.stop();
             await jobs.stop();
             epochGuard.close();

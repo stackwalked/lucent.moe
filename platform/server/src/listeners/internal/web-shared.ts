@@ -6,7 +6,6 @@ import type { AuthDeps } from "../../auth/deps.ts";
 import type { SessionInvalid } from "../../auth/sessions.ts";
 import { resolveCaller } from "../../auth/viewer.ts";
 import type { CloudLimits } from "../../cloud/items.rules.ts";
-import type { EventHub } from "../../community/events.ts";
 import type { Logger } from "../../core/log.ts";
 import type { DbFailure } from "../../db/pool.ts";
 
@@ -16,9 +15,6 @@ export type WebRpcContext = {
     readonly auth: AuthDeps;
     // For lines a handler writes once its transaction has committed (a moderator's removal).
     readonly logger: Logger;
-    // Where a handler pings open event streams after it commits. Best effort: absent, nobody
-    // is told, and everything still reads correctly.
-    readonly events?: EventHub;
 };
 
 type Unavailable = { readonly code: "SERVICE_UNAVAILABLE" };

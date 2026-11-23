@@ -4,7 +4,7 @@ import { mountInternalRpc } from "@lucent/rpc/mount";
 import type { Hono } from "hono";
 import type { AuthDeps } from "../../auth/deps.ts";
 import type { CloudLimits } from "../../cloud/items.rules.ts";
-import { createEventHub } from "../../community/events.ts";
+import { createEventHub, type EventHub } from "../../community/events.ts";
 import type { Logger } from "../../core/log.ts";
 import type { EpochGuard } from "../../db/epoch-guard.ts";
 import { mountLoaderDownload } from "./download.ts";
@@ -15,6 +15,8 @@ import { webProcedures } from "./web-rpc.ts";
 const EVENTS_HEARTBEAT_MS = 25_000;
 
 export function createInternalWebApp(deps: {
+    // Presence for open streams; the server creates it so its stop path can end them.
+    readonly events?: EventHub;
     readonly cloudLimits?: CloudLimits;
     readonly catalog: ProductCatalog;
     readonly auth: AuthDeps;
@@ -24,7 +26,7 @@ export function createInternalWebApp(deps: {
     readonly artifactDir: string | null;
     readonly logger: Logger;
 }): Hono {
-    const events = createEventHub();
+    const events = deps.events ?? createEventHub();
     const app = mountInternalRpc({
         path: "/internal/web/rpc",
         peerKey: deps.webInternalKey,
@@ -38,7 +40,6 @@ export function createInternalWebApp(deps: {
                     catalog: deps.catalog,
                     auth: deps.auth,
                     logger: deps.logger,
-                    events,
                     ...(deps.cloudLimits === undefined ? {} : { cloudLimits: deps.cloudLimits }),
                 }),
             );

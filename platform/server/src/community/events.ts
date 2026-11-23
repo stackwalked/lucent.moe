@@ -1,53 +1,108 @@
 import { trySync } from "@lucent/core/contain";
+import { err, ok, type Result } from "@lucent/core/result";
 import type { AccountId } from "@lucent/core/scalars";
+import { decideStreamAdmission, type StreamRefusal } from "./events.rules.ts";
 
-// What a stream carries. Events hold no content and name no product: a ping tells a client to
-// read again through the ordinary procedures, which apply listing, blocks and removal; so a
-// stream can never show what a read would not.
-export type CommunityEvent =
-    | { readonly kind: "shout" }
-    | { readonly kind: "comment" }
-    | { readonly kind: "presence"; readonly online: number };
+// A stream carries presence and nothing else. Content pings were left out: they would go to every
+// stream whatever its reader may see (blocks, product listing), and nothing consumed them.
+export type PresenceEvent = { readonly kind: "presence"; readonly online: number };
 
-export type EventHub = {
-    // Joins a stream; the returned function leaves it. Everyone, the joiner included, is told
-    // the new count of accounts online.
-    readonly connect: (accountId: AccountId, send: (event: CommunityEvent) => void) => () => void;
-    readonly publish: (event: Exclude<CommunityEvent, { readonly kind: "presence" }>) => void;
-    readonly online: () => number;
+export type StreamEnd = {
+    // False when the stream cannot take the event (its reader is not keeping up, or it is gone):
+    // the hub drops it.
+    readonly send: (event: PresenceEvent) => boolean;
+    // Ends the stream from the hub's side (server stop, or a stream that fell behind).
+    readonly close: () => void;
 };
 
-// In process, because platform-server is the only process that holds presence. Online counts
-// accounts, not streams: two tabs are one account. A stream whose send throws has gone away and
-// is dropped.
-export function createEventHub(): EventHub {
-    const streams = new Map<
-        symbol,
-        { readonly accountId: AccountId; readonly send: (event: CommunityEvent) => void }
-    >();
-    const online = () => new Set([...streams.values()].map((stream) => stream.accountId)).size;
+export type EventHub = {
+    // Joins a stream: the returned function leaves it. The joiner is told the count at once.
+    readonly connect: (
+        accountId: AccountId,
+        stream: StreamEnd,
+    ) => Result<() => void, StreamRefusal>;
+    readonly online: () => number;
+    // Ends every stream and refuses new ones: the server is stopping.
+    readonly close: () => void;
+};
 
-    const deliver = (event: CommunityEvent) => {
-        for (const [id, stream] of [...streams]) {
-            const sent = trySync(
-                () => stream.send(event),
-                () => "gone",
-            );
-            if (!sent.ok) streams.delete(id);
+// Presence changes only when an account's first stream opens or its last one ends, and the new
+// count goes to everyone at most once per coalescing delay, however many connect in between, so
+// n connections cost n sends a delay, not n squared. In process, because platform-server is the
+// only holder of presence. Online counts accounts: two tabs are one.
+export function createEventHub(options?: {
+    readonly schedule?: (run: () => void) => void;
+}): EventHub {
+    const schedule =
+        options?.schedule ??
+        ((run: () => void) => {
+            const timer = setTimeout(run, 1_000);
+            timer.unref();
+        });
+    const streams = new Map<symbol, StreamEnd & { readonly accountId: AccountId }>();
+    const perAccount = new Map<AccountId, number>();
+    let pending = false;
+    let closed = false;
+
+    const drop = (id: symbol) => {
+        const stream = streams.get(id);
+        if (stream === undefined) return;
+        streams.delete(id);
+        const left = (perAccount.get(stream.accountId) ?? 1) - 1;
+        if (left > 0) {
+            perAccount.set(stream.accountId, left);
+            return;
         }
+        perAccount.delete(stream.accountId);
+        changed();
     };
-    const announce = () => deliver({ kind: "presence", online: online() });
+
+    const deliver = (id: symbol, event: PresenceEvent) => {
+        const stream = streams.get(id);
+        if (stream === undefined) return;
+        const sent = trySync(
+            () => stream.send(event),
+            () => false,
+        );
+        if (sent.ok && sent.value) return;
+        drop(id);
+        stream.close();
+    };
+
+    const flush = () => {
+        pending = false;
+        const event: PresenceEvent = { kind: "presence", online: perAccount.size };
+        for (const id of [...streams.keys()]) deliver(id, event);
+    };
+    function changed() {
+        if (pending || closed) return;
+        pending = true;
+        schedule(flush);
+    }
 
     return {
-        connect: (accountId, send) => {
+        connect: (accountId, stream) => {
+            const admitted = decideStreamAdmission({
+                accountStreams: perAccount.get(accountId) ?? 0,
+                totalStreams: streams.size,
+            });
+            if (closed) return err({ code: "SERVICE_UNAVAILABLE" });
+            if (!admitted.ok) return admitted;
             const id = Symbol("stream");
-            streams.set(id, { accountId, send });
-            announce();
-            return () => {
-                if (streams.delete(id)) announce();
-            };
+            streams.set(id, { ...stream, accountId });
+            const first = !perAccount.has(accountId);
+            perAccount.set(accountId, (perAccount.get(accountId) ?? 0) + 1);
+            if (first) changed();
+            deliver(id, { kind: "presence", online: perAccount.size });
+            return ok(() => drop(id));
         },
-        publish: deliver,
-        online,
+        online: () => perAccount.size,
+        close: () => {
+            closed = true;
+            const open = [...streams.values()];
+            streams.clear();
+            perAccount.clear();
+            for (const stream of open) stream.close();
+        },
     };
 }

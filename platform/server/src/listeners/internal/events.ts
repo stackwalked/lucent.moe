@@ -1,3 +1,4 @@
+import { trySync } from "@lucent/core/contain";
 import { err } from "@lucent/core/result";
 import { BearerToken } from "@lucent/core/scalars";
 import { RPC_HEADERS } from "@lucent/rpc/contract";
@@ -12,6 +13,9 @@ function refusal(code: string, status: 400 | 401 | 503): Response {
     return Response.json(err({ code }), { status, headers: { "cache-control": "no-store" } });
 }
 
+// Frames a slow reader may leave unread before its stream is dropped.
+const MAX_QUEUED_FRAMES = 16;
+
 const encoder = new TextEncoder();
 
 function frame(event: string, data: unknown): Uint8Array {
@@ -19,9 +23,10 @@ function frame(event: string, data: unknown): Uint8Array {
 }
 
 // The internal listener's other streaming route: one SSE stream per signed-in browser tab, carrying
-// presence and community pings (community/events.ts). The session is read again on every
-// heartbeat, so a stream outlives neither its session nor its account's sign-out. Web holds the
-// browser's connection; this is the leg behind it, behind the same peer-key check.
+// presence (community/events.ts). Every heartbeat reads the session again and checks the instance
+// is still the live one, so a stream outlives neither its session nor its instance; the hub ends
+// all of them when the server stops. Web holds the browser's connection; this is the leg behind
+// it, behind the same peer-key check.
 export function mountCommunityEvents(
     app: Hono,
     deps: {
@@ -44,31 +49,69 @@ export function mountCommunityEvents(
                 ? refusal("SESSION_INVALID", 401)
                 : refusal("SERVICE_UNAVAILABLE", 503);
         }
+        let controller: ReadableStreamDefaultController<Uint8Array> | undefined;
         let leave = () => {};
         let beat: ReturnType<typeof setInterval> | undefined;
-        const stop = () => {
+        let ended = false;
+        // Whoever ends the stream first (the client, the hub, a heartbeat) runs this; the rest
+        // find it done. Nothing after it touches the controller.
+        const end = () => {
+            if (ended) return;
+            ended = true;
             clearInterval(beat);
             leave();
+            const target = controller;
+            if (target !== undefined)
+                trySync(
+                    () => target.close(),
+                    () => "already closed",
+                );
         };
-        const body = new ReadableStream<Uint8Array>({
-            start: (controller) => {
-                leave = deps.hub.connect(session.value.accountId, (event) => {
-                    const { kind, ...data } = event;
-                    controller.enqueue(frame(kind, data));
-                });
-                // Unref'd, like the jobs: a timer alone never keeps the process alive.
-                beat = setInterval(() => {
-                    void sessionOf(token.data).then((again) => {
-                        if (again.ok) return controller.enqueue(encoder.encode(": heartbeat\n\n"));
-                        stop();
-                        controller.close();
-                    });
-                }, deps.heartbeatMs);
-                beat.unref();
+        const body = new ReadableStream<Uint8Array>(
+            {
+                start: (started) => {
+                    controller = started;
+                },
+                cancel: end,
             },
-            cancel: stop,
+            { highWaterMark: MAX_QUEUED_FRAMES },
+        );
+        const joined = deps.hub.connect(session.value.accountId, {
+            send: (event) => {
+                const target = controller;
+                if (ended || target === undefined) return false;
+                // A reader that is not keeping up is dropped, not buffered for without limit.
+                if (target.desiredSize === null || target.desiredSize <= 0) return false;
+                const { kind, ...data } = event;
+                const queued = trySync(
+                    () => target.enqueue(frame(kind, data)),
+                    () => "closed",
+                );
+                return queued.ok;
+            },
+            close: end,
         });
-        c.req.raw.signal.addEventListener("abort", stop);
+        if (!joined.ok) {
+            end();
+            return refusal("SERVICE_UNAVAILABLE", 503);
+        }
+        leave = joined.value;
+        // Unref'd, like the jobs: a timer alone never keeps the process alive.
+        beat = setInterval(() => {
+            if (deps.isSuperseded()) return end();
+            void sessionOf(token.data).then((again) => {
+                if (ended) return;
+                if (!again.ok) return end();
+                const target = controller;
+                if (target === undefined) return;
+                trySync(
+                    () => target.enqueue(encoder.encode(": heartbeat\n\n")),
+                    () => end(),
+                );
+            });
+        }, deps.heartbeatMs);
+        beat.unref();
+        c.req.raw.signal.addEventListener("abort", end);
         return new Response(body, {
             headers: {
                 "content-type": "text/event-stream",
