@@ -6,6 +6,9 @@ import { served, type WebRpcContext } from "./web-shared.ts";
 export const shoutsHandlers = {
     "shouts.list": async (ctx, input, { session }) =>
         served(await listShouts(ctx.auth.db, session, { ...input, catalog: ctx.catalog })),
-    "shouts.create": async (ctx, input, { session }) =>
-        served(await createShout(ctx.auth.db, session, { ...input, catalog: ctx.catalog })),
+    "shouts.create": async (ctx, input, { session }) => {
+        const created = await createShout(ctx.auth.db, session, { ...input, catalog: ctx.catalog });
+        if (created.ok) ctx.events?.publish({ kind: "shout" });
+        return served(created);
+    },
 } satisfies Handlers<WebRpcContext, typeof shoutsContract>;

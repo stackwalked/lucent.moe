@@ -28,6 +28,11 @@ export type AccountStatus = Status;
 // 404 NOT_FOUND when `download.loader` isn't "ready", 503).
 export const LOADER_DOWNLOAD_PATH = "/internal/web/downloads/loader";
 
+// The internal listener's server-sent events: a GET with the peer key and `Lucent-Session`,
+// answered with a stream of `presence` ({ online }) and content pings (`shout`, `comment`) that
+// carry no content, or a refusal as JSON (401 SESSION_INVALID, 503).
+export const COMMUNITY_EVENTS_PATH = "/internal/web/events";
+
 function composeWebContract() {
     return defineContract({
         ...healthContract,
