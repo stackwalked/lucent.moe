@@ -1,4 +1,4 @@
-import { ProductId } from "@lucent/core/scalars";
+import { isProductId } from "@lucent/core/brands";
 import { getRouteApi, Link, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
 import type { Refused } from "../../server/outcome.ts";
@@ -30,7 +30,7 @@ export function ShoutsPage() {
         const named = String(form.get("product") ?? "").trim();
         const reply = await postShout({
             data: {
-                productId: named === "" ? null : ProductId.parse(named),
+                productId: isProductId(named) ? named : null,
                 body: String(form.get("body") ?? ""),
             },
         });
@@ -66,8 +66,7 @@ export function ShoutsPage() {
                                         maxLength={32}
                                         defaultValue={product ?? ""}
                                         customCheck={(value) =>
-                                            value.trim() === "" ||
-                                            ProductId.safeParse(value.trim()).success
+                                            value.trim() === "" || isProductId(value.trim())
                                                 ? undefined
                                                 : SHOUTS_COPY.productFormat
                                         }

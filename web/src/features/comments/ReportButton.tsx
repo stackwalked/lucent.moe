@@ -9,7 +9,7 @@ import { reportContent } from "./server.ts";
 import styles from "./TextArea.module.css";
 import { TextArea } from "./TextArea.tsx";
 
-type Kind = "comment" | "shout" | "guide";
+type Kind = "comment" | "shout" | "guide" | "profile";
 
 // Any member flags anything a member wrote; staff see it in the moderation queue.
 export function ReportButton({

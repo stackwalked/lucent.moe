@@ -245,7 +245,11 @@ test("the export is the account's own data in one document and nothing of anyone
         const mine = await exportOwnData(db, alice.token);
         invariant(mine.ok, "expected the export");
         expect(mine.value.account).toMatchObject({ email: "alice@lucent.test", username: "alice" });
-        expect(mine.value.profile).toEqual({ bio: "alice bio", visibility: "members" });
+        expect(mine.value.profile).toEqual({
+            bio: "alice bio",
+            visibility: "members",
+            removedAt: null,
+        });
         expect(mine.value.guides.map((g) => g.title)).toEqual(["alice guide"]);
         expect(mine.value.shouts.map((s) => s.body)).toEqual(["alice shout"]);
         expect(mine.value.comments).toEqual([]);

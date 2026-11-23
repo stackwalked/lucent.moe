@@ -9,6 +9,7 @@ export const MODERATION_COPY = {
     comment: "comment",
     shout: "shout",
     guide: "guide",
+    profile: "profile",
     spam: "spam",
     abuse: "abuse",
     other: "something else",

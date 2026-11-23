@@ -21,7 +21,11 @@ export const ExportData = z.object({
         username: z.string().nullable(),
         createdAt: EpochMs,
     }),
-    profile: z.object({ bio: z.string(), visibility: ProfileVisibility }).nullable(),
+    // Each list holds the newest 1,000 rows at most; a kind that was cut is named here.
+    truncated: z.array(z.string()).readonly(),
+    profile: z
+        .object({ bio: z.string(), visibility: ProfileVisibility, removedAt: Removed })
+        .nullable(),
     guides: z
         .array(
             z.object({
@@ -61,7 +65,7 @@ export const ExportData = z.object({
     reportsMade: z
         .array(
             z.object({
-                kind: z.enum(["comment", "shout", "guide"]),
+                kind: z.enum(["comment", "shout", "guide", "profile"]),
                 targetId: z.uuid(),
                 reason: z.enum(["spam", "abuse", "other"]),
                 note: z.string(),
@@ -138,6 +142,7 @@ export const privacyContract = defineContract({
             restrictions: z
                 .array(
                     z.object({
+                        id: z.uuid(),
                         kind: RestrictionKind,
                         productId: ProductId.nullable(),
                         endsAt: EpochMs.nullable(),

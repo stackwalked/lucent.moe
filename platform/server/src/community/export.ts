@@ -12,6 +12,14 @@ type Exported = z.output<typeof ExportData>;
 // Every statement filters by the caller's own account id; nothing is joined from another
 // account except the usernames of those the caller blocked. Read in one transaction, so the file
 // is of one moment, and never touches licence, device, credential or support records.
+// Each list is the newest EXPORT_CAP rows, oldest first; a list that had more is named in the file.
+const EXPORT_CAP = 1_000;
+
+function newest<T>(name: string, rows: readonly T[], cut: string[]): readonly T[] {
+    if (rows.length > EXPORT_CAP) cut.push(name);
+    return rows.slice(0, EXPORT_CAP).reverse();
+}
+
 async function gather(tx: Tx, accountId: AccountId, txNow: EpochMs) {
     const account = await queryOne(
         tx,
@@ -22,9 +30,9 @@ async function gather(tx: Tx, accountId: AccountId, txNow: EpochMs) {
     if (!account.ok) return account;
     const profile = await queryOne(
         tx,
-        z.object({ bio: z.string(), visibility: z.enum(["members", "private"]) }),
+        ExportData.shape.profile.unwrap(),
         sql`
-        select bio, visibility from profile where account_id = ${accountId}`,
+        select bio, visibility, removed_at as "removedAt" from profile where account_id = ${accountId}`,
     );
     if (!profile.ok) return profile;
     const guides = await queryAll(
@@ -33,7 +41,7 @@ async function gather(tx: Tx, accountId: AccountId, txNow: EpochMs) {
         sql`
         select id, product_id as "productId", title, body, created_at as "createdAt",
                updated_at as "updatedAt", removed_at as "removedAt"
-        from guide where author_id = ${accountId} order by created_at, id`,
+        from guide where author_id = ${accountId} order by created_at desc, id desc limit ${EXPORT_CAP + 1}`,
     );
     if (!guides.ok) return guides;
     const comments = await queryAll(
@@ -41,7 +49,7 @@ async function gather(tx: Tx, accountId: AccountId, txNow: EpochMs) {
         ExportData.shape.comments.unwrap().element,
         sql`
         select id, guide_id as "guideId", body, created_at as "createdAt", removed_at as "removedAt"
-        from comment where author_id = ${accountId} order by created_at, id`,
+        from comment where author_id = ${accountId} order by created_at desc, id desc limit ${EXPORT_CAP + 1}`,
     );
     if (!comments.ok) return comments;
     const shouts = await queryAll(
@@ -49,7 +57,7 @@ async function gather(tx: Tx, accountId: AccountId, txNow: EpochMs) {
         ExportData.shape.shouts.unwrap().element,
         sql`
         select id, product_id as "productId", body, created_at as "createdAt", removed_at as "removedAt"
-        from shout where author_id = ${accountId} order by created_at, id`,
+        from shout where author_id = ${accountId} order by created_at desc, id desc limit ${EXPORT_CAP + 1}`,
     );
     if (!shouts.ok) return shouts;
     const blocks = await queryAll(
@@ -58,7 +66,7 @@ async function gather(tx: Tx, accountId: AccountId, txNow: EpochMs) {
         sql`
         select a.username, b.created_at as "createdAt"
         from account_block b join account a on a.id = b.blocked_id
-        where b.blocker_id = ${accountId} order by b.created_at, a.id`,
+        where b.blocker_id = ${accountId} order by b.created_at desc, a.id limit ${EXPORT_CAP + 1}`,
     );
     if (!blocks.ok) return blocks;
     const reportsMade = await queryAll(
@@ -66,7 +74,7 @@ async function gather(tx: Tx, accountId: AccountId, txNow: EpochMs) {
         ExportData.shape.reportsMade.unwrap().element,
         sql`
         select target_kind as kind, target_id as "targetId", reason, note, state, created_at as "createdAt"
-        from report where reporter_id = ${accountId} order by created_at, id`,
+        from report where reporter_id = ${accountId} order by created_at desc, id desc limit ${EXPORT_CAP + 1}`,
     );
     if (!reportsMade.ok) return reportsMade;
     const restrictions = await queryAll(
@@ -75,7 +83,7 @@ async function gather(tx: Tx, accountId: AccountId, txNow: EpochMs) {
         sql`
         select kind, product_id as "productId", created_at as "createdAt", ends_at as "endsAt",
                lifted_at as "liftedAt"
-        from community_restriction where account_id = ${accountId} order by created_at, id`,
+        from community_restriction where account_id = ${accountId} order by created_at desc, id desc limit ${EXPORT_CAP + 1}`,
     );
     if (!restrictions.ok) return restrictions;
     const inbox = await queryAll(
@@ -83,7 +91,7 @@ async function gather(tx: Tx, accountId: AccountId, txNow: EpochMs) {
         ExportData.shape.inbox.unwrap().element,
         sql`
         select kind, product_id as "productId", created_at as "createdAt", is_read as "isRead"
-        from inbox_entry where account_id = ${accountId} order by created_at, id`,
+        from inbox_entry where account_id = ${accountId} order by created_at desc, id desc limit ${EXPORT_CAP + 1}`,
     );
     if (!inbox.ok) return inbox;
     const preferences = await queryAll(
@@ -101,17 +109,19 @@ async function gather(tx: Tx, accountId: AccountId, txNow: EpochMs) {
     );
     if (!subscriptions.ok) return subscriptions;
     invariant(account.value !== null, "a live session's account exists");
+    const cut: string[] = [];
     const data: Exported = {
         exportedAt: txNow,
         account: account.value,
+        truncated: cut,
         profile: profile.value,
-        guides: guides.value,
-        comments: comments.value,
-        shouts: shouts.value,
-        blocks: blocks.value,
-        reportsMade: reportsMade.value,
-        restrictions: restrictions.value,
-        inbox: inbox.value,
+        guides: newest("guides", guides.value, cut),
+        comments: newest("comments", comments.value, cut),
+        shouts: newest("shouts", shouts.value, cut),
+        blocks: newest("blocks", blocks.value, cut),
+        reportsMade: newest("reportsMade", reportsMade.value, cut),
+        restrictions: newest("restrictions", restrictions.value, cut),
+        inbox: newest("inbox", inbox.value, cut),
         notificationPreferences: preferences.value,
         subscriptions: subscriptions.value.map((row) => row.productId),
     };

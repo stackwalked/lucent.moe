@@ -68,9 +68,7 @@ export function PrivacyPage() {
                             <Table
                                 caption={PRIVACY_COPY.restricted}
                                 rows={outcome.value.restrictions}
-                                rowKey={(row) =>
-                                    `${row.kind}/${row.productId ?? ""}/${row.endsAt ?? ""}`
-                                }
+                                rowKey={(row) => row.id}
                                 columns={[
                                     {
                                         key: "kind",

@@ -21,12 +21,27 @@ export const ViewRefusal = z.discriminatedUnion("code", [
     refusal("NOT_FOUND"),
 ]);
 
-// Writing adds the account's community standing.
+// Refused when the account is at a volume limit (open reports, posts a minute, guides in a
+// product); which one is in `limit`.
+export const LimitReached = z.object({
+    code: z.literal("LIMIT_REACHED"),
+    limit: z.enum(["reports", "posts", "guides"]),
+});
+
+// Writing adds the account's community standing and volume limits.
 export const PostRefusal = z.discriminatedUnion("code", [
     Unavailable,
     refusal("SESSION_INVALID"),
     refusal("NOT_FOUND"),
     PostingRestricted,
+    LimitReached,
+]);
+
+export const ReportRefusal = z.discriminatedUnion("code", [
+    Unavailable,
+    refusal("SESSION_INVALID"),
+    refusal("NOT_FOUND"),
+    LimitReached,
 ]);
 
 export const ContentId = z.uuid();

@@ -4,7 +4,8 @@ import { type BearerToken, EpochMs, ProductId } from "@lucent/core/scalars";
 import { z } from "zod";
 import { type Db, queryAll, queryOne, sql, type Tx } from "../db/pool.ts";
 import { withMember } from "../notify/account.ts";
-import { notBlockedWith } from "./blocks.ts";
+import { guideReadable, notBlockedWith } from "./blocks.ts";
+import { checkPostRate } from "./limits.ts";
 import { withMemberAt } from "./member.ts";
 import { type NotFound, PAGE_SIZE, pageOf, requireListed } from "./page.ts";
 import { mayPostHere } from "./standing.ts";
@@ -23,8 +24,8 @@ async function guideProduct(
         tx,
         z.object({ productId: ProductId }),
         sql`select product_id as "productId" from guide
-            where id = ${params.guideId}::uuid and removed_at is null
-              and ${notBlockedWith(params.accountId, sql`author_id`)}`,
+            where id = ${params.guideId}::uuid
+              and ${guideReadable(params.accountId, { removedAt: sql`removed_at`, authorId: sql`author_id` })}`,
     );
     if (!guide.ok) return guide;
     if (guide.value === null) return err<NotFound>({ code: "NOT_FOUND" });
@@ -60,7 +61,10 @@ export function listComments(
         const after =
             params.cursor === null
                 ? sql``
-                : sql`and (c.created_at, c.id) > (select created_at, id from comment where id = ${params.cursor}::uuid)`;
+                : sql`and (c.created_at, c.id) > (
+                      select p.created_at, p.id from comment p
+                      where p.id = ${params.cursor}::uuid and p.guide_id = ${params.guideId}::uuid
+                        and p.removed_at is null and ${notBlockedWith(accountId, sql`p.author_id`)})`;
         const rows = await queryAll(
             tx,
             Row,
@@ -102,6 +106,8 @@ export function createComment(
             txNow,
         });
         if (!may.ok) return may;
+        const rate = await checkPostRate(tx, { accountId, txNow });
+        if (!rate.ok) return rate;
         const inserted = await queryOne(
             tx,
             z.object({ id: z.uuid() }),

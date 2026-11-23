@@ -1,4 +1,4 @@
-import { ProductId } from "@lucent/core/scalars";
+import { isProductId } from "@lucent/core/brands";
 import type { Outcome } from "../../../server/outcome.ts";
 import { Empty } from "../../../ui/Empty/Empty.tsx";
 import { Field } from "../../../ui/Field/Field.tsx";
@@ -38,7 +38,7 @@ function RestrictForm() {
                 hint={MODERATION_COPY.productHint}
                 maxLength={32}
                 customCheck={(value) =>
-                    value.trim() === "" || ProductId.safeParse(value.trim()).success
+                    value.trim() === "" || isProductId(value.trim())
                         ? undefined
                         : MODERATION_COPY.productFormat
                 }
@@ -76,7 +76,7 @@ export function RestrictionsSection({ outcome }: { readonly outcome: Outcome<Lis
                             data: {
                                 username: String(form.get("username") ?? "").trim(),
                                 kind: form.get("kind") === "barred" ? "barred" : "muted",
-                                productId: product === "" ? null : ProductId.parse(product),
+                                productId: isProductId(product) ? product : null,
                                 reason: String(form.get("reason") ?? "").trim(),
                                 endsAt: untilFrom(form.get("until")),
                             },

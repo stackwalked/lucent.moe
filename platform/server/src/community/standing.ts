@@ -59,7 +59,15 @@ export async function mayPostHere(
 // The staff reason stays with staff.
 export function listOwnRestrictions(db: Db, token: BearerToken) {
     return withMember(db, token, async (tx, accountId) => {
-        const rows = await readActiveRestrictions(tx, accountId);
+        const rows = await queryAll(
+            tx,
+            RestrictionRow.extend({ id: z.uuid() }),
+            sql`select id, kind, product_id as "productId", ends_at as "endsAt"
+                from community_restriction
+                where account_id = ${accountId} and lifted_at is null
+                  and (ends_at is null or ends_at > now())
+                order by created_at, id`,
+        );
         if (!rows.ok) return rows;
         return ok({ restrictions: rows.value });
     });

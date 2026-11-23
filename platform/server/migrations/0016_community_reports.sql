@@ -1,6 +1,6 @@
 -- Global: one staff queue for every product. A report names member-written content (a comment,
--- a shout or a guide) by kind and id; the content's own product, if any, comes from the content,
--- never from the report. target_id has no foreign key because it points at one of three tables;
+-- a shout, a guide or a profile bio) by kind and id; the content's own product, if any, comes from the content,
+-- never from the report. target_id has no foreign key because it points at one of four tables;
 -- the writers check the target exists and is visible to the reporter.
 --
 -- A member reports a thing once (the unique key), and a thing is removed once: resolving a report
@@ -8,7 +8,7 @@
 create table report (
     id uuid primary key default gen_random_uuid(),
     reporter_id text not null references account (id),
-    target_kind text not null check (target_kind in ('comment', 'shout', 'guide')),
+    target_kind text not null check (target_kind in ('comment', 'shout', 'guide', 'profile')),
     target_id uuid not null,
     reason text not null check (reason in ('spam', 'abuse', 'other')),
     note text not null default '' check (length(note) <= 500),

@@ -2,13 +2,22 @@ import type { ProductCatalog } from "@lucent/catalog/catalog";
 import { err, ok } from "@lucent/core/result";
 import { AccountId, type BearerToken, EpochMs, ProductId } from "@lucent/core/scalars";
 import { authorize, type Caller } from "@lucent/policy/policy";
-import type { ReportKind, ReportReason } from "@lucent/rpc/web/moderation";
+import { ReportKind, type ReportReason } from "@lucent/rpc/web/moderation";
 import { z } from "zod";
 import { lockCallerWith } from "../authority/standing.ts";
-import { notBlockedWith } from "../community/blocks.ts";
+import { guideReadable, notBlockedWith } from "../community/blocks.ts";
+import { decideReportLimit } from "../community/limits.rules.ts";
 import { type NotFound, requireListed } from "../community/page.ts";
 import { appendAudit } from "../db/audit.ts";
-import { type Db, execute, queryAll, queryOne, sql, type Tx } from "../db/pool.ts";
+import {
+    type Db,
+    execute,
+    queryAll,
+    queryOne,
+    type SqlFragment,
+    sql,
+    type Tx,
+} from "../db/pool.ts";
 import { withTx } from "../db/tx.ts";
 import { withMember } from "../notify/account.ts";
 import { QUEUE_PAGE_SIZE, readAsStaff } from "./staff.ts";
@@ -22,8 +31,12 @@ const Target = z.object({
 });
 
 // What a report points at, while it is still there: removed content and a comment whose guide
-// was removed are gone for everyone, reports included.
-function findTarget(tx: Tx, kind: Kind, id: string) {
+// was removed are gone for everyone, reports included. With a viewer the answer is also what
+// that member may read, by the same predicates the lists use (guideReadable, blocks, a private
+// profile); without one (staff) it is only what exists.
+function findTarget(tx: Tx, kind: Kind, id: string, viewer: AccountId | null) {
+    const unblocked = (author: SqlFragment) =>
+        viewer === null ? sql`true` : notBlockedWith(viewer, author);
     switch (kind) {
         case "comment":
             return queryOne(
@@ -31,27 +44,47 @@ function findTarget(tx: Tx, kind: Kind, id: string) {
                 Target,
                 sql`select c.author_id as "authorId", g.product_id as "productId", left(c.body, 280) as excerpt
                     from comment c join guide g on g.id = c.guide_id
-                    where c.id = ${id}::uuid and c.removed_at is null and g.removed_at is null`,
+                    where c.id = ${id}::uuid and c.removed_at is null
+                      and ${unblocked(sql`c.author_id`)}
+                      and ${
+                          viewer === null
+                              ? sql`g.removed_at is null`
+                              : guideReadable(viewer, {
+                                    removedAt: sql`g.removed_at`,
+                                    authorId: sql`g.author_id`,
+                                })
+                      }`,
             );
         case "shout":
             return queryOne(
                 tx,
                 Target,
-                sql`select author_id as "authorId", product_id as "productId", left(body, 280) as excerpt
-                    from shout where id = ${id}::uuid and removed_at is null`,
+                sql`select s.author_id as "authorId", s.product_id as "productId", left(s.body, 280) as excerpt
+                    from shout s where s.id = ${id}::uuid and s.removed_at is null
+                      and ${unblocked(sql`s.author_id`)}`,
             );
         case "guide":
             return queryOne(
                 tx,
                 Target,
-                sql`select author_id as "authorId", product_id as "productId", left(title, 280) as excerpt
-                    from guide where id = ${id}::uuid and removed_at is null`,
+                sql`select g.author_id as "authorId", g.product_id as "productId", left(g.title, 280) as excerpt
+                    from guide g where g.id = ${id}::uuid and g.removed_at is null
+                      and ${unblocked(sql`g.author_id`)}`,
+            );
+        case "profile":
+            return queryOne(
+                tx,
+                Target,
+                sql`select p.account_id as "authorId", null as "productId", left(p.bio, 280) as excerpt
+                    from profile p where p.id = ${id}::uuid and p.removed_at is null and p.bio <> ''
+                      and ${unblocked(sql`p.account_id`)}
+                      and (${viewer}::text is null or p.account_id = ${viewer} or p.visibility = 'members')`,
             );
     }
 }
 
 // Any member may flag what they can see, once per thing. A second flag by the same member is the
-// same answer, not an error.
+// same answer, not an error. At most MAX_OPEN_REPORTS of a member's are open at a time.
 export function createReport(
     db: Db,
     token: BearerToken,
@@ -64,17 +97,9 @@ export function createReport(
     },
 ) {
     return withMember(db, token, async (tx, accountId) => {
-        const target = await findTarget(tx, params.kind, params.targetId);
+        const target = await findTarget(tx, params.kind, params.targetId, accountId);
         if (!target.ok) return target;
         if (target.value === null) return err<NotFound>({ code: "NOT_FOUND" });
-        // What a block hides from the reporter is not theirs to flag either.
-        const visible = await queryOne(
-            tx,
-            z.object({ visible: z.boolean() }),
-            sql`select ${notBlockedWith(accountId, sql`${target.value.authorId}::text`)} as visible`,
-        );
-        if (!visible.ok) return visible;
-        if (visible.value?.visible !== true) return err<NotFound>({ code: "NOT_FOUND" });
         if (target.value.productId !== null) {
             const listed = await requireListed(tx, {
                 accountId,
@@ -82,6 +107,18 @@ export function createReport(
                 productId: target.value.productId,
             });
             if (!listed.ok) return listed;
+        }
+        const counted = await queryOne(
+            tx,
+            z.object({ open: z.coerce.number(), same: z.boolean() }),
+            sql`select count(*) filter (where state = 'open') as open,
+                       coalesce(bool_or(target_kind = ${params.kind} and target_id = ${params.targetId}::uuid), false) as same
+                from report where reporter_id = ${accountId}`,
+        );
+        if (!counted.ok) return counted;
+        if (counted.value?.same !== true) {
+            const room = decideReportLimit(counted.value?.open ?? 0);
+            if (!room.ok) return room;
         }
         const saved = await execute(
             tx,
@@ -93,10 +130,9 @@ export function createReport(
         return ok(undefined);
     });
 }
-
 const QueueRow = z.object({
     id: z.uuid(),
-    kind: z.enum(["comment", "shout", "guide"]),
+    kind: ReportKind,
     targetId: z.uuid(),
     reason: z.enum(["spam", "abuse", "other"]),
     note: z.string(),
@@ -117,16 +153,18 @@ export function listReports(
         const after =
             params.cursor === null
                 ? sql``
-                : sql`and (r.created_at, r.id) > (select created_at, id from report where id = ${params.cursor}::uuid)`;
+                : sql`and (r.created_at, r.id) > (
+                      select p.created_at, p.id from report p
+                      where p.id = ${params.cursor}::uuid and p.state = 'open')`;
         const rows = await queryAll(
             tx,
             QueueRow,
             sql`select r.id, r.target_kind as kind, r.target_id as "targetId", r.reason, r.note,
                        rep.username as "reporterUsername",
-                       coalesce(c.author_id, s.author_id, g.author_id) as "authorId",
+                       coalesce(c.author_id, s.author_id, g.author_id, pr.account_id) as "authorId",
                        au.username as "authorUsername",
                        coalesce(cg.product_id, s.product_id, g.product_id) as "productId",
-                       left(coalesce(c.body, s.body, g.title), 280) as excerpt,
+                       left(coalesce(c.body, s.body, g.title, pr.bio), 280) as excerpt,
                        r.created_at as "createdAt"
                 from report r
                 join account rep on rep.id = r.reporter_id
@@ -134,7 +172,8 @@ export function listReports(
                 left join guide cg on cg.id = c.guide_id
                 left join shout s on r.target_kind = 'shout' and s.id = r.target_id
                 left join guide g on r.target_kind = 'guide' and g.id = r.target_id
-                join account au on au.id = coalesce(c.author_id, s.author_id, g.author_id)
+                left join profile pr on r.target_kind = 'profile' and pr.id = r.target_id
+                join account au on au.id = coalesce(c.author_id, s.author_id, g.author_id, pr.account_id)
                 where r.state = 'open' ${after}
                 order by r.created_at, r.id limit ${QUEUE_PAGE_SIZE + 1}`,
         );
@@ -175,6 +214,13 @@ function hide(tx: Tx, kind: Kind, id: string, by: AccountId) {
                 sql`update shout set removed_at = now(), removed_by = ${by}
                     where id = ${id}::uuid and removed_at is null returning id`,
             );
+        case "profile":
+            return queryOne(
+                tx,
+                hidden,
+                sql`update profile set removed_at = now(), removed_by = ${by}
+                    where id = ${id}::uuid and removed_at is null returning id`,
+            );
         case "guide":
             return queryOne(
                 tx,
@@ -207,7 +253,7 @@ export async function resolveReport(params: {
         const report = await queryOne(
             tx,
             z.object({
-                kind: z.enum(["comment", "shout", "guide"]),
+                kind: ReportKind,
                 targetId: z.uuid(),
             }),
             sql`select target_kind as kind, target_id as "targetId" from report
@@ -216,7 +262,7 @@ export async function resolveReport(params: {
         if (!report.ok) return report;
         if (report.value === null) return err<NotFound>({ code: "NOT_FOUND" });
         const { kind, targetId } = report.value;
-        const target = await findTarget(tx, kind, targetId);
+        const target = await findTarget(tx, kind, targetId, null);
         if (!target.ok) return target;
         const authorId = target.value?.authorId ?? null;
         if (params.outcome === "dismiss") {

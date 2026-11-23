@@ -57,9 +57,11 @@ test("a barred account cannot post in the named product, can post elsewhere, and
         );
         expect(await may(loader)).toEqual(ok(null));
         expect(await may(null, "shout")).toEqual(ok(null));
-        expect(await listOwnRestrictions(db, alice.token)).toEqual(
-            ok({ restrictions: [{ kind: "barred", productId: cs2, endsAt: null }] }),
-        );
+        const own = await listOwnRestrictions(db, alice.token);
+        invariant(own.ok, "expected the member's own list");
+        expect(own.value.restrictions).toEqual([
+            { id: expect.any(String), kind: "barred", productId: cs2, endsAt: null },
+        ]);
         expect(
             await queryOne(
                 db,

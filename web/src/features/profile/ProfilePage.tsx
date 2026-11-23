@@ -9,6 +9,7 @@ import { Stack } from "../../ui/Stack/Stack.tsx";
 import { Time } from "../../ui/Time/Time.tsx";
 import { RefusalNote } from "../auth/RefusalNote.tsx";
 import { postingNote } from "../comments/posting.ts";
+import { ReportButton } from "../comments/ReportButton.tsx";
 import { TextArea } from "../comments/TextArea.tsx";
 import { blockAccount } from "../privacy/server.ts";
 import { PROFILE_COPY } from "./copy.ts";
@@ -47,6 +48,11 @@ export function ProfilePage() {
                     ]}
                 />
                 <p>{profile.bio === "" ? PROFILE_COPY.noBio : profile.bio}</p>
+                {profile.isSelf || profile.id === null || profile.bio === "" ? null : (
+                    <div>
+                        <ReportButton kind="profile" targetId={profile.id} />
+                    </div>
+                )}
                 {profile.isSelf ? null : (
                     <div>
                         <Button

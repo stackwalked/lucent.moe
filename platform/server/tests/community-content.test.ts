@@ -7,6 +7,7 @@ import { createComment, listComments } from "../src/community/comments.ts";
 import { createGuide, listGuides, readGuide, updateGuide } from "../src/community/guides.ts";
 import { readProfile, setBio } from "../src/community/profiles.ts";
 import { createShout, listShouts } from "../src/community/shouts.ts";
+import { execute, sql } from "../src/db/pool.ts";
 import { setRestriction } from "../src/moderation/restrictions.ts";
 import { catalog } from "./authority-fixtures.ts";
 import { holdProduct, member, moderator } from "./community-fixtures.ts";
@@ -225,14 +226,13 @@ test("only a guide's author edits it, comments page oldest first and profiles na
                 body: "y",
             }),
         ).toEqual(err({ code: "NOT_FOUND" }));
-        for (let n = 0; n < 27; n += 1) {
-            const made = await createComment(db, bob.token, {
-                catalog: products,
-                guideId: guide.value.id,
-                body: `c${n}`,
-            });
-            invariant(made.ok, "expected a comment");
-        }
+        // Seeded directly: posting 27 comments through the writer would meet the rate limit.
+        await execute(
+            db,
+            sql`insert into comment (guide_id, author_id, body, created_at)
+                select ${guide.value.id}::uuid, ${bob.id}, 'c' || n, now() - make_interval(secs => 100 - n)
+                from generate_series(0, 26) n`,
+        );
         const first = await listComments(db, alice.token, {
             catalog: products,
             guideId: guide.value.id,

@@ -16,7 +16,7 @@ export const COMMENTS_COPY = {
     send: "send report",
     cancel: "cancel",
     done: "done",
-    thanks: "thanks. staff will look at it.",
+    thanks: "reported.",
     seePrivacy: "see privacy for what applies to your account.",
     author: (name: string | null) => name ?? "—",
 } as const;

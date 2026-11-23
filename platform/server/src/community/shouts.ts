@@ -2,10 +2,11 @@ import type { ProductCatalog } from "@lucent/catalog/catalog";
 import { err, ok } from "@lucent/core/result";
 import { type BearerToken, EpochMs, ProductId } from "@lucent/core/scalars";
 import { z } from "zod";
-import { type Db, queryAll, queryOne, sql, type Tx } from "../db/pool.ts";
+import { type Db, queryAll, queryOne, type SqlFragment, sql, type Tx } from "../db/pool.ts";
 import { withMember } from "../notify/account.ts";
 import { filterListedProducts, type MemberCatalog } from "../products/visibility.ts";
 import { notBlockedWith } from "./blocks.ts";
+import { checkPostRate } from "./limits.ts";
 import { withMemberAt } from "./member.ts";
 import { type NotFound, PAGE_SIZE, pageOf, requireListed } from "./page.ts";
 import { mayPostHere } from "./standing.ts";
@@ -25,7 +26,7 @@ async function feedScope(tx: Tx, member: MemberCatalog, productId: ProductId | n
     if (productId !== null) {
         const listed = await requireListed(tx, { ...member, productId });
         if (!listed.ok) return listed;
-        return ok(sql`s.product_id = ${productId}`);
+        return ok((column: SqlFragment) => sql`${column} = ${productId}`);
     }
     const named = await queryAll(
         tx,
@@ -39,7 +40,10 @@ async function feedScope(tx: Tx, member: MemberCatalog, productId: ProductId | n
         named.value.map((row) => row.product_id),
     );
     if (!listed.ok) return listed;
-    return ok(sql`(s.product_id is null or s.product_id = any(${listed.value}::text[]))`);
+    return ok(
+        (column: SqlFragment) =>
+            sql`(${column} is null or ${column} = any(${listed.value}::text[]))`,
+    );
 }
 
 export function listShouts(
@@ -57,7 +61,11 @@ export function listShouts(
         const after =
             params.cursor === null
                 ? sql``
-                : sql`and (s.created_at, s.id) < (select created_at, id from shout where id = ${params.cursor}::uuid)`;
+                : sql`and (s.created_at, s.id) < (
+                      select p.created_at, p.id from shout p
+                      where p.id = ${params.cursor}::uuid and p.removed_at is null
+                        and ${notBlockedWith(accountId, sql`p.author_id`)}
+                        and ${scope.value(sql`p.product_id`)})`;
         const rows = await queryAll(
             tx,
             Row,
@@ -65,7 +73,7 @@ export function listShouts(
                        s.created_at as "createdAt"
                 from shout s join account a on a.id = s.author_id
                 where s.removed_at is null and ${notBlockedWith(accountId, sql`s.author_id`)}
-                  and ${scope.value} ${after}
+                  and ${scope.value(sql`s.product_id`)} ${after}
                 order by s.created_at desc, s.id desc limit ${PAGE_SIZE + 1}`,
         );
         if (!rows.ok) return rows;
@@ -106,6 +114,8 @@ export function createShout(
             txNow,
         });
         if (!may.ok) return may;
+        const rate = await checkPostRate(tx, { accountId, txNow });
+        if (!rate.ok) return rate;
         const inserted = await queryOne(
             tx,
             z.object({ id: z.uuid() }),

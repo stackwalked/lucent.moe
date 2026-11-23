@@ -1,13 +1,13 @@
 import { AccountId, EpochMs, ProductId } from "@lucent/core/scalars";
 import { z } from "zod";
 import { defineContract } from "../contract.ts";
-import { RestrictionKind, ViewRefusal } from "./community.ts";
+import { ReportRefusal, RestrictionKind } from "./community.ts";
 import { Done, refusal, StaffRefusals } from "./shared.ts";
 
 export const QueueId = z.uuid();
 
 // What a member can flag: anything a member wrote that has a page of its own to be seen on.
-export const ReportKind = z.enum(["comment", "shout", "guide"]);
+export const ReportKind = z.enum(["comment", "shout", "guide", "profile"]);
 export const ReportReason = z.enum(["spam", "abuse", "other"]);
 
 export const moderationContract = defineContract({
@@ -21,7 +21,7 @@ export const moderationContract = defineContract({
             note: z.string().trim().max(500),
         }),
         output: Done,
-        error: ViewRefusal,
+        error: ReportRefusal,
     },
     "admin.moderation.reports.list": {
         session: "member",

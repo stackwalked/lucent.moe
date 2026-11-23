@@ -1,8 +1,8 @@
-import { z } from "zod";
+import { inboxSearch } from "../../search.ts";
 
-// Community lists page by the id of the last row seen. Routes share this one schema and one
-// loader-deps shape so each route adds as little as possible to the entry bundle.
-export const cursorSearch = z.object({ cursor: z.uuid().optional() });
+// Community lists page by the id of the last row seen, the same ?cursor= the inbox reads. Routes
+// share this one reader and one loader-deps shape.
+export const cursorSearch = inboxSearch;
 
 export const cursorDeps = ({
     search,

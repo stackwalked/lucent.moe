@@ -1,8 +1,15 @@
--- Global: a profile belongs to one account whatever the product; no row means an empty bio.
+-- Global: a profile belongs to one account whatever the product; no row means an empty bio. The
+-- row has an id of its own so a report can name it. Removal by a moderator sets removed_at and the
+-- bio stops showing; the owner writing a new bio clears the marker (the audit row and the log
+-- line keep the history).
 create table profile (
     account_id text primary key references account (id),
+    id uuid not null unique default gen_random_uuid(),
     bio text not null check (length(bio) <= 500),
-    updated_at timestamptz not null default now()
+    updated_at timestamptz not null default now(),
+    removed_at timestamptz,
+    removed_by text references account (id),
+    check (removed_by is null or removed_at is not null)
 );
 
 -- Product-scoped: a guide belongs to exactly one product, and only members who may see that

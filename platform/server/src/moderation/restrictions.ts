@@ -194,7 +194,9 @@ export function listRestrictions(
             params.cursor === null
                 ? sql``
                 : sql`and (r.created_at, r.id) < (
-                    select created_at, id from community_restriction where id = ${params.cursor}::uuid)`;
+                    select p.created_at, p.id from community_restriction p
+                    where p.id = ${params.cursor}::uuid and p.lifted_at is null
+                      and (p.ends_at is null or p.ends_at > now()))`;
         const rows = await queryAll(
             tx,
             ListedRow,

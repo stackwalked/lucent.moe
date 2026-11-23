@@ -27,7 +27,7 @@ export const reportContent = createServerFn({ method: "POST" })
     .validator((data: unknown) =>
         z
             .strictObject({
-                kind: z.enum(["comment", "shout", "guide"]),
+                kind: z.enum(["comment", "shout", "guide", "profile"]),
                 targetId: ContentId,
                 reason: z.enum(["spam", "abuse", "other"]),
                 note: z.string().max(500),

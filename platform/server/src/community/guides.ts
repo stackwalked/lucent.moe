@@ -4,7 +4,8 @@ import { type BearerToken, EpochMs, ProductId } from "@lucent/core/scalars";
 import { z } from "zod";
 import { type Db, execute, queryAll, queryOne, sql } from "../db/pool.ts";
 import { withMember } from "../notify/account.ts";
-import { notBlockedWith } from "./blocks.ts";
+import { guideReadable } from "./blocks.ts";
+import { decideGuideLimit } from "./limits.rules.ts";
 import { withMemberAt } from "./member.ts";
 import { type NotFound, PAGE_SIZE, pageOf, requireListed } from "./page.ts";
 import { mayPostHere } from "./standing.ts";
@@ -37,14 +38,17 @@ export function listGuides(
         const after =
             params.cursor === null
                 ? sql``
-                : sql`and (g.created_at, g.id) < (select created_at, id from guide where id = ${params.cursor}::uuid)`;
+                : sql`and (g.created_at, g.id) < (
+                      select p.created_at, p.id from guide p
+                      where p.id = ${params.cursor}::uuid and p.product_id = ${params.productId}
+                        and ${guideReadable(accountId, { removedAt: sql`p.removed_at`, authorId: sql`p.author_id` })})`;
         const rows = await queryAll(
             tx,
             Summary,
             sql`select g.id, g.title, a.username, g.created_at as "createdAt", g.updated_at as "updatedAt"
                 from guide g join account a on a.id = g.author_id
-                where g.product_id = ${params.productId} and g.removed_at is null
-                  and ${notBlockedWith(accountId, sql`g.author_id`)} ${after}
+                where g.product_id = ${params.productId}
+                  and ${guideReadable(accountId, { removedAt: sql`g.removed_at`, authorId: sql`g.author_id` })} ${after}
                 order by g.created_at desc, g.id desc limit ${PAGE_SIZE + 1}`,
         );
         if (!rows.ok) return rows;
@@ -71,8 +75,8 @@ export function readGuide(
             sql`select g.id, g.title, g.body, g.product_id as "productId", g.author_id as "authorId", a.username,
                        g.created_at as "createdAt", g.updated_at as "updatedAt"
                 from guide g join account a on a.id = g.author_id
-                where g.id = ${params.id}::uuid and g.removed_at is null
-                  and ${notBlockedWith(accountId, sql`g.author_id`)}`,
+                where g.id = ${params.id}::uuid
+                  and ${guideReadable(accountId, { removedAt: sql`g.removed_at`, authorId: sql`g.author_id` })}`,
         );
         if (!row.ok) return row;
         if (row.value === null) return err<NotFound>({ code: "NOT_FOUND" });
@@ -112,6 +116,15 @@ export function createGuide(
             txNow,
         });
         if (!may.ok) return may;
+        const held = await queryOne(
+            tx,
+            z.object({ held: z.coerce.number() }),
+            sql`select count(*) as held from guide
+                where author_id = ${accountId} and product_id = ${params.productId} and removed_at is null`,
+        );
+        if (!held.ok) return held;
+        const room = decideGuideLimit(held.value?.held ?? 0);
+        if (!room.ok) return room;
         const inserted = await queryOne(
             tx,
             z.object({ id: z.uuid() }),

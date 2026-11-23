@@ -55,3 +55,13 @@ export function listBlocks(db: Db, token: BearerToken) {
         return ok({ blocks: rows.value });
     });
 }
+
+// A guide a member may read, for one place to say so: not removed, and no block between the
+// reader and its author. Comments take the guide's answer, and so does reporting one. The
+// arguments are the SQL for the guide's removed_at and author_id columns as the caller names them.
+export function guideReadable(
+    viewer: AccountId,
+    guide: { readonly removedAt: SqlFragment; readonly authorId: SqlFragment },
+): SqlFragment {
+    return sql`${guide.removedAt} is null and ${notBlockedWith(viewer, guide.authorId)}`;
+}

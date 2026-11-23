@@ -18,12 +18,14 @@ export function readProfile(db: Db, token: BearerToken, params: { readonly usern
             tx,
             z.object({
                 id: z.string(),
+                profileId: z.uuid().nullable(),
                 username: z.string(),
                 bio: z.string(),
                 visibility: z.enum(PROFILE_VISIBILITIES),
                 joinedAt: EpochMs,
             }),
-            sql`select a.id, a.username, coalesce(p.bio, '') as bio,
+            sql`select a.id, p.id as "profileId", a.username,
+                       case when p.removed_at is null then coalesce(p.bio, '') else '' end as bio,
                        coalesce(p.visibility, 'members') as visibility, a.created_at as "joinedAt"
                 from account a left join profile p on p.account_id = a.id
                 where a.username = ${params.username.toLowerCase()}
@@ -32,8 +34,8 @@ export function readProfile(db: Db, token: BearerToken, params: { readonly usern
         );
         if (!row.ok) return row;
         if (row.value === null) return err<NotFound>({ code: "NOT_FOUND" });
-        const { id, ...profile } = row.value;
-        return ok({ ...profile, isSelf: id === accountId });
+        const { id, profileId, ...profile } = row.value;
+        return ok({ ...profile, id: profileId, isSelf: id === accountId });
     });
 }
 
@@ -49,7 +51,8 @@ export function setBio(db: Db, token: BearerToken, params: { readonly bio: strin
         const saved = await execute(
             tx,
             sql`insert into profile (account_id, bio) values (${accountId}, ${params.bio})
-                on conflict (account_id) do update set bio = excluded.bio, updated_at = now()`,
+                on conflict (account_id) do update
+                set bio = excluded.bio, updated_at = now(), removed_at = null, removed_by = null`,
         );
         if (!saved.ok) return saved;
         return ok(undefined);
