@@ -1,8 +1,12 @@
+import { type AccountId, type EpochMs, isSeconds, type Seconds } from "@lucent/core/brands";
+import { invariant } from "@lucent/core/contain";
 import { err, ok, type Result } from "@lucent/core/result";
-import { type AccountId, type ClientInfo, type EpochMs, Seconds } from "@lucent/core/scalars";
-import { ACTION_POLICY, type Action } from "./actions.ts";
+import type { ClientInfo } from "@lucent/core/scalars";
+import { ACTION_POLICY, type Action } from "./action-list.ts";
 
-export const STEP_UP_WINDOW_SECONDS = Seconds.parse(1_800);
+const stepUpWindow = 1_800;
+invariant(isSeconds(stepUpWindow), "the step-up window is whole seconds");
+export const STEP_UP_WINDOW_SECONDS: Seconds = stepUpWindow;
 const STEP_UP_WINDOW_MS = STEP_UP_WINDOW_SECONDS * 1_000;
 
 // What a session knows about its holder, and where the request came from (for audit).
