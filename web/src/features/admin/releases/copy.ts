@@ -23,5 +23,5 @@ export const RELEASES_COPY = {
     noSets: "no fact sets for this release yet.",
     promoteRevision: (revision: number) => `promote revision ${revision}`,
     promoteSetBody: (builds: number) =>
-        `it becomes current for ${builds === 1 ? "its build" : `all ${builds} of its builds`}. sessions running on them get it at their next renewal.`,
+        `it becomes current for ${builds === 1 ? "its build" : `all ${builds} of its builds`}. sessions running on them are told at their next renewal and can fetch it.`,
 } as const;

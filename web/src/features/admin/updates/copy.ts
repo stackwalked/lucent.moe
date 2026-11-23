@@ -8,6 +8,7 @@ export const UPDATES_COPY = {
     latency: "latency",
     waiting: (duration: string) => `waiting ${duration}`,
     none: "none yet",
+    truncated: "showing the 100 latest builds.",
     nothingReported: "no start has reported a game build yet.",
     duration: (ms: number) => {
         const minutes = Math.floor(ms / 60_000);

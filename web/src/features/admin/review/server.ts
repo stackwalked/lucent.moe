@@ -8,5 +8,10 @@ export const listReview = createServerFn({ method: "GET" }).handler(async () => 
     if (!open.ok) return refuse(open.error);
     const decided = await readPlatform("admin.review.list", { state: "decided" });
     if (!decided.ok) return refuse(decided.error);
-    return done({ open: open.value.items, decided: decided.value.items });
+    return done({
+        open: open.value.items,
+        openTruncated: open.value.truncated,
+        decided: decided.value.items,
+        decidedTruncated: decided.value.truncated,
+    });
 });

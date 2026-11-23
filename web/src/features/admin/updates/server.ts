@@ -4,5 +4,5 @@ import { readPlatform } from "../../../server/platform.ts";
 
 export const listUpdates = createServerFn({ method: "GET" }).handler(async () => {
     const reply = await readPlatform("admin.updates.list", {});
-    return reply.ok ? done(reply.value.builds) : refuse(reply.error);
+    return reply.ok ? done(reply.value) : refuse(reply.error);
 });

@@ -19,6 +19,8 @@ export const REVIEW_COPY = {
     note: "note",
     noteHint: "optional. staff only.",
     nothingOpen: "nothing to review.",
+    truncatedOpen: "showing the 100 most urgent. close some to see the rest.",
+    truncatedDecided: "showing the 100 latest.",
     nothingDecided: "nothing closed yet.",
     dismiss: "dismiss",
     actioned: "mark acted on",

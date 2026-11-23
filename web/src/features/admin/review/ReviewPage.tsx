@@ -35,10 +35,11 @@ export function ReviewPage() {
             </Page>
         );
     }
-    const { open, decided } = listed.value;
+    const { open, openTruncated, decided, decidedTruncated } = listed.value;
     return (
         <Page title={REVIEW_COPY.title}>
             <Section caption={REVIEW_COPY.open}>
+                {openTruncated ? <p>{REVIEW_COPY.truncatedOpen}</p> : null}
                 {open.length === 0 ? (
                     <Empty>{REVIEW_COPY.nothingOpen}</Empty>
                 ) : (
@@ -75,6 +76,7 @@ export function ReviewPage() {
                 )}
             </Section>
             <Section caption={REVIEW_COPY.decided}>
+                {decidedTruncated ? <p>{REVIEW_COPY.truncatedDecided}</p> : null}
                 {decided.length === 0 ? (
                     <Empty>{REVIEW_COPY.nothingDecided}</Empty>
                 ) : (

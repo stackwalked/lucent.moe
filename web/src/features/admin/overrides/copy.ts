@@ -19,10 +19,11 @@ export const OVERRIDES_COPY = {
     turnOffTitle: (name: string) => `turn ${name} off`,
     turnOnTitle: (name: string) => `turn ${name} back on`,
     turnOffBody:
-        "every session on this release turns it off at its next renewal. nothing else changes.",
+        "the switch is recorded and sessions on this release see their data change at their next renewal. modules don't enforce switches yet.",
     turnOffCoreBody:
-        "this capability is core: sessions on this release lose everything that needs it at their next renewal.",
-    turnOnBody: "sessions on this release may use it again from their next renewal.",
+        "this capability is core. the switch is recorded and sessions on this release see their data change at their next renewal. modules don't enforce switches yet.",
+    turnOnBody:
+        "the switch is cleared and sessions on this release see their data change at their next renewal.",
     switchedBy: "switched by",
     noFeatures: "this release declares no features.",
     noCapabilities: "this release declares no capabilities.",

@@ -13,7 +13,7 @@ import { UPDATES_COPY } from "./copy.ts";
 const route = getRouteApi("/_admin/admin/updates");
 
 type Listed = Extract<ReturnType<typeof route.useLoaderData>, { ok: true }>["value"];
-type Day = Listed[number];
+type Day = Listed["builds"][number];
 
 // Update-day latency per game module build: how long after a start first reported it a fact set
 // covering it went current, or how long it has waited.
@@ -26,10 +26,12 @@ export function UpdatesPage() {
             </Page>
         );
     }
+    const { builds, truncated } = listed.value;
     return (
         <Page title={UPDATES_COPY.title}>
             <Section caption={UPDATES_COPY.builds}>
-                {listed.value.length === 0 ? (
+                {truncated ? <p>{UPDATES_COPY.truncated}</p> : null}
+                {builds.length === 0 ? (
                     <Empty>{UPDATES_COPY.nothingReported}</Empty>
                 ) : (
                     <Table
@@ -76,7 +78,7 @@ export function UpdatesPage() {
                                     ),
                             },
                         ]}
-                        rows={listed.value}
+                        rows={builds}
                         rowKey={(day) => `${day.productId}:${buildLabel(day.build)}`}
                     />
                 )}
