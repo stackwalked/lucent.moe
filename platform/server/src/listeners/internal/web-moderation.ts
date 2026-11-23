@@ -1,13 +1,30 @@
 import type { Handlers } from "@lucent/rpc/mount";
 import type { moderationContract } from "@lucent/rpc/web/moderation";
+import { createReport, listReports, resolveReport } from "../../moderation/reports.ts";
 import {
     liftRestriction,
     listRestrictions,
     setRestriction,
 } from "../../moderation/restrictions.ts";
-import { asStaff, mapOk, type WebRpcContext } from "./web-shared.ts";
+import { asStaff, done, mapOk, served, type WebRpcContext } from "./web-shared.ts";
 
 export const moderationHandlers = {
+    "moderation.reports.create": async (ctx, input, { session }) =>
+        served(done(await createReport(ctx.auth.db, session, { ...input, catalog: ctx.catalog }))),
+    "admin.moderation.reports.list": (ctx, input, call) =>
+        asStaff(ctx, call, (caller) => listReports(ctx.auth.db, { caller, cursor: input.cursor })),
+    "admin.moderation.reports.resolve": (ctx, input, call) =>
+        asStaff(ctx, call, async (caller) => {
+            const resolved = await resolveReport({ db: ctx.auth.db, caller, ...input });
+            // The line `ops replay-removals` reads, written once the removal has committed.
+            if (resolved.ok && resolved.value.removed !== null) {
+                ctx.logger.write("info", "removed", {
+                    origin: "internal-web",
+                    detail: `${resolved.value.removed.kind} ${resolved.value.removed.id}`,
+                });
+            }
+            return mapOk(resolved, () => ({}));
+        }),
     "admin.moderation.restrictions.list": (ctx, input, call) =>
         asStaff(ctx, call, (caller) =>
             listRestrictions(ctx.auth.db, { caller, cursor: input.cursor }),

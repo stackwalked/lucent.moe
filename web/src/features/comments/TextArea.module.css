@@ -10,6 +10,16 @@
         font-size: var(--size-13);
     }
 
+    .control {
+        block-size: var(--control-h);
+        padding-inline: var(--s-2);
+        border: 1px solid var(--line-2);
+        border-radius: var(--r);
+        background: var(--sunken);
+        color: var(--ink);
+        font-size: var(--size-13);
+    }
+
     .area {
         min-block-size: calc(var(--control-h) * 3);
         padding: var(--s-2);

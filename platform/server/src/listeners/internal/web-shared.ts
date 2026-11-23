@@ -6,12 +6,15 @@ import type { AuthDeps } from "../../auth/deps.ts";
 import type { SessionInvalid } from "../../auth/sessions.ts";
 import { resolveCaller } from "../../auth/viewer.ts";
 import type { CloudLimits } from "../../cloud/items.rules.ts";
+import type { Logger } from "../../core/log.ts";
 import type { DbFailure } from "../../db/pool.ts";
 
 export type WebRpcContext = {
     readonly cloudLimits?: CloudLimits;
     readonly catalog: ProductCatalog;
     readonly auth: AuthDeps;
+    // For lines a handler writes once its transaction has committed (a moderator's removal).
+    readonly logger: Logger;
 };
 
 type Unavailable = { readonly code: "SERVICE_UNAVAILABLE" };

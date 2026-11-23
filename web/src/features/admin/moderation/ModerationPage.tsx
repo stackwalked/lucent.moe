@@ -1,18 +1,33 @@
-import { getRouteApi } from "@tanstack/react-router";
+import { getRouteApi, Link } from "@tanstack/react-router";
 import { Page } from "../../../ui/Page/Page.tsx";
-import { Stack } from "../../../ui/Stack/Stack.tsx";
+import { MODERATION_COPY } from "./copy.ts";
+import { ReportsSection } from "./ReportsSection.tsx";
 import { RestrictionsSection } from "./RestrictionsSection.tsx";
 import { MODERATION_TITLE } from "./title.ts";
 
 const route = getRouteApi("/_admin/admin/moderation");
 
+// One list at a time, each with its own paging: the reports queue, or the active restrictions.
 export function ModerationPage() {
-    const { restrictions } = route.useLoaderData();
+    const { list } = route.useLoaderData();
     return (
-        <Page title={MODERATION_TITLE}>
-            <Stack gap={6}>
-                <RestrictionsSection outcome={restrictions} />
-            </Stack>
+        <Page
+            title={MODERATION_TITLE}
+            actions={
+                list.kind === "reports" ? (
+                    <Link to="/admin/moderation" search={{ view: "restrictions" }}>
+                        {MODERATION_COPY.showRestrictions}
+                    </Link>
+                ) : (
+                    <Link to="/admin/moderation">{MODERATION_COPY.showReports}</Link>
+                )
+            }
+        >
+            {list.kind === "reports" ? (
+                <ReportsSection outcome={list.outcome} />
+            ) : (
+                <RestrictionsSection outcome={list.outcome} />
+            )}
         </Page>
     );
 }

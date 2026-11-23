@@ -13,6 +13,7 @@ import { TextField } from "../../ui/TextField/TextField.tsx";
 import { Time } from "../../ui/Time/Time.tsx";
 import { RefusalNote } from "../auth/RefusalNote.tsx";
 import { postingNote } from "../comments/posting.ts";
+import { ReportButton } from "../comments/ReportButton.tsx";
 import { TextArea } from "../comments/TextArea.tsx";
 import { SHOUTS_COPY } from "./copy.ts";
 import { postShout } from "./server.ts";
@@ -107,6 +108,14 @@ export function ShoutsPage() {
                                             key: "body",
                                             header: SHOUTS_COPY.body,
                                             cell: (row) => row.body,
+                                        },
+                                        {
+                                            key: "report",
+                                            header: "",
+                                            cell: (row) =>
+                                                row.isMine ? null : (
+                                                    <ReportButton kind="shout" targetId={row.id} />
+                                                ),
                                         },
                                         {
                                             key: "about",

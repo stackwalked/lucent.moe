@@ -22,3 +22,19 @@ export const postComment = createServerFn({ method: "POST" })
         const reply = await callPlatform("comments.create", data);
         return reply.ok ? done(null) : refuse(reply.error);
     });
+
+export const reportContent = createServerFn({ method: "POST" })
+    .validator((data: unknown) =>
+        z
+            .strictObject({
+                kind: z.enum(["comment", "shout", "guide"]),
+                targetId: ContentId,
+                reason: z.enum(["spam", "abuse", "other"]),
+                note: z.string().max(500),
+            })
+            .parse(data),
+    )
+    .handler(async ({ data }) => {
+        const reply = await callPlatform("moderation.reports.create", data);
+        return reply.ok ? done(null) : refuse(reply.error);
+    });

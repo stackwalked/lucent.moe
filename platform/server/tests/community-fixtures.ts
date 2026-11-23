@@ -3,6 +3,7 @@ import type { SeededRng } from "@lucent/core/rng";
 import { type AccountId, type BearerToken, newEntitlementId, RoleId } from "@lucent/core/scalars";
 import type { Caller } from "@lucent/policy/policy";
 import { mintSession } from "../src/auth/sessions.ts";
+import type { Logger } from "../src/core/log.ts";
 import { type Db, execute, sql } from "../src/db/pool.ts";
 import { withTx } from "../src/db/tx.ts";
 import { grantRole, seedAccount, seedRole, steppedUp } from "./authority-fixtures.ts";
@@ -62,3 +63,6 @@ export async function holdProduct(
             values (${id}, ${productId}, '"*"'::jsonb, '{stable}')`,
     );
 }
+
+// For tests that mount the web procedures and do not read their log.
+export const NO_LOG: Logger = { write: () => {} };

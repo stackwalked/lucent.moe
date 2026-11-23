@@ -10,6 +10,7 @@ import { Time } from "../../ui/Time/Time.tsx";
 import { RefusalNote } from "../auth/RefusalNote.tsx";
 import { Comments } from "../comments/Comments.tsx";
 import { postingNote } from "../comments/posting.ts";
+import { ReportButton } from "../comments/ReportButton.tsx";
 import { TextArea } from "../comments/TextArea.tsx";
 import { GUIDES_COPY } from "./copy.ts";
 import styles from "./Guide.module.css";
@@ -57,6 +58,7 @@ export function GuidePage() {
                     <Time at={guide.value.updatedAt} format="relative" />
                 </p>
                 <p className={styles.body}>{guide.value.body}</p>
+                {guide.value.isMine ? null : <ReportButton kind="guide" targetId={guideId} />}
                 {guide.value.isMine ? (
                     <Section caption={GUIDES_COPY.edit}>
                         <form action={save} key={guide.value.updatedAt}>

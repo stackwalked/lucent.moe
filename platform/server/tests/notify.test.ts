@@ -15,6 +15,7 @@ import { withMember } from "../src/notify/account.ts";
 import { countUnread, listInbox, markRead, recordNotification } from "../src/notify/inbox.ts";
 import { listPreferences, setPreference, setSubscription } from "../src/notify/preferences.ts";
 import { catalog, seedAccount } from "./authority-fixtures.ts";
+import { NO_LOG } from "./community-fixtures.ts";
 import { createTestAuthDeps } from "./harness/auth.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 
@@ -164,7 +165,7 @@ test("losing a seed entitlement hides its follow and history, suppresses new del
             path: "/rpc",
             peerKey,
             procedures: webProcedures,
-            createContext: () => Promise.resolve(ok({ catalog: products, auth })),
+            createContext: () => Promise.resolve(ok({ catalog: products, auth, logger: NO_LOG })),
             onUnhandledError: () => {},
         });
         const client = createRpcClient(webContract, {

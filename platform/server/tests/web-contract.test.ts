@@ -13,6 +13,7 @@ import { execute, sql } from "../src/db/pool.ts";
 import { webProcedures } from "../src/listeners/internal/web-rpc.ts";
 import { memberSession, newSetupLink, seedRootOnce } from "./auth-fixtures.ts";
 import { catalog, product, seedAccount } from "./authority-fixtures.ts";
+import { NO_LOG } from "./community-fixtures.ts";
 import { createTestAuthDeps } from "./harness/auth.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 
@@ -38,7 +39,7 @@ test("catalog RPCs separate public listings, grant options and a member's past h
             path: "/rpc",
             peerKey: PEER_KEY,
             procedures: webProcedures,
-            createContext: () => Promise.resolve(ok({ catalog: products, auth })),
+            createContext: () => Promise.resolve(ok({ catalog: products, auth, logger: NO_LOG })),
             onUnhandledError: () => {},
         });
         const client = createRpcClient(webContract, {
@@ -193,6 +194,17 @@ const inputs: SinglePurpose = {
         cursor: null,
     },
     "privacy.restrictions.list": {},
+    "moderation.reports.create": {
+        kind: "comment",
+        targetId: "00000000-0000-4000-8000-000000000001",
+        reason: "spam",
+        note: "",
+    },
+    "admin.moderation.reports.list": { cursor: null },
+    "admin.moderation.reports.resolve": {
+        id: "00000000-0000-4000-8000-000000000001",
+        outcome: "remove",
+    },
     "profile.get": { username: "someone" },
     "profile.bio.set": { bio: "hello" },
     "guides.list": { productId: "cs2", cursor: null },
@@ -242,7 +254,7 @@ test("every single-purpose procedure refuses a session of the other purpose", as
             path: "/rpc",
             peerKey: PEER_KEY,
             procedures: webProcedures,
-            createContext: () => Promise.resolve(ok({ catalog: new Map(), auth })),
+            createContext: () => Promise.resolve(ok({ catalog: new Map(), auth, logger: NO_LOG })),
             onUnhandledError: () => {},
         });
 
@@ -280,7 +292,7 @@ test("adding an account through the contract needs a step-up and shows the setup
             path: "/rpc",
             peerKey: PEER_KEY,
             procedures: webProcedures,
-            createContext: () => Promise.resolve(ok({ catalog: new Map(), auth })),
+            createContext: () => Promise.resolve(ok({ catalog: new Map(), auth, logger: NO_LOG })),
             onUnhandledError: () => {},
         });
         const client = createRpcClient(webContract, {

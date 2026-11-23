@@ -31,6 +31,7 @@ export function createInternalWebApp(deps: {
                 ok({
                     catalog: deps.catalog,
                     auth: deps.auth,
+                    logger: deps.logger,
                     ...(deps.cloudLimits === undefined ? {} : { cloudLimits: deps.cloudLimits }),
                 }),
             );

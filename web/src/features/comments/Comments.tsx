@@ -11,6 +11,7 @@ import { Time } from "../../ui/Time/Time.tsx";
 import { RefusalNote } from "../auth/RefusalNote.tsx";
 import { COMMENTS_COPY } from "./copy.ts";
 import { postingNote } from "./posting.ts";
+import { ReportButton } from "./ReportButton.tsx";
 import type { fetchComments } from "./server.ts";
 import { postComment } from "./server.ts";
 import { TextArea } from "./TextArea.tsx";
@@ -61,6 +62,14 @@ export function Comments({
                                     key: "body",
                                     header: COMMENTS_COPY.body,
                                     cell: (row) => row.body,
+                                },
+                                {
+                                    key: "report",
+                                    header: "",
+                                    cell: (row) =>
+                                        row.isMine ? null : (
+                                            <ReportButton kind="comment" targetId={row.id} />
+                                        ),
                                 },
                                 {
                                     key: "time",

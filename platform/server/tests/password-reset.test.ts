@@ -28,6 +28,7 @@ import { webProcedures } from "../src/listeners/internal/web-rpc.ts";
 import { mailDeliveryJob } from "../src/notify/mail.ts";
 import { codeAt, MEMBER_PASSWORD, newMember, seedRootOnce } from "./auth-fixtures.ts";
 import { catalog, grantRole, seedRole, steppedUp } from "./authority-fixtures.ts";
+import { NO_LOG } from "./community-fixtures.ts";
 import { createTestAuthDeps } from "./harness/auth.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 
@@ -39,7 +40,7 @@ function publicRpc(auth: AuthDeps) {
         path: "/rpc",
         peerKey,
         procedures: webProcedures,
-        createContext: async () => ok({ auth, catalog: catalog() }),
+        createContext: async () => ok({ auth, catalog: catalog(), logger: NO_LOG }),
         onUnhandledError: () => {},
     });
     return createRpcClient(webContract, {
