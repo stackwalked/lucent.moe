@@ -1,4 +1,4 @@
-import { RoleId } from "@lucent/core/scalars";
+import { isRoleId, type RoleId } from "@lucent/core/brands";
 
 const PREFIX = "role_";
 const SLUG_MAX = 48;
@@ -18,6 +18,6 @@ export function roleIdFor(name: string): RoleId | null {
         .replace(/^[-_]+|[-_]+$/g, "")
         .slice(0, SLUG_MAX)
         .replace(/[-_]+$/g, "");
-    const parsed = RoleId.safeParse(`${PREFIX}${slug}`);
-    return parsed.success ? parsed.data : null;
+    const id = `${PREFIX}${slug}`;
+    return isRoleId(id) ? id : null;
 }

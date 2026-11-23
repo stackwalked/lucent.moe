@@ -1,4 +1,4 @@
-import { BearerToken } from "@lucent/core/scalars";
+import { type BearerToken, isBearerToken } from "@lucent/core/brands";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import type { Refused } from "../../server/outcome.ts";
@@ -17,9 +17,9 @@ export function ResetPage() {
         // A URL fragment is never part of a request or Referer. Drop it from the current
         // history entry too; only the explicit password submission carries it to the server.
         if (!window.location.hash) return;
-        const parsed = BearerToken.safeParse(window.location.hash.slice(1));
+        const token = window.location.hash.slice(1);
         window.history.replaceState(window.history.state, "", window.location.pathname);
-        if (parsed.success) setToken(parsed.data);
+        if (isBearerToken(token)) setToken(token);
         else setRefused({ code: "RESET_INVALID", reference: null });
     }, []);
     const submit = async (form: FormData) => {

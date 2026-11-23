@@ -1,4 +1,4 @@
-import { AccountId } from "@lucent/core/scalars";
+import { isAccountId } from "@lucent/core/brands";
 import { createFileRoute } from "@tanstack/react-router";
 import { SITE_COPY } from "../../copy/site.ts";
 import { AccountPage } from "../../features/admin/accounts/AccountPage.tsx";
@@ -10,10 +10,10 @@ import { toNotFound } from "../../server/route-control.ts";
 export const Route = createFileRoute("/_admin/admin/accounts/$accountId")({
     beforeLoad: ({ context }) => guardSection(context.session, "accounts"),
     loader: async ({ params }) => {
-        const accountId = AccountId.safeParse(params.accountId);
-        if (!accountId.success) return toNotFound();
+        const { accountId } = params;
+        if (!isAccountId(accountId)) return toNotFound();
         const [account, roles, catalog] = await Promise.all([
-            fetchAccount({ data: { accountId: accountId.data } }),
+            fetchAccount({ data: { accountId } }),
             fetchRoles(),
             fetchCatalog(),
         ]);

@@ -1,4 +1,5 @@
-import { EpochMs } from "@lucent/core/scalars";
+import { type EpochMs, isEpochMs } from "@lucent/core/brands";
+import { invariant } from "@lucent/core/contain";
 import { type ReactNode, useState } from "react";
 import { Button } from "../../ui/Button/Button.tsx";
 import { Check } from "../../ui/Check/Check.tsx";
@@ -41,25 +42,31 @@ type SampleRow = {
     readonly at: EpochMs;
 };
 
+function ago(now: EpochMs, ms: number): EpochMs {
+    const at = now - ms;
+    invariant(isEpochMs(at), "a sample time is after 1970");
+    return at;
+}
+
 function sampleRows(now: EpochMs): readonly SampleRow[] {
     return [
         {
             id: "acc_7Qm2Lx9PZt4Wv0yHcR1kSa",
             name: "alice",
             status: "active",
-            at: EpochMs.parse(now - 5 * 60_000),
+            at: ago(now, 5 * 60_000),
         },
         {
             id: "acc_0bN5eTqY3uJr8Dk2Vw6sLp",
             name: "bob",
             status: "suspended",
-            at: EpochMs.parse(now - 26 * 3_600_000),
+            at: ago(now, 26 * 3_600_000),
         },
         {
             id: "acc_Hh4Gf2Dd8Ss6Aa0Pp1Oo3I",
             name: "—",
             status: "setup pending",
-            at: EpochMs.parse(now - 9 * 86_400_000),
+            at: ago(now, 9 * 86_400_000),
         },
     ];
 }

@@ -1,5 +1,4 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { z } from "zod";
 import { SITE_COPY } from "../../copy/site.ts";
 import { AccountsPage } from "../../features/admin/accounts/AccountsPage.tsx";
 import { ACCOUNTS_COPY } from "../../features/admin/accounts/copy.ts";
@@ -7,10 +6,11 @@ import { readAccountQuery } from "../../features/admin/accounts/query.ts";
 import { fetchAccounts } from "../../features/admin/accounts/server.ts";
 import { listState } from "../../features/admin/list.ts";
 import { guardSection } from "../../features/admin/sections.ts";
+import { listSearch } from "../../search.ts";
 
 export const Route = createFileRoute("/_admin/admin/accounts/")({
     beforeLoad: ({ context }) => guardSection(context.session, "accounts"),
-    validateSearch: z.object({ q: z.string().max(200).optional() }),
+    validateSearch: listSearch,
     loaderDeps: ({ search }) => ({ q: search.q }),
     loader: async ({ deps, location }) => {
         const { status, roleId, text } = readAccountQuery(deps.q);

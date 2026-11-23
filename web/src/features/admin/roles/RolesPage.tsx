@@ -1,4 +1,4 @@
-import { ActionSchema } from "@lucent/policy/actions";
+import { isAction } from "@lucent/policy/action-list";
 import { can } from "@lucent/policy/policy";
 import { getRouteApi, useRouteContext } from "@tanstack/react-router";
 import { useState } from "react";
@@ -28,8 +28,7 @@ export function RolesPage() {
     // A permission this site doesn't know can't be one the viewer holds, so only root edits it.
     const mayEdit = (role: Role) => {
         const known = role.permissions.flatMap((raw) => {
-            const parsed = ActionSchema.safeParse(raw);
-            return parsed.success ? [parsed.data] : [];
+            return isAction(raw) ? [raw] : [];
         });
         return (
             (subject.isRoot || known.length === role.permissions.length) &&

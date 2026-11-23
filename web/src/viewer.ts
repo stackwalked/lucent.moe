@@ -1,4 +1,4 @@
-import { type Action, ActionSchema } from "@lucent/policy/actions";
+import { type Action, isAction } from "@lucent/policy/action-list";
 import { can, type Subject } from "@lucent/policy/policy";
 import type { WebContract } from "@lucent/rpc/web";
 import { createServerFn } from "@tanstack/react-start";
@@ -55,8 +55,7 @@ export function memberOf(session: Session): Viewer | null {
 // ahead) grant nothing here.
 export function subjectOf(viewer: Viewer): Subject {
     const known = viewer.standing.permissions.flatMap((raw): Action[] => {
-        const parsed = ActionSchema.safeParse(raw);
-        return parsed.success ? [parsed.data] : [];
+        return isAction(raw) ? [raw] : [];
     });
     return {
         accountId: viewer.accountId,

@@ -1,6 +1,6 @@
+import { newOperationId } from "@lucent/core/brands";
 import { systemCryptoRng } from "@lucent/core/rng";
-import { newOperationId } from "@lucent/core/scalars";
-import { ItemKind } from "@lucent/rpc/cloud-item";
+import { ITEM_KINDS, isItemKind } from "@lucent/rpc/cloud-item-guards";
 import { getRouteApi, Link, useRouter } from "@tanstack/react-router";
 import { useActionState, useState } from "react";
 import type { Outcome, Refused } from "../../server/outcome.ts";
@@ -223,11 +223,11 @@ function NewItem({ productId }: { readonly productId: string }) {
     const router = useRouter();
     const [operationId] = useState(() => newOperationId(systemCryptoRng));
     const [refused, submit, pending] = useActionState(async (_: Refused | null, form: FormData) => {
-        const kind = ItemKind.safeParse(form.get("kind"));
+        const kind = form.get("kind");
         const name = String(form.get("name") ?? "").trim();
-        if (!kind.success || !name) return null;
+        if (!isItemKind(kind) || !name) return null;
         const reply = await createEmptyItem({
-            data: { productId, operationId, kind: kind.data, name },
+            data: { productId, operationId, kind, name },
         });
         if (!reply.ok) return reply.refused;
         await router.navigate({
@@ -244,7 +244,7 @@ function NewItem({ productId }: { readonly productId: string }) {
                     <label>
                         {C.kind}{" "}
                         <select name="kind">
-                            {ItemKind.options.map((kind) => (
+                            {ITEM_KINDS.map((kind) => (
                                 <option key={kind}>{kind}</option>
                             ))}
                         </select>

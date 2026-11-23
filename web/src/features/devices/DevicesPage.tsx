@@ -1,5 +1,5 @@
+import { newOperationId, type OperationId } from "@lucent/core/brands";
 import { systemCryptoRng } from "@lucent/core/rng";
-import { newOperationId, type OperationId } from "@lucent/core/scalars";
 import { getRouteApi, useRouter } from "@tanstack/react-router";
 import { useActionState, useId, useState } from "react";
 import type { Outcome, Refused } from "../../server/outcome.ts";

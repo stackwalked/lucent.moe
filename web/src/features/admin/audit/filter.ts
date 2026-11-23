@@ -1,5 +1,5 @@
-import { AccountId, EpochMs } from "@lucent/core/scalars";
-import { z } from "zod";
+import { type AccountId, type EpochMs, isAccountId, isEpochMs } from "@lucent/core/brands";
+import { isUuid } from "../../../formats.ts";
 import { parseQuery } from "../query.ts";
 import { AUDIT_COPY } from "./copy.ts";
 
@@ -27,8 +27,8 @@ export function startOfDayUtc(text: string): EpochMs | null {
     if (year < 1970 || month < 1 || month > 12 || day < 1) return null;
     const monthLength = (Date.UTC(year, month, 1) - Date.UTC(year, month - 1, 1)) / DAY_MS;
     if (day > monthLength) return null;
-    const at = EpochMs.safeParse(Date.UTC(year, month - 1, day));
-    return at.success ? at.data : null;
+    const at = Date.UTC(year, month - 1, day);
+    return isEpochMs(at) ? at : null;
 }
 
 function named(value: string | undefined): string | null {
@@ -43,10 +43,10 @@ export function readAuditQuery(q: string | undefined): {
     readonly ignored: readonly string[];
 } {
     const { tokens, ignored } = parseQuery(q, AUDIT_KEYS);
-    const target = AccountId.safeParse(tokens.target);
+    const target = tokens.target;
     const filter: AuditFilter = {
         actorId: named(tokens.actor),
-        targetAccountId: target.success ? target.data : null,
+        targetAccountId: isAccountId(target) ? target : null,
         operation: named(tokens.op),
         before: tokens.before === undefined ? null : startOfDayUtc(tokens.before),
     };
@@ -81,16 +81,15 @@ export type AuditDetail =
       }
     | { readonly kind: "factSet"; readonly revision: number; readonly builds: number };
 
-const Reason = z.object({ reason: z.string().min(1) });
-const Rename = z.object({ from: z.string().nullable(), to: z.string() });
-const RoleChange = z.object({ roleId: z.string().min(1), expiresAt: EpochMs.nullish() });
-const SealPromotion = z.object({
-    productId: z.string(),
-    channel: z.string(),
-    number: z.string(),
-    previous: z.string().nullable(),
-});
-const FactSetPromotion = z.object({ revision: z.number(), builds: z.array(z.unknown()) });
+// Each shape as its zod object was: z.string() a string, .min(1) not empty, z.number() finite,
+// .nullable() also null, .nullish() also null or missing. Keys a shape doesn't name are dropped.
+const isText = (value: unknown): value is string => typeof value === "string";
+const isFilled = (value: unknown): value is string => isText(value) && value.length > 0;
+const isTextOrNull = (value: unknown): value is string | null => value === null || isText(value);
+const isEpochMsOrNull = (value: unknown): value is EpochMs | null =>
+    value === null || isEpochMs(value);
+const isNumber = (value: unknown): value is number =>
+    typeof value === "number" && Number.isFinite(value);
 
 // What an entry's free-form detail says, as much as fits a table cell. Rows outlive the code
 // that wrote them, so anything that doesn't match its operation's shape shows nothing.
@@ -99,38 +98,46 @@ export function auditDetail(
     detail: Readonly<Record<string, unknown>>,
 ): AuditDetail {
     if (operation === "mail.delivery_dead") {
-        const reference = z.uuid().safeParse(detail["deliveryId"]);
+        const reference = detail["deliveryId"];
         const outcome =
             detail["outcome"] === "refused" ? AUDIT_COPY.refusedMail : AUDIT_COPY.unconfirmedMail;
         return {
             kind: "reason",
-            reason: reference.success ? `${outcome} · ${reference.data}` : outcome,
+            reason: isUuid(reference) ? `${outcome} · ${reference}` : outcome,
         };
     }
-    const reason = Reason.safeParse(detail);
-    if (reason.success) return { kind: "reason", reason: reason.data.reason };
+    const reason = detail["reason"];
+    if (isFilled(reason)) return { kind: "reason", reason };
     if (operation === "account.rename") {
-        const rename = Rename.safeParse(detail);
-        if (rename.success) return { kind: "rename", ...rename.data };
+        const from = detail["from"];
+        const to = detail["to"];
+        if (isTextOrNull(from) && isText(to)) return { kind: "rename", from, to };
     }
     if (operation === "role.assign" || operation === "role.unassign") {
-        const role = RoleChange.safeParse(detail);
-        if (role.success) {
+        const roleId = detail["roleId"];
+        const expiresAt = detail["expiresAt"];
+        if (isFilled(roleId) && (expiresAt === undefined || isEpochMsOrNull(expiresAt))) {
             return {
                 kind: "role",
-                roleId: role.data.roleId,
-                expiresAt: operation === "role.assign" ? (role.data.expiresAt ?? null) : null,
+                roleId,
+                expiresAt: operation === "role.assign" ? (expiresAt ?? null) : null,
             };
         }
     }
     if (operation === "release.promote") {
-        const seal = SealPromotion.safeParse(detail);
-        if (seal.success) return { kind: "seal", ...seal.data };
+        const productId = detail["productId"];
+        const channel = detail["channel"];
+        const number = detail["number"];
+        const previous = detail["previous"];
+        if (isText(productId) && isText(channel) && isText(number) && isTextOrNull(previous)) {
+            return { kind: "seal", productId, channel, number, previous };
+        }
     }
     if (operation === "fact_set.promote") {
-        const set = FactSetPromotion.safeParse(detail);
-        if (set.success) {
-            return { kind: "factSet", revision: set.data.revision, builds: set.data.builds.length };
+        const revision = detail["revision"];
+        const builds = detail["builds"];
+        if (isNumber(revision) && Array.isArray(builds)) {
+            return { kind: "factSet", revision, builds: builds.length };
         }
     }
     return { kind: "none" };

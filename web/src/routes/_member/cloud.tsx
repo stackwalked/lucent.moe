@@ -1,14 +1,12 @@
-import { ProductId } from "@lucent/core/scalars";
-import { CloudId } from "@lucent/rpc/cloud-item";
 import { createFileRoute } from "@tanstack/react-router";
-import { z } from "zod";
 import { SITE_COPY } from "../../copy/site.ts";
 import { CloudPage } from "../../features/cloud/CloudPage.tsx";
 import { CLOUD_COPY } from "../../features/cloud/copy.ts";
 import { fetchCloudProducts, fetchHistory, fetchItems } from "../../features/cloud/server.ts";
+import { cloudSearch } from "../../search.ts";
 
 export const Route = createFileRoute("/_member/cloud")({
-    validateSearch: z.object({ product: ProductId.optional(), item: CloudId.optional() }),
+    validateSearch: cloudSearch,
     loaderDeps: ({ search }) => search,
     loader: async ({ deps }) => {
         const catalog = await fetchCloudProducts();

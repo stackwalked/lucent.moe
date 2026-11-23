@@ -1,5 +1,5 @@
 import { systemClock } from "@lucent/core/clock";
-import { ACTION_POLICY, type Action } from "@lucent/policy/actions";
+import { ACTION_POLICY, type Action } from "@lucent/policy/action-list";
 import { STEP_UP_WINDOW_SECONDS } from "@lucent/policy/policy";
 import { useRouteContext } from "@tanstack/react-router";
 import type { Outcome } from "../../server/outcome.ts";

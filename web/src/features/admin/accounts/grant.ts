@@ -1,5 +1,14 @@
+import {
+    type ChannelId,
+    type EpochMs,
+    type FeatureTag,
+    isChannelId,
+    isFeatureTag,
+    isProductId,
+    type ProductId,
+} from "@lucent/core/brands";
+import { invariant } from "@lucent/core/contain";
 import { err, ok, type Result } from "@lucent/core/result";
-import { ChannelId, type EpochMs, FeatureTag, ProductId } from "@lucent/core/scalars";
 import { untilFrom } from "./until.ts";
 
 // The entitlement form as typed, read into what platform takes: one product, the channels ticked
@@ -32,9 +41,8 @@ export function parseFeatures(raw: string): "*" | readonly FeatureTag[] | null {
     if (words.length === 0 || (words.length === 1 && words[0] === "*")) return "*";
     const tags: FeatureTag[] = [];
     for (const word of words) {
-        const tag = FeatureTag.safeParse(word);
-        if (!tag.success) return null;
-        if (!tags.includes(tag.data)) tags.push(tag.data);
+        if (!isFeatureTag(word)) return null;
+        if (!tags.includes(word)) tags.push(word);
     }
     return tags;
 }
@@ -45,8 +53,8 @@ export function parseGrant(
     now: EpochMs,
 ): Result<Grant, GrantProblem> {
     const product = catalog.find((entry) => entry.id === form.productId);
-    const productId = ProductId.safeParse(form.productId);
-    if (product === undefined || !productId.success) return err("unknownProduct");
+    const { productId } = form;
+    if (product === undefined || !isProductId(productId)) return err("unknownProduct");
     const channels = product.channels.filter((channel) => form.channels.includes(channel));
     if (channels.length === 0) return err("noChannel");
     const features = parseFeatures(form.features);
@@ -54,8 +62,11 @@ export function parseGrant(
     const validUntil = untilFrom(form.until);
     if (validUntil !== null && validUntil <= now) return err("untilPast");
     return ok({
-        productId: productId.data,
-        channels: channels.map((channel) => ChannelId.parse(channel)),
+        productId,
+        channels: channels.map((channel) => {
+            invariant(isChannelId(channel), `catalog channel ${channel} is a channel id`);
+            return channel;
+        }),
         features,
         validUntil,
     });

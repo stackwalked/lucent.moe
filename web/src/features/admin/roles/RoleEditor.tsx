@@ -1,6 +1,6 @@
+import { newOperationId } from "@lucent/core/brands";
 import { systemCryptoRng } from "@lucent/core/rng";
-import { newOperationId } from "@lucent/core/scalars";
-import { ACTIONS, type Action, ActionSchema } from "@lucent/policy/actions";
+import { ACTIONS, type Action, isAction } from "@lucent/policy/action-list";
 import { can } from "@lucent/policy/policy";
 import { useRouteContext, useRouter } from "@tanstack/react-router";
 import { useActionState, useId, useState } from "react";
@@ -43,8 +43,7 @@ function grouped(offered: readonly Action[]): readonly (readonly [string, readon
 
 function permissionsOf(form: FormData): Action[] {
     return form.getAll("permissions").flatMap((raw) => {
-        const parsed = ActionSchema.safeParse(raw);
-        return parsed.success ? [parsed.data] : [];
+        return isAction(raw) ? [raw] : [];
     });
 }
 

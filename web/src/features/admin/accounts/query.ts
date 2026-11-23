@@ -1,5 +1,5 @@
-import { RoleId } from "@lucent/core/scalars";
-import { AccountStatus } from "@lucent/rpc/web/authority";
+import { isRoleId, type RoleId } from "@lucent/core/brands";
+import { type AccountStatus, isAccountStatus } from "@lucent/rpc/web/account-status";
 import { parseQuery } from "../query.ts";
 
 const KEYS = ["status", "role"] as const;
@@ -16,17 +16,14 @@ export function readAccountQuery(q: string | undefined): {
     readonly ignored: readonly string[];
 } {
     const query = parseQuery(q, KEYS);
-    const status = AccountStatus.safeParse(query.tokens.status);
-    const role = RoleId.safeParse(query.tokens.role);
+    const { status, role } = query.tokens;
     const unfit = [
-        ...(query.tokens.status !== undefined && !status.success
-            ? [`status:${query.tokens.status}`]
-            : []),
-        ...(query.tokens.role !== undefined && !role.success ? [`role:${query.tokens.role}`] : []),
+        ...(status !== undefined && !isAccountStatus(status) ? [`status:${status}`] : []),
+        ...(role !== undefined && !isRoleId(role) ? [`role:${role}`] : []),
     ];
     return {
-        status: status.success ? status.data : null,
-        roleId: role.success ? role.data : null,
+        status: isAccountStatus(status) ? status : null,
+        roleId: isRoleId(role) ? role : null,
         text: query.text?.slice(0, TEXT_MAX) ?? null,
         ignored: [...query.ignored, ...unfit],
     };

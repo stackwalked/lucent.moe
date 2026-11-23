@@ -1,7 +1,7 @@
+import { isRoleId, type RoleId } from "@lucent/core/brands";
 import { systemClock } from "@lucent/core/clock";
 import { USERNAME_MAX_LENGTH, USERNAME_MIN_LENGTH, USERNAME_PATTERN } from "@lucent/core/rules";
-import { RoleId } from "@lucent/core/scalars";
-import { type Action, ActionSchema } from "@lucent/policy/actions";
+import { type Action, isAction } from "@lucent/policy/action-list";
 import { can } from "@lucent/policy/policy";
 import { getRouteApi, Link, useRouteContext, useRouter } from "@tanstack/react-router";
 import { useActionState, useState } from "react";
@@ -49,8 +49,7 @@ type Account = Data["account"];
 
 function knownActions(raw: readonly string[]): Action[] {
     return raw.flatMap((permission) => {
-        const parsed = ActionSchema.safeParse(permission);
-        return parsed.success ? [parsed.data] : [];
+        return isAction(permission) ? [permission] : [];
     });
 }
 
@@ -80,13 +79,13 @@ function GiveRole({
     const router = useRouter();
     const staff = useStaffAction();
     const [refused, submit, pending] = useActionState(async (_: Refused | null, form: FormData) => {
-        const roleId = RoleId.safeParse(form.get("roleId"));
-        if (!roleId.success) return null;
+        const roleId = form.get("roleId");
+        if (!isRoleId(roleId)) return null;
         const reply = await staff("roles:assign", () =>
             giveRole({
                 data: {
                     accountId: account.accountId,
-                    roleId: roleId.data,
+                    roleId,
                     expiresAt: untilFrom(form.get("until")),
                 },
             }),
