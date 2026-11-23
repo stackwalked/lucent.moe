@@ -11,7 +11,7 @@
 
 #include "api/server.hpp"
 
-// Signing the loader in (platform/server/src/native/sign-in.ts): a pushed authorization request
+// Signing the loader in (platform/server/src/devices/sign-in.ts): a pushed authorization request
 // under DPoP, the member approving it at <web>/auth/device/<id> in the system browser, the code
 // back on a loopback redirect with PKCE, then tokens bound to the device key. Refresh tokens
 // rotate on every use.

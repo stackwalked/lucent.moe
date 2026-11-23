@@ -71,7 +71,7 @@ auto seed_of(u8 fill) -> crypto::seed {
 constexpr clock::time_point start{};
 constexpr std::chrono::milliseconds lease_duration{60'000};
 
-// What the server does for a session, as platform/server/src/native/sessions.ts does it, minus the
+// What the server does for a session, as platform/server/src/runtime/sessions.ts does it, minus the
 // database.
 class stand_in_server final {
 public:

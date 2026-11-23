@@ -7,9 +7,9 @@
 #include "cng/device_key.hpp"
 
 // DPoP (RFC 9449) with the device key. Every /v1 request carries a proof the platform checks in
-// platform/server/src/native/dpop.ts: ES256 under the JWK in its header, `htm` and `htu` naming
-// this exact request, `iat` inside its window, a `jti` it hasn't seen, and with an access token,
-// `ath` its hash.
+// platform/server/src/listeners/native/dpop.ts: ES256 under the JWK in its header, `htm` and
+// `htu` naming this exact request, `iat` inside its window, a `jti` it hasn't seen, and with an
+// access token, `ath` its hash.
 
 namespace lucent::loader {
 
@@ -21,7 +21,7 @@ auto jwk_json(const p256_point& point) -> std::string;
 auto thumbprint_of(const p256_point& point) -> std::string;
 
 // What the member compares before approving the PC: the thumbprint's first 40 bits as eight
-// Crockford base32 characters, `XXXX-XXXX`, as platform/server/src/native/ids.ts derives it.
+// Crockford base32 characters, `XXXX-XXXX`, as platform/server/src/core/ids.ts derives it.
 auto match_code_of(const p256_point& point) -> std::string;
 
 struct proof_claims {

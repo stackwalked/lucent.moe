@@ -128,7 +128,7 @@ auto request_id_of(std::string_view request_uri) -> std::optional<std::string> {
     }
     const std::string_view id = request_uri.substr(request_uri_prefix.size());
     constexpr std::string_view prefix = "lauth_";
-    // platform/server/src/native/sign-in.ts: lauth_ and 22 base64url characters.
+    // platform/server/src/devices/sign-in.ts: lauth_ and 22 base64url characters.
     if (!id.starts_with(prefix)
         || id.size() != prefix.size() + 22
         || !from_base64url(id.substr(prefix.size()))) {
