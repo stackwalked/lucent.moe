@@ -23,6 +23,7 @@ import { reviewHandlers } from "./web-review.ts";
 import { searchHandlers } from "./web-search.ts";
 import type { WebRpcContext } from "./web-shared.ts";
 import { shoutsHandlers } from "./web-shouts.ts";
+import { systemHandlers } from "./web-system.ts";
 import { updatesHandlers } from "./web-updates.ts";
 
 export type { WebRpcContext } from "./web-shared.ts";
@@ -50,4 +51,5 @@ export const webProcedures = implement<WebRpcContext, WebContract>(webContract, 
     ...overridesHandlers,
     ...reviewHandlers,
     ...updatesHandlers,
+    ...systemHandlers,
 });

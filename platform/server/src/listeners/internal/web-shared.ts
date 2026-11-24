@@ -15,6 +15,9 @@ export type WebRpcContext = {
     readonly auth: AuthDeps;
     // For lines a handler writes once its transaction has committed (a moderator's removal).
     readonly logger: Logger;
+    // Where ops publish-loader writes, for the system page; null or left out without the loaders'
+    // listener.
+    readonly artifactDir?: string | null;
 };
 
 type Unavailable = { readonly code: "SERVICE_UNAVAILABLE" };

@@ -40,6 +40,7 @@ export function createInternalWebApp(deps: {
                     catalog: deps.catalog,
                     auth: deps.auth,
                     logger: deps.logger,
+                    artifactDir: deps.artifactDir,
                     ...(deps.cloudLimits === undefined ? {} : { cloudLimits: deps.cloudLimits }),
                 }),
             );
