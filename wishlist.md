@@ -130,9 +130,9 @@ Beside phases 2 and 3; nothing native waits on it except cutover.
   signals from it, the renewal's integrity bits and checked challenge answers. Each waits on a
   format the human decides; a review action of its own in place of `accounts:suspend`.
 - `ops transfer-superadmin` and `replay-removals`.
-- Slice 4 (account-held items with history, share links and the member pages landed): items
-  served to and written by a session over `/data` (a format to decide), crash reports, tickets
-  and appeals, review rules with DB-IP geo, the waitlist, resources.
+- Slice 4 (account-held items with history, share links, the member pages, tickets and appeals,
+  the new-country review rule with DB-IP geo and resources landed): items served to and written
+  by a session over `/data` (a format to decide), crash reports, the waitlist.
 - Slice 5 (profiles, guides, comments, shouts, the inbox, reports and removal, posting
   restrictions apart from the licence, blocking, the data export, search, a presence stream
   landed): avatars (the codecs are dependencies to approve), presence shown in web, self-service
@@ -898,8 +898,6 @@ live in `wishlist/protection.md`.
     native DPoP flow. Browser credentials and sessions landed in `platform/server/src/auth/` with
     migration `0002_credentials.sql`; new passwords are checked against Have I Been Pwned's range
     API, and a job sweeps expired sessions, flows and setup links. Still to land with them:
-    - the `"appeal"` session purpose (30m, minted only after full 2FA on a suspended account), with
-      `/appeal`, in slice 4 with tickets and appeals, where it has an inbox to write into;
     - `jose@6.2.17` for client P-256 DPoP proofs, with the native loader's sign-in. (Web's
       per-IP sign-in throttles landed in its gateway; its browser WebAuthn uses the platform's own
       JSON helpers, so `@simplewebauthn/browser` isn't needed.)
@@ -983,7 +981,7 @@ live in `wishlist/protection.md`.
     5s-bounded `env: {}` `Bun.spawn` child process with WASM linear memory rewritten to `640 MiB`
     max, stripping metadata and storing 256px/64px WebPs by SHA-256 in Postgres; release binaries
     and `<= 64 MiB` resources stream to `ARTIFACT_DIR`.
-  - Offline `mmdb-lib@3.0.5` DB-IP Lite reader.
+
   - Unref'd periodic jobs (`1m` challenges/nonces/receipts/refusals; `10m` retention, risk scoring,
     `.mmdb` reload, 7d idle ticket auto-close) with explicit 30d / 90d / 365d / forever retention
     tiers; closed-field JSONL logger with fail-closed `loggablePath` allowlist, `removed` lines for
