@@ -10,7 +10,9 @@ export type AdminSection =
     | "updates"
     | "review"
     | "moderation"
-    | "audit";
+    | "audit"
+    | "system"
+    | "usage";
 
 // In the order the nav lists them.
 export const SECTION_PATHS = [
@@ -22,6 +24,8 @@ export const SECTION_PATHS = [
     ["review", "/admin/review"],
     ["moderation", "/admin/moderation"],
     ["audit", "/admin/audit"],
+    ["system", "/admin/system"],
+    ["usage", "/admin/usage"],
 ] as const satisfies readonly (readonly [AdminSection, string])[];
 
 // Which admin sections a viewer may see: each needs its read permission, roles, releases and update
@@ -36,6 +40,8 @@ export function adminSections(viewer: Viewer): Readonly<Record<AdminSection, boo
         review: viewerCan(viewer, "accounts:suspend"),
         moderation: viewerCan(viewer, "moderation:remove"),
         audit: viewerCan(viewer, "audit:read"),
+        system: viewerCan(viewer, "audit:read"),
+        usage: viewerCan(viewer, "audit:read"),
     };
 }
 

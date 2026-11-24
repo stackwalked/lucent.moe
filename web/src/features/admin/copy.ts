@@ -10,6 +10,8 @@ export const ADMIN_COPY = {
     updates: "update days",
     review: "review",
     audit: "audit",
+    system: "system",
+    usage: "usage",
     pending: "—",
     needsPasskey: "staff actions need a passkey. add one in security.",
     firstPage: "first page",
