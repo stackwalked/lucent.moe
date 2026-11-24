@@ -86,6 +86,20 @@ export function SiteShell({
                             {SHELL_COPY.download}
                         </Link>
                         <Link
+                            to="/resources"
+                            className={styles.place}
+                            activeProps={{ "aria-current": "page" }}
+                        >
+                            {SHELL_COPY.resources}
+                        </Link>
+                        <Link
+                            to="/tickets"
+                            className={styles.place}
+                            activeProps={{ "aria-current": "page" }}
+                        >
+                            {SHELL_COPY.support}
+                        </Link>
+                        <Link
                             to="/account/devices"
                             className={styles.place}
                             activeProps={{ "aria-current": "page" }}

@@ -4,6 +4,8 @@ export const SHELL_COPY = {
     products: "products",
     devices: "devices",
     download: "download",
+    resources: "resources",
+    support: "support",
     signIn: "sign in",
     signOut: "sign out",
     menu: (username: string) => `signed in as ${username}`,

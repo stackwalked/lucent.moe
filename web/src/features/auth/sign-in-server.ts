@@ -8,6 +8,7 @@ import { processEnvironment, readWebConfig } from "../../server/config.ts";
 import { patchFlow, readFlow, writeSessionToken } from "../../server/cookies.ts";
 import { done, type Outcome, refuse } from "../../server/outcome.ts";
 import { callPlatform } from "../../server/platform.ts";
+import { APPEAL_PATH } from "../appeal/path.ts";
 
 // The sign-in steps. Platform's flow tokens stay in the flow cookie, never in the page: a
 // password sign-in's in "signIn", a passkey-only one's in "passkey", so the autofill request
@@ -18,13 +19,18 @@ function publicOrigin(): string {
     return config.ok ? config.value.publicOrigin : "http://localhost";
 }
 
-// Every factor passed: the session cookie, and where to go (used up as it's read).
+// Every factor passed: the session cookie, and where to go (used up as it's read). A suspended
+// account's session reaches its appeal and nothing else, so that's where it goes.
 function signedIn(session: {
     readonly sessionToken: BearerToken;
     readonly expiresAt: EpochMs;
+    readonly purpose: "member" | "appeal";
 }): Outcome<string> {
     writeSessionToken(session.sessionToken, session.expiresAt);
-    const to = safeReturnTo(readFlow().returnTo, publicOrigin(), pagePaths());
+    const to =
+        session.purpose === "appeal"
+            ? APPEAL_PATH
+            : safeReturnTo(readFlow().returnTo, publicOrigin(), pagePaths());
     patchFlow({ signIn: null, passkey: null, returnTo: null });
     return done(to);
 }

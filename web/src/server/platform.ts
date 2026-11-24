@@ -6,14 +6,21 @@ import { systemCryptoRng } from "@lucent/core/rng";
 import { type AccountId, ClientInfo, toBase64Url } from "@lucent/core/scalars";
 import type { ReplyOf, RpcClient } from "@lucent/rpc/client";
 import { RequestId, RPC_HEADERS, toClientHeader } from "@lucent/rpc/contract";
-import { LOADER_DOWNLOAD_PATH, type WebContract, webContract } from "@lucent/rpc/web";
+import {
+    LOADER_DOWNLOAD_PATH,
+    RESOURCE_DOWNLOAD_PATH,
+    RESOURCE_UPLOAD_PATH,
+    type WebContract,
+    webContract,
+} from "@lucent/rpc/web";
 import { getGlobalStartContext } from "@tanstack/react-start";
 import { getRequestHeader } from "@tanstack/react-start/server";
 import type { z } from "zod";
-import { REFUSALS } from "../copy/refusals.ts";
+import { REFUSALS, type RefusalCode } from "../copy/refusals.ts";
 import { processEnvironment, readWebConfig } from "./config.ts";
 import { connectPlatform, connectPlatformStreams, type PlatformGet } from "./connect.ts";
 import { clearSessionToken, readSessionToken } from "./cookies.ts";
+import { type Outcome, refuse } from "./outcome.ts";
 import { createRequestTrace, type WebRequest } from "./request.ts";
 import { toNotFound, toSignIn, toUnavailable } from "./route-control.ts";
 import { BUCKETS, type Bucket, createThrottle } from "./throttle.ts";
@@ -205,4 +212,133 @@ export async function downloadLoader(signal: AbortSignal): Promise<Response> {
     }
     if (res.status === 401) clearSessionToken();
     return back;
+}
+
+// RFC 8187's filename*: what encodeURIComponent leaves alone, less the characters the header
+// grammar reserves.
+function attachmentFor(name: string): string {
+    const encoded = encodeURIComponent(name).replace(
+        /['()*]/g,
+        (ch) => `%${ch.charCodeAt(0).toString(16).toUpperCase()}`,
+    );
+    return `attachment; filename="download"; filename*=UTF-8''${encoded}`;
+}
+
+// One resource for the signed-in member, streamed from platform as it arrives. Whether they may
+// have it is platform's to decide; anything but the bytes sends the browser back to the list.
+export async function downloadResource(resourceId: string, signal: AbortSignal): Promise<Response> {
+    const web = currentRequest();
+    const back = new Response(null, { status: 303, headers: { location: "/resources" } });
+    const session = readSessionToken();
+    if (session === null || !/^[0-9a-f-]{36}$/.test(resourceId)) return back;
+    const startedAt = systemClock.now();
+    const reply = await tryAsync(
+        () =>
+            platformStreams()(
+                `${RESOURCE_DOWNLOAD_PATH}/${resourceId}`,
+                {
+                    [RPC_HEADERS.session]: session,
+                    [RPC_HEADERS.client]: toClientHeader(web.client),
+                    [RPC_HEADERS.request]: web.requestId,
+                },
+                AbortSignal.any([signal, AbortSignal.timeout(DOWNLOAD_DEADLINE_MS)]),
+            ),
+        () => null,
+    );
+    web.trace.addPlatformTime(systemClock.now() - startedAt);
+    const res = reply.ok ? reply.value : null;
+    const name = res?.headers.get("lucent-file-name") ?? null;
+    if (res?.status === 200 && res.body !== null && name !== null) {
+        const length = res.headers.get("content-length");
+        return new Response(res.body, {
+            headers: {
+                "content-type": "application/octet-stream",
+                "content-disposition": attachmentFor(decodeURIComponent(name)),
+                "cache-control": "no-store",
+                ...(length === null ? {} : { "content-length": length }),
+            },
+        });
+    }
+    await res?.body?.cancel();
+    if (res === null || res.status >= 500) {
+        return new Response(`${REFUSALS.SERVICE_UNAVAILABLE} reference: ${web.requestId}`, {
+            status: 503,
+            headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" },
+        });
+    }
+    if (res.status === 401) clearSessionToken();
+    return back;
+}
+
+// A staff upload can take a while on a slow line; the browser leaving ends it sooner.
+const UPLOAD_DEADLINE_MS = 10 * 60 * 1_000;
+const UPLOAD_MAX_BYTES = 64 * 1024 * 1024;
+
+const UPLOAD_REFUSALS: ReadonlySet<string> = new Set<RefusalCode>([
+    "SESSION_INVALID",
+    "FORBIDDEN",
+    "STEP_UP_REQUIRED",
+    "PAYLOAD_TOO_LARGE",
+    "INVALID_REQUEST",
+]);
+
+function isUploadRefusal(code: unknown): code is RefusalCode {
+    return typeof code === "string" && UPLOAD_REFUSALS.has(code);
+}
+
+function answer(outcome: Outcome<{ readonly digest: string; readonly size: number }>): Response {
+    return Response.json(outcome, { headers: { "cache-control": "no-store" } });
+}
+
+// A resource's bytes from the browser, passed on to platform as they arrive and never held
+// here; platform hashes, bounds and keeps them, and answers their digest for publishing.
+export async function uploadResource(request: Request): Promise<Response> {
+    const web = currentRequest();
+    const session = readSessionToken();
+    if (session === null) return answer(refuse({ code: "SESSION_INVALID" }));
+    const length = Number(request.headers.get("content-length") ?? "");
+    if (!Number.isSafeInteger(length) || length <= 0 || request.body === null) {
+        return answer(refuse({ code: "INVALID_REQUEST" }));
+    }
+    if (length > UPLOAD_MAX_BYTES) return answer(refuse({ code: "PAYLOAD_TOO_LARGE" }));
+    const startedAt = systemClock.now();
+    const reply = await tryAsync(
+        async () => {
+            const res = await platformStreams()(
+                RESOURCE_UPLOAD_PATH,
+                {
+                    [RPC_HEADERS.session]: session,
+                    [RPC_HEADERS.client]: toClientHeader(web.client),
+                    [RPC_HEADERS.request]: web.requestId,
+                    "content-length": String(length),
+                },
+                AbortSignal.any([request.signal, AbortSignal.timeout(UPLOAD_DEADLINE_MS)]),
+                request.body ?? undefined,
+            );
+            const parsed: unknown = await res.json();
+            return { status: res.status, body: parsed };
+        },
+        () => null,
+    );
+    web.trace.addPlatformTime(systemClock.now() - startedAt);
+    const body = reply.ok ? reply.value.body : null;
+    if (typeof body !== "object" || body === null) {
+        return answer(refuse({ code: "SERVICE_UNAVAILABLE" }));
+    }
+    if ("value" in body && reply.ok && reply.value.status === 200) {
+        const stored = body.value;
+        if (
+            typeof stored === "object" &&
+            stored !== null &&
+            "digest" in stored &&
+            typeof stored.digest === "string" &&
+            "size" in stored &&
+            typeof stored.size === "number"
+        ) {
+            return answer({ ok: true, value: { digest: stored.digest, size: stored.size } });
+        }
+    }
+    const code = "error" in body ? codeOf(body.error) : null;
+    if (code === "SESSION_INVALID") clearSessionToken();
+    return answer(refuse({ code: isUploadRefusal(code) ? code : "SERVICE_UNAVAILABLE" }));
 }

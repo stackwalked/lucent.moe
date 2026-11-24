@@ -17,17 +17,23 @@ export function connectPlatform(address: PlatformAddress, peerKey: string): RpcC
     });
 }
 
-// A GET to one of platform's streaming routes (the loader download), carrying the peer key like
-// every RPC; the body is handed on as it arrives.
+// A request to one of platform's streaming routes (the loader and resource downloads, resource
+// uploads), carrying the peer key like every RPC: a GET, or a POST of `body`. Bodies both ways are
+// handed on as they arrive.
 export type PlatformGet = (
     path: string,
     headers: Readonly<Record<string, string>>,
     signal: AbortSignal,
+    body?: ReadableStream<Uint8Array>,
 ) => Promise<Response>;
 
 export function connectPlatformStreams(address: PlatformAddress, peerKey: string): PlatformGet {
-    return async (path, headers, signal) => {
-        const init = { headers: { ...headers, authorization: `Bearer ${peerKey}` }, signal };
+    return async (path, headers, signal, body) => {
+        const init = {
+            headers: { ...headers, authorization: `Bearer ${peerKey}` },
+            signal,
+            ...(body === undefined ? {} : { method: "POST", body, duplex: "half" as const }),
+        };
         if (address.kind === "http") return await fetch(`${address.origin}${path}`, init);
         return await fetch(`http://platform${path}`, { ...init, unix: address.path });
     };

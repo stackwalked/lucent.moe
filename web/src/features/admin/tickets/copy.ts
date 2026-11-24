@@ -1,0 +1,33 @@
+export const STAFF_TICKETS_TITLE = "tickets";
+
+export const STAFF_TICKETS_COPY = {
+    views: { open: "waiting", answered: "answered", closed: "closed" },
+    none: { open: "nothing waiting.", answered: "nothing answered.", closed: "nothing closed." },
+    subject: "subject",
+    appeal: "appeal",
+    account: "account",
+    product: "product",
+    noProduct: "none",
+    waiting: "waiting since",
+    lastActivity: "last activity",
+    state: "state",
+    states: {
+        open: "waiting for staff",
+        answered: "waiting for the member",
+        closed: "closed",
+    },
+    back: "all tickets",
+    reply: "send",
+    replyLabel: "answer",
+    close: "close ticket",
+    closeTitle: "close this ticket",
+    closeBody: "the member can reopen it by writing again.",
+    suspended: "this account is suspended.",
+    reason: "suspension reason",
+    noReason: "none recorded.",
+    reinstate: "reinstate on the account page",
+    configs: "config access",
+    configsReadable: "the member allows reading their configs for this ticket.",
+    configsClosed: "the member doesn't allow reading their configs.",
+    member: "member",
+} as const;
