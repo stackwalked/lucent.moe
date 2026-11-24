@@ -64,9 +64,10 @@ export async function recordNotification(
     },
 ) {
     const { recipient, notice } = params;
-    const plan = await planDelivery(tx, recipient, notice);
-    if (!plan.ok) return plan;
-    if (plan.value.mail && params.mail) {
+    const planned = await planDelivery(tx, recipient, notice);
+    if (!planned.ok) return planned;
+    const plan = ok({ ...planned.value, mail: planned.value.mail && params.mail });
+    if (plan.value.mail) {
         const mail = notificationMail(notice);
         const queued = await execute(
             tx,

@@ -1,8 +1,17 @@
+import { invariant } from "@lucent/core/contain";
 import { err, ok, type Result } from "@lucent/core/result";
 import { AccountId, type BearerToken, EpochMs } from "@lucent/core/scalars";
 import { z } from "zod";
 import { appendAudit } from "../db/audit.ts";
-import { type DbFailure, execute, queryOne, sql, type Tx, toTimestamptz } from "../db/pool.ts";
+import {
+    type DbFailure,
+    execute,
+    queryOne,
+    type SqlFragment,
+    sql,
+    type Tx,
+    toTimestamptz,
+} from "../db/pool.ts";
 import { withTx } from "../db/tx.ts";
 import { passwordResetMail } from "../notify/copy.ts";
 import { recordNotification } from "../notify/inbox.ts";
@@ -57,6 +66,22 @@ async function readResetAccount(tx: Tx, id: AccountId) {
     });
 }
 
+// The clock is read here, after the account lock, not taken from the transaction's start: a
+// transaction that waited for the lock would otherwise judge the link by a time before the wait
+// and accept one that expired meanwhile.
+async function readLink(tx: Tx, where: SqlFragment) {
+    const row = await queryOne(
+        tx,
+        z.object({ expires_at: EpochMs.nullable(), now: EpochMs }),
+        sql`select (select expires_at from password_reset where ${where}) as expires_at,
+            clock_timestamp() as now`,
+    );
+    if (!row.ok) return row;
+    invariant(row.value !== null, "a select without from returns one row");
+    const { expires_at, now } = row.value;
+    return ok({ link: expires_at === null ? null : { expiresAt: expires_at }, now });
+}
+
 export async function requestPasswordReset(deps: AuthDeps, email: string) {
     // A fixed floor includes lookup, lock and commit, not an extra delay after target-specific work.
     const padding = Bun.sleep(350);
@@ -66,7 +91,7 @@ export async function requestPasswordReset(deps: AuthDeps, email: string) {
         return ok(undefined);
     }
     const issued = await issueToken(deps.rng);
-    const result = await withTx(deps.db, async (tx, txNow) => {
+    const result = await withTx(deps.db, async (tx) => {
         // Wait for the lock rather than skipping a locked row: skipping would drop the request
         // silently exactly when the account is busy. Lock holders are short transactions that do
         // no I/O, and the floor absorbs the wait; an unknown address has no row to wait for.
@@ -80,16 +105,12 @@ export async function requestPasswordReset(deps: AuthDeps, email: string) {
         const id = found.value.id;
         const account = await readResetAccount(tx, id);
         if (!account.ok) return account;
-        const link = await queryOne(
-            tx,
-            z.object({ expires_at: EpochMs }),
-            sql`select expires_at from password_reset where account_id = ${id}`,
-        );
+        const link = await readLink(tx, sql`account_id = ${id}`);
         if (!link.ok) return link;
         const plan = decideResetRequest({
             account: account.value,
-            link: link.value === null ? null : { expiresAt: link.value.expires_at },
-            now: txNow,
+            link: link.value.link,
+            now: link.value.now,
         });
         // Every refusal answers the same as success: the reply never says which account exists.
         if (!plan.ok) return ok(undefined);
@@ -149,16 +170,12 @@ export async function redeemPasswordReset(
         if (!locked.ok) return locked;
         const account = await readResetAccount(tx, id);
         if (!account.ok) return account;
-        const link = await queryOne(
-            tx,
-            z.object({ expires_at: EpochMs }),
-            sql`select expires_at from password_reset where token_hash = ${hash} and account_id = ${id}`,
-        );
+        const link = await readLink(tx, sql`token_hash = ${hash} and account_id = ${id}`);
         if (!link.ok) return link;
         const plan = decideResetRedeem({
             account: account.value,
-            link: link.value === null ? null : { expiresAt: link.value.expires_at },
-            now: txNow,
+            link: link.value.link,
+            now: link.value.now,
         });
         if (!plan.ok) return err(plan.error);
         const consumed = await execute(

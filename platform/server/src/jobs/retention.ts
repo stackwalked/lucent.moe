@@ -71,6 +71,17 @@ export const RETENTION: readonly Retained[] = [
                     select id from mail_outbox where state = 'dead'
                     and finished_at < ${cutoff}::timestamptz limit ${BATCH}))`,
     },
+    // Mail nothing drained: queued before a provider was removed, or before mail without a
+    // provider stopped being queued. A running drain settles a row within hours, so only
+    // stranded rows get this old; they hold an address and text, and go.
+    {
+        what: "mail_outbox, unsent",
+        tier: "30d",
+        sweep: (cutoff) =>
+            sql`delete from mail_outbox where id = any(array(
+                    select id from mail_outbox where state in ('pending', 'sending')
+                    and due_at < ${cutoff}::timestamptz limit ${BATCH}))`,
+    },
     { what: "audit", tier: "forever" },
     { what: "fact_set, current_fact_set, release, current_release", tier: "forever" },
     { what: "fact_override, fact_override_revision", tier: "forever" },

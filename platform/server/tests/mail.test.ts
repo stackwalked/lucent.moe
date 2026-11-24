@@ -84,7 +84,7 @@ test("with no provider a notice reaches the inbox and queues no mail", async () 
                     mail: false,
                 }),
             ),
-        ).toEqual(ok({ inbox: true, mail: true }));
+        ).toEqual(ok({ inbox: true, mail: false }));
         expect(
             await queryOne(
                 db,
