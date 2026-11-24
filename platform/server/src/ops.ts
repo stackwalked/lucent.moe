@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, open, rename } from "node:fs/promises";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { blake2b256 } from "@lucent/bundle/crypto";
@@ -30,6 +30,19 @@ const USAGE = `usage:
 // Publishing reads its artifacts whole: a container is a few MiB, the seal bounds the rest.
 async function readArtifact(path: string): Promise<Uint8Array> {
     return await Bun.file(path).bytes();
+}
+
+// Kept under its digest, whole or not at all: a backup or a download reading the directory while
+// a publish runs must never see a torn file. The bytes reach the disk under a name no digest has,
+// and only a complete file is renamed into place (atomic within one directory).
+async function keepArtifact(dir: string, bytes: Uint8Array): Promise<void> {
+    const name = blake2b256(bytes).toHex();
+    const partial = join(dir, `.${name}.${process.pid}.partial`);
+    const file = await open(partial, "w");
+    await file.writeFile(bytes);
+    await file.sync();
+    await file.close();
+    await rename(partial, join(dir, name));
 }
 
 function report(stream: "stdout" | "stderr", value: unknown): void {
@@ -174,7 +187,7 @@ async function run(): Promise<number> {
             // bytes, and a refused one leaves only content-addressed files a later publish reuses.
             await mkdir(artifactDir, { recursive: true });
             for (const bytes of [artifacts.loader, artifacts.host]) {
-                await Bun.write(join(artifactDir, blake2b256(bytes).toHex()), bytes);
+                await keepArtifact(artifactDir, bytes);
             }
             const published = await publishLoaderRelease(db, {
                 codeKey: codePublicKey,
