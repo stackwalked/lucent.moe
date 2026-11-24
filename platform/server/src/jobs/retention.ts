@@ -53,6 +53,24 @@ export const RETENTION: readonly Retained[] = [
                     select id from review_item where decided_at < ${cutoff}::timestamptz
                     limit ${BATCH}))`,
     },
+    // A settled row holds no address or text; it stays so staff can reconcile it with the audit
+    // entry a dead one wrote. Dead rows are kept longer: someone has to notice them.
+    {
+        what: "mail_outbox, accepted",
+        tier: "30d",
+        sweep: (cutoff) =>
+            sql`delete from mail_outbox where id = any(array(
+                    select id from mail_outbox where state = 'accepted'
+                    and finished_at < ${cutoff}::timestamptz limit ${BATCH}))`,
+    },
+    {
+        what: "mail_outbox, dead",
+        tier: "90d",
+        sweep: (cutoff) =>
+            sql`delete from mail_outbox where id = any(array(
+                    select id from mail_outbox where state = 'dead'
+                    and finished_at < ${cutoff}::timestamptz limit ${BATCH}))`,
+    },
     { what: "audit", tier: "forever" },
     { what: "fact_set, current_fact_set, release, current_release", tier: "forever" },
     { what: "fact_override, fact_override_revision", tier: "forever" },

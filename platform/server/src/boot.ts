@@ -24,7 +24,7 @@ import { createInternalWebApp } from "./listeners/internal/app.ts";
 import { createNativeApp } from "./listeners/native/app.ts";
 import { refusalResponse } from "./listeners/native/http.ts";
 import { restrictionExpiryJob } from "./moderation/restrictions.ts";
-import { mailDeliveryJob, unsentMailJob } from "./notify/mail.ts";
+import { mailDeliveryJob } from "./notify/mail.ts";
 import { riskScoringJob } from "./risk/scoring.ts";
 import { nativeExpiryJob } from "./runtime/expiry.ts";
 import { createLeaseSigner } from "./runtime/lease-key.ts";
@@ -168,7 +168,9 @@ export async function startServer(params: {
         },
     });
 
+    const mail = params.mail ?? config.mail;
     const auth = createAuthDeps({
+        mailEnabled: mail !== undefined,
         db,
         rng: systemCryptoRng,
         rp: config.relyingParty,
@@ -215,7 +217,6 @@ export async function startServer(params: {
             logger,
         }).fetch;
     }
-    const mail = params.mail ?? config.mail;
     const jobs = startJobs({
         jobs: [
             expiredAuthJob(db),
@@ -224,13 +225,8 @@ export async function startServer(params: {
             riskScoringJob(db),
             ...(nativeDb === null ? [] : [nativeExpiryJob(nativeDb)]),
             ...(mail === undefined
-                ? [unsentMailJob(db)]
-                : [
-                      mailDeliveryJob({
-                          db,
-                          mail: await createMailTransport(mail),
-                      }),
-                  ]),
+                ? []
+                : [mailDeliveryJob({ db, mail: await createMailTransport(mail) })]),
         ],
         logger,
         isSuperseded: epochGuard.isSuperseded,

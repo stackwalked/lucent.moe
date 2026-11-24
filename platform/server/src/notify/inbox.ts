@@ -53,11 +53,20 @@ async function planDelivery(tx: Tx, recipient: AccountId, notice: Notification) 
 }
 
 // Writers holding later locks must lock recipient accounts first, in canonical order. The
-// inbox insert and mail enqueue belong to the event's transaction.
-export async function recordNotification(tx: Tx, recipient: AccountId, notice: Notification) {
+// inbox insert and mail enqueue belong to the event's transaction. With no mail provider
+// (`mail` false) nothing is queued: no job would drain it, and the address and text would stay.
+export async function recordNotification(
+    tx: Tx,
+    params: {
+        readonly recipient: AccountId;
+        readonly notice: Notification;
+        readonly mail: boolean;
+    },
+) {
+    const { recipient, notice } = params;
     const plan = await planDelivery(tx, recipient, notice);
     if (!plan.ok) return plan;
-    if (plan.value.mail) {
+    if (plan.value.mail && params.mail) {
         const mail = notificationMail(notice);
         const queued = await execute(
             tx,

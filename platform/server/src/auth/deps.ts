@@ -12,6 +12,9 @@ export type AuthDeps = {
     readonly totpKeys: TotpKeyring;
     readonly passwords: PasswordHasher;
     readonly breachCheck: BreachCheck;
+    // Whether a mail provider is configured. Without one nothing drains the outbox, so nothing
+    // may be queued: an address and message text would sit there for good.
+    readonly mailEnabled: boolean;
     readonly verifyPassword: (password: string, hash: string | null) => Promise<boolean>;
     // Dev only (config refuses it off localhost): a password signs in alone, and a caller's
     // step-up is always fresh. Absent is off.

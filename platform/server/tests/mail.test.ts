@@ -6,16 +6,11 @@ import { EpochMs } from "@lucent/core/scalars";
 import { z } from "zod";
 import type { Envelope, MailTransport } from "../src/adapters/mail/mail.ts";
 import { listAudit } from "../src/authority/reads.ts";
-import { type Db, queryOne, sql } from "../src/db/pool.ts";
+import { type Db, execute, queryAll, queryOne, sql } from "../src/db/pool.ts";
 import { withTx } from "../src/db/tx.ts";
+import { sweepRetention } from "../src/jobs/retention.ts";
 import { recordNotification } from "../src/notify/inbox.ts";
-import {
-    claimMail,
-    mailDeliveryJob,
-    sendClaim,
-    settleMail,
-    unsentMailJob,
-} from "../src/notify/mail.ts";
+import { claimMail, mailDeliveryJob, sendClaim, settleMail } from "../src/notify/mail.ts";
 import { dbNow, grantRole, seedAccount, seedRole, steppedUp } from "./authority-fixtures.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 
@@ -44,7 +39,7 @@ async function fixture(db: Db) {
         requests,
         recipient,
         notice,
-        emit: () => withTx(db, (tx) => recordNotification(tx, recipient, notice)),
+        emit: () => withTx(db, (tx) => recordNotification(tx, { recipient, notice, mail: true })),
         advance: (ms: number) => {
             now = EpochMs.parse(now + ms);
         },
@@ -60,7 +55,15 @@ test("the mail drain cannot see an uncommitted event and rollback leaves nothing
     await (await sharedTestCluster()).withTestDb(async ({ nativeDb: db }) => {
         const f = await fixture(db);
         const result = await withTx(db, async (tx) => {
-            expect((await recordNotification(tx, f.recipient, f.notice)).ok).toBe(true);
+            expect(
+                (
+                    await recordNotification(tx, {
+                        recipient: f.recipient,
+                        notice: f.notice,
+                        mail: true,
+                    })
+                ).ok,
+            ).toBe(true);
             expect(await claimMail(f.worker)).toEqual(ok(null));
             return err({ code: "ABORT" });
         });
@@ -70,21 +73,59 @@ test("the mail drain cannot see an uncommitted event and rollback leaves nothing
     });
 });
 
-test("with no provider a queued notice is dropped, address and text with it", async () => {
+test("with no provider a notice reaches the inbox and queues no mail", async () => {
     await (await sharedTestCluster()).withTestDb(async ({ nativeDb: db }) => {
         const f = await fixture(db);
-        expect((await f.emit()).ok).toBe(true);
-        const job = unsentMailJob(db);
-        expect(await job.run()).toEqual(ok("dropped 1"));
-        expect(await job.run()).toEqual(ok(null));
+        expect(
+            await withTx(db, (tx) =>
+                recordNotification(tx, {
+                    recipient: f.recipient,
+                    notice: f.notice,
+                    mail: false,
+                }),
+            ),
+        ).toEqual(ok({ inbox: true, mail: true }));
         expect(
             await queryOne(
                 db,
-                z.object({ rows: z.coerce.number() }),
-                sql`select count(*) as rows from mail_outbox`,
+                z.object({ mails: z.coerce.number(), entries: z.coerce.number() }),
+                sql`select (select count(*) from mail_outbox) as mails, (select count(*) from inbox_entry) as entries`,
             ),
-        ).toEqual(ok({ rows: 0 }));
-        expect(await mailDeliveryJob(f.worker).run()).toEqual(ok(null));
+        ).toEqual(ok({ mails: 0, entries: 1 }));
+    });
+});
+
+test("settled mail is kept 30 days when accepted and 90 when dead, then pruned", async () => {
+    await (await sharedTestCluster()).withTestDb(async ({ nativeDb: db }) => {
+        for (const [state, days] of [
+            ["accepted", 29],
+            ["accepted", 31],
+            ["dead", 89],
+            ["dead", 91],
+        ] as const)
+            expect(
+                (
+                    await execute(
+                        db,
+                        sql`insert into mail_outbox(state, due_at, finished_at)
+                        values (${state}, null, now() - ${days} * interval '1 day')`,
+                    )
+                ).ok,
+            ).toBe(true);
+        expect(await sweepRetention(db)).toEqual(ok(2));
+        expect(
+            await queryAll(
+                db,
+                z.object({ state: z.string(), days: z.coerce.number() }),
+                sql`select state, round(extract(epoch from now() - finished_at) / 86400) as days
+                from mail_outbox order by state, days`,
+            ),
+        ).toEqual(
+            ok([
+                { state: "accepted", days: 29 },
+                { state: "dead", days: 89 },
+            ]),
+        );
     });
 });
 

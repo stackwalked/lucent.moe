@@ -29,6 +29,12 @@ export async function createMailTransport(
     // The log sink is offline. Its completion is reported by the job, never by logging an envelope.
     if (config.provider === "log")
         return { provider: "log", binding: "log", send: () => Promise.resolve("accepted") };
+    // Delivery is at least once: a crash after the provider accepted and before the row settled
+    // sends again. Both providers deduplicate on the outbox row id, which is stable across
+    // retries, but only inside a window (resend `Idempotency-Key`, 24 h; brevo body header
+    // `idempotencyKey`, 15 min; both checked against their public docs 2026-11-24). mail.rules.ts
+    // stops retrying before the window ends and settles the row dead rather than send outside it.
+    // Brevo documents no reply for a duplicate, so a 400 is treated as unconfirmed below.
     // Idempotency is provider/account scoped and Resend requires byte-equivalent payloads.
     // Fail closed on credential/sender changes rather than replay across different accounts.
     const digest = await crypto.subtle.digest(
