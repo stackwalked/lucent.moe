@@ -80,6 +80,7 @@ export const cloudContract = defineContract({
     "cloud.items.delete": { ...write, input: CloudItem, output: Done },
     "cloud.shares.create": {
         ...write,
+        error: z.discriminatedUnion("code", [...write.error.options, refusal("SHARE_LIMIT")]),
         input: CloudItem,
         output: z.object({ shareId: CloudId, token: BearerToken }),
     },
