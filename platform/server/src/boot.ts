@@ -28,6 +28,7 @@ import { mailDeliveryJob, unsentMailJob } from "./notify/mail.ts";
 import { riskScoringJob } from "./risk/scoring.ts";
 import { nativeExpiryJob } from "./runtime/expiry.ts";
 import { createLeaseSigner } from "./runtime/lease-key.ts";
+import { recordJobRuns } from "./system/jobs.ts";
 
 // How long a superseded instance keeps answering before it notices; the handover window.
 const EPOCH_POLL_INTERVAL_MS = 2_000;
@@ -234,6 +235,8 @@ export async function startServer(params: {
         ],
         logger,
         isSuperseded: epochGuard.isSuperseded,
+        clock: systemClock,
+        record: recordJobRuns(db),
         ...(params.every === undefined ? {} : { every: params.every }),
     });
     const [internal, native] = listeners;
