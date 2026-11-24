@@ -21,6 +21,7 @@ import { releasesContract } from "./web/releases.ts";
 import { reviewContract } from "./web/review.ts";
 import { searchContract } from "./web/search.ts";
 import { shoutsContract } from "./web/shouts.ts";
+import { systemContract } from "./web/system.ts";
 import { updatesContract } from "./web/updates.ts";
 
 export const AccountStatus = Status;
@@ -61,6 +62,7 @@ function composeWebContract() {
         ...overridesContract,
         ...reviewContract,
         ...updatesContract,
+        ...systemContract,
     });
 }
 
