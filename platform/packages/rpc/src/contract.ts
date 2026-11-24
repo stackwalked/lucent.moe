@@ -35,8 +35,9 @@ export type TransportRefusal = z.output<typeof TransportRefusal>;
 
 // Which browser session a procedure runs for. The mount refuses a call that lacks the token
 // before any handler runs; the handler still locks and checks the session in its own
-// transaction, which is what decides.
-export type SessionNeed = "none" | "member" | "setup" | "either";
+// transaction, which is what decides. "either" is member or setup; an appeal session (a
+// suspended account's) is accepted only where a procedure names it.
+export type SessionNeed = "none" | "member" | "setup" | "either" | "appeal";
 
 // A read changes nothing, so a caller may retry it; a write is never retried automatically
 // (one taking an operationId replays its first result when the user retries it).

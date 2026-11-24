@@ -13,6 +13,8 @@ import type { SignalKind } from "./signals.rules.ts";
 const WEIGHTS: Readonly<Record<SignalKind, number>> = {
     loader_silent: 0.25,
     software_device_key: 0,
+    // Alone it reaches the threshold: a person looks at every sign-in from a new country.
+    new_country: 0.3,
 };
 
 const COMBINATIONS: readonly { readonly kinds: readonly SignalKind[]; readonly weight: number }[] =

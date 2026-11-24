@@ -27,9 +27,11 @@ import { mintSession } from "./sessions.ts";
 import { hashToken } from "./tokens.ts";
 import { matchTotpCode, openTotpSecret } from "./totp.ts";
 
+// "appeal": the account is suspended, and the session reaches its appeal and nothing else.
 export type SignedIn = {
     readonly sessionToken: BearerToken;
     readonly expiresAt: EpochMs;
+    readonly purpose: "member" | "appeal";
 };
 
 export type SecondFactor = "totp" | "passkey";
@@ -40,7 +42,8 @@ export type SignInRefusal =
     | PasskeyRefusal
     // Wrong username, wrong password, wrong code: one answer, so none of them says which.
     | { readonly code: "INVALID_CREDENTIALS" }
-    // After every factor passed: the account is suspended or locked.
+    // After every factor passed: the account is locked, or suspended and no second factor was
+    // proven (a dev server's password-only sign-in).
     | { readonly code: "ACCOUNT_UNAVAILABLE" }
     // The password was right but the account has nothing to finish with; setup was abandoned.
     | { readonly code: "NO_SECOND_FACTOR" };
@@ -67,7 +70,8 @@ export function newChallenge(deps: AuthDeps): Uint8Array {
     return deps.rng.fillBytes(new Uint8Array(CHALLENGE_BYTES));
 }
 
-// Every factor passed: the account must still be usable, and a member session starts.
+// Every factor passed: the account must still be usable, and a member session starts. A
+// suspended account that proved a second factor gets an appeal session instead.
 async function finishSignIn(
     tx: Tx,
     deps: AuthDeps,
@@ -80,9 +84,9 @@ async function finishSignIn(
 ): Promise<Result<SignedIn, SignInRefusal>> {
     const account = await lockAccount(tx, params.accountId);
     if (!account.ok) return account;
-    if (account.value === null || !account.value.isActive) {
-        return err({ code: "ACCOUNT_UNAVAILABLE" });
-    }
+    if (account.value === null) return err({ code: "ACCOUNT_UNAVAILABLE" });
+    const appealing = account.value.isSuspended && params.factorVerified;
+    if (!account.value.isActive && !appealing) return err({ code: "ACCOUNT_UNAVAILABLE" });
     if (params.factorVerified) {
         const cleared = await execute(
             tx,
@@ -93,12 +97,16 @@ async function finishSignIn(
     const session = await mintSession(tx, {
         rng: deps.rng,
         accountId: params.accountId,
-        purpose: "member",
+        purpose: appealing ? "appeal" : "member",
         txNow: params.txNow,
         client: params.client,
     });
     if (!session.ok) return session;
-    return ok({ sessionToken: session.value.token, expiresAt: session.value.expiresAt });
+    return ok({
+        sessionToken: session.value.token,
+        expiresAt: session.value.expiresAt,
+        purpose: appealing ? "appeal" : "member",
+    });
 }
 
 export type PasswordAccepted =

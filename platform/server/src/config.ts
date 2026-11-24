@@ -27,6 +27,9 @@ export type ServerConfig = {
     // The loaders' listener, or null to run without one (web's integration tests, a dev server
     // with no native config).
     readonly native: NativeConfig | null;
+    // The DB-IP Lite country file (.mmdb) sign-ins are placed with, read from disk and read again
+    // when it changes; absent, no sign-in is judged by country.
+    readonly geoCountryFile?: string;
 };
 
 // Where loaders reach the server, and the key that signs their leases. The origin is what DPoP
@@ -81,6 +84,7 @@ export type Environment = {
     readonly LUCENT_ARTIFACT_DIR?: string | undefined;
     readonly LUCENT_CODE_PUBLIC_KEY?: string | undefined;
     readonly LUCENT_FACTS_PUBLIC_KEYS?: string | undefined;
+    readonly LUCENT_GEO_MMDB?: string | undefined;
 };
 
 const POSTGRES_URL = /^postgres(?:ql)?:\/\/./;
@@ -244,6 +248,7 @@ export function readServerConfig(env: Environment): Result<ServerConfig, ConfigE
         problems.push("LUCENT_PWNED_PASSWORDS_URL must be an http(s) URL ending in /");
     }
     const native = readNativeConfig(env, problems);
+    const geoCountryFile = env.LUCENT_GEO_MMDB ?? "";
     const relyingParty = parseRelyingParty(
         env.LUCENT_WEBAUTHN_RP_ID ?? "",
         env.LUCENT_WEBAUTHN_ORIGIN ?? "",
@@ -286,6 +291,7 @@ export function readServerConfig(env: Environment): Result<ServerConfig, ConfigE
         passwordOnly,
         pwnedPasswordsUrl,
         native,
+        ...(geoCountryFile === "" ? {} : { geoCountryFile }),
     });
 }
 
@@ -344,6 +350,7 @@ export function processEnvironment(): Environment {
         LUCENT_ARTIFACT_DIR,
         LUCENT_CODE_PUBLIC_KEY,
         LUCENT_FACTS_PUBLIC_KEYS,
+        LUCENT_GEO_MMDB,
     } = process.env;
     return {
         LUCENT_MAIL_PROVIDER,
@@ -364,6 +371,7 @@ export function processEnvironment(): Environment {
         LUCENT_ARTIFACT_DIR,
         LUCENT_CODE_PUBLIC_KEY,
         LUCENT_FACTS_PUBLIC_KEYS,
+        LUCENT_GEO_MMDB,
     };
 }
 

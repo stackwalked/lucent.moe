@@ -7,9 +7,11 @@ import { createRpcClient } from "@lucent/rpc/client";
 import { mountInternalRpc } from "@lucent/rpc/mount";
 import { type WebContract, webContract } from "@lucent/rpc/web";
 import type { z } from "zod";
+import { mintSession } from "../src/auth/sessions.ts";
 import { redeemSetupLink } from "../src/auth/setup.ts";
 import { hashToken } from "../src/auth/tokens.ts";
 import { execute, sql } from "../src/db/pool.ts";
+import { withTx } from "../src/db/tx.ts";
 import { webProcedures } from "../src/listeners/internal/web-rpc.ts";
 import { memberSession, newSetupLink, seedRootOnce } from "./auth-fixtures.ts";
 import { catalog, product, seedAccount } from "./authority-fixtures.ts";
@@ -116,7 +118,7 @@ test("catalog RPCs separate public listings, grant options and a member's past h
 });
 
 type SinglePurpose = {
-    [K in keyof WebContract as WebContract[K]["session"] extends "member" | "setup"
+    [K in keyof WebContract as WebContract[K]["session"] extends "member" | "setup" | "appeal"
         ? K
         : never]: z.input<WebContract[K]["input"]>;
 };
@@ -239,6 +241,35 @@ const inputs: SinglePurpose = {
         endsAt: null,
     },
     "admin.moderation.restrictions.lift": { id: "00000000-0000-4000-8000-000000000001" },
+    "tickets.list": { cursor: null },
+    "tickets.get": { ticketId: "00000000-0000-4000-8000-000000000001" },
+    "tickets.open": { productId: null, subject: "help", body: "body" },
+    "tickets.messages.send": { ticketId: "00000000-0000-4000-8000-000000000001", body: "body" },
+    "tickets.close": { ticketId: "00000000-0000-4000-8000-000000000001" },
+    "tickets.consent.set": { ticketId: "00000000-0000-4000-8000-000000000001", granted: true },
+    "admin.tickets.list": { state: "open", cursor: null },
+    "admin.tickets.get": { ticketId: "00000000-0000-4000-8000-000000000001" },
+    "admin.tickets.reply": { ticketId: "00000000-0000-4000-8000-000000000001", body: "body" },
+    "admin.tickets.close": { ticketId: "00000000-0000-4000-8000-000000000001" },
+    "appeals.read": {},
+    "appeals.send": { body: "body" },
+    "resources.list": {},
+    "admin.resources.list": {},
+    "admin.resources.publish": {
+        digest: "0000000000000000000000000000000000000000000000000000000000000000",
+        productId: null,
+        title: "title",
+        description: "",
+        fileName: "file.txt",
+    },
+    "admin.resources.update": {
+        resourceId: "00000000-0000-4000-8000-000000000001",
+        productId: null,
+        title: "title",
+        description: "",
+        fileName: "file.txt",
+    },
+    "admin.resources.delete": { resourceId: "00000000-0000-4000-8000-000000000001" },
     "stepUp.finish": {
         flowToken: "f".repeat(43),
         response: {
@@ -253,7 +284,7 @@ const inputs: SinglePurpose = {
 
 // The contract's `session` is what web reads to decide which session to send; the handler's own
 // transaction is what enforces it. A mismatch would let a setup session do a member's work.
-test("every single-purpose procedure refuses a session of the other purpose", async () => {
+test("every single-purpose procedure refuses a session of another purpose, an appeal session included", async () => {
     const cluster = await sharedTestCluster();
     await cluster.withTestDb(async ({ nativeDb }) => {
         const rng = createSeededRng(41);
@@ -261,9 +292,25 @@ test("every single-purpose procedure refuses a session of the other purpose", as
         const link = await newSetupLink(auth, rng, "purpose@lucent.test");
         const setup = await redeemSetupLink(auth, { setupToken: link.setupToken });
         invariant(setup.ok, "redeeming the setup link failed");
+        const suspended = await newSetupLink(auth, rng, "appealing@lucent.test");
+        await execute(
+            nativeDb,
+            sql`update account set status = 'suspended' where id = ${suspended.accountId}`,
+        );
+        const appeal = await withTx(nativeDb, (tx, txNow) =>
+            mintSession(tx, {
+                rng,
+                accountId: suspended.accountId,
+                purpose: "appeal",
+                txNow,
+                client: null,
+            }),
+        );
+        invariant(appeal.ok, "minting an appeal session failed");
         const sessions = {
             member: await memberSession(auth, link.accountId),
             setup: setup.value.sessionToken,
+            appeal: appeal.value.token,
         };
         const app = mountInternalRpc({
             path: "/rpc",
@@ -276,22 +323,26 @@ test("every single-purpose procedure refuses a session of the other purpose", as
         const contracts = new Map(Object.entries(webContract));
         for (const [name, input] of Object.entries(inputs)) {
             const declared = contracts.get(name)?.session;
-            const other = declared === "member" ? sessions.setup : sessions.member;
-            const res = await app.fetch(
-                new Request("http://localhost/rpc", {
-                    method: "POST",
-                    headers: {
-                        authorization: `Bearer ${PEER_KEY}`,
-                        "content-type": "application/json",
-                        "lucent-session": other,
-                    },
-                    body: JSON.stringify({ procedure: name, input }),
-                }),
-            );
-            expect({ name, reply: await res.json() }).toEqual({
-                name,
-                reply: err({ code: "SESSION_INVALID" }),
-            });
+            // A member procedure refuses both other purposes: no appeal session reaches one.
+            const others =
+                declared === "member" ? [sessions.setup, sessions.appeal] : [sessions.member];
+            for (const other of others) {
+                const res = await app.fetch(
+                    new Request("http://localhost/rpc", {
+                        method: "POST",
+                        headers: {
+                            authorization: `Bearer ${PEER_KEY}`,
+                            "content-type": "application/json",
+                            "lucent-session": other,
+                        },
+                        body: JSON.stringify({ procedure: name, input }),
+                    }),
+                );
+                expect({ name, reply: await res.json() }).toEqual({
+                    name,
+                    reply: err({ code: "SESSION_INVALID" }),
+                });
+            }
         }
     });
 });

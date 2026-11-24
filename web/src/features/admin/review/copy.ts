@@ -2,6 +2,7 @@
 const KINDS: Readonly<Record<string, string>> = {
     loader_silent: "loader stopped answering",
     software_device_key: "software device key",
+    new_country: "sign-in from a new country",
 };
 
 export const REVIEW_COPY = {

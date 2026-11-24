@@ -9,6 +9,7 @@ import type { Logger } from "../../core/log.ts";
 import type { EpochGuard } from "../../db/epoch-guard.ts";
 import { mountLoaderDownload } from "./download.ts";
 import { mountCommunityEvents } from "./events.ts";
+import { mountResourceFiles } from "./resources.ts";
 import { webProcedures } from "./web-rpc.ts";
 
 // Under any proxy idle timeout, and often enough that a signed-out tab's stream ends promptly.
@@ -22,7 +23,8 @@ export function createInternalWebApp(deps: {
     readonly auth: AuthDeps;
     readonly epochGuard: EpochGuard;
     readonly webInternalKey: string;
-    // Where `ops publish-loader` wrote the loader's bytes; null without the loaders' listener.
+    // Where `ops publish-loader` wrote the loader's bytes, and resources are kept; null without
+    // the loaders' listener.
     readonly artifactDir: string | null;
     readonly logger: Logger;
 }): Hono {
@@ -40,6 +42,7 @@ export function createInternalWebApp(deps: {
                     catalog: deps.catalog,
                     auth: deps.auth,
                     logger: deps.logger,
+                    artifactDir: deps.artifactDir,
                     ...(deps.cloudLimits === undefined ? {} : { cloudLimits: deps.cloudLimits }),
                 }),
             );
@@ -57,6 +60,13 @@ export function createInternalWebApp(deps: {
     });
     mountLoaderDownload(app, {
         db: deps.auth.db,
+        catalog: deps.catalog,
+        artifactDir: deps.artifactDir,
+        isSuperseded: deps.epochGuard.isSuperseded,
+        logger: deps.logger,
+    });
+    mountResourceFiles(app, {
+        auth: deps.auth,
         catalog: deps.catalog,
         artifactDir: deps.artifactDir,
         isSuperseded: deps.epochGuard.isSuperseded,

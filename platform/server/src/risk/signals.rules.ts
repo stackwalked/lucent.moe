@@ -6,7 +6,9 @@ import { ok, type Result } from "@lucent/core/result";
 // Not here yet, because the server can't compute them: whether a challenge answer is right needs
 // the server's own hash of the relocated image (native/libs/integrity's hash and its vectors in
 // contracts/), and the renewal's signal bits and the module's reports have no assigned layout.
-export type SignalKind = "loader_silent" | "software_device_key";
+// `new_country` comes from the sign-in country check (support/sign-in-countries.ts), outside any
+// session.
+export type SignalKind = "loader_silent" | "software_device_key" | "new_country";
 
 // A device key held in software rather than a TPM is a mark staff see, weighed only in
 // combination with something else.

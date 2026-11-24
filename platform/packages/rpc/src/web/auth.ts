@@ -43,7 +43,7 @@ const CredentialRefusal = z.discriminatedUnion("code", [
     refusal("NO_PASSKEY"),
 ]);
 
-const SessionPurpose = z.enum(["member", "setup"]);
+const SessionPurpose = z.enum(["member", "setup", "appeal"]);
 
 const Password = z.string().min(1).max(1_024);
 
@@ -54,7 +54,12 @@ const PasskeyId = z
     .regex(/^[A-Za-z0-9_-]{1,1366}$/)
     .refine((value) => value.length % 4 !== 1, "not base64url");
 
-const SignedIn = z.object({ sessionToken: BearerToken, expiresAt: EpochMs });
+// "appeal": the account is suspended; the session reaches its appeal and nothing else.
+const SignedIn = z.object({
+    sessionToken: BearerToken,
+    expiresAt: EpochMs,
+    purpose: z.enum(["member", "appeal"]),
+});
 
 const PasskeyChallenge = z.object({ flowToken: BearerToken, options: RequestOptions });
 

@@ -6,6 +6,8 @@ export const ADMIN_COPY = {
     roles: "roles",
     releases: "releases",
     moderation: "moderation",
+    tickets: "tickets",
+    resources: "resources",
     overrides: "kill switches",
     updates: "update days",
     review: "review",
@@ -46,6 +48,11 @@ export const OPERATION_LABELS: Readonly<Record<AuditOperation, string>> = {
     "community.lift": "restriction lifted",
     "community.remove": "content removed",
     "community.dismiss_report": "report dismissed",
+    "ticket.reply": "ticket answered",
+    "ticket.close": "ticket closed",
+    "resource.publish": "resource published",
+    "resource.update": "resource edited",
+    "resource.delete": "resource removed",
 };
 
 export function operationLabel(operation: string): string {

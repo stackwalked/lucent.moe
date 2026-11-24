@@ -8,6 +8,8 @@ export type LockedAccount = {
     readonly accountId: AccountId;
     readonly username: string | null;
     readonly isActive: boolean;
+    // Suspended by staff, as opposed to locked: such an account may still appeal.
+    readonly isSuspended: boolean;
 };
 
 const AccountRowSchema = z.object({
@@ -32,6 +34,7 @@ export async function lockAccount(
         accountId,
         username: row.value.username,
         isActive: row.value.status === "active" && !row.value.is_locked,
+        isSuspended: row.value.status === "suspended" && !row.value.is_locked,
     });
 }
 

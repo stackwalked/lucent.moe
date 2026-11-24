@@ -1,0 +1,539 @@
+import type { ProductCatalog } from "@lucent/catalog/catalog";
+import { invariant } from "@lucent/core/contain";
+import { err, ok, type Result } from "@lucent/core/result";
+import { AccountId, type BearerToken, EpochMs, ProductId } from "@lucent/core/scalars";
+import type { AuthzRefusal, Caller } from "@lucent/policy/policy";
+import { z } from "zod";
+import { lockAuthorized, readAsStaff } from "../authority/staff.ts";
+import { type NotFound, PAGE_SIZE, pageOf } from "../community/page.ts";
+import { appendAudit } from "../db/audit.ts";
+import {
+    type Db,
+    type DbFailure,
+    execute,
+    type Queryable,
+    queryAll,
+    queryOne,
+    sql,
+    type Tx,
+    toTimestamptz,
+} from "../db/pool.ts";
+import { withTx } from "../db/tx.ts";
+import type { Job } from "../jobs/runner.ts";
+import { withMember } from "../notify/account.ts";
+import { isListedForMember } from "../products/visibility.ts";
+import { findSuspension } from "./suspension.ts";
+import {
+    decideConfigRead,
+    decideIdleCutoff,
+    decideOpenTicket,
+    decideTicket,
+    MESSAGES_PER_TICKET,
+    type TicketEvent,
+    type TicketRefusal,
+    type TicketState,
+} from "./tickets.rules.ts";
+
+// Tickets as members open and follow them and staff answer them. Staff read and act with
+// tickets:reply; members see that staff answered, never which staff account did.
+
+const TICKET_ACTION = "tickets:reply";
+
+const State = z.enum(["open", "answered", "closed"]);
+const Kind = z.enum(["help", "appeal"]);
+
+const GatheredRow = z.object({
+    account_id: AccountId,
+    state: State,
+    kind: Kind,
+    messages: z.coerce.number().int().nonnegative(),
+});
+
+// The ticket row locked for a writer, after the writer's own account (canonical order).
+export async function lockTicket(tx: Tx, ticketId: string) {
+    return await queryOne(
+        tx,
+        GatheredRow,
+        sql`select t.account_id, t.state, t.kind,
+                   (select count(*) from ticket_message m where m.ticket_id = t.id) as messages
+            from ticket t where t.id = ${ticketId}::uuid for update`,
+    );
+}
+
+// Applies a decided event: the message if it writes one, then the state and the activity time.
+export async function applyTicketEvent(
+    tx: Tx,
+    params: {
+        readonly ticketId: string;
+        readonly authorId: AccountId;
+        readonly fromStaff: boolean;
+        readonly body: string | null;
+        readonly plan: { readonly state: TicketState; readonly writes: boolean };
+        readonly txNow: EpochMs;
+    },
+): Promise<Result<void, DbFailure>> {
+    const at = toTimestamptz(params.txNow);
+    if (params.plan.writes) {
+        invariant(params.body !== null, "an event that writes carries a body");
+        const written = await execute(
+            tx,
+            sql`insert into ticket_message (ticket_id, author_id, from_staff, body, created_at)
+                values (${params.ticketId}::uuid, ${params.authorId}, ${params.fromStaff},
+                        ${params.body}, ${at}::timestamptz)`,
+        );
+        if (!written.ok) return written;
+    }
+    const closed = params.plan.state === "closed";
+    const updated = await execute(
+        tx,
+        sql`update ticket
+            set state = ${params.plan.state},
+                last_activity_at = ${at}::timestamptz,
+                closed_at = ${closed ? sql`coalesce(closed_at, ${at}::timestamptz)` : sql`null`}
+            where id = ${params.ticketId}::uuid`,
+    );
+    if (!updated.ok) return updated;
+    return ok(undefined);
+}
+
+const Message = z.object({
+    id: z.string(),
+    fromStaff: z.boolean(),
+    body: z.string(),
+    at: EpochMs,
+    authorId: AccountId,
+    authorUsername: z.string().nullable(),
+});
+
+export async function readThread(q: Queryable, ticketId: string) {
+    return await queryAll(
+        q,
+        Message,
+        sql`select m.id::text as id, m.from_staff as "fromStaff", m.body, m.created_at as at,
+                   m.author_id as "authorId", a.username as "authorUsername"
+            from ticket_message m join account a on a.id = m.author_id
+            where m.ticket_id = ${ticketId}::uuid
+            order by m.id limit ${MESSAGES_PER_TICKET}`,
+    );
+}
+
+const ConsentRow = z.object({ granted: z.boolean(), at: EpochMs });
+
+export type Consent = z.output<typeof ConsentRow>;
+
+// The member's latest word on support reading their configs for this ticket; null when they
+// never said.
+export async function findConsent(q: Queryable, ticketId: string) {
+    return await queryOne(
+        q,
+        ConsentRow,
+        sql`select granted, at from ticket_consent
+            where ticket_id = ${ticketId}::uuid and scope = 'config'
+            order by id desc limit 1`,
+    );
+}
+
+// --- members ---
+
+const Summary = z.object({
+    id: z.string(),
+    subject: z.string(),
+    productId: ProductId.nullable(),
+    state: State,
+    openedAt: EpochMs,
+    lastActivityAt: EpochMs,
+});
+
+const SUMMARY_COLUMNS = sql`t.id::text as id, t.subject, t.product_id as "productId", t.state,
+    t.opened_at as "openedAt", t.last_activity_at as "lastActivityAt"`;
+
+// The member's help tickets, latest activity first. Their appeal, if any, lives on /appeal.
+export function listMemberTickets(
+    db: Db,
+    token: BearerToken,
+    params: { readonly cursor: string | null },
+) {
+    return withMember(db, token, async (tx, accountId) => {
+        const after =
+            params.cursor === null
+                ? sql``
+                : sql`and (t.last_activity_at, t.id) < (
+                      select c.last_activity_at, c.id from ticket c
+                      where c.id = ${params.cursor}::uuid and c.account_id = ${accountId})`;
+        const rows = await queryAll(
+            tx,
+            Summary,
+            sql`select ${SUMMARY_COLUMNS} from ticket t
+                where t.account_id = ${accountId} and t.kind = 'help' ${after}
+                order by t.last_activity_at desc, t.id desc limit ${PAGE_SIZE + 1}`,
+        );
+        if (!rows.ok) return rows;
+        return ok(pageOf(rows.value));
+    });
+}
+
+export function openMemberTicket(
+    db: Db,
+    token: BearerToken,
+    params: {
+        readonly catalog: ProductCatalog;
+        readonly productId: ProductId | null;
+        readonly subject: string;
+        readonly body: string;
+    },
+) {
+    return withMember(db, token, async (tx, accountId) => {
+        if (params.productId !== null) {
+            const listed = await isListedForMember(
+                tx,
+                { accountId, catalog: params.catalog },
+                params.productId,
+            );
+            if (!listed.ok) return listed;
+            if (!listed.value) return err({ code: "UNKNOWN_PRODUCT" as const });
+        }
+        const unclosed = await queryOne(
+            tx,
+            z.object({ count: z.coerce.number().int() }),
+            sql`select count(*) as count from ticket
+                where account_id = ${accountId} and kind = 'help' and state <> 'closed'`,
+        );
+        if (!unclosed.ok) return unclosed;
+        const allowed = decideOpenTicket({ unclosed: unclosed.value?.count ?? 0 });
+        if (!allowed.ok) return allowed;
+        const created = await queryOne(
+            tx,
+            z.object({ id: z.string(), now: EpochMs }),
+            sql`insert into ticket
+                    (account_id, kind, product_id, subject, state, opened_at, last_activity_at)
+                values (${accountId}, 'help', ${params.productId}, ${params.subject}, 'open',
+                        now(), now())
+                returning id::text as id, opened_at as now`,
+        );
+        if (!created.ok) return created;
+        invariant(created.value !== null, "an insert returns its row");
+        const written = await execute(
+            tx,
+            sql`insert into ticket_message (ticket_id, author_id, from_staff, body, created_at)
+                values (${created.value.id}::uuid, ${accountId}, false, ${params.body}, now())`,
+        );
+        if (!written.ok) return written;
+        return ok({ ticketId: created.value.id });
+    });
+}
+
+// What the member sees of a message: theirs or staff's, never which staff account wrote it.
+function toMemberMessage(message: z.output<typeof Message>) {
+    return { id: message.id, fromStaff: message.fromStaff, body: message.body, at: message.at };
+}
+
+export function readMemberTicket(
+    db: Db,
+    token: BearerToken,
+    params: { readonly ticketId: string },
+) {
+    return withMember(db, token, async (tx, accountId) => {
+        const ticket = await queryOne(
+            tx,
+            Summary,
+            sql`select ${SUMMARY_COLUMNS} from ticket t
+                where t.id = ${params.ticketId}::uuid and t.account_id = ${accountId}
+                  and t.kind = 'help'`,
+        );
+        if (!ticket.ok) return ticket;
+        if (ticket.value === null) return err({ code: "NOT_FOUND" as const });
+        const thread = await readThread(tx, params.ticketId);
+        if (!thread.ok) return thread;
+        const consent = await findConsent(tx, params.ticketId);
+        if (!consent.ok) return consent;
+        return ok({
+            ...ticket.value,
+            messages: thread.value.map(toMemberMessage),
+            configConsent: consent.value,
+        });
+    });
+}
+
+// The member's side of a ticket that already exists: writing, closing, or answering whether
+// support may read their configs for it.
+function actAsMember(
+    db: Db,
+    token: BearerToken,
+    params: {
+        readonly ticketId: string;
+        readonly event: Extract<TicketEvent, `member_${string}`>;
+        readonly body: string | null;
+        readonly consent?: boolean;
+    },
+) {
+    return withMember(db, token, async (tx, accountId) => {
+        const txNow = await nowOf(tx);
+        if (!txNow.ok) return txNow;
+        const ticket = await lockTicket(tx, params.ticketId);
+        if (!ticket.ok) return ticket;
+        const help = ticket.value?.kind === "help" ? ticket.value : null;
+        const plan = decideTicket({
+            ticket:
+                help === null
+                    ? null
+                    : { accountId: help.account_id, state: help.state, messages: help.messages },
+            actorId: accountId,
+            event: params.event,
+        });
+        if (!plan.ok) return plan;
+        if (params.consent !== undefined) {
+            const recorded = await execute(
+                tx,
+                sql`insert into ticket_consent (ticket_id, account_id, scope, granted, at)
+                    values (${params.ticketId}::uuid, ${accountId}, 'config', ${params.consent},
+                            ${toTimestamptz(txNow.value)}::timestamptz)`,
+            );
+            if (!recorded.ok) return recorded;
+            return ok(undefined);
+        }
+        if (!plan.value.changed) return ok(undefined);
+        return await applyTicketEvent(tx, {
+            ticketId: params.ticketId,
+            authorId: accountId,
+            fromStaff: false,
+            body: params.body,
+            plan: plan.value,
+            txNow: txNow.value,
+        });
+    });
+}
+
+async function nowOf(tx: Tx): Promise<Result<EpochMs, DbFailure>> {
+    const row = await queryOne(tx, z.object({ now: EpochMs }), sql`select now() as now`);
+    if (!row.ok) return row;
+    invariant(row.value !== null, "now() returns a row");
+    return ok(row.value.now);
+}
+
+export function writeMemberTicket(
+    db: Db,
+    token: BearerToken,
+    params: { readonly ticketId: string; readonly body: string },
+) {
+    return actAsMember(db, token, { ...params, event: "member_wrote" });
+}
+
+export function closeMemberTicket(
+    db: Db,
+    token: BearerToken,
+    params: { readonly ticketId: string },
+) {
+    return actAsMember(db, token, { ...params, event: "member_closed", body: null });
+}
+
+export function setTicketConsent(
+    db: Db,
+    token: BearerToken,
+    params: { readonly ticketId: string; readonly granted: boolean },
+) {
+    return actAsMember(db, token, {
+        ticketId: params.ticketId,
+        event: "member_consented",
+        body: null,
+        consent: params.granted,
+    });
+}
+
+// --- staff ---
+
+const StaffSummary = z.object({
+    id: z.string(),
+    kind: Kind,
+    subject: z.string().nullable(),
+    productId: ProductId.nullable(),
+    state: State,
+    accountId: AccountId,
+    username: z.string().nullable(),
+    openedAt: EpochMs,
+    lastActivityAt: EpochMs,
+});
+
+const STAFF_COLUMNS = sql`t.id::text as id, t.kind, t.subject, t.product_id as "productId",
+    t.state, t.account_id as "accountId", a.username, t.opened_at as "openedAt",
+    t.last_activity_at as "lastActivityAt"`;
+
+function toStaffSummary(row: z.output<typeof StaffSummary>) {
+    const { accountId, username, ...rest } = row;
+    return { ...rest, account: { id: accountId, username } };
+}
+
+// Open tickets longest waiting first, so the queue is worked in order; answered and closed ones
+// latest first.
+export function listStaffTickets(
+    db: Db,
+    params: {
+        readonly caller: Caller;
+        readonly state: TicketState;
+        readonly cursor: string | null;
+    },
+) {
+    const oldestFirst = params.state === "open";
+    return readAsStaff(db, { caller: params.caller, actions: [TICKET_ACTION] }, async (q) => {
+        const after =
+            params.cursor === null
+                ? sql``
+                : oldestFirst
+                  ? sql`and (t.last_activity_at, t.id) > (
+                        select c.last_activity_at, c.id from ticket c
+                        where c.id = ${params.cursor}::uuid and c.state = ${params.state})`
+                  : sql`and (t.last_activity_at, t.id) < (
+                        select c.last_activity_at, c.id from ticket c
+                        where c.id = ${params.cursor}::uuid and c.state = ${params.state})`;
+        const rows = await queryAll(
+            q,
+            StaffSummary,
+            sql`select ${STAFF_COLUMNS} from ticket t join account a on a.id = t.account_id
+                where t.state = ${params.state} ${after}
+                order by ${oldestFirst ? sql`t.last_activity_at, t.id` : sql`t.last_activity_at desc, t.id desc`}
+                limit ${PAGE_SIZE + 1}`,
+        );
+        if (!rows.ok) return rows;
+        const page = pageOf(rows.value);
+        return ok({ items: page.items.map(toStaffSummary), nextCursor: page.nextCursor });
+    });
+}
+
+export function readStaffTicket(
+    db: Db,
+    params: { readonly caller: Caller; readonly ticketId: string },
+) {
+    return readAsStaff(db, { caller: params.caller, actions: [TICKET_ACTION] }, async (q) => {
+        const ticket = await queryOne(
+            q,
+            StaffSummary.extend({ status: z.enum(["active", "suspended"]) }),
+            sql`select ${STAFF_COLUMNS}, a.status from ticket t
+                join account a on a.id = t.account_id where t.id = ${params.ticketId}::uuid`,
+        );
+        if (!ticket.ok) return ticket;
+        if (ticket.value === null) return err<NotFound | DbFailure>({ code: "NOT_FOUND" });
+        const { status, ...summary } = ticket.value;
+        const thread = await readThread(q, params.ticketId);
+        if (!thread.ok) return thread;
+        const consent = await findConsent(q, params.ticketId);
+        if (!consent.ok) return consent;
+        const suspension =
+            summary.kind === "appeal" ? await findSuspension(q, summary.accountId) : ok(null);
+        if (!suspension.ok) return suspension;
+        return ok({
+            ...toStaffSummary(summary),
+            accountStatus: status,
+            messages: thread.value.map(({ authorId, authorUsername, ...message }) => ({
+                ...message,
+                author: { id: authorId, username: authorUsername },
+            })),
+            configConsent: consent.value,
+            configReadable: decideConfigRead({
+                ticketState: summary.state,
+                consent: consent.value,
+            }).ok,
+            suspension: suspension.value,
+        });
+    });
+}
+
+export type StaffTicketRefusal = AuthzRefusal | TicketRefusal;
+
+function actAsStaff(
+    db: Db,
+    params: {
+        readonly caller: Caller;
+        readonly ticketId: string;
+        readonly event: "staff_replied" | "staff_closed";
+        readonly body: string | null;
+    },
+): Promise<Result<void, StaffTicketRefusal | DbFailure>> {
+    return withTx(db, async (tx, txNow) => {
+        const authorized = await lockAuthorized(tx, {
+            caller: params.caller,
+            action: TICKET_ACTION,
+            txNow,
+        });
+        if (!authorized.ok) return authorized;
+        const ticket = await lockTicket(tx, params.ticketId);
+        if (!ticket.ok) return ticket;
+        const plan = decideTicket({
+            ticket:
+                ticket.value === null
+                    ? null
+                    : {
+                          accountId: ticket.value.account_id,
+                          state: ticket.value.state,
+                          messages: ticket.value.messages,
+                      },
+            actorId: params.caller.accountId,
+            event: params.event,
+        });
+        if (!plan.ok) return plan;
+        invariant(ticket.value !== null, "a ticket allowed an event exists");
+        if (!plan.value.changed) return ok(undefined);
+        const applied = await applyTicketEvent(tx, {
+            ticketId: params.ticketId,
+            authorId: params.caller.accountId,
+            fromStaff: true,
+            body: params.body,
+            plan: plan.value,
+            txNow,
+        });
+        if (!applied.ok) return applied;
+        return await appendAudit(tx, {
+            actorId: params.caller.accountId,
+            client: params.caller.client,
+            operation: params.event === "staff_replied" ? "ticket.reply" : "ticket.close",
+            target: {
+                accountId: ticket.value.account_id,
+                ticketId: params.ticketId,
+                kind: ticket.value.kind,
+            },
+            at: txNow,
+        });
+    });
+}
+
+export function replyToTicket(
+    db: Db,
+    params: { readonly caller: Caller; readonly ticketId: string; readonly body: string },
+) {
+    return actAsStaff(db, { ...params, event: "staff_replied" });
+}
+
+export function closeStaffTicket(
+    db: Db,
+    params: { readonly caller: Caller; readonly ticketId: string },
+) {
+    return actAsStaff(db, { ...params, event: "staff_closed", body: null });
+}
+
+// --- the idle job ---
+
+const IDLE_EVERY_MS = 10 * 60 * 1_000;
+
+// How many answered tickets closed for want of the member's reply.
+export async function closeIdleTickets(db: Db): Promise<Result<number, DbFailure>> {
+    return await withTx(db, async (tx, txNow) => {
+        const cutoff = decideIdleCutoff(txNow);
+        if (!cutoff.ok) return cutoff;
+        return await execute(
+            tx,
+            sql`update ticket set state = 'closed', closed_at = ${toTimestamptz(txNow)}::timestamptz
+                where state = 'answered'
+                  and last_activity_at <= ${toTimestamptz(cutoff.value)}::timestamptz`,
+        );
+    });
+}
+
+export function idleTicketJob(db: Db): Job {
+    return {
+        name: "idle-tickets",
+        everyMs: IDLE_EVERY_MS,
+        run: async () => {
+            const closed = await closeIdleTickets(db);
+            if (!closed.ok) return closed;
+            return ok(closed.value === 0 ? null : `closed ${closed.value} idle tickets`);
+        },
+    };
+}

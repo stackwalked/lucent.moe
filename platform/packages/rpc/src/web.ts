@@ -1,4 +1,5 @@
 import { defineContract } from "./contract.ts";
+import { appealsContract } from "./web/appeals.ts";
 import { auditContract } from "./web/audit.ts";
 import { authContract } from "./web/auth.ts";
 import { authorityContract, AccountStatus as Status } from "./web/authority.ts";
@@ -18,9 +19,11 @@ import { privacyContract } from "./web/privacy.ts";
 import { productsContract } from "./web/products.ts";
 import { profileContract } from "./web/profile.ts";
 import { releasesContract } from "./web/releases.ts";
+import { resourcesContract } from "./web/resources.ts";
 import { reviewContract } from "./web/review.ts";
 import { searchContract } from "./web/search.ts";
 import { shoutsContract } from "./web/shouts.ts";
+import { ticketsContract } from "./web/tickets.ts";
 import { updatesContract } from "./web/updates.ts";
 
 export const AccountStatus = Status;
@@ -35,6 +38,11 @@ export const LOADER_DOWNLOAD_PATH = "/internal/web/downloads/loader";
 // answered with a stream of `presence` ({ online }) and content pings (`shout`, `comment`) that
 // carry no content, or a refusal as JSON (401 SESSION_INVALID, 503).
 export const COMMUNITY_EVENTS_PATH = "/internal/web/events";
+
+// The internal listener's streaming routes for resource bytes (described in web/resources.ts):
+// staff POST the raw bytes to the upload path; a member GETs `<download path>/<resource id>`.
+export const RESOURCE_UPLOAD_PATH = "/internal/web/resources/upload";
+export const RESOURCE_DOWNLOAD_PATH = "/internal/web/resources/files";
 
 function composeWebContract() {
     return defineContract({
@@ -61,6 +69,9 @@ function composeWebContract() {
         ...overridesContract,
         ...reviewContract,
         ...updatesContract,
+        ...ticketsContract,
+        ...appealsContract,
+        ...resourcesContract,
     });
 }
 

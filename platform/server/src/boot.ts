@@ -4,6 +4,7 @@ import { systemClock } from "@lucent/core/clock";
 import { describeUnknownError, ignoreErrorsSync, invariant, trySync } from "@lucent/core/contain";
 import { err, ok, type Result } from "@lucent/core/result";
 import { systemCryptoRng } from "@lucent/core/rng";
+import { openGeo } from "./adapters/geo/geo.ts";
 import { createMailTransport, type MailConfig } from "./adapters/mail/mail.ts";
 import { createPwnedPasswordsCheck } from "./auth/breach.ts";
 import { createAuthDeps } from "./auth/deps.ts";
@@ -28,6 +29,8 @@ import { mailDeliveryJob, unsentMailJob } from "./notify/mail.ts";
 import { riskScoringJob } from "./risk/scoring.ts";
 import { nativeExpiryJob } from "./runtime/expiry.ts";
 import { createLeaseSigner } from "./runtime/lease-key.ts";
+import { geoReloadJob, signInCountriesJob } from "./support/sign-in-countries.ts";
+import { idleTicketJob } from "./support/tickets.ts";
 
 // How long a superseded instance keeps answering before it notices; the handover window.
 const EPOCH_POLL_INTERVAL_MS = 2_000;
@@ -216,12 +219,23 @@ export async function startServer(params: {
         }).fetch;
     }
     const mail = params.mail ?? config.mail;
+    // Loaded before the jobs start so the first sign-ins are judged; a file that won't load is
+    // logged and tried again by the reload job.
+    const geo =
+        config.geoCountryFile === undefined ? null : openGeo({ path: config.geoCountryFile });
+    const geoLoaded = await geo?.reload();
+    if (geoLoaded !== undefined && !geoLoaded.ok) {
+        logger.write("warn", "geo unavailable", { origin: "boot", detail: geoLoaded.error.detail });
+    }
     const jobs = startJobs({
         jobs: [
             expiredAuthJob(db),
             restrictionExpiryJob(db),
             retentionJob(db),
             riskScoringJob(db),
+            idleTicketJob(db),
+            signInCountriesJob(db, geo),
+            ...(geo === null ? [] : [geoReloadJob(geo)]),
             ...(nativeDb === null ? [] : [nativeExpiryJob(nativeDb)]),
             ...(mail === undefined
                 ? [unsentMailJob(db)]

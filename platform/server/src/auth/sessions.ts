@@ -26,9 +26,12 @@ import { hashToken, issueToken } from "./tokens.ts";
 // Fixed lifetimes; a session never slides. A member signs in again after 7 days whatever they did
 // meanwhile; staff actions still need a passkey step-up within 30 minutes, so a stolen cookie
 // buys a week of reading, not of acting.
+// An appeal session is what a suspended account gets after every factor passed: half an hour to
+// file or follow its appeal, and nothing else.
 const SESSION_TTL_MS = {
     member: 7 * 24 * 60 * 60 * 1_000,
     setup: 30 * 60 * 1_000,
+    appeal: 30 * 60 * 1_000,
 } as const;
 
 // Resolving a session refreshes `last_seen_at` at most this often, so browsing isn't a database
@@ -87,7 +90,7 @@ export async function mintSession(
 const SessionRowSchema = z.object({
     public_id: SessionId,
     account_id: AccountId,
-    purpose: z.enum(["member", "setup"]),
+    purpose: z.enum(["member", "setup", "appeal"]),
     expires_at: EpochMs,
     authenticated_at: EpochMs,
     step_up_at: EpochMs.nullable(),
@@ -112,7 +115,8 @@ async function findSession(
             join account a on a.id = s.account_id
             where s.token_hash = ${tokenHash}
               and s.expires_at > ${toTimestamptz(params.txNow)}::timestamptz
-              and a.status = 'active' and not a.is_locked
+              and not a.is_locked
+              and a.status = case when s.purpose = 'appeal' then 'suspended' else 'active' end
             ${lock}`,
     );
     if (!row.ok) return row;
@@ -132,7 +136,8 @@ async function findSession(
 }
 
 // What the session may do is decided against its account's standing in this transaction, so a
-// suspension takes effect on the next request. Locking the account (never the session row) keeps
+// suspension takes effect on the next request; an appeal session lives only while the account
+// stays suspended, so a reinstatement ends it. Locking the account (never the session row) keeps
 // the canonical lock order: every writer that changes an account's sessions locks it first.
 export async function lockSession(
     tx: Tx,
@@ -228,7 +233,7 @@ export async function signOutOthers(
 
 const ListedSessionRowSchema = z.object({
     public_id: SessionId,
-    purpose: z.enum(["member", "setup"]),
+    purpose: z.enum(["member", "setup", "appeal"]),
     created_at: EpochMs,
     last_seen_at: EpochMs,
     expires_at: EpochMs,

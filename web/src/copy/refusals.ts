@@ -74,6 +74,9 @@ export const REFUSALS: Readonly<Record<RefusalCode, string>> = {
     LIMIT_REACHED: "you've reached the limit for that. try again later.",
     UNKNOWN_TARGET: "this release doesn't have that feature or capability. reload and try again.",
     ALREADY_DECIDED: "someone already closed this item. reload to see the outcome.",
+    TICKET_CLOSED: "this ticket was closed. reload to see it.",
+    TICKET_FULL: "this ticket is full. open a new one.",
+    TICKET_LIMIT: "you have too many open tickets. close one first.",
 };
 // The text for one refusal, a form's own wording first where it has one.
 export function refusalText(

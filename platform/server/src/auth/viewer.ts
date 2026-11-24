@@ -25,6 +25,9 @@ export type Viewer = {
     };
 };
 
+// An appeal session's holder is suspended: whatever roles the account keeps, it acts as nobody.
+const APPEALING = { isRoot: false, maxRank: 0, permissions: [] } as const;
+
 // What web asks on every request carrying the session cookie.
 export async function resolveViewer(
     db: Db,
@@ -39,7 +42,7 @@ export async function resolveViewer(
         const session = await readSession(tx, {
             token: params.sessionToken,
             txNow,
-            purposes: ["member", "setup"],
+            purposes: ["member", "setup", "appeal"],
         });
         if (!session.ok) return session;
         const { accountId } = session.value;
@@ -66,11 +69,14 @@ export async function resolveViewer(
             purpose: session.value.purpose,
             expiresAt: session.value.expiresAt,
             stepUpAt: params.stepUpWaived === true ? txNow : session.value.stepUpAt,
-            standing: {
-                isRoot: standing.value.isRoot,
-                maxRank: standing.value.maxRank,
-                permissions: [...standing.value.permissions].sort(),
-            },
+            standing:
+                session.value.purpose === "appeal"
+                    ? APPEALING
+                    : {
+                          isRoot: standing.value.isRoot,
+                          maxRank: standing.value.maxRank,
+                          permissions: [...standing.value.permissions].sort(),
+                      },
         });
     });
 }

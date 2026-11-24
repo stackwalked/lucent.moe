@@ -31,6 +31,11 @@ export const AUDIT_OPERATIONS = [
     "community.lift",
     "community.remove",
     "community.dismiss_report",
+    "ticket.reply",
+    "ticket.close",
+    "resource.publish",
+    "resource.update",
+    "resource.delete",
 ] as const;
 
 export const AuditOperation = z.enum(AUDIT_OPERATIONS);

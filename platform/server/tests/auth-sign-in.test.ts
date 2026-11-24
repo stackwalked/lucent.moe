@@ -138,7 +138,7 @@ describe("password and TOTP", () => {
         });
     });
 
-    test("a suspended account passes every factor and still gets no session", async () => {
+    test("a suspended account passes every factor and gets only an appeal session", async () => {
         const cluster = await sharedTestCluster();
         await cluster.withTestDb(async ({ browserDb, nativeDb }) => {
             const rng = createSeededRng(205);
@@ -154,11 +154,34 @@ describe("password and TOTP", () => {
                 password: MEMBER_PASSWORD,
             });
             invariant(flow.ok && flow.value.next === "secondFactor", "the password is right");
+            const signedIn = await signInWithTotp(deps, {
+                flowToken: flow.value.flowToken,
+                code: await codeAt(browserDb, alice.totpSecret, 1),
+            });
+            invariant(signedIn.ok, `every factor passed: ${JSON.stringify(signedIn)}`);
+            expect(signedIn.value.purpose).toBe("appeal");
+            const sessionToken = signedIn.value.sessionToken;
+            const viewer = await resolveViewer(browserDb, { sessionToken, client: null });
+            expect(viewer.ok && viewer.value.purpose).toBe("appeal");
+            expect(viewer.ok && viewer.value.standing.permissions).toEqual([]);
+            expect(await resolveCaller(browserDb, { sessionToken, client: null })).toEqual(
+                err({ code: "SESSION_INVALID" }),
+            );
+        });
+    });
+
+    test("a suspended account signing in on a password alone gets no session at all", async () => {
+        const cluster = await sharedTestCluster();
+        await cluster.withTestDb(async ({ browserDb, nativeDb }) => {
+            const rng = createSeededRng(206);
+            const deps = { ...(await createTestAuthDeps(browserDb, rng)), passwordOnly: true };
+            const alice = await newMember(deps, rng, { username: "alice", with: "password+totp" });
+            await execute(
+                nativeDb,
+                sql`update account set status = 'suspended' where id = ${alice.accountId}`,
+            );
             expect(
-                await signInWithTotp(deps, {
-                    flowToken: flow.value.flowToken,
-                    code: await codeAt(browserDb, alice.totpSecret, 1),
-                }),
+                await signInWithPassword(deps, { username: "alice", password: MEMBER_PASSWORD }),
             ).toEqual(err({ code: "ACCOUNT_UNAVAILABLE" }));
         });
     });
