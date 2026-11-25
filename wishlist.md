@@ -130,9 +130,6 @@ Beside phases 2 and 3; nothing native waits on it except cutover.
   renewal's integrity bits and their signals landed): the human's yes on the VM vendor values,
   health event ids, and checked challenge answers. Each waits on a format the human decides; a review action
   of its own in place of `accounts:suspend`.
-- Slice 4 (account-held items with history, share links, the member pages, tickets and appeals,
-  the new-country review rule with DB-IP geo and resources, items served to and written by a
-  session over `/data`, the staff crashes page landed): the waitlist.
 - Slice 5 (profiles, guides, comments, shouts, the inbox, reports and removal, posting
   restrictions apart from the licence, blocking, the data export, search, a presence stream,
   avatars landed): presence shown in web, self-service account deletion (what survives it is
@@ -933,8 +930,7 @@ live in `wishlist/protection.md`.
       `device_change_window` and `product_slot`.
     - Permanent confusable-checked `username_claim`: the fold table is every Unicode
       `confusables.txt` 18.0.0 entry whose source is an ASCII letter, digit or underscore, after
-      case folding (0→o, 1→l, i→l, m→rn, `_` dropped); single-use 7-day account-only invites (no
-      cohorts) with inviter strike attribution.
+      case folding (0→o, 1→l, i→l, m→rn, `_` dropped).
 - Native contracts, lease channel and bundle pipeline:
   - `contracts/` holds canonical little-endian versioned binary container definitions, `/v1` wire
     Zod schemas, and committed golden `.bin`/`.json` vectors verified by both `ctest` and
@@ -1130,9 +1126,6 @@ not live handles.
 
 ## Community and launch
 
-- Admission: invites from an admin-granted allowance, waves, strikes one level up, the invite
-  tree; the waitlist as a state machine with a handler. A vouch fast-tracks an applicant; whether
-  the vouch is the invite or a field is still open from old lucent.
 - The seed: 30 to 50 people approached directly, free, a `founding` mark kept afterwards.
 - The public record is the marketing: status with a named staff contact, the changelog, recovery
   time per update. Never "undetected", never feature-list comparisons, no resellers.
