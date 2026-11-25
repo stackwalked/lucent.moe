@@ -1,0 +1,25 @@
+@layer components {
+    .small,
+    .large {
+        flex: none;
+        border-radius: 50%;
+        object-fit: cover;
+        background: var(--sunken);
+    }
+
+    .small {
+        width: var(--s-5);
+        height: var(--s-5);
+    }
+
+    .large {
+        width: calc(var(--s-8) * 2);
+        height: calc(var(--s-8) * 2);
+    }
+
+    .named {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--s-2);
+    }
+}

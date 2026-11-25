@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 import type { Outcome } from "../../server/outcome.ts";
+import { Named } from "../../ui/Avatar/Avatar.tsx";
 import { Button } from "../../ui/Button/Button.tsx";
 import { Empty } from "../../ui/Empty/Empty.tsx";
 import { Section } from "../../ui/Section/Section.tsx";
@@ -71,7 +72,11 @@ export function SearchSection() {
                                     {
                                         key: "author",
                                         header: SEARCH_COPY.author,
-                                        cell: (row) => row.author.username ?? "—",
+                                        cell: (row) => (
+                                            <Named avatar={row.author.avatar}>
+                                                {row.author.username ?? "—"}
+                                            </Named>
+                                        ),
                                     },
                                 ]}
                             />

@@ -11,6 +11,11 @@ export const fetchProfile = createServerFn({ method: "GET" })
         return reply.ok ? done(reply.value) : refuse(reply.error);
     });
 
+export const removeAvatar = createServerFn({ method: "POST" }).handler(async () => {
+    const reply = await callPlatform("profile.avatar.clear", {});
+    return reply.ok ? done(null) : refuse(reply.error);
+});
+
 export const saveBio = createServerFn({ method: "POST" })
     .validator((data: unknown) => z.strictObject({ bio: Bio }).parse(data))
     .handler(async ({ data }) => {

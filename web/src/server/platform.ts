@@ -7,6 +7,8 @@ import { type AccountId, ClientInfo, toBase64Url } from "@lucent/core/scalars";
 import type { ReplyOf, RpcClient } from "@lucent/rpc/client";
 import { RequestId, RPC_HEADERS, toClientHeader } from "@lucent/rpc/contract";
 import {
+    AVATAR_IMAGE_PATH,
+    AVATAR_UPLOAD_PATH,
     LOADER_DOWNLOAD_PATH,
     RESOURCE_DOWNLOAD_PATH,
     RESOURCE_UPLOAD_PATH,
@@ -268,6 +270,128 @@ export async function downloadResource(resourceId: string, signal: AbortSignal):
     }
     if (res.status === 401) clearSessionToken();
     return back;
+}
+
+// The member's avatar upload: half a megabyte at most, and platform's decoder answers within
+// seconds, so a minute covers a slow line too.
+const AVATAR_DEADLINE_MS = 60 * 1_000;
+const AVATAR_MAX_BYTES = 512 * 1024;
+// The answers the avatar route passes on as they are; anything else is unexpected.
+const AVATAR_REFUSALS: ReadonlySet<string> = new Set<RefusalCode>([
+    "SESSION_INVALID",
+    "POSTING_RESTRICTED",
+    "PROFILE_REMOVED",
+    "IMAGE_TOO_LARGE",
+    "NOT_AN_IMAGE",
+    "IMAGE_UNDECODABLE",
+    "IMAGE_TIMED_OUT",
+    "INVALID_REQUEST",
+]);
+
+function isAvatarRefusal(code: unknown): code is RefusalCode {
+    return typeof code === "string" && AVATAR_REFUSALS.has(code);
+}
+
+type AvatarDigests = { readonly large: string; readonly small: string };
+
+function answerAvatar(outcome: Outcome<AvatarDigests>): Response {
+    return Response.json(outcome, { headers: { "cache-control": "no-store" } });
+}
+
+function digestsOf(value: unknown): AvatarDigests | null {
+    if (typeof value !== "object" || value === null) return null;
+    if (!("large" in value && "small" in value)) return null;
+    const { large, small } = value;
+    if (typeof large !== "string" || typeof small !== "string") return null;
+    return { large, small };
+}
+
+// The signed-in member's new avatar, from the browser to platform as it arrives; platform
+// decides who may, bounds the bytes, decodes them in its own child process and answers the
+// stored images' digests.
+export async function uploadAvatar(request: Request): Promise<Response> {
+    const web = currentRequest();
+    const session = readSessionToken();
+    if (session === null) return answerAvatar(refuse({ code: "SESSION_INVALID" }));
+    const length = Number(request.headers.get("content-length") ?? "");
+    if (!Number.isSafeInteger(length) || length <= 0 || request.body === null) {
+        return answerAvatar(refuse({ code: "INVALID_REQUEST" }));
+    }
+    if (length > AVATAR_MAX_BYTES) return answerAvatar(refuse({ code: "IMAGE_TOO_LARGE" }));
+    const startedAt = systemClock.now();
+    const reply = await tryAsync(
+        async () => {
+            const res = await platformStreams()(
+                AVATAR_UPLOAD_PATH,
+                {
+                    [RPC_HEADERS.session]: session,
+                    [RPC_HEADERS.client]: toClientHeader(web.client),
+                    [RPC_HEADERS.request]: web.requestId,
+                    "content-length": String(length),
+                },
+                AbortSignal.any([request.signal, AbortSignal.timeout(AVATAR_DEADLINE_MS)]),
+                request.body ?? undefined,
+            );
+            const parsed: unknown = await res.json();
+            return { status: res.status, body: parsed };
+        },
+        () => null,
+    );
+    web.trace.addPlatformTime(systemClock.now() - startedAt);
+    const body = reply.ok ? reply.value.body : null;
+    if (typeof body !== "object" || body === null) {
+        return answerAvatar(refuse({ code: "SERVICE_UNAVAILABLE" }));
+    }
+    if ("value" in body && reply.ok && reply.value.status === 200) {
+        const digests = digestsOf(body.value);
+        if (digests !== null) return answerAvatar({ ok: true, value: digests });
+    }
+    const code = "error" in body ? codeOf(body.error) : null;
+    if (code === "SESSION_INVALID") clearSessionToken();
+    return answerAvatar(refuse({ code: isAvatarRefusal(code) ? code : "SERVICE_UNAVAILABLE" }));
+}
+
+const AVATAR_DIGEST = /^[0-9a-f]{64}$/;
+const AVATAR_READ_DEADLINE_MS = 10 * 1_000;
+
+// One avatar image for the signed-in member, when platform says they may see it. A digest names
+// its bytes for good, so the browser keeps it a year; only this browser, since whose picture a
+// member may see is decided per member. Everything else is a bare 404: an image tag has no page
+// to show a refusal on.
+export async function serveAvatar(digest: string, signal: AbortSignal): Promise<Response> {
+    const web = currentRequest();
+    const missing = new Response(null, { status: 404, headers: { "cache-control": "no-store" } });
+    const session = readSessionToken();
+    if (session === null || !AVATAR_DIGEST.test(digest)) return missing;
+    const startedAt = systemClock.now();
+    const reply = await tryAsync(
+        () =>
+            platformStreams()(
+                `${AVATAR_IMAGE_PATH}/${digest}`,
+                {
+                    [RPC_HEADERS.session]: session,
+                    [RPC_HEADERS.client]: toClientHeader(web.client),
+                    [RPC_HEADERS.request]: web.requestId,
+                },
+                AbortSignal.any([signal, AbortSignal.timeout(AVATAR_READ_DEADLINE_MS)]),
+            ),
+        () => null,
+    );
+    web.trace.addPlatformTime(systemClock.now() - startedAt);
+    const res = reply.ok ? reply.value : null;
+    if (res?.status === 200 && res.body !== null) {
+        const length = res.headers.get("content-length");
+        return new Response(res.body, {
+            headers: {
+                "content-type": "image/webp",
+                "cache-control": "private, max-age=31536000, immutable",
+                "x-content-type-options": "nosniff",
+                ...(length === null ? {} : { "content-length": length }),
+            },
+        });
+    }
+    await res?.body?.cancel();
+    return missing;
 }
 
 // A staff upload can take a while on a slow line; the browser leaving ends it sooner.

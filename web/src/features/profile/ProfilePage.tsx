@@ -1,7 +1,9 @@
 import { getRouteApi, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
 import type { Refused } from "../../server/outcome.ts";
+import { Avatar } from "../../ui/Avatar/Avatar.tsx";
 import { Button } from "../../ui/Button/Button.tsx";
+import { Field } from "../../ui/Field/Field.tsx";
 import { Page } from "../../ui/Page/Page.tsx";
 import { Pairs } from "../../ui/Pairs/Pairs.tsx";
 import { Section } from "../../ui/Section/Section.tsx";
@@ -12,8 +14,9 @@ import { postingNote } from "../comments/posting.ts";
 import { ReportButton } from "../comments/ReportButton.tsx";
 import { TextArea } from "../comments/TextArea.tsx";
 import { blockAccount } from "../privacy/server.ts";
+import { AVATAR_ACCEPT, uploadAvatar } from "./avatar.ts";
 import { PROFILE_COPY } from "./copy.ts";
-import { saveBio } from "./server.ts";
+import { removeAvatar, saveBio } from "./server.ts";
 import { PROFILE_TITLE } from "./title.ts";
 
 const route = getRouteApi("/_member/members/$username");
@@ -22,9 +25,22 @@ export function ProfilePage() {
     const outcome = route.useLoaderData();
     const router = useRouter();
     const [refused, setRefused] = useState<Refused | null>(null);
+    const [pictureRefused, setPictureRefused] = useState<Refused | null>(null);
     const save = async (form: FormData) => {
         const reply = await saveBio({ data: { bio: String(form.get("bio") ?? "") } });
         setRefused(reply.ok ? null : reply.refused);
+        if (reply.ok) await router.invalidate();
+    };
+    const sendPicture = async (form: FormData) => {
+        const file = form.get("picture");
+        if (!(file instanceof File) || file.size === 0) return;
+        const reply = await uploadAvatar(file);
+        setPictureRefused(reply.ok ? null : reply.refused);
+        if (reply.ok) await router.invalidate();
+    };
+    const takeDownPicture = async () => {
+        const reply = await removeAvatar();
+        setPictureRefused(reply.ok ? null : reply.refused);
         if (reply.ok) await router.invalidate();
     };
     if (!outcome.ok) {
@@ -36,9 +52,11 @@ export function ProfilePage() {
     }
     const profile = outcome.value;
     const note = postingNote(refused);
+    const pictureNote = postingNote(pictureRefused);
     return (
         <Page title={profile.username} width="narrow">
             <Stack gap={6}>
+                <Avatar digest={profile.avatar?.large ?? null} size="large" />
                 <Pairs
                     items={[
                         {
@@ -48,7 +66,9 @@ export function ProfilePage() {
                     ]}
                 />
                 <p>{profile.bio === "" ? PROFILE_COPY.noBio : profile.bio}</p>
-                {profile.isSelf || profile.id === null || profile.bio === "" ? null : (
+                {profile.isSelf ||
+                profile.id === null ||
+                (profile.bio === "" && profile.avatar === null) ? null : (
                     <div>
                         <ReportButton kind="profile" targetId={profile.id} />
                     </div>
@@ -71,23 +91,57 @@ export function ProfilePage() {
                 )}
                 {profile.isSelf ? (
                     <Section caption={PROFILE_COPY.edit}>
-                        <form action={save} key={profile.bio}>
-                            <Stack gap={3}>
-                                <RefusalNote
-                                    refused={refused}
-                                    {...(note === undefined ? {} : { extra: note })}
-                                />
-                                <TextArea
-                                    name="bio"
-                                    label={PROFILE_COPY.bio}
-                                    maxLength={500}
-                                    defaultValue={profile.bio}
-                                />
-                                <div>
-                                    <Button type="submit">{PROFILE_COPY.save}</Button>
-                                </div>
-                            </Stack>
-                        </form>
+                        <Stack gap={6}>
+                            <form action={sendPicture} key={profile.avatar?.large ?? "none"}>
+                                <Stack gap={3}>
+                                    <RefusalNote
+                                        refused={pictureRefused}
+                                        {...(pictureNote === undefined
+                                            ? {}
+                                            : { extra: pictureNote })}
+                                    />
+                                    <Field
+                                        label={PROFILE_COPY.picture}
+                                        hint={PROFILE_COPY.pictureHint}
+                                    >
+                                        {(control) => (
+                                            <input
+                                                {...control}
+                                                type="file"
+                                                name="picture"
+                                                accept={AVATAR_ACCEPT}
+                                                required
+                                            />
+                                        )}
+                                    </Field>
+                                    <div>
+                                        <Button type="submit">{PROFILE_COPY.upload}</Button>{" "}
+                                        {profile.avatar === null ? null : (
+                                            <Button tone="danger" onClick={takeDownPicture}>
+                                                {PROFILE_COPY.removePicture}
+                                            </Button>
+                                        )}
+                                    </div>
+                                </Stack>
+                            </form>
+                            <form action={save} key={profile.bio}>
+                                <Stack gap={3}>
+                                    <RefusalNote
+                                        refused={refused}
+                                        {...(note === undefined ? {} : { extra: note })}
+                                    />
+                                    <TextArea
+                                        name="bio"
+                                        label={PROFILE_COPY.bio}
+                                        maxLength={500}
+                                        defaultValue={profile.bio}
+                                    />
+                                    <div>
+                                        <Button type="submit">{PROFILE_COPY.save}</Button>
+                                    </div>
+                                </Stack>
+                            </form>
+                        </Stack>
                     </Section>
                 ) : null}
             </Stack>

@@ -1,6 +1,7 @@
 import { getRouteApi, Link, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
 import type { Refused } from "../../server/outcome.ts";
+import { Named } from "../../ui/Avatar/Avatar.tsx";
 import { Button } from "../../ui/Button/Button.tsx";
 import { Page } from "../../ui/Page/Page.tsx";
 import { Section } from "../../ui/Section/Section.tsx";
@@ -54,7 +55,9 @@ export function GuidePage() {
         >
             <Stack gap={6}>
                 <p>
-                    {GUIDES_COPY.by(guide.value.author.username)}{" "}
+                    <Named avatar={guide.value.author.avatar}>
+                        {GUIDES_COPY.by(guide.value.author.username)}
+                    </Named>{" "}
                     <Time at={guide.value.updatedAt} format="relative" />
                 </p>
                 <p className={styles.body}>{guide.value.body}</p>

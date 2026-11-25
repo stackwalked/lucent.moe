@@ -1,6 +1,7 @@
 import { useRouter } from "@tanstack/react-router";
 import { useState } from "react";
 import type { Outcome, Refused } from "../../server/outcome.ts";
+import { Named } from "../../ui/Avatar/Avatar.tsx";
 import { Button } from "../../ui/Button/Button.tsx";
 import { Empty } from "../../ui/Empty/Empty.tsx";
 import { Pager } from "../../ui/Pager/Pager.tsx";
@@ -53,10 +54,13 @@ export function Comments({
                                 {
                                     key: "author",
                                     header: "",
-                                    cell: (row) =>
-                                        row.isMine
-                                            ? COMMENTS_COPY.you
-                                            : COMMENTS_COPY.author(row.author.username),
+                                    cell: (row) => (
+                                        <Named avatar={row.author.avatar}>
+                                            {row.isMine
+                                                ? COMMENTS_COPY.you
+                                                : COMMENTS_COPY.author(row.author.username)}
+                                        </Named>
+                                    ),
                                 },
                                 {
                                     key: "body",

@@ -1,5 +1,6 @@
 import type { TransportRefusal } from "@lucent/rpc/contract";
 import type { WebContract } from "@lucent/rpc/web";
+import type { AvatarUploadRefusal } from "@lucent/rpc/web/profile";
 import type { z } from "zod";
 import { RULES_COPY } from "./rules.ts";
 
@@ -12,7 +13,10 @@ type ContractCode = {
     [K in keyof WebContract]: CodeOf<z.output<WebContract[K]["error"]>>;
 }[keyof WebContract];
 
-export type RefusalCode = ContractCode | TransportRefusal["code"] | "THROTTLED";
+// The avatar upload is a streamed route, not a procedure, so its refusals are named apart.
+type AvatarUploadCode = z.output<typeof AvatarUploadRefusal>["code"];
+
+export type RefusalCode = ContractCode | AvatarUploadCode | TransportRefusal["code"] | "THROTTLED";
 
 // Failures with nothing to fix on the reader's side: they show the support reference.
 export const UNEXPECTED: ReadonlySet<RefusalCode> = new Set<RefusalCode>([
@@ -80,6 +84,11 @@ export const REFUSALS: Readonly<Record<RefusalCode, string>> = {
     TICKET_LIMIT: "you have too many open tickets. close one first.",
     ALREADY_LINKED: "this account is already linked to discord. unlink it first.",
     STAFF_CHANNEL_REQUIRED: "queues go only to a staff channel. mark the channel staff first.",
+    PROFILE_REMOVED: "staff removed your profile. write a new bio first.",
+    IMAGE_TOO_LARGE: "that picture is too large. use one under 512 kb and 4096 pixels a side.",
+    NOT_AN_IMAGE: "that isn't a picture we take. use a jpeg, png or webp.",
+    IMAGE_UNDECODABLE: "that picture couldn't be read. try another.",
+    IMAGE_TIMED_OUT: "that picture took too long to read. try a smaller one.",
 };
 // The text for one refusal, a form's own wording first where it has one.
 export function refusalText(

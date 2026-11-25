@@ -2,6 +2,7 @@ import { isProductId } from "@lucent/core/brands";
 import { getRouteApi, Link, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
 import type { Refused } from "../../server/outcome.ts";
+import { Named } from "../../ui/Avatar/Avatar.tsx";
 import { Button } from "../../ui/Button/Button.tsx";
 import { Empty } from "../../ui/Empty/Empty.tsx";
 import { Page } from "../../ui/Page/Page.tsx";
@@ -89,19 +90,24 @@ export function ShoutsPage() {
                                         {
                                             key: "author",
                                             header: SHOUTS_COPY.author,
-                                            cell: (row) =>
-                                                row.isMine ? (
-                                                    SHOUTS_COPY.you
-                                                ) : row.author.username === null ? (
-                                                    "—"
-                                                ) : (
-                                                    <Link
-                                                        to="/members/$username"
-                                                        params={{ username: row.author.username }}
-                                                    >
-                                                        {row.author.username}
-                                                    </Link>
-                                                ),
+                                            cell: (row) => (
+                                                <Named avatar={row.author.avatar}>
+                                                    {row.isMine ? (
+                                                        SHOUTS_COPY.you
+                                                    ) : row.author.username === null ? (
+                                                        "—"
+                                                    ) : (
+                                                        <Link
+                                                            to="/members/$username"
+                                                            params={{
+                                                                username: row.author.username,
+                                                            }}
+                                                        >
+                                                            {row.author.username}
+                                                        </Link>
+                                                    )}
+                                                </Named>
+                                            ),
                                         },
                                         {
                                             key: "body",
