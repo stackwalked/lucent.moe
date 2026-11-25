@@ -3,6 +3,7 @@
   "private": true,
   "workspaces": [
     "platform/*",
+    "platform/connectors/*",
     "platform/packages/*",
     "web"
   ],

@@ -66,6 +66,8 @@ export async function startPlatform(params: {
     // Where ops publish-loader would have written the loader's bytes. Given, the server also runs
     // its loaders' listener, which owns that directory, on a port of its own.
     readonly artifactDir?: string;
+    // The Discord connector's peer key; given, the server answers the discord procedures.
+    readonly discordInternalKey?: string;
 }): Promise<RunningPlatform> {
     const databaseUrl = await params.cluster.createDatabase(params.database, "template0");
     const ops = (args: readonly string[]) =>
@@ -118,6 +120,9 @@ export async function startPlatform(params: {
             LUCENT_MAIL_API_KEY: "",
             LUCENT_MAIL_FROM: "",
             ...native,
+            ...(params.discordInternalKey === undefined
+                ? {}
+                : { LUCENT_DISCORD_INTERNAL_KEY: params.discordInternalKey }),
         },
     });
     await server.waitFor(/"msg":"listening"/);

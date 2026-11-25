@@ -2,6 +2,7 @@ projects:
   globs:
     - "tools/*/moon.yml"
     - "platform/*/moon.yml"
+    - "platform/connectors/*/moon.yml"
     - "platform/packages/*/moon.yml"
     - "web/moon.yml"
     - "native/moon.yml"

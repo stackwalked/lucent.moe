@@ -1,0 +1,24 @@
+project:
+  description: "The Discord connector: a gateway client that mirrors what the service knows into one guild. No listener, no database, no signing keys; it calls platform-server through discordRpc."
+
+language: "typescript"
+layer: "application"
+
+dependsOn:
+  - "platform-core"
+  - "rpc"
+  - "platform-testing"
+
+tasks:
+  # Against platform as an operator starts it, in its own process on an ephemeral Postgres
+  # (@lucent/testing), and a stand-in Discord in the test's own (testing/fake-discord.ts).
+  test:
+    command: "bun test ./tests"
+    inputs:
+      - "src/**/*"
+      - "testing/**/*"
+      - "tests/**/*"
+      - "/platform/server/src/**/*"
+      - "/platform/server/migrations/**/*"
+      - "/platform/packages/*/src/**/*"
+      - "/products/**/*"

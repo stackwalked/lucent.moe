@@ -1,0 +1,20 @@
+{
+  "name": "@lucent/connector-discord",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./*": "./src/*.ts",
+    "./testing/*": "./testing/*.ts"
+  },
+  "dependencies": {
+    "@discordjs/core": "2.6.0",
+    "@discordjs/rest": "2.6.3",
+    "@discordjs/ws": "2.0.4",
+    "@lucent/core": "workspace:*",
+    "@lucent/rpc": "workspace:*",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@lucent/testing": "workspace:*"
+  }
+}
