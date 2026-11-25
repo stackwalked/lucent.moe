@@ -122,6 +122,32 @@ export const RETENTION: readonly Retained[] = [
                     select id from application where state = 'approved'
                     and decided_at < ${cutoff}::timestamptz limit ${BATCH}))`,
     },
+    // A deleted member's own ticket messages and their tickets' subjects, 30 days after the
+    // deletion (deletion/strip.ts leaves them for that long so support can finish with them).
+    // Staff replies stay with the ticket. Messages first: the subject goes once they have.
+    {
+        what: "ticket_message, a deleted account's own",
+        tier: "30d",
+        sweep: (cutoff) =>
+            sql`delete from ticket_message where id = any(array(
+                    select m.id from ticket_message m
+                    join ticket t on t.id = m.ticket_id
+                    join account a on a.id = t.account_id
+                    where a.deleted_at < ${cutoff}::timestamptz
+                      and m.author_id = a.id and not m.from_staff
+                    limit ${BATCH}))`,
+    },
+    {
+        what: "ticket subject, a deleted account's",
+        tier: "30d",
+        sweep: (cutoff) =>
+            sql`update ticket set subject = null, owner_text_removed_at = now()
+                where id = any(array(
+                    select t.id from ticket t join account a on a.id = t.account_id
+                    where a.deleted_at < ${cutoff}::timestamptz
+                      and t.owner_text_removed_at is null
+                    limit ${BATCH}))`,
+    },
     { what: "audit", tier: "forever" },
     { what: "fact_set, current_fact_set, release, current_release", tier: "forever" },
     { what: "fact_override, fact_override_revision", tier: "forever" },

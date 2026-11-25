@@ -62,17 +62,25 @@ test(
     inWorld(1301, async ({ deps, db, rng }) => {
         const ann = await newMember(deps, rng, { username: "ann", with: "passkey" });
         const now = await dbNow(db);
-        const requested = await requestDeletion(deps, { token: ann.sessionToken, client: null });
+        const requested = await requestDeletion(deps, {
+            token: ann.sessionToken,
+            purpose: "member",
+            client: null,
+        });
         invariant(requested.ok, `requesting failed: ${JSON.stringify(requested)}`);
         expect(requested.value.dueAt - now).toBeGreaterThanOrEqual(DELETION_GRACE_MS - 1_000);
         expect(requested.value.dueAt - now).toBeLessThanOrEqual(DELETION_GRACE_MS + 1_000);
 
-        expect(await readDeletion(db, ann.sessionToken)).toMatchObject(
-            ok({ state: "pending", dueAt: requested.value.dueAt }),
-        );
-        expect(await requestDeletion(deps, { token: ann.sessionToken, client: null })).toEqual(
-            ok({ dueAt: requested.value.dueAt }),
-        );
+        expect(
+            await readDeletion(db, { token: ann.sessionToken, purpose: "member" }),
+        ).toMatchObject(ok({ state: "pending", dueAt: requested.value.dueAt }));
+        expect(
+            await requestDeletion(deps, {
+                token: ann.sessionToken,
+                purpose: "member",
+                client: null,
+            }),
+        ).toEqual(ok({ dueAt: requested.value.dueAt }));
         expect(
             await count(
                 db,
@@ -101,7 +109,11 @@ test(
     "while a deletion waits the account works as before, and only the member's say-so keeps it",
     inWorld(1302, async ({ deps, db, rng }) => {
         const bea = await newMember(deps, rng, { username: "bea", with: "password+totp" });
-        const requested = await requestDeletion(deps, { token: bea.sessionToken, client: null });
+        const requested = await requestDeletion(deps, {
+            token: bea.sessionToken,
+            purpose: "member",
+            client: null,
+        });
         invariant(requested.ok, "requesting failed");
         // Signing in again changes nothing about it.
         const signedIn = await signInWithPassword(deps, {
@@ -111,17 +123,23 @@ test(
         expect(signedIn.ok && signedIn.value.next).toBe("secondFactor");
         const standing = await readStanding(db, bea.accountId, await dbNow(db));
         expect(standing.ok && standing.value?.isActive).toBe(true);
-        expect((await readDeletion(db, bea.sessionToken)).ok).toBe(true);
-        expect(await readDeletion(db, bea.sessionToken)).toMatchObject(ok({ state: "pending" }));
+        expect((await readDeletion(db, { token: bea.sessionToken, purpose: "member" })).ok).toBe(
+            true,
+        );
+        expect(
+            await readDeletion(db, { token: bea.sessionToken, purpose: "member" }),
+        ).toMatchObject(ok({ state: "pending" }));
 
-        expect(await cancelDeletion(db, { token: bea.sessionToken, client: null })).toEqual(
-            ok(undefined),
+        expect(
+            await cancelDeletion(db, { token: bea.sessionToken, purpose: "member", client: null }),
+        ).toEqual(ok(undefined));
+        expect(await readDeletion(db, { token: bea.sessionToken, purpose: "member" })).toEqual(
+            ok({ state: "none" }),
         );
-        expect(await readDeletion(db, bea.sessionToken)).toEqual(ok({ state: "none" }));
         // Keeping an account kept already writes nothing more.
-        expect(await cancelDeletion(db, { token: bea.sessionToken, client: null })).toEqual(
-            ok(undefined),
-        );
+        expect(
+            await cancelDeletion(db, { token: bea.sessionToken, purpose: "member", client: null }),
+        ).toEqual(ok(undefined));
         expect(
             await count(
                 db,
@@ -140,16 +158,24 @@ test(
     inWorld(1303, async ({ deps, db, rng }) => {
         const cai = await newMember(deps, rng, { username: "cai", with: "passkey" });
         await staleSession(db, cai.accountId);
-        expect(await requestDeletion(deps, { token: cai.sessionToken, client: null })).toEqual(
-            err({ code: "REAUTH_REQUIRED", withinSeconds: 300 }),
-        );
+        expect(
+            await requestDeletion(deps, {
+                token: cai.sessionToken,
+                purpose: "member",
+                client: null,
+            }),
+        ).toEqual(err({ code: "REAUTH_REQUIRED", withinSeconds: 300 }));
 
         const dee = await newMember(deps, rng, { username: "dee", with: "passkey" });
         const roleId = await seedRole(db, { id: "role_helper", rank: 1, permissions: [] });
         await grantRole(db, { accountId: dee.accountId, roleId });
-        expect(await requestDeletion(deps, { token: dee.sessionToken, client: null })).toEqual(
-            err({ code: "STAFF_CANNOT_DELETE" }),
-        );
+        expect(
+            await requestDeletion(deps, {
+                token: dee.sessionToken,
+                purpose: "member",
+                client: null,
+            }),
+        ).toEqual(err({ code: "STAFF_CANNOT_DELETE" }));
         const rootId = await seedRootOnce(db, rng);
         const rootSession = await withTx(db, async (tx, txNow) => {
             return await mintSession(tx, {
@@ -162,7 +188,11 @@ test(
         });
         invariant(rootSession.ok, "a root session");
         expect(
-            await requestDeletion(deps, { token: rootSession.value.token, client: null }),
+            await requestDeletion(deps, {
+                token: rootSession.value.token,
+                purpose: "member",
+                client: null,
+            }),
         ).toEqual(err({ code: "STAFF_CANNOT_DELETE" }));
     }),
 );
@@ -172,7 +202,13 @@ test(
     inWorld(1304, async ({ deps, db, rng }) => {
         const eve = await newMember(deps, rng, { username: "eve", with: "passkey" });
         invariant(
-            (await requestDeletion(deps, { token: eve.sessionToken, client: null })).ok,
+            (
+                await requestDeletion(deps, {
+                    token: eve.sessionToken,
+                    purpose: "member",
+                    client: null,
+                })
+            ).ok,
             "requesting failed",
         );
         expect(await completeDeletion(deps, eve.accountId)).toEqual(err({ code: "NOT_DUE" }));
@@ -195,7 +231,13 @@ test(
     inWorld(1305, async ({ deps, db, rng }) => {
         const fay = await newMember(deps, rng, { username: "fay", with: "all" });
         invariant(
-            (await requestDeletion(deps, { token: fay.sessionToken, client: null })).ok,
+            (
+                await requestDeletion(deps, {
+                    token: fay.sessionToken,
+                    purpose: "member",
+                    client: null,
+                })
+            ).ok,
             "requesting failed",
         );
         await lapse(db, fay.accountId);

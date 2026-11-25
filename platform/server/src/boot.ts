@@ -20,6 +20,7 @@ import type { MigrationError, MigrationFile } from "./db/migrate.ts";
 import { verifySchemaCurrent } from "./db/migrate.ts";
 import { openPool } from "./db/pool.ts";
 import { createEmailHasher } from "./deletion/email-hash.ts";
+import { deletionJob } from "./jobs/deletion.ts";
 import { retentionJob } from "./jobs/retention.ts";
 import { type Every, startJobs } from "./jobs/runner.ts";
 import { createInternalWebApp, routeInternal } from "./listeners/internal/app.ts";
@@ -260,6 +261,7 @@ export async function startServer(params: {
             expiredAuthJob(db),
             restrictionExpiryJob(db),
             retentionJob(db),
+            deletionJob({ db, emailHasher: auth.emailHasher }),
             riskScoringJob(db),
             idleTicketJob(db),
             signInCountriesJob(db, geo),

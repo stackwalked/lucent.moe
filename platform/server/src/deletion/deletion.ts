@@ -20,8 +20,8 @@ import { recordNotification } from "../notify/inbox.ts";
 import { type DeletionState, decideDeletion } from "./deletion.rules.ts";
 
 // The member's side of deletion: ask, see when, keep the account. A suspended member deletes from
-// the appeal session their sign-in gives them, so both purposes reach these.
-const PURPOSES = ["member", "appeal"] as const;
+// the appeal session their sign-in gives them; each procedure names the one purpose it serves.
+export type DeletionPurpose = "member" | "appeal";
 
 export type DeletionStatus =
     | { readonly state: "none" }
@@ -58,10 +58,14 @@ async function gather(tx: Tx, accountId: AccountId) {
 
 export function readDeletion(
     db: Db,
-    token: BearerToken,
+    params: { readonly token: BearerToken; readonly purpose: DeletionPurpose },
 ): Promise<Result<DeletionStatus, SessionInvalid | DbFailure>> {
     return withTx(db, async (tx, txNow) => {
-        const session = await lockSession(tx, { token, txNow, purposes: PURPOSES });
+        const session = await lockSession(tx, {
+            token: params.token,
+            txNow,
+            purposes: [params.purpose],
+        });
         if (!session.ok) return session;
         const gathered = await gather(tx, session.value.accountId);
         return gathered.ok ? ok(gathered.value.status) : gathered;
@@ -82,10 +86,18 @@ function lastProofAt(session: BrowserSession): EpochMs {
 // request they didn't make reaches them while they can still keep the account.
 export function requestDeletion(
     deps: AuthDeps,
-    params: { readonly token: BearerToken; readonly client: ClientInfo | null },
+    params: {
+        readonly token: BearerToken;
+        readonly purpose: DeletionPurpose;
+        readonly client: ClientInfo | null;
+    },
 ): Promise<Result<{ readonly dueAt: EpochMs }, RequestRefusal>> {
     return withTx(deps.db, async (tx, txNow) => {
-        const session = await lockSession(tx, { token: params.token, txNow, purposes: PURPOSES });
+        const session = await lockSession(tx, {
+            token: params.token,
+            txNow,
+            purposes: [params.purpose],
+        });
         if (!session.ok) return session;
         const { accountId } = session.value;
         const standing = await readStanding(tx, accountId, txNow);
@@ -145,10 +157,18 @@ export function requestDeletion(
 // Keeping the account: the member signed in and said so. Nothing else cancels a deletion.
 export function cancelDeletion(
     db: Db,
-    params: { readonly token: BearerToken; readonly client: ClientInfo | null },
+    params: {
+        readonly token: BearerToken;
+        readonly purpose: DeletionPurpose;
+        readonly client: ClientInfo | null;
+    },
 ): Promise<Result<void, SessionInvalid | DbFailure>> {
     return withTx(db, async (tx, txNow) => {
-        const session = await lockSession(tx, { token: params.token, txNow, purposes: PURPOSES });
+        const session = await lockSession(tx, {
+            token: params.token,
+            txNow,
+            purposes: [params.purpose],
+        });
         if (!session.ok) return session;
         const { accountId } = session.value;
         const gathered = await gather(tx, accountId);
