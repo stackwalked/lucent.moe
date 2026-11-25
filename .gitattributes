@@ -8,5 +8,10 @@ native/**/tests/fixtures/**/*.png binary
 # Fixture fonts: bytes DirectWrite reads as they are.
 native/**/tests/fixtures/**/*.woff2 binary
 
+# Fixture images: the avatar decoder's inputs, some deliberately malformed.
+platform/**/tests/fixtures/**/*.png binary
+platform/**/tests/fixtures/**/*.jpg binary
+platform/**/tests/fixtures/**/*.webp binary
+
 # Product assets: fonts web serves as they are.
 web/src/ui/fonts/*.woff2 binary

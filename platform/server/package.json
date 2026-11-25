@@ -4,6 +4,9 @@
   "type": "module",
   "dependencies": {
     "@hono/standard-validator": "0.4.1",
+    "@jsquash/jpeg": "1.6.0",
+    "@jsquash/png": "3.1.1",
+    "@jsquash/webp": "1.5.0",
     "@lucent/bundle": "workspace:*",
     "@lucent/catalog": "workspace:*",
     "@lucent/core": "workspace:*",
