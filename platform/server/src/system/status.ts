@@ -99,6 +99,12 @@ async function readDatabaseSide(q: Queryable) {
     });
 }
 
+function isMissing(cause: unknown): boolean {
+    return (
+        typeof cause === "object" && cause !== null && "code" in cause && cause.code === "ENOENT"
+    );
+}
+
 // Every file under the directory, partial publishes included. Read after the transaction: no
 // filesystem I/O while a Tx is held.
 async function measureArtifacts(dir: string | null): Promise<ArtifactUse> {
@@ -121,8 +127,11 @@ async function measureArtifacts(dir: string | null): Promise<ArtifactUse> {
             }
             return { files, bytes };
         },
-        () => null,
+        (cause) => (isMissing(cause) ? "missing" : "unreadable"),
     );
+    // The directory is created by the first publish, so a fresh install has none: that is an
+    // empty store, not a failure.
+    if (!measured.ok && measured.error === "missing") return { state: "read", files: 0, bytes: 0 };
     if (!measured.ok) return { state: "unreadable" };
     return { state: "read", ...measured.value };
 }

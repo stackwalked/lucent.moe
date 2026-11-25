@@ -162,9 +162,16 @@ describe("the system page", () => {
             expect(reading?.active).toBeGreaterThanOrEqual(1);
             expect(JSON.stringify(status.value)).not.toContain("a@lucent.test");
 
+            const notADirectory = join(dir, "a".repeat(64));
+            const blocked = await readSystemStatus(nativeDb, {
+                caller,
+                artifactDir: notADirectory,
+            });
+            expect(blocked.ok && blocked.value.artifacts).toEqual({ state: "unreadable" });
+
             await rm(dir, { recursive: true });
             const gone = await readSystemStatus(nativeDb, { caller, artifactDir: dir });
-            expect(gone.ok && gone.value.artifacts).toEqual({ state: "unreadable" });
+            expect(gone.ok && gone.value.artifacts).toEqual({ state: "read", files: 0, bytes: 0 });
             expect(
                 await readSystemStatus(nativeDb, {
                     caller: await steppedUp(nativeDb, member),
