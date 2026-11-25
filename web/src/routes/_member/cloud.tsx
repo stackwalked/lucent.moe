@@ -13,6 +13,8 @@ export const Route = createFileRoute("/_member/cloud")({
         if (!catalog.ok) return catalog;
         if (!deps.product) return { ok: true, view: "products", catalog: catalog.value } as const;
         const productId = deps.product;
+        const product = catalog.value.products.find((p) => p.id === productId);
+        const canCreate = product?.canCreate === true;
         if (deps.item) {
             const history = await fetchHistory({ data: { productId, itemId: deps.item } });
             if (!history.ok) return history;
@@ -22,7 +24,8 @@ export const Route = createFileRoute("/_member/cloud")({
                 productId,
                 itemId: deps.item,
                 history: history.value,
-                canAppend: catalog.value.canAppend,
+                canAppend: catalog.value.canAppend && canCreate,
+                canShare: canCreate,
             } as const;
         }
         const items = await fetchItems({ data: { productId } });
@@ -32,7 +35,7 @@ export const Route = createFileRoute("/_member/cloud")({
             view: "items",
             productId,
             items: items.value,
-            canAppend: catalog.value.canAppend,
+            canAppend: catalog.value.canAppend && canCreate,
         } as const;
     },
     head: () => ({ meta: [{ title: SITE_COPY.pageTitle(CLOUD_COPY.title) }] }),

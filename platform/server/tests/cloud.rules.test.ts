@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { err, ok } from "@lucent/core/result";
 import { CLOUD_LIMITS, decideAppend } from "../src/cloud/items.rules.ts";
+import { type CloudOperation, decideCloudAccess } from "../src/cloud/member.rules.ts";
 import { decideShare, MAX_SHARES_PER_ITEM } from "../src/cloud/shares.rules.ts";
 
 const limits = { maxItems: 2, maxStoredBytes: 8, maxVersionBytes: 4, maxVersionsPerItem: 3 };
@@ -117,3 +118,30 @@ test.each([
 test("production share pins leave a full version window an older version to drop", () => {
     expect(MAX_SHARES_PER_ITEM + 1).toBeLessThan(CLOUD_LIMITS.maxVersionsPerItem);
 });
+
+const HELD: readonly CloudOperation[] = ["list", "history", "delete", "revoke"];
+const ADDING: readonly CloudOperation[] = ["create", "rename", "restore", "share", "import"];
+
+const ACCESS: readonly (readonly [CloudOperation, boolean, boolean, boolean])[] = [
+    ...HELD.flatMap((operation): [CloudOperation, boolean, boolean, boolean][] => [
+        [operation, true, true, true],
+        [operation, true, false, true],
+        [operation, false, true, true],
+        [operation, false, false, false],
+    ]),
+    ...ADDING.flatMap((operation): [CloudOperation, boolean, boolean, boolean][] => [
+        [operation, true, true, true],
+        [operation, true, false, true],
+        [operation, false, true, false],
+        [operation, false, false, false],
+    ]),
+];
+
+test.each(ACCESS)(
+    "%s with current eligibility %p and held items %p is allowed: %p",
+    (operation, eligible, holdsItems, allowed) => {
+        expect(decideCloudAccess({ operation, eligible, holdsItems })).toEqual(
+            allowed ? ok(undefined) : err({ code: "NOT_FOUND" }),
+        );
+    },
+);

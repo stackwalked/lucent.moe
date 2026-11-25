@@ -28,6 +28,7 @@ type Detail = {
     readonly productId: string;
     readonly itemId: string;
     readonly canAppend: boolean;
+    readonly canShare: boolean;
     readonly history: Extract<Awaited<ReturnType<typeof fetchHistory>>, { ok: true }>["value"];
 };
 
@@ -38,7 +39,7 @@ function History({ detail }: { readonly detail: Detail }) {
     const [link, setLink] = useState<{ url: string; id: string } | null>(null);
     const [deleting, setDeleting] = useState(false);
     const [notice, setNotice] = useState("");
-    const { productId, itemId, history, canAppend } = detail;
+    const { productId, itemId, history, canAppend, canShare } = detail;
     const current = history.versions[0];
     if (!current) return null;
     const data = { productId, itemId };
@@ -123,21 +124,23 @@ function History({ detail }: { readonly detail: Detail }) {
             </Section>
             <Section caption={C.links}>
                 <Stack gap={2}>
-                    <Button
-                        disabled={busy}
-                        onClick={() =>
-                            void act(
-                                () => createShare({ data }),
-                                (s) =>
-                                    setLink({
-                                        url: `${window.location.origin}/share#${productId}/${s.token}`,
-                                        id: s.shareId,
-                                    }),
-                            )
-                        }
-                    >
-                        {C.share}
-                    </Button>
+                    {canShare && (
+                        <Button
+                            disabled={busy}
+                            onClick={() =>
+                                void act(
+                                    () => createShare({ data }),
+                                    (s) =>
+                                        setLink({
+                                            url: `${window.location.origin}/share#${productId}/${s.token}`,
+                                            id: s.shareId,
+                                        }),
+                                )
+                            }
+                        >
+                            {C.share}
+                        </Button>
+                    )}
                     {link && history.shares.some((s) => s.shareId === link.id) && (
                         <Stack direction="row" gap={2}>
                             <label>

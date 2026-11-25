@@ -1,12 +1,14 @@
 import type { ProductCatalog } from "@lucent/catalog/catalog";
 import { decideProductLifecycle } from "@lucent/catalog/lifecycle.rules";
+import type { ProductDefinition } from "@lucent/catalog/product";
+import { invariant } from "@lucent/core/contain";
 import { err, ok, type Result } from "@lucent/core/result";
 import type { AccountId, BearerToken, OperationId, ProductId } from "@lucent/core/scalars";
 import { CloudId } from "@lucent/rpc/cloud-item";
 import { z } from "zod";
 import { lockSession } from "../auth/sessions.ts";
 import { readEffectiveProductAccess } from "../authority/entitlements.ts";
-import { type Db, execute, sql, type Tx } from "../db/pool.ts";
+import { type Db, execute, queryOne, sql, type Tx } from "../db/pool.ts";
 import { readReplay, recordReceipt, toOperationKey } from "../db/receipt.ts";
 import { withTx } from "../db/tx.ts";
 import type { CloudLimits } from "./items.rules.ts";
@@ -17,6 +19,7 @@ import {
     type ItemKind,
     listHistory,
 } from "./items.ts";
+import { type CloudOperation, decideCloudAccess } from "./member.rules.ts";
 import { listShares } from "./shares.ts";
 
 function withCloudMember<S extends Result<unknown, unknown>>(
@@ -41,25 +44,44 @@ function withCloudMember<S extends Result<unknown, unknown>>(
     });
 }
 
-async function eligibleProducts(tx: Tx, catalog: ProductCatalog, accountId: AccountId) {
-    const products: { id: ProductId; name: string }[] = [];
-    for (const product of catalog.values()) {
-        if (decideProductLifecycle(product.state, "current").value.startRefusal !== null) continue;
-        const access = await readEffectiveProductAccess(tx, {
-            accountId,
-            product,
-            at: "transaction",
-        });
-        if (!access.ok) return access;
-        if (access.value.isEntitled) products.push({ id: product.id, name: product.name });
+// Whether the member could start the product today: its lifecycle allows a start and their
+// entitlement holds now.
+async function isEligible(tx: Tx, product: ProductDefinition, accountId: AccountId) {
+    if (decideProductLifecycle(product.state, "current").value.startRefusal !== null) {
+        return ok(false);
     }
-    return ok(products);
+    const access = await readEffectiveProductAccess(tx, { accountId, product, at: "transaction" });
+    return access.ok ? ok(access.value.isEntitled) : access;
 }
 
-export function listCloudProducts(db: Db, session: BearerToken, catalog: ProductCatalog) {
-    return withCloudMember(db, session, (tx, accountId) =>
-        eligibleProducts(tx, catalog, accountId),
+async function holdsItems(tx: Tx, accountId: AccountId, productId: ProductId) {
+    const held = await queryOne(
+        tx,
+        z.object({ held: z.boolean() }),
+        sql`select exists (select 1 from cloud_item
+            where account_id = ${accountId} and product_id = ${productId}) as held`,
     );
+    if (!held.ok) return held;
+    invariant(held.value !== null, "a select without from yields its row");
+    return ok(held.value.held);
+}
+
+// Each product the member could start or still holds items in; `canCreate` says which.
+export function listCloudProducts(db: Db, session: BearerToken, catalog: ProductCatalog) {
+    return withCloudMember(db, session, async (tx, accountId) => {
+        const products: { id: ProductId; name: string; canCreate: boolean }[] = [];
+        for (const product of catalog.values()) {
+            const eligible = await isEligible(tx, product, accountId);
+            if (!eligible.ok) return eligible;
+            if (!eligible.value) {
+                const held = await holdsItems(tx, accountId, product.id);
+                if (!held.ok) return held;
+                if (!held.value) continue;
+            }
+            products.push({ id: product.id, name: product.name, canCreate: eligible.value });
+        }
+        return ok(products);
+    });
 }
 
 // Resolve even a guessed product through the same locked membership read as the selector.
@@ -69,18 +91,26 @@ export function withCloudScope<S extends Result<unknown, unknown>>(
         readonly session: BearerToken;
         readonly catalog: ProductCatalog;
         readonly productId: ProductId;
+        readonly operation: CloudOperation;
     },
     work: (tx: Tx, scope: CloudScope) => Promise<S>,
 ) {
     return withCloudMember(db, params.session, async (tx, accountId) => {
-        const products = await eligibleProducts(tx, params.catalog, accountId);
-        if (!products.ok) return products;
-        if (!products.value.some((p) => p.id === params.productId))
-            return err({ code: "NOT_FOUND" });
+        const product = params.catalog.get(params.productId);
+        const eligible =
+            product === undefined ? ok(false) : await isEligible(tx, product, accountId);
+        if (!eligible.ok) return eligible;
+        const held = await holdsItems(tx, accountId, params.productId);
+        if (!held.ok) return held;
+        const access = decideCloudAccess({
+            operation: params.operation,
+            eligible: eligible.value,
+            holdsItems: held.value,
+        });
+        if (!access.ok) return access;
         return work(tx, { accountId, productId: params.productId });
     });
 }
-
 export async function itemHistory(tx: Tx, item: CloudItem) {
     const versions = await listHistory(tx, item);
     if (!versions.ok) return versions;

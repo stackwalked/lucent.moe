@@ -57,7 +57,10 @@ export const cloudContract = defineContract({
         ...read,
         input: z.strictObject({}),
         output: z.object({
-            products: z.array(z.object({ id: ProductId, name: z.string() })).readonly(),
+            // canCreate is false for a product the member holds items in but could not start today.
+            products: z
+                .array(z.object({ id: ProductId, name: z.string(), canCreate: z.boolean() }))
+                .readonly(),
             canAppend: z.boolean(),
         }),
     },

@@ -31,7 +31,8 @@ export function SharePage() {
         if (reply.ok) setLink(null);
         return reply;
     }, null);
-    const allowed = catalog?.ok && catalog.value.products.find((p) => p.id === link?.productId);
+    const allowed =
+        catalog?.ok && catalog.value.products.find((p) => p.id === link?.productId && p.canCreate);
     return (
         <Page title={C.import} width="narrow">
             {result?.ok && !link ? (
