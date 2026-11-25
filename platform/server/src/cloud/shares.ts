@@ -1,3 +1,4 @@
+import { invariant } from "@lucent/core/contain";
 import { err, ok } from "@lucent/core/result";
 import type { CryptoRng } from "@lucent/core/rng";
 import type { BearerToken } from "@lucent/core/scalars";
@@ -12,6 +13,10 @@ import {
     ItemKind,
     lockCloudScope,
 } from "./items.ts";
+import { decideShare, MAX_SHARES_PER_ITEM } from "./shares.rules.ts";
+
+const isShared = (item: CloudItem) =>
+    sql`account_id = ${item.accountId} and product_id = ${item.productId} and item_id = ${item.itemId}`;
 
 // Management survives the session that issued the bearer without ever returning it again.
 export function listShares(q: Queryable, item: CloudItem) {
@@ -24,23 +29,41 @@ export function listShares(q: Queryable, item: CloudItem) {
     );
 }
 
+const ShareGather = z.object({ head: z.int().positive().nullable(), shares: z.int() });
+
+// Each share pins its snapshot out of the item's version window, so their count is capped.
 export async function createShare(tx: Tx, item: CloudItem, rng: CryptoRng) {
     const locked = await lockCloudScope(tx, item);
     if (!locked.ok) return locked;
+    const gathered = await queryOne(
+        tx,
+        ShareGather,
+        sql`select (select max(revision) from cloud_version where ${isShared(item)}) as head,
+            (select count(*) from cloud_share where ${isShared(item)})::integer as shares`,
+    );
+    if (!gathered.ok) return gathered;
+    invariant(gathered.value !== null, "a select without from yields its row");
+    const { head, shares } = gathered.value;
+    if (head === null) return err({ code: "NOT_FOUND" });
+    const allowed = decideShare({ shares, maxShares: MAX_SHARES_PER_ITEM });
+    if (!allowed.ok) return allowed;
     const { token, hash } = await issueToken(rng);
     const share = await queryOne(
         tx,
         z.object({ shareId: z.string() }),
         sql`insert into cloud_share (account_id, product_id, item_id, revision, token_hash)
-        select account_id, product_id, item_id, revision, ${hash} from cloud_version
-        where account_id = ${item.accountId} and product_id = ${item.productId} and item_id = ${item.itemId}
-        order by revision desc limit 1 returning share_id::text as "shareId"`,
+        values (${item.accountId}, ${item.productId}, ${item.itemId}, ${head}, ${hash})
+        returning share_id::text as "shareId"`,
     );
     if (!share.ok) return share;
-    return share.value === null ? err({ code: "NOT_FOUND" }) : ok({ ...share.value, token });
+    invariant(share.value !== null, "a share insert returns its id");
+    return ok({ ...share.value, token });
 }
 
+// Under the scope lock, so a share count gathered for a new link is still true when it is written.
 export async function revokeShare(tx: Tx, scope: CloudScope, shareId: string) {
+    const locked = await lockCloudScope(tx, scope);
+    if (!locked.ok) return locked;
     const removed = await execute(
         tx,
         sql`delete from cloud_share where account_id = ${scope.accountId}

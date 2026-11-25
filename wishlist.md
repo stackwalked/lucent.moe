@@ -129,7 +129,7 @@ Beside phases 2 and 3; nothing native waits on it except cutover.
   enforced): the signed override document and its delivery on `/data`, the reports route and the
   signals from it, the renewal's integrity bits and checked challenge answers. Each waits on a
   format the human decides; a review action of its own in place of `accounts:suspend`.
-- `ops transfer-superadmin` and `replay-removals`.
+- `ops replay-removals` (what a `removed` line holds and who writes it waits on the human).
 - Slice 4 (account-held items with history, share links, the member pages, tickets and appeals,
   the new-country review rule with DB-IP geo and resources landed): items served to and written
   by a session over `/data` (a format to decide), crash reports, the waitlist.
@@ -923,8 +923,6 @@ live in `wishlist/protection.md`.
       both its old and new rank; no action targets the caller's own account (none is
       self-service); no caller, root included, targets the root account; stored permissions that
       are no longer Actions grant nothing and are reported, never a crash.
-    - The database keeps root permanent (`account_root_permanent` trigger); `ops
-      transfer-superadmin` relaxes it when it lands.
     - Roles, optional plan templates and Discord sync predicates live in PostgreSQL (seeded from
       declarative config, editable live in `web` admin with step-up + audit); bootstrap `root` sits
       at max `rank` (transferred only via `ops transfer-superadmin`).

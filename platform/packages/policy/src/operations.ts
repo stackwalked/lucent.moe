@@ -5,6 +5,7 @@ import { z } from "zod";
 // possibly unknown.
 export const AUDIT_OPERATIONS = [
     "account.bootstrap_root",
+    "account.transfer_root",
     "account.create",
     "account.recover",
     "account.suspend",

@@ -254,6 +254,86 @@ test("a link copies its issued snapshot; revoke or source deletion blocks import
     });
 });
 
+test("a full history drops its oldest unshared version, never the head or a linked snapshot", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ nativeDb: db }) => {
+        const { owner, recipient, rng } = await scopes(db);
+        const window = { ...limits, maxVersionsPerItem: 3 };
+        const { itemId } = value(
+            await withTx(db, (tx) => createItem(tx, { ...owner, ...content, limits: window })),
+        );
+        const item = { ...owner, itemId };
+        const link = value(await withTx(db, (tx) => createShare(tx, item, rng)));
+        const replace = (base: number, n: number) =>
+            withTx(db, (tx) =>
+                changeItem(tx, {
+                    ...item,
+                    base,
+                    limits: window,
+                    change: { type: "replace", bytes: Uint8Array.of(n) },
+                }),
+            );
+        for (const base of [1, 2, 3, 4]) value(await replace(base, base + 1));
+        expect(value(await listHistory(db, item)).map((v) => v.revision)).toEqual([5, 4, 1]);
+        expect(await readItem(db, item, 2)).toEqual(missing);
+        expect(value(await readItem(db, item)).bytes).toEqual(Uint8Array.of(5));
+        const copy = value(
+            await withTx(db, (tx) => importShare(tx, { ...recipient, limits, token: link.token })),
+        );
+        expect(value(await readItem(db, { ...recipient, ...copy })).bytes).toEqual(content.bytes);
+        for (const revision of [1, 5]) {
+            expect(
+                await execute(
+                    db,
+                    sql`delete from cloud_version where item_id = ${itemId} and revision = ${revision}`,
+                ),
+            ).toEqual(err({ code: "CHECK_VIOLATION", constraint: "cloud_version_immutable" }));
+        }
+    });
+});
+
+test("an item takes sixteen links, and another after one is revoked", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ nativeDb: db }) => {
+        const { owner, rng } = await scopes(db);
+        const { itemId } = value(
+            await withTx(db, (tx) => createItem(tx, { ...owner, ...content })),
+        );
+        const item = { ...owner, itemId };
+        const share = () => withTx(db, (tx) => createShare(tx, item, rng));
+        const links = [];
+        for (let i = 0; i < 16; i++) links.push(value(await share()));
+        expect(await share()).toEqual(err({ code: "SHARE_LIMIT" }));
+        const [first] = links;
+        invariant(first !== undefined, "sixteen links were made");
+        value(await withTx(db, (tx) => revokeShare(tx, owner, first.shareId)));
+        value(await share());
+    });
+});
+
+test("item writers take the account lock themselves, without a caller holding it", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(
+        async ({ nativeDb, browserDb }) => {
+            const { owner } = await scopes(nativeDb);
+            const create = () =>
+                withTx(browserDb, (tx) => createItem(tx, { ...owner, ...content }));
+            value(
+                await withTx(nativeDb, async (tx) => {
+                    const held = await execute(
+                        tx,
+                        sql`select 1 from account where id = ${owner.accountId} for update`,
+                    );
+                    expect(await create()).toEqual(err({ code: "STATEMENT_TIMEOUT" }));
+                    return held;
+                }),
+            );
+            value(await create());
+        },
+        { browserTimeoutMs: 150 },
+    );
+});
+
 test("revoke cannot commit between an import's bearer check and its copy", async () => {
     const cluster = await sharedTestCluster();
     await cluster.withTestDb(

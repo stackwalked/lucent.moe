@@ -35,10 +35,10 @@ async function member(db: Db, rng: SeededRng, email: string) {
         mark: (entryId: string) => markRead(db, token, { catalog: products, entryId }),
         emit: (productId: ProductId) =>
             withTx(db, (tx) =>
-                recordNotification(tx, id, {
-                    kind: "product_status",
-                    productId,
-                    catalog: products,
+                recordNotification(tx, {
+                    recipient: id,
+                    mail: true,
+                    notice: { kind: "product_status", productId, catalog: products },
                 }),
             ),
     };
@@ -113,9 +113,13 @@ test("a notification rolls back with its writer and follows only the recipient's
             }),
         );
         const rolledBack = await withMember(db, alice.token, async (tx, id) => {
-            expect(await recordNotification(tx, id, { kind: "product_status", ...choice })).toEqual(
-                ok({ inbox: true, mail: false }),
-            );
+            expect(
+                await recordNotification(tx, {
+                    recipient: id,
+                    mail: true,
+                    notice: { kind: "product_status", ...choice },
+                }),
+            ).toEqual(ok({ inbox: true, mail: false }));
             return err({ code: "ABORT" });
         });
         expect(rolledBack).toEqual(err({ code: "ABORT" }));
@@ -129,7 +133,11 @@ test("a notification rolls back with its writer and follows only the recipient's
         expect(await alice.unread()).toEqual(ok({ count: 1 }));
         expect(
             await withMember(db, alice.token, (tx, id) =>
-                recordNotification(tx, id, { kind: "security", productId: null }),
+                recordNotification(tx, {
+                    recipient: id,
+                    mail: true,
+                    notice: { kind: "security", productId: null },
+                }),
             ),
         ).toEqual(ok({ inbox: true, mail: true }));
         expect(await alice.unread()).toEqual(ok({ count: 2 }));
@@ -237,10 +245,10 @@ test("losing a seed entitlement hides its follow and history, suppresses new del
                     sql`update entitlement set valid_until = now() where id = ${entitlement}`,
                 );
                 if (!expired.ok) return expired;
-                return recordNotification(tx, id, {
-                    kind: "product_status",
-                    productId: seed,
-                    catalog: products,
+                return recordNotification(tx, {
+                    recipient: id,
+                    mail: true,
+                    notice: { kind: "product_status", productId: seed, catalog: products },
                 });
             }),
         ).toEqual(ok({ inbox: false, mail: false }));

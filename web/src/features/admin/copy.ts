@@ -12,6 +12,8 @@ export const ADMIN_COPY = {
     updates: "update days",
     review: "review",
     audit: "audit",
+    system: "system",
+    usage: "usage",
     pending: "—",
     needsPasskey: "staff actions need a passkey. add one in security.",
     firstPage: "first page",
@@ -22,6 +24,7 @@ export const ADMIN_COPY = {
 // there doesn't compile here until it has a label. Rows older than the list show their raw name.
 export const OPERATION_LABELS: Readonly<Record<AuditOperation, string>> = {
     "account.bootstrap_root": "root created",
+    "account.transfer_root": "root handed over",
     "account.create": "account added",
     "account.recover": "account recovered",
     "account.suspend": "account suspended",

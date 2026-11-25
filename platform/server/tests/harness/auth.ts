@@ -25,5 +25,6 @@ export async function createTestAuthDeps(db: Db, rng: SeededRng): Promise<AuthDe
         totpKeys: await createTotpKeyring(TEST_TOTP_KEYS),
         passwords: createArgon2idHasher({ memoryCostKiB: 64, timeCost: 1 }),
         breachCheck: NEVER_BREACHED,
+        mailEnabled: true,
     });
 }

@@ -23,6 +23,7 @@ import { resourcesContract } from "./web/resources.ts";
 import { reviewContract } from "./web/review.ts";
 import { searchContract } from "./web/search.ts";
 import { shoutsContract } from "./web/shouts.ts";
+import { systemContract } from "./web/system.ts";
 import { ticketsContract } from "./web/tickets.ts";
 import { updatesContract } from "./web/updates.ts";
 
@@ -72,6 +73,7 @@ function composeWebContract() {
         ...ticketsContract,
         ...appealsContract,
         ...resourcesContract,
+        ...systemContract,
     });
 }
 

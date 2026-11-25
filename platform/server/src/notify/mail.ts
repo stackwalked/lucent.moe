@@ -38,6 +38,8 @@ type Worker = {
     readonly clock?: Clock;
 };
 
+// Settling clears reset_hash: a settled row no longer depends on its link, so it outlives the
+// link for its retention period and staff can still see a dead reset mail (migration 0020).
 async function finish(
     tx: Tx,
     params: {
@@ -52,7 +54,8 @@ async function finish(
         z.object({ staff_ref: z.uuid() }),
         sql`update mail_outbox
         set state = ${params.outcome === "accepted" ? "accepted" : "dead"}, due_at = null,
-            finished_at = ${toTimestamptz(params.now)}::timestamptz, recipient = null, subject = null, body = null
+            finished_at = ${toTimestamptz(params.now)}::timestamptz, recipient = null, subject = null, body = null,
+            reset_hash = null
         where id = ${params.id} and attempts = ${params.attempt} and due_at is not null returning staff_ref`,
     );
     if (!changed.ok) return changed;
@@ -161,23 +164,6 @@ export function settleMail(worker: Worker, claim: MailClaim, outcome: MailOutcom
         );
         return changed.ok ? ok(undefined) : changed;
     });
-}
-
-// Without a provider nothing drains the queue, so a notice's address and text would sit in it for
-// good. A reset's mail is left alone: it goes with its link, within fifteen minutes.
-export function unsentMailJob(db: Db): Job {
-    return {
-        name: "unsent mail",
-        everyMs: 60_000,
-        run: async () => {
-            const dropped = await execute(
-                db,
-                sql`delete from mail_outbox where state = 'pending' and reset_hash is null`,
-            );
-            if (!dropped.ok) return dropped;
-            return ok(dropped.value === 0 ? null : `dropped ${dropped.value}`);
-        },
-    };
 }
 
 export function mailDeliveryJob(worker: Worker): Job {

@@ -29,6 +29,7 @@ export const REFUSALS: Readonly<Record<RefusalCode, string>> = {
     VERSION_LIMIT: "this item has reached its version limit.",
     SIZE_LIMIT: "this version is too large.",
     STORAGE_LIMIT: "remove an item to free storage.",
+    SHARE_LIMIT: "this item has as many links as it can hold. revoke one first.",
     SERVICE_UNAVAILABLE: "lucent.moe can't reach its server right now. try again in a moment.",
     AUTH_REQUIRED: "something went wrong on our side.",
     INVALID_REQUEST: "something went wrong on our side.",

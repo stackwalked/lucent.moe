@@ -16,7 +16,7 @@ import type { Job } from "../jobs/runner.ts";
 import { appendSignals } from "../risk/signals.ts";
 import { decideSignInCountry, decideUnjudgedCutoff } from "./sign-in-countries.rules.ts";
 
-// Member sign-ins, observed as their sessions are created (migration 0020's trigger), judged by
+// Member sign-ins, observed as their sessions are created (migration 0024's trigger), judged by
 // country: a new one becomes a `new_country` risk signal, which the scoring job weighs into the
 // review queue like any other. Each observation is deleted once judged; the address goes with it.
 

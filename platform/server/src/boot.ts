@@ -25,12 +25,13 @@ import { createInternalWebApp } from "./listeners/internal/app.ts";
 import { createNativeApp } from "./listeners/native/app.ts";
 import { refusalResponse } from "./listeners/native/http.ts";
 import { restrictionExpiryJob } from "./moderation/restrictions.ts";
-import { mailDeliveryJob, unsentMailJob } from "./notify/mail.ts";
+import { mailDeliveryJob } from "./notify/mail.ts";
 import { riskScoringJob } from "./risk/scoring.ts";
 import { nativeExpiryJob } from "./runtime/expiry.ts";
 import { createLeaseSigner } from "./runtime/lease-key.ts";
 import { geoReloadJob, signInCountriesJob } from "./support/sign-in-countries.ts";
 import { idleTicketJob } from "./support/tickets.ts";
+import { recordJobRuns } from "./system/jobs.ts";
 
 // How long a superseded instance keeps answering before it notices; the handover window.
 const EPOCH_POLL_INTERVAL_MS = 2_000;
@@ -171,7 +172,9 @@ export async function startServer(params: {
         },
     });
 
+    const mail = params.mail ?? config.mail;
     const auth = createAuthDeps({
+        mailEnabled: mail !== undefined,
         db,
         rng: systemCryptoRng,
         rp: config.relyingParty,
@@ -218,7 +221,6 @@ export async function startServer(params: {
             logger,
         }).fetch;
     }
-    const mail = params.mail ?? config.mail;
     // Loaded before the jobs start so the first sign-ins are judged; a file that won't load is
     // logged and tried again by the reload job.
     const geo =
@@ -238,16 +240,13 @@ export async function startServer(params: {
             ...(geo === null ? [] : [geoReloadJob(geo)]),
             ...(nativeDb === null ? [] : [nativeExpiryJob(nativeDb)]),
             ...(mail === undefined
-                ? [unsentMailJob(db)]
-                : [
-                      mailDeliveryJob({
-                          db,
-                          mail: await createMailTransport(mail),
-                      }),
-                  ]),
+                ? []
+                : [mailDeliveryJob({ db, mail: await createMailTransport(mail) })]),
         ],
         logger,
         isSuperseded: epochGuard.isSuperseded,
+        clock: systemClock,
+        record: recordJobRuns(db),
         ...(params.every === undefined ? {} : { every: params.every }),
     });
     const [internal, native] = listeners;

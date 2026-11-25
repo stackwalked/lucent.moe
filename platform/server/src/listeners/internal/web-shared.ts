@@ -15,7 +15,8 @@ export type WebRpcContext = {
     readonly auth: AuthDeps;
     // For lines a handler writes once its transaction has committed (a moderator's removal).
     readonly logger: Logger;
-    // Where resource bytes are kept (ARTIFACT_DIR); absent or null without the loaders' listener.
+    // Where ARTIFACT_DIR is: resource bytes are kept there and the system page measures it; null
+    // or left out without the loaders' listener.
     readonly artifactDir?: string | null;
 };
 

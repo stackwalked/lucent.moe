@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, open, rename } from "node:fs/promises";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { blake2b256 } from "@lucent/bundle/crypto";
@@ -15,6 +15,7 @@ import {
     publishLoaderRelease,
     publishModuleRelease,
 } from "./releases/publish.ts";
+import { transferRoot } from "./system/root-transfer.ts";
 
 // Operator verbs, run against the database the server uses. Exit 1 on any refusal; the reason
 // goes to stderr as one JSON object.
@@ -22,6 +23,7 @@ const USAGE = `usage:
   ops migrate
   ops bootstrap-superadmin --email <email> --username <username>
   ops recover-root
+  ops transfer-superadmin --to <username>
   ops publish-release --seal <file> --container <file> --manifest <file>
   ops publish-loader --seal <file> --loader <file> --host <file> --artifact-dir <dir>
   ops publish-fact-set --release <hex id> --set <file>
@@ -30,6 +32,19 @@ const USAGE = `usage:
 // Publishing reads its artifacts whole: a container is a few MiB, the seal bounds the rest.
 async function readArtifact(path: string): Promise<Uint8Array> {
     return await Bun.file(path).bytes();
+}
+
+// Kept under its digest, whole or not at all: a backup or a download reading the directory while
+// a publish runs must never see a torn file. The bytes reach the disk under a name no digest has,
+// and only a complete file is renamed into place (atomic within one directory).
+async function keepArtifact(dir: string, bytes: Uint8Array): Promise<void> {
+    const name = blake2b256(bytes).toHex();
+    const partial = join(dir, `.${name}.${process.pid}.partial`);
+    const file = await open(partial, "w");
+    await file.writeFile(bytes);
+    await file.sync();
+    await file.close();
+    await rename(partial, join(dir, name));
 }
 
 function report(stream: "stdout" | "stderr", value: unknown): void {
@@ -67,6 +82,7 @@ const args = trySync(
                 "artifact-dir": { type: "string" },
                 release: { type: "string" },
                 set: { type: "string" },
+                to: { type: "string" },
             },
         }),
     () => null,
@@ -128,6 +144,23 @@ async function run(): Promise<number> {
             });
             return 0;
         }
+        case "transfer-superadmin": {
+            const { to } = values;
+            if (to === undefined) usage();
+            // Only the current schema's trigger lets the transfer through; an older one refuses it.
+            const schema = await verifySchemaCurrent(db);
+            if (!schema.ok) {
+                report("stderr", schema.error);
+                return 1;
+            }
+            const moved = await transferRoot({ db, username: to });
+            if (!moved.ok) {
+                report("stderr", moved.error);
+                return 1;
+            }
+            report("stdout", { from: moved.value.from, to: moved.value.to });
+            return 0;
+        }
         case "publish-release": {
             const { seal, container, manifest } = values;
             if (seal === undefined || container === undefined || manifest === undefined) usage();
@@ -174,7 +207,7 @@ async function run(): Promise<number> {
             // bytes, and a refused one leaves only content-addressed files a later publish reuses.
             await mkdir(artifactDir, { recursive: true });
             for (const bytes of [artifacts.loader, artifacts.host]) {
-                await Bun.write(join(artifactDir, blake2b256(bytes).toHex()), bytes);
+                await keepArtifact(artifactDir, bytes);
             }
             const published = await publishLoaderRelease(db, {
                 codeKey: codePublicKey,
