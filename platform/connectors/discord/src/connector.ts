@@ -376,10 +376,12 @@ export function createConnector(params: {
             await syncLater(data.user.id);
         }),
     );
+    const guard = { api, guildId, staffChannels: () => staffChannelIds, logger };
     client.on(GatewayDispatchEvents.MessageCreate, ({ data }) =>
-        contained("guard", () =>
-            guardMessage({ api, guildId, staffChannels: () => staffChannelIds, logger }, data),
-        ),
+        contained("guard", () => guardMessage(guard, data)),
+    );
+    client.on(GatewayDispatchEvents.MessageUpdate, ({ data }) =>
+        contained("guard", () => guardMessage(guard, data)),
     );
     client.on(GatewayDispatchEvents.InteractionCreate, ({ data }) =>
         contained("commands", () => answer(data)),

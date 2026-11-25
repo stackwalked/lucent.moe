@@ -1,9 +1,10 @@
 // Everything the bot says, in the site's voice (web/AGENTS.md): short, lowercase, second person,
 // what happened and then what to do. Names someone typed (products, titles) keep their case.
 
-// Discord markdown in a staff-typed title would otherwise change how the line reads.
+// Discord markdown in a typed name or a member's ticket subject would otherwise change how the
+// line reads; `<` also, or `<@id>`, `<#id>` and `</command:id>` render as mentions and links.
 function plain(text: string): string {
-    return text.replace(/[\\*_`~|>[\]()#-]/g, (char) => `\\${char}`);
+    return text.replace(/[\\*_`~|<>[\]()#-]/g, (char) => `\\${char}`);
 }
 
 // Discord shows this in each reader's own time zone and language.

@@ -51,6 +51,14 @@ export type FakeDiscord = {
     readonly deleted: () => readonly { readonly channelId: string; readonly messageId: string }[];
     // A member writes in a channel; resolves with the message's id.
     readonly say: (channelId: string, userId: string, content: string) => string;
+    // A member edits what they wrote.
+    readonly amend: (channelId: string, messageId: string, userId: string, content: string) => void;
+    // A member forwards a message: its text is in the snapshot, the content is empty.
+    readonly forward: (channelId: string, userId: string, content: string) => string;
+    // An invite code Discord resolves to this guild; any other code is unknown.
+    readonly ownInvite: (code: string) => void;
+    // Staff delete every message in a channel by hand.
+    readonly clearByHand: (channelId: string) => void;
     // Runs a user context-menu command on `targetId`.
     readonly userCommand: (
         name: string,
@@ -92,6 +100,7 @@ const Members = /^\/api\/v10\/guilds\/(\d+)\/members$/;
 const Commands = /^\/api\/v10\/applications\/(\d+)\/guilds\/(\d+)\/commands$/;
 const ChannelMessages = /^\/api\/v10\/channels\/(\d+)\/messages$/;
 const ChannelMessage = /^\/api\/v10\/channels\/(\d+)\/messages\/(\d+)$/;
+const Invite = /^\/api\/v10\/invites\/([^/]+)$/;
 const Callback = /^\/api\/v10\/interactions\/(\d+)\/([^/]+)\/callback$/;
 const Original = /^\/api\/v10\/webhooks\/(\d+)\/([^/]+)\/messages\/@original$/;
 
@@ -167,6 +176,7 @@ export function startFakeDiscord(params: {
     const posts = new Map<string, string>();
     const edits: (FakeMessage & { readonly messageId: string })[] = [];
     const deletions: { readonly channelId: string; readonly messageId: string }[] = [];
+    const ownInvites = new Set<string>();
     let commands: readonly string[] = [];
     let nextId = 300_000_000_000_000_000n;
     const newId = () => {
@@ -399,6 +409,17 @@ export function startFakeDiscord(params: {
                     });
                 }
             }
+            const invite = Invite.exec(pathname);
+            if (invite !== null && req.method === "GET") {
+                const code = invite[1] ?? "";
+                if (!ownInvites.has(code)) {
+                    return Response.json(
+                        { message: "Unknown Invite", code: 10006 },
+                        { status: 404 },
+                    );
+                }
+                return Response.json({ code, type: 0, guild: { id: guildId, name: "lucent" } });
+            }
             const callback = Callback.exec(pathname);
             if (callback !== null) {
                 const body = CallbackBody.parse(await req.json());
@@ -540,6 +561,41 @@ export function startFakeDiscord(params: {
                 member: { ...memberJson(userId), user: undefined },
             });
             return id;
+        },
+        amend: (channelId, messageId, userId, content) => {
+            dispatch("MESSAGE_UPDATE", {
+                ...messageJson(channelId, content),
+                id: messageId,
+                guild_id: guildId,
+                author: memberJson(userId).user,
+                edited_timestamp: "2026-01-01T00:01:00.000Z",
+            });
+        },
+        forward: (channelId, userId, content) => {
+            const id = newId();
+            const {
+                id: _id,
+                channel_id: _channel,
+                author: _author,
+                ...snapshot
+            } = messageJson(channelId, content);
+            dispatch("MESSAGE_CREATE", {
+                ...messageJson(channelId, ""),
+                id,
+                guild_id: guildId,
+                author: memberJson(userId).user,
+                message_reference: { type: 1, channel_id: channelId, message_id: newId() },
+                message_snapshots: [{ message: snapshot }],
+            });
+            return id;
+        },
+        ownInvite: (code) => {
+            ownInvites.add(code);
+        },
+        clearByHand: (channelId) => {
+            for (const [messageId, postedIn] of posts) {
+                if (postedIn === channelId) posts.delete(messageId);
+            }
         },
         edits: () => [...edits],
         deleted: () => [...deletions],

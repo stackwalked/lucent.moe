@@ -731,6 +731,20 @@ test("staff reads answer in a staff channel only, and a ticket's queue post foll
     await connector.tick();
     expect(fake.edits()).toHaveLength(1);
 
+    // Its post deleted by hand, the ticket's next state is posted afresh, not lost.
+    fake.clearByHand(STAFF_ROOM);
+    const closed = await web.call(
+        "tickets.close",
+        { ticketId: opened.value.ticketId },
+        { session: nina.session },
+    );
+    expect(closed.ok).toBe(true);
+    await connector.tick();
+    expect(fake.messages().filter((m) => m.channelId === STAFF_ROOM)).toEqual([
+        expect.objectContaining({ content: QUEUE_COPY.ticket({ ...queued, state: "open" }) }),
+        expect.objectContaining({ content: QUEUE_COPY.ticket({ ...queued, state: "closed" }) }),
+    ]);
+
     // A Discord invite is taken down where members talk, and left alone in a staff channel.
     const leaked = fake.say(LOBBY, NINA, "join us at discord.gg/abcdef");
     fake.say(STAFF_ROOM, ROOT_USER, "the partner server: discord.gg/abcdef");
@@ -738,5 +752,20 @@ test("staff reads answer in a staff channel only, and a ticket's queue post foll
     await until("the invite is removed", () => fake.deleted().length > 0);
     await Bun.sleep(50);
     expect(fake.deleted()).toEqual([{ channelId: LOBBY, messageId: leaked }]);
+
+    // An invite to this guild stays; one added by an edit, or forwarded in, goes.
+    fake.ownInvite("lucent");
+    fake.say(LOBBY, NINA, "bring a friend: https://discord.gg/lucent");
+    const amended = fake.say(LOBBY, NINA, "see you there");
+    fake.amend(LOBBY, amended, NINA, "see you there: discord.com/invite/elsewhere");
+    const forwarded = fake.forward(LOBBY, NINA, "discord.gg/elsewhere");
+    await until("the edit and the forward are removed", () => fake.deleted().length >= 3);
+    await Bun.sleep(50);
+    expect(
+        fake
+            .deleted()
+            .map((d) => d.messageId)
+            .sort(),
+    ).toEqual([leaked, amended, forwarded].sort());
     await stop();
 }, 30_000);
