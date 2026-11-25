@@ -599,7 +599,11 @@ export type TestModule = {
     readonly hello: (release: Uint8Array) => Promise<Uint8Array>;
     // Verifies the reply as the module does and holds its first lease.
     readonly acceptSession: (reply: Uint8Array) => Promise<Lease>;
-    readonly renewal: (params?: { readonly loaderAnswer?: Uint8Array | null }) => Uint8Array;
+    // The renewal's integrity field is all zeros (a clean machine) unless `signals` is given.
+    readonly renewal: (params?: {
+        readonly loaderAnswer?: Uint8Array | null;
+        readonly signals?: Uint8Array;
+    }) => Uint8Array;
     readonly acceptLease: (reply: Uint8Array) => Promise<Lease>;
     // The data_response the session reply carried, opened under the data route's key.
     readonly firstData: () => DataResponse;
@@ -794,7 +798,7 @@ export function createTestModule(
                     sequence: lease.sequence + 1n,
                     nonce,
                     challengeAnswer: new Uint8Array(CHALLENGE_ANSWER_SIZE).fill(0xa5),
-                    signals: new Uint8Array(SIGNALS_SIZE).fill(0x01),
+                    signals: params?.signals ?? new Uint8Array(SIGNALS_SIZE),
                 }),
             });
             return toLeaseRequestBytes({

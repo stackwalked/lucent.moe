@@ -2,9 +2,15 @@ import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { z } from "zod";
 import { SIGNALS_SIZE } from "../src/lease.ts";
-import { parseRenewalBits, type RenewalBits, toRenewalBitsBytes } from "../src/renewal-bits.ts";
+import {
+    parseRenewalBits,
+    type RenewalBits,
+    toRenewalBitsBytes,
+    unsignedModulesOf,
+    VM_VENDORS,
+} from "../src/renewal-bits.ts";
 import { toVectorJson } from "./cloud-vectors.ts";
-import { hexU64, readContractFile, readContractJson } from "./fixtures.ts";
+import { hexBytes, hexU64, readContractFile, readContractJson } from "./fixtures.ts";
 import { renewalBitsVectors } from "./renewal-bits-vectors.ts";
 
 const contractPath = (file: string) =>
@@ -18,6 +24,15 @@ const MALFORMED = { ok: false, error: { code: "MALFORMED" } } as const;
 
 const NAMES = ["renewal_bits_clean", "renewal_bits_everything", "renewal_bits_some"];
 
+const CLEAN_FLAGS = {
+    debugger: false,
+    hardwareBreakpoints: false,
+    kernelDebugging: false,
+    testSigning: false,
+    signatureEnforcementOff: false,
+    codeWritable: false,
+} as const;
+
 const BitsVector = z
     .strictObject({
         debugger: z.boolean(),
@@ -26,9 +41,9 @@ const BitsVector = z
         test_signing: z.boolean(),
         signature_enforcement_off: z.boolean(),
         code_writable: z.boolean(),
-        vm_vendor: z.number().int(),
+        vm_vendor: z.enum(VM_VENDORS).nullable(),
         windows_build: z.number().int(),
-        unsigned_modules: z.array(hexU64),
+        module_slots: z.array(hexU64).length(4),
     })
     .transform(
         (json): RenewalBits => ({
@@ -42,7 +57,7 @@ const BitsVector = z
             },
             vmVendor: json.vm_vendor,
             windowsBuild: json.windows_build,
-            unsignedModules: json.unsigned_modules,
+            moduleSlots: json.module_slots,
         }),
     );
 
@@ -86,21 +101,34 @@ test("the renewal bits vectors decode to what they state, and encode back to the
     }
 });
 
+// native/libs/wire made renewal_frame and its field before the layout was assigned; the two
+// sides stay pinned to each other through it.
+test("native's renewal_frame vector carries a field this side reads: a debugger, one hash in slot 4", async () => {
+    const stated = z
+        .object({ renewal: z.object({ signals: hexBytes(SIGNALS_SIZE) }) })
+        .parse(await readContractJson("wire", "renewal_frame.json"));
+    const parsed = parseRenewalBits(stated.renewal.signals);
+
+    expect(parsed).toEqual({
+        ok: true,
+        value: {
+            flags: { ...CLEAN_FLAGS, debugger: true },
+            vmVendor: null,
+            windowsBuild: 0,
+            moduleSlots: [0n, 0n, 0n, 0x8000_0000_0000_0000n],
+        },
+    });
+    expect(parsed.ok && unsignedModulesOf(parsed.value)).toEqual([0x8000_0000_0000_0000n]);
+});
+
 test("an all-zero field is a clean machine", () => {
     expect(parseRenewalBits(new Uint8Array(SIGNALS_SIZE))).toEqual({
         ok: true,
         value: {
-            flags: {
-                debugger: false,
-                hardwareBreakpoints: false,
-                kernelDebugging: false,
-                testSigning: false,
-                signatureEnforcementOff: false,
-                codeWritable: false,
-            },
-            vmVendor: 0,
+            flags: CLEAN_FLAGS,
+            vmVendor: null,
             windowsBuild: 0,
-            unsignedModules: [],
+            moduleSlots: [0n, 0n, 0n, 0n],
         },
     });
 });
@@ -143,35 +171,46 @@ test("a set byte anywhere in 4 to 31 is malformed", async () => {
     }
 });
 
-test("the VM vendor is any byte until its values are assigned, and the build is a u16", () => {
-    for (const vendor of [1, 7, 0xff]) {
-        const parsed = parseRenewalBits(withByte(new Uint8Array(SIGNALS_SIZE), 1, vendor));
+test("the VM vendor is 0 or one of the listed ones, and the build is a u16", () => {
+    const vendorOf = (byte: number) => {
+        const parsed = parseRenewalBits(withByte(new Uint8Array(SIGNALS_SIZE), 1, byte));
+        return parsed.ok ? parsed.value.vmVendor : "MALFORMED";
+    };
 
-        expect(parsed.ok && parsed.value.vmVendor).toBe(vendor);
-    }
+    expect(vendorOf(0)).toBeNull();
+    VM_VENDORS.forEach((vendor, index) => {
+        expect(vendorOf(index + 1)).toBe(vendor);
+    });
+    expect(vendorOf(VM_VENDORS.length + 1)).toBe("MALFORMED");
+    expect(vendorOf(0xff)).toBe("MALFORMED");
     const build = withByte(withByte(new Uint8Array(SIGNALS_SIZE), 2, 0xf4), 3, 0x65);
     const parsed = parseRenewalBits(build);
     expect(parsed.ok && parsed.value.windowsBuild).toBe(26_100);
 });
 
-test("the used hash slots come first, ascending and unique", () => {
-    const table: readonly [string, readonly bigint[], boolean][] = [
-        ["none", [0n, 0n, 0n, 0n], true],
-        ["one in the first slot", [5n, 0n, 0n, 0n], true],
-        ["four ascending", [1n, 2n, 3n, 0xffff_ffff_ffff_ffffn], true],
-        ["one in a later slot", [0n, 5n, 0n, 0n], false],
-        ["one in the last slot", [0n, 0n, 0n, 0x8000_0000_0000_0000n], false],
-        ["a gap between two", [5n, 0n, 6n, 0n], false],
-        ["descending", [6n, 5n, 0n, 0n], false],
-        ["a repeat", [5n, 5n, 0n, 0n], false],
-        ["ascending by bytes but not as u64", [0x0100n, 0x02n, 0n, 0n], false],
+test("the hash slots are a set held in place: any slot, any order, repeats allowed", () => {
+    const table: readonly [string, readonly bigint[], readonly bigint[]][] = [
+        ["none", [0n, 0n, 0n, 0n], []],
+        ["one in the first slot", [5n, 0n, 0n, 0n], [5n]],
+        ["one in the last slot", [0n, 0n, 0n, 0x8000_0000_0000_0000n], [0x8000_0000_0000_0000n]],
+        ["a gap between two", [5n, 0n, 6n, 0n], [5n, 6n]],
+        ["descending", [6n, 5n, 0n, 0n], [5n, 6n]],
+        ["a repeat, counted once", [5n, 5n, 0n, 5n], [5n]],
+        [
+            "four distinct",
+            [4n, 0xffff_ffff_ffff_ffffn, 1n, 2n],
+            [1n, 2n, 4n, 0xffff_ffff_ffff_ffffn],
+        ],
     ];
-    for (const [label, slots, valid] of table) {
+    for (const [label, slots, modules] of table) {
         const parsed = parseRenewalBits(withSlots(slots));
 
-        expect({ label, ok: parsed.ok }).toEqual({ label, ok: valid });
+        expect({ label, slots: parsed.ok && parsed.value.moduleSlots }).toEqual({ label, slots });
+        expect({ label, modules: parsed.ok && unsignedModulesOf(parsed.value) }).toEqual({
+            label,
+            modules,
+        });
         if (parsed.ok) {
-            expect(parsed.value.unsignedModules).toEqual(slots.filter((slot) => slot !== 0n));
             expect(toRenewalBitsBytes(parsed.value)).toEqual(withSlots(slots));
         }
     }

@@ -1,5 +1,6 @@
 import { ok, type Result } from "@lucent/core/result";
-import type { RenewalBits } from "@lucent/wire/renewal-bits";
+import { SIGNAL_KINDS, type SignalKind } from "@lucent/rpc/web/signal-kinds";
+import { type RenewalBits, unsignedModulesOf } from "@lucent/wire/renewal-bits";
 import type { ReportEvent } from "@lucent/wire/reports";
 
 // What the server can tell from a session, as risk_signal kinds. A signal only ever raises
@@ -11,23 +12,9 @@ import type { ReportEvent } from "@lucent/wire/reports";
 // contracts/), and health events have no assigned ids to read. The Windows build the renewal
 // carries is no signal: no build is suspect by itself. `new_country` comes from the sign-in
 // country check (support/sign-in-countries.ts), outside any session.
-export const SIGNAL_KINDS = [
-    "loader_silent",
-    "software_device_key",
-    "new_country",
-    // The renewal's integrity bits, one kind each (wire/renewal-bits.ts).
-    "debugger_attached",
-    "hardware_breakpoints",
-    "kernel_debugging",
-    "test_signing",
-    "signature_enforcement_off",
-    "code_writable",
-    "virtual_machine",
-    "unsigned_module",
-    // A crash report from the reports route.
-    "module_trap",
-] as const;
-export type SignalKind = (typeof SIGNAL_KINDS)[number];
+// The kinds themselves live in @lucent/rpc/web/signal-kinds, where web's labels are checked
+// against them.
+export { SIGNAL_KINDS, type SignalKind };
 
 // A device key held in software rather than a TPM is a mark staff see, weighed only in
 // combination with something else.
@@ -47,8 +34,9 @@ export function decideRenewalSignals(params: {
     return ok(params.heldSequence >= 2n && !params.loaderAnswered ? ["loader_silent"] : []);
 }
 
-// What one renewal's integrity bits say, a kind per flag set, one for any VM vendor and one for
-// any unsigned module. An all-zero field says nothing.
+// What one renewal's integrity bits say, a kind per flag set (code_writable: our own image's code
+// pages, never the game's), one for any VM vendor and one for any unsigned module, however many
+// distinct hashes the slots name. An all-zero field says nothing.
 export function decideIntegritySignals(bits: RenewalBits): Result<readonly SignalKind[], never> {
     const { flags } = bits;
     const kinds: SignalKind[] = [];
@@ -58,8 +46,8 @@ export function decideIntegritySignals(bits: RenewalBits): Result<readonly Signa
     if (flags.testSigning) kinds.push("test_signing");
     if (flags.signatureEnforcementOff) kinds.push("signature_enforcement_off");
     if (flags.codeWritable) kinds.push("code_writable");
-    if (bits.vmVendor !== 0) kinds.push("virtual_machine");
-    if (bits.unsignedModules.length > 0) kinds.push("unsigned_module");
+    if (bits.vmVendor !== null) kinds.push("virtual_machine");
+    if (unsignedModulesOf(bits).length > 0) kinds.push("unsigned_module");
     return ok(kinds);
 }
 
@@ -76,6 +64,7 @@ const TRAP_CODES: ReadonlySet<number> = new Set([
 ]);
 
 // One kind per batch at most: a crash in the module's own image (module hash 0) on a trap.
+// Health events signal nothing: their ids are unassigned, so nothing here can read what one says.
 export function decideReportSignals(
     events: readonly ReportEvent[],
 ): Result<readonly SignalKind[], never> {

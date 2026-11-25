@@ -198,7 +198,12 @@ const CLEAN_FLAGS = {
     codeWritable: false,
 } as const;
 
-const clean = { flags: CLEAN_FLAGS, vmVendor: 0, windowsBuild: 0, unsignedModules: [] } as const;
+const clean = {
+    flags: CLEAN_FLAGS,
+    vmVendor: null,
+    windowsBuild: 0,
+    moduleSlots: [0n, 0n, 0n, 0n],
+} as const;
 
 test.each([
     ["an all-zero field", clean, []],
@@ -225,10 +230,14 @@ test.each([
         { ...clean, flags: { ...CLEAN_FLAGS, codeWritable: true } },
         ["code_writable"],
     ],
-    ["any VM vendor", { ...clean, vmVendor: 1 }, ["virtual_machine"]],
-    ["the last VM vendor byte", { ...clean, vmVendor: 0xff }, ["virtual_machine"]],
-    ["one unsigned module", { ...clean, unsignedModules: [5n] }, ["unsigned_module"]],
-    ["four unsigned modules", { ...clean, unsignedModules: [1n, 2n, 3n, 4n] }, ["unsigned_module"]],
+    ["a VMware guest", { ...clean, vmVendor: "vmware" }, ["virtual_machine"]],
+    ["another hypervisor", { ...clean, vmVendor: "other_hypervisor" }, ["virtual_machine"]],
+    [
+        "one unsigned module in slot 3",
+        { ...clean, moduleSlots: [0n, 0n, 5n, 0n] },
+        ["unsigned_module"],
+    ],
+    ["four unsigned modules", { ...clean, moduleSlots: [4n, 2n, 3n, 4n] }, ["unsigned_module"]],
     [
         "everything",
         {
@@ -240,9 +249,9 @@ test.each([
                 signatureEnforcementOff: true,
                 codeWritable: true,
             },
-            vmVendor: 3,
+            vmVendor: "hyperv_guest",
             windowsBuild: 19_045,
-            unsignedModules: [9n],
+            moduleSlots: [9n, 0n, 0n, 0n],
         },
         [
             "debugger_attached",

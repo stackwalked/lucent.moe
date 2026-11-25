@@ -10,6 +10,7 @@ import { parseDataRequest } from "@lucent/wire/data";
 import { type Frame, openFrame, toFrameBytes } from "@lucent/wire/frame";
 import { parseLeaseRenewal } from "@lucent/wire/lease";
 import type { LeaseRequest } from "@lucent/wire/lease-exchange";
+import { parseRenewalBits } from "@lucent/wire/renewal-bits";
 import { parseReportsRequest } from "@lucent/wire/reports";
 import { deriveSessionKeys, type SessionHello } from "@lucent/wire/session";
 import { exchangePublicKey, sharedSecret } from "@lucent/wire/session-crypto";
@@ -35,6 +36,7 @@ import { readFactDelivery } from "../facts/publishing.ts";
 import type { DpopProof } from "../listeners/native/dpop.ts";
 import { findReleaseManifest } from "../releases/reads.ts";
 import {
+    decideIntegritySignals,
     decideOpenSignals,
     decideRenewalSignals,
     decideReportSignals,
@@ -619,6 +621,10 @@ export async function renewLease(
         const renewal = parseLeaseRenewal(plain.value);
         plain.value.fill(0);
         if (!renewal.ok) return err({ code: "INVALID_REQUEST" });
+        // The integrity bits are part of the renewal's format: a set reserved bit is as malformed
+        // as a cut renewal.
+        const bits = parseRenewalBits(renewal.value.signals);
+        if (!bits.ok) return err({ code: "INVALID_REQUEST" });
         const plan = decideRenewLease(session.lease_sequence, renewal.value.sequence, txNow);
         if (!plan.ok) return plan;
         const { sequence, deadline } = plan.value;
@@ -659,13 +665,15 @@ export async function renewLease(
             loaderAnswered: params.request.loaderAnswer !== null,
         });
         if (!kinds.ok) return kinds;
+        const integrity = decideIntegritySignals(bits.value);
+        if (!integrity.ok) return integrity;
         const recorded = await recordReceipt(tx, op, { sequence: sequence.toString() });
         if (!recorded.ok) return recorded;
         const signalled = await appendSignals(tx, {
             accountId,
             releaseId: session.release_id,
             sessionId: session.id,
-            kinds: kinds.value,
+            kinds: [...kinds.value, ...integrity.value],
             at: txNow,
         });
         if (!signalled.ok) return signalled;

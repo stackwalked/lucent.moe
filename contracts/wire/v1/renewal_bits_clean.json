@@ -5,7 +5,12 @@
   "test_signing": false,
   "signature_enforcement_off": false,
   "code_writable": false,
-  "vm_vendor": 0,
+  "vm_vendor": null,
   "windows_build": 0,
-  "unsigned_modules": []
+  "module_slots": [
+    "0000000000000000",
+    "0000000000000000",
+    "0000000000000000",
+    "0000000000000000"
+  ]
 }

@@ -5,9 +5,12 @@
   "test_signing": true,
   "signature_enforcement_off": false,
   "code_writable": false,
-  "vm_vendor": 0,
+  "vm_vendor": "hyperv_guest",
   "windows_build": 19045,
-  "unsigned_modules": [
+  "module_slots": [
+    "0000000000000000",
+    "5a5a00000000a5a5",
+    "0000000000000000",
     "5a5a00000000a5a5"
   ]
 }

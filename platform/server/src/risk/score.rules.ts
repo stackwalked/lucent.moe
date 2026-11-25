@@ -30,8 +30,8 @@ const WEIGHTS: Readonly<Record<SignalKind, number>> = {
     // Debug registers set on the game's threads: what a debugger leaves, or a tracer that wants
     // to look like none. Rarely honest (a few overlays set them), so a pattern of three sessions.
     hardware_breakpoints: 0.15,
-    // Our code made writable: someone patching it, unless the bit also covers pages an overlay
-    // hooks in the game, in which case this should drop to a mark. Three sessions, as above.
+    // Code pages of our own image (loader or module) made writable, never the game's, which
+    // overlays hook: someone patching us. Three sessions, as above.
     code_writable: 0.15,
     // A breakpoint, single step or guard page hit raised inside our own image (signals.rules.ts).
     // Three sessions: one could be a bug of ours sending control into padding, which staff would

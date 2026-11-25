@@ -187,7 +187,7 @@ test("a session's first lease binds its device, release and entitled features, a
             z.instanceof(Uint8Array),
             sql`select signals as value from lease_renewal where sequence = 3`,
         );
-        expect(signals).toEqual(new Uint8Array(64).fill(1));
+        expect(signals).toEqual(new Uint8Array(64));
     });
 });
 
