@@ -18,6 +18,9 @@ const ApplicationSummary = z.object({
     knownBy: z.string().nullable(),
     // The address has an account now, so approving would be refused.
     emailHasAccount: z.boolean(),
+    // The address was a suspended account's, deleted since: that person is applying again.
+    // Optional for one deploy.
+    returningAccountId: AccountId.nullable().optional(),
 });
 
 export const applicationsContract = defineContract({

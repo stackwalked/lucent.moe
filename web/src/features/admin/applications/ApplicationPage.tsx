@@ -129,6 +129,17 @@ function Decide({ application }: { readonly application: Read }) {
     return (
         <Section caption={APPLICATIONS_COPY.decide}>
             {application.emailHasAccount ? <p>{APPLICATIONS_COPY.hasAccount}</p> : null}
+            {application.returningAccountId == null ? null : (
+                <p>
+                    {APPLICATIONS_COPY.returningBody}{" "}
+                    <Link
+                        to="/admin/accounts/$accountId"
+                        params={{ accountId: application.returningAccountId }}
+                    >
+                        {APPLICATIONS_COPY.returningLink}
+                    </Link>
+                </p>
+            )}
             <Stack direction="row" gap={2}>
                 {application.emailHasAccount ? null : (
                     <AccountAction

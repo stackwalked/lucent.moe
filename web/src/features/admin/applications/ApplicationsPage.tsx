@@ -111,9 +111,11 @@ function Applications({
                             header: "",
                             align: "end",
                             cell: (item) =>
-                                item.state === "pending" && item.emailHasAccount ? (
+                                item.state !== "pending" ? null : item.emailHasAccount ? (
                                     <Status tone="shu">{APPLICATIONS_COPY.account}</Status>
-                                ) : null,
+                                ) : item.returningAccountId == null ? null : (
+                                    <Status tone="shu">{APPLICATIONS_COPY.returning}</Status>
+                                ),
                         },
                     ]}
                 />

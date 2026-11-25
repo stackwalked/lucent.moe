@@ -67,9 +67,12 @@ export async function submitApplication(
         return err({ code: "PRODUCT_NOT_OFFERED" });
     }
     const email = params.input.email.trim().toLowerCase();
+    const digests = await deps.emailHasher.candidates(email);
     const result = await withTx(deps.db, async (tx, txNow) => {
         const facts = await readAddress(tx, email);
         if (!facts.ok) return facts;
+        const returning = await findSuspendedTombstone(tx, digests);
+        if (!returning.ok) return returning;
         const plan = decideApplication({
             state: facts.value.state,
             event: "submit",
@@ -79,15 +82,34 @@ export async function submitApplication(
         // A concurrent submission for the address may have opened one since: it stands.
         const opened = await execute(
             tx,
-            sql`insert into application (email, products, about, discord, known_by, created_at)
+            sql`insert into application (email, products, about, discord, known_by, created_at,
+                                         returning_account_id)
                 values (${email}, ${products}, ${params.input.about}, ${params.input.discord},
-                        ${params.input.knownBy}, ${toTimestamptz(txNow)}::timestamptz)
+                        ${params.input.knownBy}, ${toTimestamptz(txNow)}::timestamptz,
+                        ${returning.value})
                 on conflict (email) where state = 'pending' do nothing`,
         );
         return opened.ok ? ok(undefined) : opened;
     });
     await padding;
     return result;
+}
+
+// A suspended account deleted since, whose address this is: the person is applying again, which
+// staff see on the application and the applicant never does (deletion/email-hash.ts).
+export async function findSuspendedTombstone(
+    q: Queryable,
+    digests: readonly Uint8Array[],
+): Promise<Result<AccountId | null, DbFailure>> {
+    const row = await queryOne(
+        q,
+        z.object({ id: AccountId }),
+        sql`select id from account
+            where email_hash = any(${digests}::bytea[]) and deleted_at is not null
+              and status = 'suspended'
+            order by deleted_at desc, id limit 1`,
+    );
+    return row.ok ? ok(row.value?.id ?? null) : row;
 }
 
 async function readAddress(
@@ -128,6 +150,7 @@ const SummaryRow = z.object({
     decided_at: EpochMs.nullable(),
     known_by: z.string().nullable(),
     has_account: z.boolean(),
+    returning_account_id: AccountId.nullable(),
 });
 
 export type ApplicationSummary = {
@@ -140,6 +163,8 @@ export type ApplicationSummary = {
     readonly knownBy: string | null;
     // The address has an account now: an approval would be refused.
     readonly emailHasAccount: boolean;
+    // The address was a suspended account's, deleted since: who is applying again.
+    readonly returningAccountId: AccountId | null;
 };
 
 function toSummary(row: z.output<typeof SummaryRow>): ApplicationSummary {
@@ -152,11 +177,13 @@ function toSummary(row: z.output<typeof SummaryRow>): ApplicationSummary {
         decidedAt: row.decided_at,
         knownBy: row.known_by,
         emailHasAccount: row.has_account,
+        returningAccountId: row.returning_account_id,
     };
 }
 
 const SUMMARY_COLUMNS = sql`a.id::text as id, a.email, a.products, a.state, a.created_at,
-    a.decided_at, a.known_by, exists (select from account x where x.email = a.email) as has_account`;
+    a.decided_at, a.known_by, exists (select from account x where x.email = a.email) as has_account,
+    a.returning_account_id`;
 
 // Pending ones oldest first, as a queue is worked; decided ones newest first.
 export async function listApplications(

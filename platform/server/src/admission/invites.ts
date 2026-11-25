@@ -24,6 +24,7 @@ import {
     toTimestamptz,
 } from "../db/pool.ts";
 import { withTx } from "../db/tx.ts";
+import { findSuspendedTombstone } from "./applications.ts";
 import {
     decideCreateInvite,
     decideRedeemInvite,
@@ -239,6 +240,7 @@ export async function redeemInvite(
     }
     const email = params.email.trim().toLowerCase();
     const tokenHash = await hashToken(params.token);
+    const digests = await deps.emailHasher.candidates(email);
     const result = await withTx(deps.db, async (tx) => {
         const seen = await queryOne(
             tx,
@@ -276,10 +278,14 @@ export async function redeemInvite(
             sql`select true as taken from account where email = ${email}`,
         );
         if (!taken.ok) return taken;
+        // A suspended person who deleted their account doesn't come back through an invite: the
+        // redeem answers as for an address with an account, and staff see it in the audit.
+        const returning = await findSuspendedTombstone(tx, digests);
+        if (!returning.ok) return returning;
         const plan = decideRedeemInvite({
             invite: row.value === null ? null : toInvite(row.value),
             inviterActive: inviter.value?.isActive === true,
-            emailTaken: taken.value !== null,
+            emailTaken: taken.value !== null || returning.value !== null,
             now,
         });
         if (!plan.ok || row.value === null) return err({ code: "INVITE_INVALID" } as const);
@@ -291,7 +297,15 @@ export async function redeemInvite(
                         token_hash = ${plan.value.closes ? null : tokenHash}
                     where id = ${inviteId}::bigint`,
             );
-            return probed.ok ? ok(undefined) : probed;
+            if (!probed.ok) return probed;
+            if (returning.value === null) return ok(undefined);
+            return await appendAudit(tx, {
+                actorId: inviterId,
+                client: params.client,
+                operation: "invite.returning_held",
+                target: { accountId: returning.value, inviteId, inviterId },
+                at: now,
+            });
         }
 
         const created = await insertAccount(tx, {
