@@ -26,6 +26,7 @@ import { type AuthRequired, lockTokenHolder, type TokenHolder } from "../devices
 import { lockBuildCoverage } from "../facts/coverage-lock.ts";
 import { readCoveredFactKeys } from "../facts/publishing.ts";
 import type { DpopProof } from "../listeners/native/dpop.ts";
+import { recordSupportAfterReport } from "../record/support.ts";
 import {
     findCurrentRelease,
     findReleaseManifest,
@@ -189,6 +190,8 @@ export async function createStart(
             txNow,
         });
         if (!seen.ok) return seen;
+        const support = await recordSupportAfterReport(tx, { product, txNow });
+        if (!support.ok) return support;
         const covered = await coversCoreFacts(tx, release.value.id, request.modules);
         if (!covered.ok) return covered;
         // Committed with the report: the builds a refused start brought are what the product page

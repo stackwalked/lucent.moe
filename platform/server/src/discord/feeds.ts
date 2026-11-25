@@ -16,7 +16,7 @@ import {
     toTimestamptz,
 } from "../db/pool.ts";
 import { withTx } from "../db/tx.ts";
-import { readReleaseSupported } from "../products/products.ts";
+import { readProductSupport } from "../record/support.ts";
 import { listRules } from "./rules.ts";
 
 // A feed channel is anyone's to read, so it is told only what the public home shows: products
@@ -119,32 +119,17 @@ type ProductStatus = Extract<FeedPost["post"], { kind: "status" }>;
 async function readStatuses(
     tx: Tx,
     catalog: ProductCatalog,
-    current: readonly z.output<typeof CurrentRowSchema>[],
 ): Promise<Result<ReadonlyMap<ProductId, ProductStatus>, DbFailure>> {
     const statuses = new Map<ProductId, ProductStatus>();
     for (const product of publicProducts(catalog)) {
         if (product.state !== "live" && product.state !== "announced") continue;
-        const first = product.channels[0];
-        const release = current.find(
-            (row) => row.product_id === product.id && row.channel === first,
-        );
-        let supported: boolean | null = null;
-        if (product.state === "live" && release !== undefined) {
-            supported = true;
-            if (product.kind === "module") {
-                const covered = await readReleaseSupported(tx, {
-                    productId: product.id,
-                    releaseId: release.release_id,
-                });
-                if (!covered.ok) return covered;
-                supported = covered.value;
-            }
-        }
+        const supported = await readProductSupport(tx, product);
+        if (!supported.ok) return supported;
         statuses.set(product.id, {
             kind: "status",
             product: product.name,
             state: product.state,
-            supported,
+            supported: supported.value,
         });
     }
     return ok(statuses);
@@ -152,9 +137,7 @@ async function readStatuses(
 
 // What the public home says of each product it lists: for /status, and the status feed.
 export async function readPublicStatuses(tx: Tx, catalog: ProductCatalog) {
-    const current = await readCurrentReleases(tx);
-    if (!current.ok) return current;
-    return await readStatuses(tx, catalog, current.value);
+    return await readStatuses(tx, catalog);
 }
 
 const PostedRowSchema = z.object({ subject: z.string(), state: z.string() });
@@ -200,7 +183,7 @@ export async function readPendingPosts(
             const said = new Map(posted.value.map((row) => [row.subject, row.state]));
             switch (rule.fields.feed) {
                 case "status": {
-                    const statuses = await readStatuses(tx, catalog, current.value);
+                    const statuses = await readStatuses(tx, catalog);
                     if (!statuses.ok) return statuses;
                     for (const [productId, status] of statuses.value) {
                         const state = `${status.state}:${String(status.supported)}`;
