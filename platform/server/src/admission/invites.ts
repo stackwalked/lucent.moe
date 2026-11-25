@@ -32,6 +32,7 @@ import {
     type Invite,
     type InviteState,
     inviteStateAt,
+    MAX_PROBES,
     spentOf,
 } from "./invites.rules.ts";
 import { queueSetupMail } from "./setup-mail.ts";
@@ -67,10 +68,16 @@ const InviteRow = z.object({
     expires_at: EpochMs,
     revoked_at: EpochMs.nullable(),
     redeemed_at: EpochMs.nullable(),
+    probes: z.number().int(),
 });
 
 function toInvite(row: z.output<typeof InviteRow>): Invite {
-    return { expiresAt: row.expires_at, revokedAt: row.revoked_at, redeemedAt: row.redeemed_at };
+    return {
+        expiresAt: row.expires_at,
+        revokedAt: row.revoked_at,
+        redeemedAt: row.redeemed_at,
+        probes: row.probes,
+    };
 }
 
 async function readGranted(q: Queryable, accountId: AccountId) {
@@ -83,15 +90,16 @@ async function readGranted(q: Queryable, accountId: AccountId) {
     return ok(row.value?.granted ?? 0);
 }
 
-// Every invite of the inviter that could still count as spent: redeemed, or unused and unexpired.
+// Every invite of the inviter that could still count as spent: redeemed, closed by probing, or
+// unused and unexpired.
 // The rule decides which do, from the rows.
 async function readSpent(q: Queryable, accountId: AccountId, now: EpochMs) {
     const rows = await queryAll(
         q,
         InviteRow,
-        sql`select id::text as id, created_at, expires_at, revoked_at, redeemed_at from invite
+        sql`select id::text as id, created_at, expires_at, revoked_at, redeemed_at, probes from invite
             where inviter_id = ${accountId}
-              and (redeemed_at is not null
+              and (redeemed_at is not null or probes >= ${MAX_PROBES}
                    or (revoked_at is null and expires_at > ${toTimestamptz(now)}::timestamptz))`,
     );
     if (!rows.ok) return rows;
@@ -129,7 +137,7 @@ export function listOwnInvites(db: Db, token: BearerToken) {
             tx,
             InviteRow.extend({ invitee_id: AccountId.nullable(), username: z.string().nullable() }),
             sql`select i.id::text as id, i.created_at, i.expires_at, i.revoked_at, i.redeemed_at,
-                       i.invitee_id, a.username
+                       i.probes, i.invitee_id, a.username
                 from invite i left join account a on a.id = i.invitee_id
                 where i.inviter_id = ${accountId}
                 order by i.id desc limit ${OWN_LIMIT}`,
@@ -187,7 +195,8 @@ export function revokeInvite(db: Db, token: BearerToken, inviteId: string) {
         const row = await queryOne(
             tx,
             InviteRow,
-            sql`select id::text as id, created_at, expires_at, revoked_at, redeemed_at from invite
+            sql`select id::text as id, created_at, expires_at, revoked_at, redeemed_at, probes
+                from invite
                 where id = ${inviteId}::bigint and inviter_id = ${accountId} for update`,
         );
         if (!row.ok) return row;
@@ -230,7 +239,7 @@ export async function redeemInvite(
     }
     const email = params.email.trim().toLowerCase();
     const tokenHash = await hashToken(params.token);
-    const result = await withTx(deps.db, async (tx, txNow) => {
+    const result = await withTx(deps.db, async (tx) => {
         const seen = await queryOne(
             tx,
             z.object({ inviter_id: AccountId }),
@@ -245,47 +254,70 @@ export async function redeemInvite(
         const row = await queryOne(
             tx,
             InviteRow,
-            sql`select id::text as id, created_at, expires_at, revoked_at, redeemed_at from invite
+            sql`select id::text as id, created_at, expires_at, revoked_at, redeemed_at, probes
+                from invite
                 where token_hash = ${tokenHash} and inviter_id = ${inviterId} for update`,
         );
         if (!row.ok) return row;
-        const allowed = decideRedeemInvite({
-            invite: row.value === null ? null : toInvite(row.value),
-            inviterActive: inviter.value?.isActive === true,
-            now: txNow,
-        });
-        if (!allowed.ok || row.value === null) return err({ code: "INVITE_INVALID" } as const);
-        const inviteId = row.value.id;
-
+        // The clock after both locks, not the transaction's start: a redeem that waited while the
+        // invite expired must not be judged by a time before the wait (as readLink in
+        // auth/password-reset.ts does for a reset link).
+        const clock = await queryOne(
+            tx,
+            z.object({ now: EpochMs }),
+            sql`select clock_timestamp() as now`,
+        );
+        if (!clock.ok) return clock;
+        invariant(clock.value !== null, "a select without from returns one row");
+        const now = clock.value.now;
         const taken = await queryOne(
             tx,
             z.object({ taken: z.boolean() }),
             sql`select true as taken from account where email = ${email}`,
         );
         if (!taken.ok) return taken;
-        if (taken.value !== null) return ok(undefined);
+        const plan = decideRedeemInvite({
+            invite: row.value === null ? null : toInvite(row.value),
+            inviterActive: inviter.value?.isActive === true,
+            emailTaken: taken.value !== null,
+            now,
+        });
+        if (!plan.ok || row.value === null) return err({ code: "INVITE_INVALID" } as const);
+        const inviteId = row.value.id;
+        if (plan.value.kind === "probe") {
+            const probed = await execute(
+                tx,
+                sql`update invite set probes = ${plan.value.probes},
+                        token_hash = ${plan.value.closes ? null : tokenHash}
+                    where id = ${inviteId}::bigint`,
+            );
+            return probed.ok ? ok(undefined) : probed;
+        }
 
         const created = await insertAccount(tx, {
             rng: deps.rng,
             email,
             issuedBy: `invite:${inviteId}`,
-            txNow,
+            txNow: now,
         });
         if (!created.ok) return created;
         const { accountId, setupToken } = created.value;
         const spent = await execute(
             tx,
-            sql`update invite set redeemed_at = ${toTimestamptz(txNow)}::timestamptz,
+            sql`update invite set redeemed_at = ${toTimestamptz(now)}::timestamptz,
                     invitee_id = ${accountId}, token_hash = null
                 where id = ${inviteId}::bigint`,
         );
         if (!spent.ok) return spent;
+        // The invitee is the actor: redeeming is the only act here, and the inviter did nothing at
+        // this moment. Who vouched is in `invitedBy`; the setup link's `invite:<id>` names the
+        // invite it came from, not a person.
         const audited = await appendAudit(tx, {
             actorId: accountId,
             client: params.client,
             operation: "account.create",
             target: { accountId, via: "invite", inviteId, invitedBy: inviterId },
-            at: txNow,
+            at: now,
         });
         if (!audited.ok) return audited;
         return await queueSetupMail(tx, { origin: deps.rp.origin, email, setupToken });

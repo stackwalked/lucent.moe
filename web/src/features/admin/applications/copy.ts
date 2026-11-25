@@ -32,5 +32,4 @@ export const APPLICATIONS_COPY = {
     declineBody: "nothing is sent. they can apply again after 30 days.",
     decide: "decide",
     mailed: "approved. the setup link is on its way to that address.",
-    noMail: "no email provider is set up, so send this setup link yourself.",
 } as const;

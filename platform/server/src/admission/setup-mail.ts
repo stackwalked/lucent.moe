@@ -1,6 +1,7 @@
 import { ok, type Result } from "@lucent/core/result";
 import type { BearerToken } from "@lucent/core/scalars";
 import { setupPath } from "../auth/setup.ts";
+import { hashToken } from "../auth/tokens.ts";
 import { type DbFailure, execute, sql, type Tx } from "../db/pool.ts";
 import { setupLinkMail } from "../notify/copy.ts";
 
@@ -12,10 +13,13 @@ export async function queueSetupMail(
     params: { readonly origin: string; readonly email: string; readonly setupToken: BearerToken },
 ): Promise<Result<void, DbFailure>> {
     const mail = setupLinkMail(`${params.origin}${setupPath(params.setupToken)}`);
+    // Tied to its link (migration 0034): the queued text, bearer included, goes when the link is
+    // used or replaced, and is never sent once the link has expired.
     const queued = await execute(
         tx,
-        sql`insert into mail_outbox (kind, recipient, subject, body)
-            values ('setup', ${params.email}, ${mail.subject}, ${mail.body})`,
+        sql`insert into mail_outbox (kind, recipient, subject, body, setup_hash)
+            values ('setup', ${params.email}, ${mail.subject}, ${mail.body},
+                    ${await hashToken(params.setupToken)})`,
     );
     return queued.ok ? ok(undefined) : queued;
 }

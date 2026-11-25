@@ -8,7 +8,6 @@ import { Time } from "../../../ui/Time/Time.tsx";
 import { Who } from "../../../ui/Who/Who.tsx";
 import { RefusalNote } from "../../auth/RefusalNote.tsx";
 import { AccountAction } from "../accounts/AccountAction.tsx";
-import { SetupLink } from "../accounts/SetupLink.tsx";
 import { ADMIN_COPY } from "../copy.ts";
 import styles from "./ApplicationPage.module.css";
 import { APPLICATIONS_COPY } from "./copy.ts";
@@ -139,16 +138,7 @@ function Decide({ application }: { readonly application: Read }) {
                         tone="pink"
                         fields={<p>{APPLICATIONS_COPY.approveBody}</p>}
                         run={() => approveApplication({ data: { applicationId: id } })}
-                        shown={(token) =>
-                            token === null ? (
-                                <p>{APPLICATIONS_COPY.mailed}</p>
-                            ) : (
-                                <Stack gap={2}>
-                                    <p>{APPLICATIONS_COPY.noMail}</p>
-                                    <SetupLink token={token} />
-                                </Stack>
-                            )
-                        }
+                        shown={() => <p>{APPLICATIONS_COPY.mailed}</p>}
                     />
                 )}
                 <AccountAction

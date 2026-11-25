@@ -17,7 +17,8 @@ create table invite_allowance (
 -- Global: an invite a member issued. Single use, for seven days, and it creates an account and
 -- nothing else. The token's SHA-256 is kept only while the invite may still be redeemed. A
 -- redeemed invite is the tree's edge inviter -> invitee: account ids and times, no personal data,
--- so account deletion keeps it. An account has at most one inviter.
+-- so account deletion keeps it. An account has at most one inviter. `probes` counts redeems that
+-- named an address already holding an account; the third closes it (admission/invites.rules.ts).
 create table invite (
     id           bigint generated always as identity primary key,
     inviter_id   text not null references account (id),
@@ -27,15 +28,23 @@ create table invite (
     revoked_at   timestamptz,
     redeemed_at  timestamptz,
     invitee_id   text unique references account (id),
+    probes       smallint not null default 0 check (probes between 0 and 3),
     check ((redeemed_at is null) = (invitee_id is null)),
     check (revoked_at is null or redeemed_at is null),
-    check ((token_hash is null) = (revoked_at is not null or redeemed_at is not null))
+    check ((token_hash is null) = (revoked_at is not null or redeemed_at is not null or probes = 3))
 );
 
 create index invite_inviter_idx on invite (inviter_id, id desc);
 
--- A redeemed invite mails the new account's setup link. Like a reset mail the row carries a bearer,
--- which dies with the link (72 hours, single use, replaced by a recovery); settling erases the text.
+-- A redeemed invite (and, from 0035, an approved application) mails the new account's setup
+-- link. Like a reset mail the waiting row carries a bearer, so it is tied to its link: using or
+-- replacing the link deletes the queued mail, an expired link is never sent (notify/mail.ts), and
+-- settling clears the tie with the text.
 alter table mail_outbox drop constraint mail_outbox_kind_check;
 alter table mail_outbox
     add constraint mail_outbox_kind_check check (kind in ('notice', 'reset', 'setup'));
+alter table mail_outbox
+    add column setup_hash bytea references setup_token (token_hash) on delete cascade;
+create index mail_outbox_setup on mail_outbox (setup_hash) where setup_hash is not null;
+alter table mail_outbox add check (state in ('pending', 'sending') or setup_hash is null);
+alter table mail_outbox add check (setup_hash is null or kind = 'setup');

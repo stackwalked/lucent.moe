@@ -1,7 +1,7 @@
 import type { ProductCatalog } from "@lucent/catalog/catalog";
 import { invariant } from "@lucent/core/contain";
 import { err, ok, type Result } from "@lucent/core/result";
-import { AccountId, type BearerToken, EpochMs, ProductId } from "@lucent/core/scalars";
+import { AccountId, EpochMs, ProductId } from "@lucent/core/scalars";
 import type { AuthzRefusal, Caller } from "@lucent/policy/policy";
 import { z } from "zod";
 import type { AuthDeps } from "../auth/deps.ts";
@@ -247,7 +247,10 @@ type DeclineRefusal =
     | AuthzRefusal
     | { readonly code: "NOT_FOUND" }
     | { readonly code: "ALREADY_DECIDED" };
-type ApproveRefusal = DeclineRefusal | { readonly code: "EMAIL_TAKEN" };
+type ApproveRefusal =
+    | DeclineRefusal
+    | { readonly code: "EMAIL_TAKEN" }
+    | { readonly code: "MAIL_DISABLED" };
 
 // Staff first, then the application row (migration 0035's lock order).
 async function lockApplication(tx: Tx, applicationId: string) {
@@ -267,17 +270,14 @@ async function lockApplication(tx: Tx, applicationId: string) {
     return ok(row.value);
 }
 
-// The setup link is in the reply only when no provider could mail it: staff then hand it over as
-// they do one they created by hand. With a provider it goes to the address and nowhere else.
+// The setup link goes to the address and nowhere else. Without a provider nothing is approved:
+// handing the link to the reviewer instead would let anyone holding applications:review, without a
+// step-up, apply with any address and own its account, which only accounts:create may do.
 export async function approveApplication(
     deps: AuthDeps,
     params: { readonly caller: Caller; readonly applicationId: string },
-): Promise<
-    Result<
-        { readonly accountId: AccountId; readonly setupToken: BearerToken | null },
-        ApproveRefusal
-    >
-> {
+): Promise<Result<{ readonly accountId: AccountId }, ApproveRefusal>> {
+    if (!deps.mailEnabled) return err({ code: "MAIL_DISABLED" });
     return await withTx(deps.db, async (tx, txNow) => {
         const authorized = await lockAuthorized(tx, {
             caller: params.caller,
@@ -323,10 +323,9 @@ export async function approveApplication(
             at: txNow,
         });
         if (!audited.ok) return audited;
-        if (!deps.mailEnabled) return ok({ accountId, setupToken });
         const queued = await queueSetupMail(tx, { origin: deps.rp.origin, email, setupToken });
         if (!queued.ok) return queued;
-        return ok({ accountId, setupToken: null });
+        return ok({ accountId });
     });
 }
 

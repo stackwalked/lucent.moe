@@ -24,12 +24,11 @@ export const fetchApplication = createServerFn({ method: "GET" })
         return reply.ok ? done(reply.value) : refuse(reply.error);
     });
 
-// The setup link comes back only when no provider could mail it.
 export const approveApplication = createServerFn({ method: "POST" })
     .validator((data: unknown) => ById.parse(data))
     .handler(async ({ data }) => {
         const reply = await callPlatform("admin.applications.approve", data);
-        return reply.ok ? done(reply.value.setupToken) : refuse(reply.error);
+        return reply.ok ? done(null) : refuse(reply.error);
     });
 
 export const declineApplication = createServerFn({ method: "POST" })

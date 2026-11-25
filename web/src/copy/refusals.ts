@@ -93,7 +93,7 @@ export const REFUSALS: Readonly<Record<RefusalCode, string>> = {
     INVITE_USED: "this invite was already used.",
     INVITE_INVALID:
         "this invite has expired, was used or was revoked. ask whoever sent it for a new one.",
-    MAIL_DISABLED: "invites can't be redeemed right now. try again later.",
+    MAIL_DISABLED: "this needs email, which isn't set up right now. try again later.",
     BELOW_SPENT: "that's fewer than this account has already used.",
     PRODUCT_NOT_OFFERED: "that product isn't open to applications. reload and choose again.",
 };

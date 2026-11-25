@@ -6,18 +6,27 @@ export const INVITE_TTL_MS = 7 * 24 * 60 * 60_000;
 // Staff grant allowance by hand to a few hundred members; this only bounds a typo.
 export const MAX_ALLOWANCE = 1_000;
 
+// A redeem naming an address that has an account answers as if it worked and leaves the invite
+// unused, so a holder could otherwise keep asking which addresses have accounts. The third such
+// redeem closes the invite for good.
+export const MAX_PROBES = 3;
+
 // An invite as its row stands. `redeemedAt` and `revokedAt` never both hold (the table checks it).
+// `probes`: redeems so far that named an address with an account.
 export type Invite = {
     readonly expiresAt: EpochMs;
     readonly revokedAt: EpochMs | null;
     readonly redeemedAt: EpochMs | null;
+    readonly probes: number;
 };
 
 export type InviteState = "unused" | "used" | "revoked" | "expired";
 
-// Usable strictly before its expiry, as a reset link is.
+// Usable strictly before its expiry, as a reset link is. An invite closed by probing reads as used,
+// to its inviter too: a state of its own would tell them which addresses have accounts. Like a
+// used one it stays spent, or an inviter could probe without end through new invites.
 export function inviteStateAt(invite: Invite, now: EpochMs): InviteState {
-    if (invite.redeemedAt !== null) return "used";
+    if (invite.redeemedAt !== null || invite.probes >= MAX_PROBES) return "used";
     if (invite.revokedAt !== null) return "revoked";
     if (invite.expiresAt <= now) return "expired";
     return "unused";
@@ -43,10 +52,13 @@ export function decideCreateInvite(params: {
 
 // Why an invite cannot be redeemed, for tests and logs; the holder only ever hears INVITE_INVALID.
 // An inviter suspended or locked since issuing it vouches for nobody meanwhile: the invite stays
-// as it is and works again if they are reinstated before it expires.
+// as it is and works again if they are reinstated before it expires. A usable invite naming an
+// address that has an account is a probe: counted, answered like a success, closing the invite
+// once it is the last one allowed.
 export function decideRedeemInvite(params: {
     readonly invite: Invite | null;
     readonly inviterActive: boolean;
+    readonly emailTaken: boolean;
     readonly now: EpochMs;
 }) {
     if (params.invite === null) return err({ code: "UNKNOWN" } as const);
@@ -55,7 +67,9 @@ export function decideRedeemInvite(params: {
     if (state === "revoked") return err({ code: "REVOKED" } as const);
     if (state === "expired") return err({ code: "EXPIRED" } as const);
     if (!params.inviterActive) return err({ code: "INVITER_UNAVAILABLE" } as const);
-    return ok(undefined);
+    if (!params.emailTaken) return ok({ kind: "create" } as const);
+    const probes = params.invite.probes + 1;
+    return ok({ kind: "probe", probes, closes: probes >= MAX_PROBES } as const);
 }
 
 // Revoking one already revoked or expired changes nothing and is not an error: either way it is

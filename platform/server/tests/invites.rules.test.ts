@@ -8,16 +8,18 @@ import {
     INVITE_TTL_MS,
     type Invite,
     inviteStateAt,
+    MAX_PROBES,
     spentOf,
 } from "../src/admission/invites.rules.ts";
 
 const now = EpochMs.parse(10_000_000_000);
 const at = (offset: number) => EpochMs.parse(now + offset);
 
-const unused: Invite = { expiresAt: at(1), revokedAt: null, redeemedAt: null };
-const used: Invite = { expiresAt: at(-5), revokedAt: null, redeemedAt: at(-10) };
-const revoked: Invite = { expiresAt: at(1), revokedAt: at(-1), redeemedAt: null };
-const expired: Invite = { expiresAt: at(0), revokedAt: null, redeemedAt: null };
+const unused: Invite = { expiresAt: at(1), revokedAt: null, redeemedAt: null, probes: 0 };
+const used: Invite = { expiresAt: at(-5), revokedAt: null, redeemedAt: at(-10), probes: 0 };
+const revoked: Invite = { expiresAt: at(1), revokedAt: at(-1), redeemedAt: null, probes: 0 };
+const expired: Invite = { expiresAt: at(0), revokedAt: null, redeemedAt: null, probes: 0 };
+const probedOut: Invite = { ...unused, probes: MAX_PROBES };
 
 test.each([
     ["unused before its expiry", unused, "unused"],
@@ -29,12 +31,17 @@ test.each([
         { ...revoked, expiresAt: at(-1), revokedAt: at(-2) },
         "revoked",
     ],
+    ["used once probed out, so its inviter learns nothing from it", probedOut, "used"],
+    ["used once probed out, even past its expiry", { ...probedOut, expiresAt: at(-1) }, "used"],
+    ["unused with probes left", { ...unused, probes: MAX_PROBES - 1 }, "unused"],
 ] as const)("an invite is %s", (_, invite, state) => {
     expect(inviteStateAt(invite, now)).toBe(state);
 });
 
-test("an invite used or still open is spent; one revoked or left to expire is not", () => {
-    expect(spentOf([unused, used, revoked, expired], now)).toBe(2);
+test("an invite used, probed out or still open is spent; one revoked or left to expire is not", () => {
+    expect(
+        spentOf([unused, used, revoked, expired, { ...probedOut, expiresAt: at(-1) }], now),
+    ).toBe(3);
 });
 
 test.each([
@@ -55,20 +62,59 @@ test("an invite lasts seven days from its creation", () => {
 });
 
 test.each([
-    ["unknown", null, true, "UNKNOWN"],
-    ["used", used, true, "USED"],
-    ["revoked", revoked, true, "REVOKED"],
-    ["expired", expired, true, "EXPIRED"],
-    ["unused but its inviter is suspended or locked", unused, false, "INVITER_UNAVAILABLE"],
-    ["unused from an inviter in good standing", unused, true, null],
-] as const)("redeeming an invite %s", (_, invite, inviterActive, refusal) => {
-    const decided = decideRedeemInvite({ invite, inviterActive, now });
-    expect(decided.ok ? null : decided.error.code).toBe(refusal);
+    ["unknown", null, true, false, "UNKNOWN"],
+    ["used", used, true, false, "USED"],
+    ["revoked", revoked, true, false, "REVOKED"],
+    ["expired", expired, true, false, "EXPIRED"],
+    ["probed out, for a new address", probedOut, true, false, "USED"],
+    ["probed out, for a taken address", probedOut, true, true, "USED"],
+    ["unused but its inviter is suspended or locked", unused, false, false, "INVITER_UNAVAILABLE"],
+    [
+        "unused but its inviter is suspended, for a taken address",
+        unused,
+        false,
+        true,
+        "INVITER_UNAVAILABLE",
+    ],
+] as const)(
+    "redeeming an invite %s is refused",
+    (_, invite, inviterActive, emailTaken, refusal) => {
+        const decided = decideRedeemInvite({ invite, inviterActive, emailTaken, now });
+        expect(decided.ok ? null : decided.error.code).toBe(refusal);
+    },
+);
+
+test.each([
+    ["for a new address creates the account", 0, false, { kind: "create" }],
+    ["with probes behind it, for a new address, still creates it", 2, false, { kind: "create" }],
+    [
+        "for a taken address is the first probe",
+        0,
+        true,
+        { kind: "probe", probes: 1, closes: false },
+    ],
+    [
+        "for a taken address is the second probe",
+        1,
+        true,
+        { kind: "probe", probes: 2, closes: false },
+    ],
+    [
+        "for a taken address a third time closes it",
+        2,
+        true,
+        { kind: "probe", probes: 3, closes: true },
+    ],
+] as const)("redeeming a usable invite %s", (_, probes, emailTaken, plan) => {
+    expect<unknown>(
+        decideRedeemInvite({ invite: { ...unused, probes }, inviterActive: true, emailTaken, now }),
+    ).toEqual({ ok: true, value: plan });
 });
 
 test.each([
     ["unused is revoked", unused, { ok: true, value: { revoke: true } }],
     ["used is refused", used, { ok: false, error: { code: "INVITE_USED" } }],
+    ["probed out is refused as used", probedOut, { ok: false, error: { code: "INVITE_USED" } }],
     ["already revoked changes nothing", revoked, { ok: true, value: { revoke: false } }],
     ["expired changes nothing", expired, { ok: true, value: { revoke: false } }],
 ] as const)("revoking an invite that is %s", (_, invite, outcome) => {

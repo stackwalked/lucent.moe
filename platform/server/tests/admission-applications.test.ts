@@ -16,8 +16,10 @@ import {
 } from "../src/admission/applications.ts";
 import type { AuthDeps } from "../src/auth/deps.ts";
 import { redeemSetupLink } from "../src/auth/setup.ts";
-import { type Db, execute, sql } from "../src/db/pool.ts";
+import { recoverAccount } from "../src/authority/writers.ts";
+import { type Db, execute, queryAll, sql } from "../src/db/pool.ts";
 import { withTx } from "../src/db/tx.ts";
+import { sweepRetention } from "../src/jobs/retention.ts";
 import { claimMail, sendClaim, settleMail } from "../src/notify/mail.ts";
 import { seedRootOnce } from "./auth-fixtures.ts";
 import {
@@ -115,7 +117,6 @@ test(
             applicationId: item.applicationId,
         });
         invariant(approved.ok, `approving failed: ${JSON.stringify(approved)}`);
-        expect(approved.value.setupToken).toBeNull();
 
         const worker = { db: world.db, mail: await createMailTransport({ provider: "log" }) };
         const claim = await claimMail(worker);
@@ -226,7 +227,7 @@ test(
 );
 
 test(
-    "approving an address that got an account meanwhile is refused, and without a provider the link comes back to staff",
+    "approving an address that got an account meanwhile is refused, and without a provider nothing is approved",
     inWorld(9205, async (world) => {
         const staff = await reviewer(world);
         await submit(world, form("eve@lucent.test"));
@@ -240,12 +241,22 @@ test(
                 applicationId: eve.applicationId,
             }),
         ).toEqual(err({ code: "EMAIL_TAKEN" }));
-        const approved = await approveApplication(
-            { ...world.deps, mailEnabled: false },
-            { caller: staff, applicationId: fay.applicationId },
-        );
-        expect(approved.ok && approved.value.setupToken !== null).toBe(true);
-        expect(await count(world.db, sql`select count(*) as value from mail_outbox`)).toBe(0);
+        // The link would otherwise come back to a reviewer who never stepped up, for an address
+        // anyone can apply with: an account without what accounts:create asks.
+        expect(
+            await approveApplication(
+                { ...world.deps, mailEnabled: false },
+                { caller: staff, applicationId: fay.applicationId },
+            ),
+        ).toEqual(err({ code: "MAIL_DISABLED" }));
+        expect(
+            await count(
+                world.db,
+                sql`select (select count(*) from mail_outbox)
+                         + (select count(*) from account where email = 'fay@lucent.test')
+                         + (select count(*) from application where state <> 'pending') as value`,
+            ),
+        ).toBe(0);
         expect(
             await approveApplication(world.deps, { caller: staff, applicationId: "999" }),
         ).toEqual(err({ code: "NOT_FOUND" }));
@@ -322,5 +333,163 @@ test(
                 applicationId: hal.applicationId,
             }),
         ).toEqual(err({ code: "FORBIDDEN" }));
+    }),
+);
+
+test(
+    "approve racing decline makes exactly one decision",
+    inWorld(9208, async (world) => {
+        const staff = await reviewer(world);
+        const root = await steppedUp(world.db, world.rootId);
+        await submit(world, form("ida@lucent.test"));
+        const [ida] = await onlyPending(world);
+        invariant(ida !== undefined, "the application waits");
+        let release = () => {};
+        const gate = new Promise<void>((resolve) => {
+            release = resolve;
+        });
+        let held = () => {};
+        const locked = new Promise<void>((resolve) => {
+            held = resolve;
+        });
+        const holder = withTx(world.db, async (tx) => {
+            const row = await execute(
+                tx,
+                sql`select id from application where id = ${ida.applicationId}::bigint for update`,
+            );
+            held();
+            await gate;
+            return row;
+        });
+        await locked;
+        const approving = approveApplication(world.deps, {
+            caller: staff,
+            applicationId: ida.applicationId,
+        });
+        const declining = declineApplication(world.db, {
+            caller: root,
+            applicationId: ida.applicationId,
+        });
+        const queued = await waitForLockWaiters(world.db, 2);
+        release();
+        await holder;
+        const [approved, declined] = [await approving, await declining];
+        expect(queued).toBe(true);
+        expect([approved.ok, declined.ok].filter(Boolean)).toHaveLength(1);
+        const state = await scalar(
+            world.db,
+            z.string(),
+            sql`select state as value from application where id = ${ida.applicationId}::bigint`,
+        );
+        const accounts = await count(
+            world.db,
+            sql`select count(*) as value from account where email = 'ida@lucent.test'`,
+        );
+        if (approved.ok) {
+            expect(declined).toEqual(err({ code: "ALREADY_DECIDED" }));
+            expect([state, accounts]).toEqual(["approved", 1]);
+        } else {
+            expect(approved).toEqual(err({ code: "ALREADY_DECIDED" }));
+            expect([state, accounts]).toEqual(["declined", 0]);
+        }
+    }),
+);
+
+test(
+    "decided applications go after their retention, pending ones stay, and a swept decline can apply again",
+    inWorld(9209, async (world) => {
+        const staff = await reviewer(world);
+        for (const email of ["jo@lucent.test", "kai@lucent.test", "lu@lucent.test"])
+            await submit(world, form(email));
+        const [jo, kai] = await onlyPending(world);
+        invariant(jo !== undefined && kai !== undefined, "all wait");
+        await declineApplication(world.db, { caller: staff, applicationId: jo.applicationId });
+        const approved = await approveApplication(world.deps, {
+            caller: staff,
+            applicationId: kai.applicationId,
+        });
+        expect(approved.ok).toBe(true);
+        const age = (id: string, days: number) =>
+            execute(
+                world.db,
+                sql`update application set created_at = now() - make_interval(days => ${days + 1}),
+                        decided_at = now() - make_interval(days => ${days})
+                    where id = ${id}::bigint`,
+            );
+        // Just inside each tier: nothing goes.
+        await age(jo.applicationId, 29);
+        await age(kai.applicationId, 89);
+        expect((await sweepRetention(world.db)).ok).toBe(true);
+        expect(await count(world.db, sql`select count(*) as value from application`)).toBe(3);
+        await age(jo.applicationId, 31);
+        await age(kai.applicationId, 91);
+        expect((await sweepRetention(world.db)).ok).toBe(true);
+        expect(
+            await queryAll(
+                world.db,
+                z.object({ email: z.string(), state: z.string() }),
+                sql`select email, state from application order by id`,
+            ),
+        ).toEqual(ok([{ email: "lu@lucent.test", state: "pending" }]));
+        await submit(world, form("jo@lucent.test"));
+        expect((await onlyPending(world)).map((a) => a.email)).toEqual([
+            "lu@lucent.test",
+            "jo@lucent.test",
+        ]);
+    }),
+);
+
+test(
+    "a queued setup mail goes with its link: used, replaced, or no longer valid",
+    inWorld(9210, async (world) => {
+        const staff = await reviewer(world);
+        for (const email of ["mo@lucent.test", "ned@lucent.test", "ola@lucent.test"])
+            await submit(world, form(email));
+        const ids = (await onlyPending(world)).map((a) => a.applicationId);
+        const accounts: AccountId[] = [];
+        for (const applicationId of ids) {
+            const approved = await approveApplication(world.deps, { caller: staff, applicationId });
+            invariant(approved.ok, "approved");
+            accounts.push(approved.value.accountId);
+        }
+        const mails = (email: string) =>
+            count(
+                world.db,
+                sql`select count(*) as value from mail_outbox
+                    where kind = 'setup' and recipient = ${email}`,
+            );
+        const body = await scalar(
+            world.db,
+            z.string(),
+            sql`select body as value from mail_outbox where recipient = 'mo@lucent.test'`,
+        );
+        const link = /\/setup\/([A-Za-z0-9_-]{43})/.exec(body)?.[1];
+        invariant(link !== undefined, "the mail carries the link");
+        expect(
+            (await redeemSetupLink(world.deps, { setupToken: BearerToken.parse(link) })).ok,
+        ).toBe(true);
+        expect(await mails("mo@lucent.test")).toBe(0);
+
+        const [, ned, ola] = accounts;
+        invariant(ned !== undefined && ola !== undefined, "three accounts");
+        const recovered = await recoverAccount({
+            db: world.db,
+            rng: world.rng,
+            caller: await steppedUp(world.db, world.rootId),
+            targetAccountId: ned,
+        });
+        expect(recovered.ok).toBe(true);
+        expect(await mails("ned@lucent.test")).toBe(0);
+
+        expect(
+            await execute(
+                world.db,
+                sql`update setup_token set created_at = now() - interval '4 days',
+                        expires_at = now() - interval '1 second'
+                    where account_id = ${ola}`,
+            ),
+        ).toEqual(ok(1));
+        const worker = { db: world.db, mail: await createMailTransport({ provider: "log" }) };
+        expect(await claimMail(worker)).toEqual(ok(null));
     }),
 );

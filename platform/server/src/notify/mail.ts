@@ -38,8 +38,9 @@ type Worker = {
     readonly clock?: Clock;
 };
 
-// Settling clears reset_hash: a settled row no longer depends on its link, so it outlives the
-// link for its retention period and staff can still see a dead reset mail (migration 0020).
+// Settling clears reset_hash and setup_hash: a settled row no longer depends on its link, so it
+// outlives the link for its retention period and staff can still see a dead mail (migrations 0020
+// and 0034).
 async function finish(
     tx: Tx,
     params: {
@@ -55,7 +56,7 @@ async function finish(
         sql`update mail_outbox
         set state = ${params.outcome === "accepted" ? "accepted" : "dead"}, due_at = null,
             finished_at = ${toTimestamptz(params.now)}::timestamptz, recipient = null, subject = null, body = null,
-            reset_hash = null
+            reset_hash = null, setup_hash = null
         where id = ${params.id} and attempts = ${params.attempt} and due_at is not null returning staff_ref`,
     );
     if (!changed.ok) return changed;
@@ -85,6 +86,7 @@ export function claimMail(worker: Worker) {
             sql`select id, recipient, subject, body, first_attempt_at, attempts, binding
             from mail_outbox where due_at <= ${toTimestamptz(now)}::timestamptz
             and (reset_hash is null or exists(select from password_reset where token_hash = reset_hash and expires_at > now()))
+            and (setup_hash is null or exists(select from setup_token where token_hash = setup_hash and expires_at > now()))
             order by due_at, id limit 1 for update skip locked`,
         );
         if (!due.ok) return due;
@@ -136,7 +138,8 @@ export async function sendClaim(worker: Worker, claim: MailClaim): Promise<MailO
         worker.db,
         z.object({ now: EpochMs }),
         sql`select now() as now from mail_outbox where id = ${claim.envelope.id} and state = 'sending' and attempts = ${claim.attempt}
-            and (reset_hash is null or exists(select from password_reset where token_hash = reset_hash and expires_at > now()))`,
+            and (reset_hash is null or exists(select from password_reset where token_hash = reset_hash and expires_at > now()))
+            and (setup_hash is null or exists(select from setup_token where token_hash = setup_hash and expires_at > now()))`,
     );
     if (!current.ok || current.value === null || deadline.aborted) return "retry";
     const now = worker.clock?.now() ?? current.value.now;

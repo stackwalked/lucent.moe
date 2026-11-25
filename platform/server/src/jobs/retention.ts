@@ -102,6 +102,26 @@ export const RETENTION: readonly Retained[] = [
                     select id from connector_discord_dm
                     where created_at < ${cutoff}::timestamptz limit ${BATCH}))`,
     },
+    // Waitlist applications hold an address and what the applicant wrote. A declined one matters
+    // only while it holds off a reapplication (30 days, admission/applications.rules.ts): gone,
+    // the address reads as never having applied. An approved one is ignored on resubmission
+    // anyway, the address having an account. A pending one waits for staff however old.
+    {
+        what: "application, declined",
+        tier: "30d",
+        sweep: (cutoff) =>
+            sql`delete from application where id = any(array(
+                    select id from application where state = 'declined'
+                    and decided_at < ${cutoff}::timestamptz limit ${BATCH}))`,
+    },
+    {
+        what: "application, approved",
+        tier: "90d",
+        sweep: (cutoff) =>
+            sql`delete from application where id = any(array(
+                    select id from application where state = 'approved'
+                    and decided_at < ${cutoff}::timestamptz limit ${BATCH}))`,
+    },
     { what: "audit", tier: "forever" },
     { what: "fact_set, current_fact_set, release, current_release", tier: "forever" },
     { what: "fact_override, fact_override_revision", tier: "forever" },

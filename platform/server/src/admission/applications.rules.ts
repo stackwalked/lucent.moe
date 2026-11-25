@@ -38,6 +38,8 @@ export function decideApplication(params: {
 }) {
     const { state, event, facts } = params;
     if (event === "submit") {
+        // Left for the human: an account whose setup link lapsed unused has no way in, and its
+        // address applying again is ignored here all the same.
         if (facts.emailHasAccount) return ok<ApplicationPlan>("ignore");
         if (state === "pending" || state === "approved") return ok<ApplicationPlan>("ignore");
         if (

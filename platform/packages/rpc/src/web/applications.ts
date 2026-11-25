@@ -1,4 +1,4 @@
-import { AccountId, BearerToken, EpochMs, ProductId } from "@lucent/core/scalars";
+import { AccountId, EpochMs, ProductId } from "@lucent/core/scalars";
 import { z } from "zod";
 import { defineContract } from "../contract.ts";
 import { Done, ReadRefusal, refusal, StaffRefusals } from "./shared.ts";
@@ -44,18 +44,19 @@ export const applicationsContract = defineContract({
         }),
         error: ReadRefusal,
     },
-    // Creates the account and mails its setup link. Without a mail provider the link is in this
-    // reply instead, for staff to hand over. No product access comes with it.
+    // Creates the account and mails its setup link; no product access comes with it. Without a mail
+    // provider nothing is approved (MAIL_DISABLED): staff can create the account by hand.
     "admin.applications.approve": {
         session: "member",
         effect: "write",
         input: z.strictObject({ applicationId: ApplicationId }),
-        output: z.object({ accountId: AccountId, setupToken: BearerToken.nullable() }),
+        output: z.object({ accountId: AccountId }),
         error: z.discriminatedUnion("code", [
             ...StaffRefusals,
             refusal("NOT_FOUND"),
             refusal("ALREADY_DECIDED"),
             refusal("EMAIL_TAKEN"),
+            refusal("MAIL_DISABLED"),
         ]),
     },
     "admin.applications.decline": {
