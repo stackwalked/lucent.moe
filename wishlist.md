@@ -125,10 +125,10 @@ the new module only.
 Beside phases 2 and 3; nothing native waits on it except cutover.
 
 - Slice 3, the rest (scoring, the review queue, retention tiers, update-day latency, data
-  revisions raised by promotions and kill switches landed; a kill switch is recorded, not yet
-  enforced): the signed override document and its delivery on `/data`, the reports route and the
-  signals from it, the renewal's integrity bits and checked challenge answers. Each waits on a
-  format the human decides; a review action of its own in place of `accounts:suspend`.
+  revisions raised by promotions and kill switches, the signed override document and its delivery
+  on `/data` to v4-manifest releases landed): the reports route and the signals from it, the
+  renewal's integrity bits and checked challenge answers. Each waits on a format the human
+  decides; a review action of its own in place of `accounts:suspend`.
 - Slice 4 (account-held items with history, share links, the member pages, tickets and appeals,
   the new-country review rule with DB-IP geo and resources, items served to and written by a
   session over `/data` landed): crash reports, the waitlist.
