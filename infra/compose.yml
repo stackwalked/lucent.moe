@@ -84,7 +84,7 @@ services:
       LUCENT_MAIL_API_KEY: ${LUCENT_MAIL_API_KEY:-}
       LUCENT_MAIL_FROM: ${LUCENT_MAIL_FROM:-}
       LUCENT_LEASE_SIGNING_KEY: ${LUCENT_LEASE_SIGNING_KEY:?set the lease signing seed}
-      LUCENT_OVERRIDE_SIGNING_KEY: ${LUCENT_OVERRIDE_SIGNING_KEY:-}
+      LUCENT_OVERRIDE_SIGNING_KEY: ${LUCENT_OVERRIDE_SIGNING_KEY:?set the override signing seed}
       LUCENT_CODE_PUBLIC_KEY: ${LUCENT_CODE_PUBLIC_KEY:?set the public code key}
       LUCENT_FACTS_PUBLIC_KEYS: ${LUCENT_FACTS_PUBLIC_KEYS:?set the public facts keys}
     volumes:

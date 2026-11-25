@@ -216,7 +216,13 @@ function readNativeConfig(env: Environment, problems: string[]): NativeConfig | 
         problems.push("LUCENT_OVERRIDE_SIGNING_KEY must be a 32-byte Ed25519 seed in base64url");
     }
     // One key per role: a stolen override key then can't sign leases, and either rotates alone.
-    if (raw.key !== "" && raw.key === raw.overrideKey) {
+    // Compared as bytes: two base64url strings that differ only in the last character's spare
+    // bits decode to the same seed.
+    const sameKey =
+        leaseSigningSeed !== null &&
+        overrideSigningSeed !== null &&
+        leaseSigningSeed.every((byte, at) => byte === overrideSigningSeed[at]);
+    if (sameKey) {
         problems.push("LUCENT_OVERRIDE_SIGNING_KEY must differ from LUCENT_LEASE_SIGNING_KEY");
     }
     if (raw.artifactDir === "") {
@@ -227,7 +233,7 @@ function readNativeConfig(env: Environment, problems: string[]): NativeConfig | 
         origin === null ||
         leaseSigningSeed === null ||
         overrideSigningSeed === null ||
-        raw.key === raw.overrideKey ||
+        sameKey ||
         raw.artifactDir === ""
     ) {
         return null;

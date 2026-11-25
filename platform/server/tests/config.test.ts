@@ -203,6 +203,17 @@ test("the loaders' listener is configured by all five of its variables or none",
     expect(!shared.ok && shared.error.problems).toEqual([
         "LUCENT_OVERRIDE_SIGNING_KEY must differ from LUCENT_LEASE_SIGNING_KEY",
     ]);
+    // Different text, the same 32 bytes: the last character's spare bits are not part of the seed.
+    const sameBytes = readServerConfig(
+        env({
+            ...native,
+            LUCENT_LEASE_SIGNING_KEY: `${"C".repeat(42)}A`,
+            LUCENT_OVERRIDE_SIGNING_KEY: `${"C".repeat(42)}B`,
+        }),
+    );
+    expect(!sameBytes.ok && sameBytes.error.problems).toEqual([
+        "LUCENT_OVERRIDE_SIGNING_KEY must differ from LUCENT_LEASE_SIGNING_KEY",
+    ]);
 });
 
 test("the published dev lease and override keys are refused unless browsers reach the server from this machine", () => {

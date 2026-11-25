@@ -192,6 +192,15 @@ export async function setOverride(
         const revision = await readRevision(tx, releaseId);
         if (!revision.ok) return revision;
         const { manifest } = release.value;
+        // The module's signed document is the only thing that turns a feature off. Without a
+        // signer the change would be stored with no document, and a module that reads documents
+        // would then be handed none and run what staff had switched off.
+        if (params.signer === null && manifest.dataResponse === 3) {
+            return err({
+                code: "DB_UNAVAILABLE" as const,
+                detail: "no override signing key: a switch here would never reach its modules",
+            });
+        }
         const plan = decideOverrideChange({
             known: {
                 features: manifest.features.map((feature) => feature.key),

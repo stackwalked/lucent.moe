@@ -23,6 +23,13 @@ import { isModuleList, readModules, writeModules } from "./start.ts";
 // (overrides.ts) after the bundle; size 0 means none. A release's module reads one or the other,
 // never both, so version 2 stays as it is. Native has no codec for version 3 yet: its vectors are
 // this side's, and native must match them.
+//
+// What the module does with it: size 0 means "no document here", so it keeps the switches it
+// holds and the highest revision it has seen. It never means "every switch back on": only a
+// signed document with empty lists at a higher revision says that. Read otherwise, a response
+// without a document would turn back on what staff switched off. A document is taken only if
+// its signature verifies over every byte before it, its release id is the module's own, and
+// its revision is at or above the highest seen.
 
 const REQUEST_VERSION = 1;
 const RESPONSE_VERSION = 2;
