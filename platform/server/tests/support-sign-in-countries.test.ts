@@ -7,8 +7,10 @@ import { z } from "zod";
 import { parseCountryDatabase } from "../src/adapters/geo/geo.ts";
 import type { AuthDeps } from "../src/auth/deps.ts";
 import { sql } from "../src/db/pool.ts";
+import { withTx } from "../src/db/tx.ts";
 import { listReviewItems } from "../src/risk/review.ts";
 import { scoreRisk } from "../src/risk/scoring.ts";
+import { appendSignals } from "../src/risk/signals.ts";
 import { judgeSignInCountries } from "../src/support/sign-in-countries.ts";
 import { memberSession, seedRootOnce } from "./auth-fixtures.ts";
 import { scalar, seedAccount, steppedUp } from "./authority-fixtures.ts";
@@ -27,7 +29,7 @@ async function signInFrom(deps: AuthDeps, accountId: AccountId, ip: string) {
     await memberSession(deps, accountId, ClientInfo.parse({ ip, userAgent: "test" }));
 }
 
-test("a sign-in from a new country opens an item in the review queue; the first country and known ones don't", async () => {
+test("a sign-in from a new country is recorded and opens a review item only beside another signal; the first country and known ones don't", async () => {
     const cluster = await sharedTestCluster();
     await cluster.withTestDb(async ({ browserDb }) => {
         invariant(FILE.ok, "the test file parses");
@@ -56,12 +58,45 @@ test("a sign-in from a new country opens an item in the review queue; the first 
             ),
         ).toBe(0);
 
+        const signalsOf = (accountId: AccountId) =>
+            scalar(
+                browserDb,
+                z.coerce.number(),
+                sql`select count(*) as value from risk_signal
+                    where account_id = ${accountId} and kind = 'new_country'`,
+            );
+        expect(await signalsOf(alice)).toBe(1);
         expect((await scoreRisk(browserDb)).ok).toBe(true);
         const root = await steppedUp(browserDb, await seedRootOnce(browserDb, rng));
-        const queue = await listReviewItems(browserDb, { caller: root, state: "open" });
-        invariant(queue.ok, "root reads the queue");
-        expect(queue.value.items.map((item) => item.account.id)).toEqual([alice]);
-        expect(queue.value.items[0]?.signals.map((signal) => signal.kind)).toEqual(["new_country"]);
+        const openItems = async () => {
+            const queue = await listReviewItems(browserDb, { caller: root, state: "open" });
+            invariant(queue.ok, "root reads the queue");
+            return queue.value.items;
+        };
+        expect(await openItems()).toEqual([]);
+
+        // A silent session alone is under the threshold too; together they are over it.
+        await signInFrom(deps, bob, "2.5.5.5");
+        await signInFrom(deps, bob, "203.0.113.8");
+        await withTx(browserDb, (tx, txNow) =>
+            appendSignals(tx, {
+                accountId: bob,
+                releaseId: null,
+                sessionId: null,
+                kinds: ["loader_silent"],
+                at: txNow,
+            }),
+        );
+        expect(await judgeSignInCountries(browserDb, FILE.value)).toEqual(
+            ok({ judged: 2, flagged: 1 }),
+        );
+        expect((await scoreRisk(browserDb)).ok).toBe(true);
+        const items = await openItems();
+        expect(items.map((item) => item.account.id)).toEqual([bob]);
+        expect(items[0]?.signals.map((signal) => signal.kind)).toEqual([
+            "loader_silent",
+            "new_country",
+        ]);
     });
 });
 
