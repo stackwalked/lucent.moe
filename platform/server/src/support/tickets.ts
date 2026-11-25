@@ -520,8 +520,10 @@ function actAsStaff(
         if (!authorized.ok) return authorized;
         const ticket = await lockTicket(tx, params.ticketId);
         if (!ticket.ok) return ticket;
+        // A ticket gone since the first read is refused below as missing; one still there
+        // belongs to whoever it belonged to.
         invariant(
-            ticket.value?.account_id === owner.value?.account_id,
+            ticket.value === null || ticket.value.account_id === owner.value?.account_id,
             "a ticket's account never changes",
         );
         const plan = decideTicket({

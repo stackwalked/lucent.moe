@@ -335,6 +335,21 @@ describe("a staff reply tells the member", () => {
                 catalog: catalog(),
             });
             expect(bobs).toEqual(ok({ items: [], nextCursor: null }));
+
+            // Closing tells nobody, and a reply refused on the closed ticket tells nobody.
+            expect(await closeStaffTicket(browserDb, { caller: staff.caller, ticketId })).toEqual(
+                ok(undefined),
+            );
+            expect(
+                await replyToTicket(browserDb, {
+                    caller: staff.caller,
+                    ticketId,
+                    body: REPLY,
+                    site: SITE,
+                }),
+            ).toEqual(err({ code: "TICKET_CLOSED" }));
+            expect(await count(browserDb, sql`select count(*) as value from inbox_entry`)).toBe(1);
+            expect(await count(browserDb, sql`select count(*) as value from mail_outbox`)).toBe(1);
         });
     });
 
