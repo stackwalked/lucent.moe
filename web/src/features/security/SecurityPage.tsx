@@ -1,4 +1,4 @@
-import { useRouteContext } from "@tanstack/react-router";
+import { Link, useRouteContext } from "@tanstack/react-router";
 import { useEffect, useEffectEvent, useState } from "react";
 import type { Outcome, Refused } from "../../server/outcome.ts";
 import { Button } from "../../ui/Button/Button.tsx";
@@ -17,6 +17,7 @@ import { AddApp } from "../credentials/AddApp.tsx";
 import { AddPasskey } from "../credentials/AddPasskey.tsx";
 import { SetPassword } from "../credentials/SetPassword.tsx";
 import { listCredentials, removeCredential } from "../credentials/server.ts";
+import { DISCORD_TITLE } from "../discord/copy.ts";
 import { useStepUp } from "../step-up/StepUp.tsx";
 import { SECURITY_COPY } from "./copy.ts";
 import { endOtherSessions, endSession, listSessions } from "./server.ts";
@@ -236,7 +237,11 @@ export function SecurityPage() {
     const { session } = useRouteContext({ from: "__root__" });
     const viewer = memberOf(session);
     return (
-        <Page title={SECURITY_COPY.title} width="narrow">
+        <Page
+            title={SECURITY_COPY.title}
+            width="narrow"
+            actions={<Link to="/account/discord">{DISCORD_TITLE}</Link>}
+        >
             <Credentials username={viewer?.username ?? ""} />
             <Signins />
         </Page>
