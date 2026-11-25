@@ -16,6 +16,8 @@ export const ADMIN_COPY = {
     system: "system",
     usage: "usage",
     discord: "discord",
+    applications: "applications",
+    invites: "invite tree",
     pending: "—",
     needsPasskey: "staff actions need a passkey. add one in security.",
     firstPage: "first page",

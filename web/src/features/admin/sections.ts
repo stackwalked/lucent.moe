@@ -16,7 +16,9 @@ export type AdminSection =
     | "audit"
     | "system"
     | "usage"
-    | "discord";
+    | "discord"
+    | "applications"
+    | "invites";
 
 // In the order the nav lists them.
 export const SECTION_PATHS = [
@@ -34,6 +36,8 @@ export const SECTION_PATHS = [
     ["system", "/admin/system"],
     ["usage", "/admin/usage"],
     ["discord", "/admin/discord"],
+    ["applications", "/admin/applications"],
+    ["invites", "/admin/invites"],
 ] as const satisfies readonly (readonly [AdminSection, string])[];
 
 // Which admin sections a viewer may see: each needs its read permission, roles, releases and update
@@ -55,6 +59,8 @@ export function adminSections(viewer: Viewer): Readonly<Record<AdminSection, boo
         system: viewerCan(viewer, "audit:read"),
         usage: viewerCan(viewer, "audit:read"),
         discord: viewerCan(viewer, "roles:manage"),
+        applications: viewerCan(viewer, "applications:review"),
+        invites: viewerCan(viewer, "accounts:read"),
     };
 }
 

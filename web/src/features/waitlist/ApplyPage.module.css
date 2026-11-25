@@ -1,0 +1,20 @@
+@layer features {
+    .products {
+        margin: 0;
+        padding: 0;
+        border: 0;
+    }
+
+    .legend {
+        margin-block-end: var(--s-2);
+        padding: 0;
+        color: var(--ink-2);
+        font-size: var(--size-13);
+    }
+
+    .hint {
+        margin-block-start: calc(var(--s-3) * -1);
+        color: var(--ink-2);
+        font-size: var(--size-13);
+    }
+}

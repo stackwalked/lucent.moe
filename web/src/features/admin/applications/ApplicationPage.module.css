@@ -1,0 +1,7 @@
+@layer features {
+    /* What the applicant wrote, as they wrote it: line breaks kept, long words wrapped. */
+    .about {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+    }
+}

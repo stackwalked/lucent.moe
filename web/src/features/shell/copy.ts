@@ -7,6 +7,8 @@ export const SHELL_COPY = {
     resources: "resources",
     support: "support",
     signIn: "sign in",
+    apply: "apply",
+    invites: "invites",
     signOut: "sign out",
     menu: (username: string) => `signed in as ${username}`,
     graphite: "graphite",

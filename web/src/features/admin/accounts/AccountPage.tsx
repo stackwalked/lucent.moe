@@ -23,6 +23,7 @@ import { memberOf, subjectOf } from "../../../viewer.ts";
 import { RefusalNote } from "../../auth/RefusalNote.tsx";
 import { AUDIT_COPY } from "../audit/copy.ts";
 import { ADMIN_COPY, operationLabel } from "../copy.ts";
+import { AccountInvites } from "../invites/AccountInvites.tsx";
 import { useStaffAction } from "../staff.ts";
 import { AccountAction } from "./AccountAction.tsx";
 import { AccountDevices } from "./AccountDevices.tsx";
@@ -128,7 +129,7 @@ function GiveRole({
 export function AccountPage() {
     const router = useRouter();
     const staff = useStaffAction();
-    const { account, roles: listedRoles, catalog } = route.useLoaderData();
+    const { account, roles: listedRoles, catalog, invites } = route.useLoaderData();
     const roles = listedRoles.ok ? listedRoles.value : [];
     const { session } = useRouteContext({ from: "__root__" });
     const viewer = memberOf(session);
@@ -373,6 +374,12 @@ export function AccountPage() {
                 account={account}
                 catalog={catalog}
                 canIssue={allowed("entitlements:issue")}
+            />
+            <AccountInvites
+                accountId={account.accountId}
+                name={name}
+                standing={invites}
+                canGrant={allowed("accounts:create")}
             />
             <AccountDevices account={account} />
             {account.recentAudit === null ? null : (

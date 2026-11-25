@@ -59,9 +59,18 @@ export function SiteShell({
         <Shell
             places={
                 viewer === null ? (
-                    <Link to="/sign-in" className={styles.place}>
-                        {SHELL_COPY.signIn}
-                    </Link>
+                    <>
+                        <Link
+                            to="/apply"
+                            className={styles.place}
+                            activeProps={{ "aria-current": "page" }}
+                        >
+                            {SHELL_COPY.apply}
+                        </Link>
+                        <Link to="/sign-in" className={styles.place}>
+                            {SHELL_COPY.signIn}
+                        </Link>
+                    </>
                 ) : (
                     <>
                         <Link
@@ -112,6 +121,13 @@ export function SiteShell({
                             activeProps={{ "aria-current": "page" }}
                         >
                             {SHELL_COPY.account}
+                        </Link>
+                        <Link
+                            to="/account/invites"
+                            className={styles.place}
+                            activeProps={{ "aria-current": "page" }}
+                        >
+                            {SHELL_COPY.invites}
                         </Link>
                         <Link
                             to="/account/inbox"

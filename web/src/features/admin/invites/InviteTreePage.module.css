@@ -1,0 +1,23 @@
+@layer features {
+    .tree {
+        display: flex;
+        flex-direction: column;
+        gap: var(--s-2);
+        margin: 0;
+        padding: 0;
+        list-style: none;
+    }
+
+    .tree .tree {
+        margin-block-start: var(--s-2);
+        padding-inline-start: var(--s-4);
+        border-inline-start: 1px solid var(--line);
+    }
+
+    .node {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--s-2);
+        align-items: center;
+    }
+}

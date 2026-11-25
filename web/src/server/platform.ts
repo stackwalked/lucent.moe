@@ -69,6 +69,8 @@ function bucketFor(name: Name): Bucket | null {
     if (name.startsWith("signIn.")) return BUCKETS.signIn;
     if (name.startsWith("stepUp.")) return BUCKETS.stepUp;
     if (name === "setup.redeem") return BUCKETS.setupRedeem;
+    if (name === "waitlist.application.submit" || name === "invites.link.redeem")
+        return BUCKETS.admission;
     return null;
 }
 

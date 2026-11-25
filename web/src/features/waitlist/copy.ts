@@ -1,0 +1,16 @@
+export const WAITLIST_COPY = {
+    title: "apply",
+    intro: "lucent is invite-only. apply here and staff read every application.",
+    closed: "nothing is open to applications right now.",
+    email: "email",
+    products: "what you'd use",
+    pickOne: "choose at least one.",
+    about: "about you",
+    aboutHint: "how you play and what you'd use it for. staff read this.",
+    discord: "discord (optional)",
+    discordHint: "your handle, so staff can find you. it isn't checked or linked.",
+    knownBy: "a member who knows you (optional)",
+    knownByHint: "their username.",
+    submit: "apply",
+    sent: "thanks. if staff approve, a setup link comes to that address.",
+} as const;

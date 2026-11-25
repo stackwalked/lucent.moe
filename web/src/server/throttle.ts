@@ -16,6 +16,8 @@ export const BUCKETS = {
     setupRedeem: { name: "setup.redeem", perMinute: 5 },
     stepUp: { name: "stepUp", perMinute: 10 },
     report: { name: "report", perMinute: 60 },
+    // The public application form and redeeming an invite: forms anyone can post.
+    admission: { name: "admission", perMinute: 5 },
 } as const satisfies Record<string, Bucket>;
 
 const MINUTE_MS = 60_000;
