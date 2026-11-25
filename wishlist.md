@@ -136,10 +136,9 @@ Beside phases 2 and 3; nothing native waits on it except cutover.
 - Slice 5 (profiles, guides, comments, shouts, the inbox, reports and removal, posting
   restrictions apart from the licence, blocking, the data export, search, a presence stream
   landed): avatars (the codecs are dependencies to approve), presence shown in web, self-service
-  account deletion (what survives it is undecided), the Discord connector's `/refusals` and
-  `#bugs` triage.
+  account deletion (what survives it is undecided).
 - The public record: product status, known issues, the changelog, recovery time per game update,
-  refusal-code pages, legal pages. Old lucent had no privacy or terms page.
+  refusal-code pages.
 - Member docs.
 
 Gate: every surface of the old service, panel and bot is here or under "Cut".
@@ -972,10 +971,8 @@ live in `wishlist/protection.md`.
 - Connectors, jobs and untrusted boundaries:
   - `platform/connectors/discord` (`discord`): the process, linking, role sync, the feeds, the
     member commands, notice DMs, the staff desk and Discord-invite deletion landed. Still to
-    land: `/refusals`, once platform records refusals; lucent.moe invite codes in the leak guard,
-    with admission; `#bugs` ↔ GitHub Issues `/triage` (deferred by the human; it needs a token
-    and repo variable and an Action of its own). Releases carry no notes yet, so the releases
-    feed posts each promotion.
+    land: lucent.moe invite codes in the leak guard, with admission. Releases carry no notes
+    yet, so the releases feed posts each promotion.
   - Avatar uploads run `@jsquash/jpeg@1.6.0`, `@jsquash/png@3.1.1` and `@jsquash/webp@1.5.0` in a
     5s-bounded `env: {}` `Bun.spawn` child process with WASM linear memory rewritten to `640 MiB`
     max, stripping metadata and storing 256px/64px WebPs by SHA-256 in Postgres; release binaries
