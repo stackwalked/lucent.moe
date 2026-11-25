@@ -551,7 +551,17 @@ function actAsStaff(
         });
         if (!applied.ok) return applied;
         // An appeal's account is suspended and reaches only /appeal: no inbox entry or mail.
-        if (params.event === "staff_replied" && ticket.value.kind === "help") {
+        // The same holds for a help ticket whose owner was suspended since opening it: the
+        // notice says "sign in to read it", and they can't. The row is locked above, so the
+        // standing read here is the one the reply commits with.
+        const standing = await queryOne(
+            tx,
+            z.object({ status: z.enum(["active", "suspended"]) }),
+            sql`select status from account where id = ${ticket.value.account_id}`,
+        );
+        if (!standing.ok) return standing;
+        const reachable = standing.value?.status === "active";
+        if (params.event === "staff_replied" && ticket.value.kind === "help" && reachable) {
             invariant(params.site !== null, "a reply knows the site it tells the member about");
             const notified = await recordNotification(tx, {
                 recipient: ticket.value.account_id,

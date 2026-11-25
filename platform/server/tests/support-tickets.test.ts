@@ -402,6 +402,39 @@ describe("a staff reply tells the member", () => {
         });
     });
 
+    test("a member suspended since opening the ticket is told nothing; the reply still lands", async () => {
+        const cluster = await sharedTestCluster();
+        await cluster.withTestDb(async ({ browserDb }) => {
+            const rng = createSeededRng(826);
+            const alice = await member(browserDb, rng, "alice@lucent.test");
+            const staff = await supportStaff(browserDb, rng, "staff@lucent.test");
+            const ticketId = await ticketOf(browserDb, alice.token);
+            expect(
+                (
+                    await execute(
+                        browserDb,
+                        sql`update account set status = 'suspended' where id = ${alice.id}`,
+                    )
+                ).ok,
+            ).toBe(true);
+            const replied = await replyToTicket(browserDb, {
+                caller: staff.caller,
+                ticketId,
+                body: REPLY,
+                site: SITE,
+            });
+            expect(replied).toEqual(ok(undefined));
+            expect(await count(browserDb, sql`select count(*) as value from inbox_entry`)).toBe(0);
+            expect(await count(browserDb, sql`select count(*) as value from mail_outbox`)).toBe(0);
+            expect(
+                await count(
+                    browserDb,
+                    sql`select count(*) as value from ticket_message where from_staff`,
+                ),
+            ).toBe(1);
+        });
+    });
+
     test("a reply that does not commit leaves no message, entry or mail", async () => {
         const cluster = await sharedTestCluster();
         await cluster.withTestDb(async ({ browserDb }) => {
