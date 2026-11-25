@@ -44,6 +44,15 @@ export const RETENTION: readonly Retained[] = [
                     select id from risk_signal where observed_at < ${cutoff}::timestamptz
                     limit ${BATCH}))`,
     },
+    // Modules' health events and crash summaries (wishlist/protection.md: health events a month).
+    {
+        what: "module_report",
+        tier: "30d",
+        sweep: (cutoff) =>
+            sql`delete from module_report where id = any(array(
+                    select id from module_report where received_at < ${cutoff}::timestamptz
+                    limit ${BATCH}))`,
+    },
     // Review evidence, counted from the decision; an open item stays however old.
     {
         what: "review_item, decided",

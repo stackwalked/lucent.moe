@@ -10,6 +10,7 @@ import { parseDataRequest } from "@lucent/wire/data";
 import { type Frame, openFrame, toFrameBytes } from "@lucent/wire/frame";
 import { parseLeaseRenewal } from "@lucent/wire/lease";
 import type { LeaseRequest } from "@lucent/wire/lease-exchange";
+import { parseReportsRequest } from "@lucent/wire/reports";
 import { deriveSessionKeys, type SessionHello } from "@lucent/wire/session";
 import { exchangePublicKey, sharedSecret } from "@lucent/wire/session-crypto";
 import { z } from "zod";
@@ -53,6 +54,8 @@ import {
     toLeaseResponse,
     toSessionReply,
 } from "./leases.ts";
+import { decideReportsAnswer } from "./reports.rules.ts";
+import { sealReportsAck, storeReports } from "./reports.ts";
 import { decideAskedBuilds } from "./revisions.rules.ts";
 import {
     decideCloseSession,
@@ -217,7 +220,8 @@ async function endSession(
         sql`update runtime_session
             set ended_at = ${toTimestamptz(params.txNow)}::timestamptz, end_reason = ${params.reason},
                 key_to_server = null, key_to_module = null,
-                data_key_to_server = null, data_key_to_module = null
+                data_key_to_server = null, data_key_to_module = null,
+                reports_key_to_server = null, reports_key_to_module = null
             where id = ${params.session.id} and ended_at is null`,
     );
     if (!ended.ok) return ended;
@@ -450,7 +454,8 @@ export async function openSession(
                      lease_challenge_nonce, lease_challenge_offset, lease_challenge_size,
                      loader_challenge_nonce, loader_challenge_offset, loader_challenge_size,
                      lease_issued_at, lease_expires_at, frame_in_sequence, frame_out_sequence,
-                     data_key_to_server, data_key_to_module)
+                     data_key_to_server, data_key_to_module, reports_key_to_server,
+                     reports_key_to_module)
                 values (${sessionId}, ${params.startId}, ${accountId}, ${start.device_id},
                         ${start.product_id}, ${start.channel}, ${start.release_id}, ${generation},
                         ${hello.moduleKey}, ${serverKey}, ${keys.lease.moduleToServer},
@@ -463,7 +468,8 @@ export async function openSession(
                         ${loaderChallenge.nonce}, ${loaderChallenge.offset}, ${loaderChallenge.size},
                         ${toTimestamptz(txNow)}::timestamptz,
                         ${toTimestamptz(deadline)}::timestamptz,
-                        0, 1, ${keys.data.moduleToServer}, ${keys.data.serverToModule})
+                        0, 1, ${keys.data.moduleToServer}, ${keys.data.serverToModule},
+                        ${keys.reports.moduleToServer}, ${keys.reports.serverToModule})
                 returning ${SESSION_COLUMNS}`,
         );
         if (!inserted.ok) return inserted;
@@ -489,8 +495,7 @@ export async function openSession(
         if (!signalled.ok) return signalled;
         return ok({ session: inserted.value, plain: plain.value });
     });
-    // The lease and data routes' keys are stored; the reports route's wait for something that
-    // serves it.
+    // Every route's keys are stored; these copies go.
     for (const route of [keys.lease, keys.data, keys.reports]) {
         route.moduleToServer.fill(0);
         route.serverToModule.fill(0);
@@ -890,6 +895,168 @@ export async function serveData(
             }),
         ),
     );
+}
+
+const ReportsReceipt = z.object({
+    sequence: z.string().regex(/^\d+$/),
+    accepted: z.number().int().nonnegative(),
+});
+
+const ReportsRouteSchema = z.object({
+    reports_key_to_server: Bytes.nullable(),
+    reports_key_to_module: Bytes.nullable(),
+    reports_in_sequence: U64,
+    reports_out_sequence: U64,
+    reports_accepted: U32,
+});
+
+// POST /v1/sessions/:id/reports: the loader's DPoP around the module's batch of health events and
+// crash summaries, in a frame newer than any accepted on the reports route (its sequences are its
+// own, as the data route's are). The reply is the ack, sealed as the route's next frame, counting
+// the events stored; a retry gets the same ack at the same sequence and stores nothing again. The
+// standing checks and their ends are the data route's. A session opened before the route existed
+// has no reports keys, and the route is NOT_FOUND for it.
+export async function serveReports(
+    db: Db,
+    params: {
+        readonly rng: CryptoRng;
+        readonly holder: TokenHolder;
+        readonly proof: DpopProof;
+        readonly sessionId: Uint8Array;
+        readonly frame: Frame;
+        readonly body: Uint8Array;
+        readonly operationId: OperationId;
+    },
+): Promise<Result<Uint8Array<ArrayBuffer>, RenewRefusal | DbFailure>> {
+    const { accountId } = params.holder;
+    const { frame } = params;
+    if (
+        toHex(frame.header.session) !== toHex(params.sessionId) ||
+        frame.header.direction !== "module_to_server"
+    ) {
+        return err({ code: "INVALID_REQUEST" });
+    }
+    const op = await toOperationKey({
+        principal: `account:${accountId}`,
+        endpoint: "v1.sessions.reports",
+        operationId: params.operationId,
+        payload: { session: toHex(params.sessionId), body: toBase64Url(params.body) },
+    });
+
+    const served = await withTx(db, async (tx, txNow) => {
+        const found = await findSession(tx, {
+            sessionId: params.sessionId,
+            accountId,
+            lock: "no lock",
+        });
+        if (!found.ok) return found;
+        if (found.value === null) return err({ code: "NOT_FOUND" });
+        const standing = await lockAccountStanding(tx, accountId, txNow);
+        if (!standing.ok) return standing;
+        const device = await lockDevice(tx, found.value.device_id);
+        if (!device.ok) return device;
+        if (device.value.jkt !== params.proof.jkt) return err({ code: "NOT_FOUND" });
+        const slot = await lockSlot(tx, { accountId, productId: found.value.product_id });
+        if (!slot.ok) return slot;
+        const locked = await findSession(tx, {
+            sessionId: params.sessionId,
+            accountId,
+            lock: "for update",
+        });
+        if (!locked.ok) return locked;
+        invariant(locked.value !== null, "a session found a moment ago exists under lock");
+        const session = locked.value;
+        const live = decideLiveSession(session.end_reason);
+        if (!live.ok) return live;
+
+        const replay = await readReplay(tx, op, ReportsReceipt);
+        if (!replay.ok) return replay;
+        const receipt = replay.value.replayed ? replay.value.result : null;
+
+        const eligibility = decideSessionStanding({
+            session,
+            slot: slot.value,
+            accountActive: standing.value === "active",
+            deviceRevoked: device.value.revokedAt !== null,
+            txNow,
+        });
+        if (!eligibility.ok) {
+            const { reason, refusal } = eligibility.error;
+            const ended = await endSession(tx, { session, slot: slot.value, reason, txNow });
+            if (!ended.ok) return ended;
+            return errCommit(refusal);
+        }
+
+        const routeRow = await queryOne(
+            tx,
+            ReportsRouteSchema,
+            sql`select reports_key_to_server, reports_key_to_module, reports_in_sequence,
+                       reports_out_sequence, reports_accepted
+                from runtime_session where id = ${session.id}`,
+        );
+        if (!routeRow.ok) return routeRow;
+        invariant(routeRow.value !== null, "the locked session exists");
+        const route = routeRow.value;
+        if (route.reports_key_to_server === null || route.reports_key_to_module === null) {
+            return err({ code: "NOT_FOUND" });
+        }
+        const plain = openFrame(route.reports_key_to_server, frame);
+        if (!plain.ok) return err({ code: "PROOF_INVALID" });
+        const request = parseReportsRequest(plain.value);
+        plain.value.fill(0);
+        if (!request.ok) return err({ code: "INVALID_REQUEST" });
+        const { events } = request.value;
+        const answer = decideReportsAnswer({
+            frameSequence: frame.header.sequence,
+            inSequence: route.reports_in_sequence,
+            outSequence: route.reports_out_sequence,
+            replayed: receipt === null ? null : BigInt(receipt.sequence),
+            stored: route.reports_accepted,
+            batch: events.length,
+        });
+        if (!answer.ok) return answer;
+        const { sequence, store } = answer.value;
+        const key = route.reports_key_to_module;
+        if (store === null) {
+            invariant(receipt !== null, "only a retry is answered from its receipt");
+            return ok({ key, sequence, accepted: receipt.accepted });
+        }
+
+        const kept = await storeReports(tx, {
+            productId: session.product_id,
+            releaseId: session.release_id,
+            events: events.slice(0, store),
+            at: txNow,
+        });
+        if (!kept.ok) return kept;
+        const advanced = await execute(
+            tx,
+            sql`update runtime_session
+                set reports_in_sequence = ${frame.header.sequence},
+                    reports_out_sequence = reports_out_sequence + 1,
+                    reports_accepted = reports_accepted + ${store}
+                where id = ${session.id}`,
+        );
+        if (!advanced.ok) return advanced;
+        const recorded = await recordReceipt(tx, op, {
+            sequence: sequence.toString(),
+            accepted: store,
+        });
+        if (!recorded.ok) return recorded;
+        return ok({ key, sequence, accepted: store });
+    });
+    if (!served.ok) return served;
+    const { key, sequence, accepted } = served.value;
+    const ack = sealReportsAck({
+        rng: params.rng,
+        key,
+        session: params.sessionId,
+        sequence,
+        answers: frame.header.sequence,
+        accepted,
+    });
+    key.fill(0);
+    return ok(ack);
 }
 
 // POST /v1/sessions/:id/close: the loader ends the session (the game or the module is gone) and

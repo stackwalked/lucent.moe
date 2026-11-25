@@ -56,6 +56,12 @@ import { type Overrides, parseOverrides, toOverridesSignedBytes } from "@lucent/
 import { parseRefusal, type RefusalCode } from "@lucent/wire/refusal";
 import { toReleaseSealBytes } from "@lucent/wire/release-seal";
 import {
+    parseReportsAck,
+    type ReportEvent,
+    type ReportsAck,
+    toReportsRequestBytes,
+} from "@lucent/wire/reports";
+import {
     deriveSessionKeys,
     parseSessionReply,
     type SessionKeys,
@@ -622,6 +628,17 @@ export type TestModule = {
         params?: { readonly sequence?: bigint },
     ) => Uint8Array;
     readonly acceptCloud: (reply: Uint8Array) => CloudResponse;
+    // A reports batch, sealed under the reports route's keys on its own sequences: each call
+    // takes the next unless one is given.
+    readonly reports: (
+        events: readonly ReportEvent[],
+        params?: { readonly sequence?: bigint },
+    ) => Uint8Array;
+    // The ack and the sequence of the frame that carried it.
+    readonly acceptReports: (reply: Uint8Array) => {
+        readonly sequence: bigint;
+        readonly ack: ReportsAck;
+    };
     readonly session: () => Uint8Array;
     readonly held: () => Lease;
 };
@@ -652,6 +669,7 @@ export function createTestModule(
     let sentFrames = 0n;
     let receivedFrames = 0n;
     let sentData = 0n;
+    let sentReports = 0n;
     let firstData: DataResponse | null = null;
     let firstOverrides: OverridesTaken | null = null;
 
@@ -820,6 +838,30 @@ export function createTestModule(
             const parsed = parseCloudResponse(plain.value);
             invariant(parsed.ok, "the cloud response parses");
             return parsed.value;
+        },
+        reports: (events, params) => {
+            invariant(keys !== null, "the session is open");
+            sentReports += 1n;
+            const frame = sealFrame(keys.reports.moduleToServer, {
+                header: {
+                    session,
+                    direction: "module_to_server",
+                    sequence: params?.sequence ?? sentReports,
+                },
+                nonce: rng.fillBytes(new Uint8Array(24)),
+                plain: toReportsRequestBytes({ events }),
+            });
+            return toFrameBytes(frame);
+        },
+        acceptReports: (reply) => {
+            const frame = parseFrame(reply);
+            invariant(frame.ok && keys !== null, "the reports reply is a frame of an open session");
+            invariant(frame.value.header.direction === "server_to_module", "the server's frame");
+            const plain = openFrame(keys.reports.serverToModule, frame.value);
+            invariant(plain.ok, "the ack opens under the reports route's key");
+            const parsed = parseReportsAck(plain.value);
+            invariant(parsed.ok, "the ack parses");
+            return { sequence: frame.value.header.sequence, ack: parsed.value };
         },
         session: () => session,
         held: () => {

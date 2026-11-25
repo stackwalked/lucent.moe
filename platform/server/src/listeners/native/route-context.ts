@@ -55,6 +55,8 @@ export const DEFAULT_RATE_LIMITS: Readonly<Record<string, RateRule>> = {
     "sessions.open": { perMinute: 20 },
     "sessions.lease": { perMinute: 20 },
     "sessions.data": { perMinute: 60 },
+    // A module batches its reports; a few a minute is a busy one.
+    "sessions.reports": { perMinute: 20 },
     "sessions.close": { perMinute: 20 },
     "loader.seal": { perMinute: 20 },
     "artifacts.read": { perMinute: 20 },

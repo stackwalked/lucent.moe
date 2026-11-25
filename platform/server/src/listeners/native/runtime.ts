@@ -5,7 +5,13 @@ import { parseLeaseRequest } from "@lucent/wire/lease-exchange";
 import { parseSessionHello } from "@lucent/wire/session";
 import { parseStartRequest, toStartReplyBytes } from "@lucent/wire/start";
 import type { Hono } from "hono";
-import { closeSession, openSession, renewLease, serveData } from "../../runtime/sessions.ts";
+import {
+    closeSession,
+    openSession,
+    renewLease,
+    serveData,
+    serveReports,
+} from "../../runtime/sessions.ts";
 import { createStart, readStartContainer } from "../../runtime/starts.ts";
 import {
     binaryResponse,
@@ -149,6 +155,28 @@ export function mountRuntime(
             );
         }
         return refusalResponse(refusalOf(served.error));
+    });
+
+    // The largest batch (64 crashes of 16 frames) is under 6 KiB sealed, inside the default body.
+    app.post("/v1/sessions/:id/reports", async (c) => {
+        const caller = await authenticated(c, "sessions.reports");
+        if (!caller.ok) return refusalResponse(caller.error);
+        const sessionId = parseIdSegment(c.req.param("id"));
+        if (sessionId === null) return refusalResponse({ code: "NOT_FOUND" });
+        const operationId = operationIdOf(c.req.raw);
+        const bytes = await body(c);
+        if (!bytes.ok) return refusalResponse(bytes.error);
+        const frame = parseFrame(bytes.value);
+        if (operationId === null || !frame.ok) return refusalResponse({ code: "INVALID_REQUEST" });
+        const served = await serveReports(deps.db, {
+            rng: deps.rng,
+            ...caller.value,
+            sessionId,
+            frame: frame.value,
+            body: bytes.value,
+            operationId,
+        });
+        return reply(served, (bytesOut) => binaryResponse(bytesOut));
     });
 
     app.post("/v1/sessions/:id/close", async (c) => {
