@@ -9,6 +9,7 @@ export type AdminSection =
     | "overrides"
     | "updates"
     | "review"
+    | "crashes"
     | "moderation"
     | "tickets"
     | "resources"
@@ -25,6 +26,7 @@ export const SECTION_PATHS = [
     ["overrides", "/admin/overrides"],
     ["updates", "/admin/updates"],
     ["review", "/admin/review"],
+    ["crashes", "/admin/crashes"],
     ["moderation", "/admin/moderation"],
     ["tickets", "/admin/tickets"],
     ["resources", "/admin/resources"],
@@ -35,7 +37,7 @@ export const SECTION_PATHS = [
 ] as const satisfies readonly (readonly [AdminSection, string])[];
 
 // Which admin sections a viewer may see: each needs its read permission, roles, releases and update
-// days either of their two. The review queue is read by whoever could act on it; resources by
+// days either of their two. The review queue is read by whoever could act on it, and so are crashes; resources by
 // whoever may publish one, which is a release of its own kind.
 export function adminSections(viewer: Viewer): Readonly<Record<AdminSection, boolean>> {
     return {
@@ -45,6 +47,7 @@ export function adminSections(viewer: Viewer): Readonly<Record<AdminSection, boo
         overrides: viewerCan(viewer, "facts:override"),
         updates: viewerCan(viewer, "releases:promote") || viewerCan(viewer, "facts:promote"),
         review: viewerCan(viewer, "accounts:suspend"),
+        crashes: viewerCan(viewer, "accounts:suspend"),
         moderation: viewerCan(viewer, "moderation:remove"),
         tickets: viewerCan(viewer, "tickets:reply"),
         resources: viewerCan(viewer, "releases:promote"),

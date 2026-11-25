@@ -11,6 +11,7 @@ export const ADMIN_COPY = {
     overrides: "kill switches",
     updates: "update days",
     review: "review",
+    crashes: "crashes",
     audit: "audit",
     system: "system",
     usage: "usage",
