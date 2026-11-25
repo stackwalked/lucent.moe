@@ -240,6 +240,7 @@ const inputs: SinglePurpose = {
     },
     "profile.get": { username: "someone" },
     "profile.bio.set": { bio: "hello" },
+    "profile.avatar.clear": {},
     "guides.list": { productId: "cs2", cursor: null },
     "guides.get": { id: "00000000-0000-4000-8000-000000000001" },
     "guides.create": { productId: "cs2", title: "title", body: "body" },

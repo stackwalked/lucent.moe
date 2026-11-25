@@ -1,7 +1,7 @@
 import { AccountId, EpochMs, ProductId } from "@lucent/core/scalars";
 import { z } from "zod";
 import { defineContract } from "../contract.ts";
-import { RestrictionKind, ViewRefusal } from "./community.ts";
+import { Avatar, RestrictionKind, ViewRefusal } from "./community.ts";
 import { MemberRefusal } from "./inbox.ts";
 import { Done } from "./shared.ts";
 
@@ -23,8 +23,14 @@ export const ExportData = z.object({
     }),
     // Each list holds the newest 1,000 rows at most; a kind that was cut is named here.
     truncated: z.array(z.string()).readonly(),
+    // `avatar` names the stored images by digest; the bytes are not in the file.
     profile: z
-        .object({ bio: z.string(), visibility: ProfileVisibility, removedAt: Removed })
+        .object({
+            bio: z.string(),
+            visibility: ProfileVisibility,
+            removedAt: Removed,
+            avatar: Avatar.nullable(),
+        })
         .nullable(),
     guides: z
         .array(

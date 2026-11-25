@@ -5,6 +5,7 @@ import { authorize, type Caller } from "@lucent/policy/policy";
 import { ReportKind, type ReportReason } from "@lucent/rpc/web/moderation";
 import { z } from "zod";
 import { lockCallerWith } from "../authority/standing.ts";
+import { clearRemovedAvatar } from "../community/avatars.ts";
 import { guideReadable, notBlockedWith } from "../community/blocks.ts";
 import { decideReportLimit } from "../community/limits.rules.ts";
 import { type NotFound, requireListed } from "../community/page.ts";
@@ -76,7 +77,8 @@ function findTarget(tx: Tx, kind: Kind, id: string, viewer: AccountId | null) {
                 tx,
                 Target,
                 sql`select p.account_id as "authorId", null as "productId", left(p.bio, 280) as excerpt
-                    from profile p where p.id = ${id}::uuid and p.removed_at is null and p.bio <> ''
+                    from profile p where p.id = ${id}::uuid and p.removed_at is null
+                      and (p.bio <> '' or p.avatar_large is not null)
                       and ${unblocked(sql`p.account_id`)}
                       and (${viewer}::text is null or p.account_id = ${viewer} or p.visibility = 'members')`,
             );
@@ -232,7 +234,7 @@ function hide(tx: Tx, kind: Kind, id: string, by: AccountId) {
 }
 
 // Gate: `moderation:remove`, no rank target (content has no rank). Lock order: the caller's
-// account, then the content row, then report rows; dismissal takes only its own report row, so
+// account, then the content row (a profile's then its avatar_image rows), then report rows; dismissal takes only its own report row, so
 // two staff resolving reports on one target never wait on each other in a cycle. The audit line
 // is last. A removal returns what the caller writes to the `removed` log once this commits.
 export async function resolveReport(params: {
@@ -285,6 +287,10 @@ export async function resolveReport(params: {
         }
         const hidden = await hide(tx, kind, targetId, params.caller.accountId);
         if (!hidden.ok) return hidden;
+        if (kind === "profile" && hidden.value !== null) {
+            const pictureGone = await clearRemovedAvatar(tx, targetId);
+            if (!pictureGone.ok) return pictureGone;
+        }
         const closed = await execute(
             tx,
             sql`update report set state = 'removed', resolved_by = ${params.caller.accountId}, resolved_at = now()

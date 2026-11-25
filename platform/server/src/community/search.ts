@@ -5,6 +5,7 @@ import { z } from "zod";
 import { type Db, queryAll, sql } from "../db/pool.ts";
 import { withMember } from "../notify/account.ts";
 import { filterListedProducts } from "../products/visibility.ts";
+import { authorAvatar } from "./avatars.ts";
 import { notBlockedWith } from "./blocks.ts";
 
 const LIMIT = 20;
@@ -20,6 +21,7 @@ const GuideRow = z.object({
     productId: ProductId,
     title: z.string(),
     username: z.string().nullable(),
+    avatar: z.string().nullable(),
     updatedAt: EpochMs,
 });
 
@@ -36,7 +38,8 @@ export function searchCommunity(
         const guides = await queryAll(
             tx,
             GuideRow,
-            sql`select g.id, g.product_id as "productId", g.title, a.username, g.updated_at as "updatedAt"
+            sql`select g.id, g.product_id as "productId", g.title, a.username,
+                       ${authorAvatar(accountId, sql`g.author_id`)} as avatar, g.updated_at as "updatedAt"
                 from guide g join account a on a.id = g.author_id,
                      websearch_to_tsquery('english', ${params.q}) as query
                 where g.search @@ query and g.removed_at is null
@@ -61,7 +64,10 @@ export function searchCommunity(
                   );
         if (!accounts.ok) return accounts;
         return ok({
-            guides: guides.value.map(({ username, ...row }) => ({ ...row, author: { username } })),
+            guides: guides.value.map(({ username, avatar, ...row }) => ({
+                ...row,
+                author: { username, avatar },
+            })),
             accounts: accounts.value,
         });
     });

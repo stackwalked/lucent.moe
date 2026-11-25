@@ -46,5 +46,15 @@ export const ReportRefusal = z.discriminatedUnion("code", [
 
 export const ContentId = z.uuid();
 
-// Who wrote it: usernames are the only public name an account has.
-export const Author = z.object({ username: z.string().nullable() });
+// A stored avatar image: the SHA-256 of its WebP bytes, which is also how it is fetched.
+export const AvatarDigest = z.string().regex(/^[0-9a-f]{64}$/);
+
+// The profile picture at both sizes it is stored in: 256 px for the profile, 64 px for authorship.
+export const Avatar = z.object({ large: AvatarDigest, small: AvatarDigest });
+
+// Who wrote it: usernames are the only public name an account has. `avatar` is the 64 px image
+// of their profile picture, null when they have none or their profile isn't the reader's to see.
+export const Author = z.object({
+    username: z.string().nullable(),
+    avatar: AvatarDigest.nullable(),
+});

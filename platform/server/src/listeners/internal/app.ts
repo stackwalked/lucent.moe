@@ -9,6 +9,7 @@ import { createEventHub, type EventHub } from "../../community/events.ts";
 import type { Logger } from "../../core/log.ts";
 import type { EpochGuard } from "../../db/epoch-guard.ts";
 import type { OverrideSigner } from "../../runtime/lease-key.ts";
+import { mountAvatars } from "./avatars.ts";
 import { mountLoaderDownload } from "./download.ts";
 import { mountCommunityEvents } from "./events.ts";
 import { mountResourceFiles } from "./resources.ts";
@@ -74,6 +75,11 @@ export function createInternalWebApp(deps: {
         auth: deps.auth,
         catalog: deps.catalog,
         artifactDir: deps.artifactDir,
+        isSuperseded: deps.epochGuard.isSuperseded,
+        logger: deps.logger,
+    });
+    mountAvatars(app, {
+        db: deps.auth.db,
         isSuperseded: deps.epochGuard.isSuperseded,
         logger: deps.logger,
     });

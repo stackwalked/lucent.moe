@@ -32,7 +32,11 @@ async function gather(tx: Tx, accountId: AccountId, txNow: EpochMs) {
         tx,
         ExportData.shape.profile.unwrap(),
         sql`
-        select bio, visibility, removed_at as "removedAt" from profile where account_id = ${accountId}`,
+        select bio, visibility, removed_at as "removedAt",
+               case when avatar_large is not null
+                    then json_build_object('large', avatar_large, 'small', avatar_small)
+               end as avatar
+        from profile where account_id = ${accountId}`,
     );
     if (!profile.ok) return profile;
     const guides = await queryAll(

@@ -4,6 +4,7 @@ import { type BearerToken, EpochMs, ProductId } from "@lucent/core/scalars";
 import { z } from "zod";
 import { type Db, queryAll, queryOne, sql, type Tx } from "../db/pool.ts";
 import { withMember } from "../notify/account.ts";
+import { authorAvatar } from "./avatars.ts";
 import { guideReadable, notBlockedWith } from "./blocks.ts";
 import { checkPostRate } from "./limits.ts";
 import { withMemberAt } from "./member.ts";
@@ -41,6 +42,7 @@ async function guideProduct(
 const Row = z.object({
     id: z.uuid(),
     username: z.string().nullable(),
+    avatar: z.string().nullable(),
     authorId: z.string(),
     body: z.string(),
     createdAt: EpochMs,
@@ -68,7 +70,8 @@ export function listComments(
         const rows = await queryAll(
             tx,
             Row,
-            sql`select c.id, a.username, c.author_id as "authorId", c.body, c.created_at as "createdAt"
+            sql`select c.id, a.username,
+                       ${authorAvatar(accountId, sql`c.author_id`)} as avatar, c.author_id as "authorId", c.body, c.created_at as "createdAt"
                 from comment c join account a on a.id = c.author_id
                 where c.guide_id = ${params.guideId}::uuid and c.removed_at is null
                   and ${notBlockedWith(accountId, sql`c.author_id`)} ${after}
@@ -77,9 +80,9 @@ export function listComments(
         if (!rows.ok) return rows;
         const page = pageOf(rows.value);
         return ok({
-            items: page.items.map(({ username, authorId, ...row }) => ({
+            items: page.items.map(({ username, avatar, authorId, ...row }) => ({
                 ...row,
-                author: { username },
+                author: { username, avatar },
                 isMine: authorId === accountId,
             })),
             nextCursor: page.nextCursor,

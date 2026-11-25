@@ -23,9 +23,13 @@ export function readProfile(db: Db, token: BearerToken, params: { readonly usern
                 bio: z.string(),
                 visibility: z.enum(PROFILE_VISIBILITIES),
                 joinedAt: EpochMs,
+                avatar: z.object({ large: z.string(), small: z.string() }).nullable(),
             }),
             sql`select a.id, p.id as "profileId", a.username,
                        case when p.removed_at is null then coalesce(p.bio, '') else '' end as bio,
+                       case when p.removed_at is null and p.avatar_large is not null
+                            then json_build_object('large', p.avatar_large, 'small', p.avatar_small)
+                       end as avatar,
                        coalesce(p.visibility, 'members') as visibility, a.created_at as "joinedAt"
                 from account a left join profile p on p.account_id = a.id
                 where a.username = ${params.username.toLowerCase()}

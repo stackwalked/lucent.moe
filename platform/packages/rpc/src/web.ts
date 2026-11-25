@@ -47,6 +47,14 @@ export const COMMUNITY_EVENTS_PATH = "/internal/web/events";
 export const RESOURCE_UPLOAD_PATH = "/internal/web/resources/upload";
 export const RESOURCE_DOWNLOAD_PATH = "/internal/web/resources/files";
 
+// The internal listener's streaming routes for avatars. Upload: a member POSTs the raw image
+// bytes (at most 512 KiB, JPEG, PNG or WebP) with `Lucent-Session`, answered `{ large, small }`
+// digests or an AvatarUploadRefusal (web/profile.ts). Images: a GET of `<path>/<digest>` with
+// `Lucent-Session`, answered with the WebP while some profile the member may open names it,
+// or 404.
+export const AVATAR_UPLOAD_PATH = "/internal/web/avatars/upload";
+export const AVATAR_IMAGE_PATH = "/internal/web/avatars/images";
+
 function composeWebContract() {
     return defineContract({
         ...healthContract,

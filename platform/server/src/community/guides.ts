@@ -4,6 +4,7 @@ import { type BearerToken, EpochMs, ProductId } from "@lucent/core/scalars";
 import { z } from "zod";
 import { type Db, execute, queryAll, queryOne, sql } from "../db/pool.ts";
 import { withMember } from "../notify/account.ts";
+import { authorAvatar } from "./avatars.ts";
 import { guideReadable } from "./blocks.ts";
 import { decideGuideLimit } from "./limits.rules.ts";
 import { withMemberAt } from "./member.ts";
@@ -14,13 +15,14 @@ const Summary = z.object({
     id: z.uuid(),
     title: z.string(),
     username: z.string().nullable(),
+    avatar: z.string().nullable(),
     createdAt: EpochMs,
     updatedAt: EpochMs,
 });
 
-const toSummary = ({ username, ...row }: z.output<typeof Summary>) => ({
+const toSummary = ({ username, avatar, ...row }: z.output<typeof Summary>) => ({
     ...row,
-    author: { username },
+    author: { username, avatar },
 });
 
 export function listGuides(
@@ -45,7 +47,8 @@ export function listGuides(
         const rows = await queryAll(
             tx,
             Summary,
-            sql`select g.id, g.title, a.username, g.created_at as "createdAt", g.updated_at as "updatedAt"
+            sql`select g.id, g.title, a.username,
+                       ${authorAvatar(accountId, sql`g.author_id`)} as avatar, g.created_at as "createdAt", g.updated_at as "updatedAt"
                 from guide g join account a on a.id = g.author_id
                 where g.product_id = ${params.productId}
                   and ${guideReadable(accountId, { removedAt: sql`g.removed_at`, authorId: sql`g.author_id` })} ${after}
@@ -73,6 +76,7 @@ export function readGuide(
             tx,
             Detail,
             sql`select g.id, g.title, g.body, g.product_id as "productId", g.author_id as "authorId", a.username,
+                       ${authorAvatar(accountId, sql`g.author_id`)} as avatar,
                        g.created_at as "createdAt", g.updated_at as "updatedAt"
                 from guide g join account a on a.id = g.author_id
                 where g.id = ${params.id}::uuid

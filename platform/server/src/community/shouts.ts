@@ -5,6 +5,7 @@ import { z } from "zod";
 import { type Db, queryAll, queryOne, type SqlFragment, sql, type Tx } from "../db/pool.ts";
 import { withMember } from "../notify/account.ts";
 import { filterListedProducts, type MemberCatalog } from "../products/visibility.ts";
+import { authorAvatar } from "./avatars.ts";
 import { notBlockedWith } from "./blocks.ts";
 import { checkPostRate } from "./limits.ts";
 import { withMemberAt } from "./member.ts";
@@ -14,6 +15,7 @@ import { mayPostHere } from "./standing.ts";
 const Row = z.object({
     id: z.uuid(),
     username: z.string().nullable(),
+    avatar: z.string().nullable(),
     authorId: z.string(),
     productId: ProductId.nullable(),
     body: z.string(),
@@ -69,7 +71,8 @@ export function listShouts(
         const rows = await queryAll(
             tx,
             Row,
-            sql`select s.id, a.username, s.author_id as "authorId", s.product_id as "productId", s.body,
+            sql`select s.id, a.username,
+                       ${authorAvatar(accountId, sql`s.author_id`)} as avatar, s.author_id as "authorId", s.product_id as "productId", s.body,
                        s.created_at as "createdAt"
                 from shout s join account a on a.id = s.author_id
                 where s.removed_at is null and ${notBlockedWith(accountId, sql`s.author_id`)}
@@ -79,9 +82,9 @@ export function listShouts(
         if (!rows.ok) return rows;
         const page = pageOf(rows.value);
         return ok({
-            items: page.items.map(({ username, authorId, ...row }) => ({
+            items: page.items.map(({ username, avatar, authorId, ...row }) => ({
                 ...row,
-                author: { username },
+                author: { username, avatar },
                 isMine: authorId === accountId,
             })),
             nextCursor: page.nextCursor,

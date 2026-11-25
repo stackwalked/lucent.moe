@@ -249,6 +249,7 @@ test("the export is the account's own data in one document and nothing of anyone
             bio: "alice bio",
             visibility: "members",
             removedAt: null,
+            avatar: null,
         });
         expect(mine.value.guides.map((g) => g.title)).toEqual(["alice guide"]);
         expect(mine.value.shouts.map((s) => s.body)).toEqual(["alice shout"]);
