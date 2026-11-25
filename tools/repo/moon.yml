@@ -18,8 +18,13 @@ taskOptions:
 tasks:
   # Without dprint's incremental cache: it can't see formatter versions or config files such as
   # native/.clang-format, so a cached pass could hide a stricter rule.
+  #
+  # In a commit hook it checks only the files the commit adds or changes: the whole tree took
+  # minutes per commit and one formatter process per CMake, Lua and C++ file. A commit that
+  # touches what decides the formatting (dprint's config, the tool pins, a .clang-format, this
+  # task) still checks everything. Run outside a hook, it checks everything.
   format:
-    command: "uv run tools/lint/staged.py dprint check --incremental=false"
+    command: "uv run tools/lint/staged.py --changed-unless=.config/dprint.json,.prototools,*.clang-format,uv.lock,pyproject.toml,tools/proto/*,tools/lint/staged.py,tools/repo/moon.yml dprint check --incremental=false --allow-no-files"
     options: { cache: false }
     inputs: ["/**/*", "!/**/node_modules/**/*", "!/**/node_modules/*"]
   suppressions:

@@ -7,6 +7,8 @@ from staged import run_on_index
 if TYPE_CHECKING:
     from pathlib import Path
 
+    import pytest
+
 # In the snapshot: the staged content of tracked.txt, the staged new file, and nothing else.
 SEES_ONLY_THE_INDEX = """
 import pathlib, subprocess, sys
@@ -51,3 +53,51 @@ def test_a_check_sees_the_staged_snapshot_not_the_working_tree(tmp_path: Path) -
         "the working tree is untouched"
     )
     assert list((tmp_path / ".moon" / "cache").iterdir()) == [], "the scratch tree is removed"
+
+
+# Prints the file arguments it was given, one per line.
+ECHO_ARGUMENTS = "import sys; print('\\n'.join(sys.argv[1:]))"
+
+
+def _repo_with_a_staged_change(root: Path, staged: dict[str, str]) -> None:
+    _git(root, "init", "-q")
+    (root / ".moon" / "cache").mkdir(parents=True)
+    _write(root / ".gitignore", ".moon/\n")
+    _write(root / "untouched.md", "committed")
+    _write(root / "removed.md", "committed")
+    _write(root / "rules.json", "{}")
+    _git(root, "add", "untouched.md", "removed.md", "rules.json", ".gitignore")
+    _git(root, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "base")
+    for name, text in staged.items():
+        _write(root / name, text)
+        _git(root, "add", name)
+
+
+def _arguments_seen(
+    root: Path, full_run: list[str], capfd: pytest.CaptureFixture[str]
+) -> list[str]:
+    command = [sys.executable, "-c", ECHO_ARGUMENTS]
+    assert run_on_index(command, root / ".git" / "index", root, full_run) == 0
+    return sorted(capfd.readouterr().out.split())
+
+
+def test_a_scoped_check_is_given_only_what_the_commit_adds_or_changes(
+    tmp_path: Path, capfd: pytest.CaptureFixture[str]
+) -> None:
+    _repo_with_a_staged_change(tmp_path, {"added.md": "new", "untouched.md": "committed"})
+    _git(tmp_path, "rm", "-q", "removed.md")
+    assert _arguments_seen(tmp_path, ["rules.json"], capfd) == ["added.md"]
+
+
+def test_a_commit_that_changes_the_rules_is_checked_whole(
+    tmp_path: Path, capfd: pytest.CaptureFixture[str]
+) -> None:
+    _repo_with_a_staged_change(tmp_path, {"added.md": "new", "rules.json": '{"strict": true}'})
+    assert _arguments_seen(tmp_path, ["rules.json"], capfd) == []
+
+
+def test_a_commit_of_deletions_runs_nothing(tmp_path: Path) -> None:
+    _repo_with_a_staged_change(tmp_path, {})
+    _git(tmp_path, "rm", "-q", "removed.md")
+    fails = [sys.executable, "-c", "import sys; sys.exit(3)"]
+    assert run_on_index(fails, tmp_path / ".git" / "index", tmp_path, ["rules.json"]) == 0
