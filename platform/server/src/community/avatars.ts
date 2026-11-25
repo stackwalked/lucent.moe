@@ -91,13 +91,16 @@ export async function forgetAvatars(tx: Tx, digests: readonly string[]) {
     );
 }
 
-// Before the upload's bytes are read: whether this member may set an avatar now. The writer
-// decides again under its locks once the child has answered.
+// Before the upload's bytes are read: whether this member may set an avatar now, and who they
+// are (the route's rate limit is per account). The writer decides again under its locks once the
+// child has answered.
 export function checkAvatarUpload(db: Db, token: BearerToken) {
     return withMemberAt(db, token, async (tx, accountId, txNow) => {
         const gathered = await gatherSetAvatar(tx, accountId);
         if (!gathered.ok) return gathered;
-        return decideSetAvatar({ ...gathered.value, now: txNow });
+        const decided = decideSetAvatar({ ...gathered.value, now: txNow });
+        if (!decided.ok) return decided;
+        return ok({ accountId });
     });
 }
 
@@ -111,16 +114,24 @@ export function setAvatar(db: Db, token: BearerToken, images: AvatarImages) {
         if (!gathered.ok) return gathered;
         const decided = decideSetAvatar({ ...gathered.value, now: txNow });
         if (!decided.ok) return decided;
-        for (const [digest, bytes] of [
+        // Every image row this writer touches, new and old, locked in digest order before any
+        // other: two members swapping pictures take them in the same order and never deadlock.
+        // A new one is written (or, if it exists, locked) by its upsert; an old one by a select.
+        const fresh = new Map([
             [digests.large, images.large],
             [digests.small, images.small],
-        ] as const) {
-            const stored = await execute(
+        ]);
+        const touched = [...new Set([...fresh.keys(), ...gathered.value.previous])].sort();
+        for (const digest of touched) {
+            const bytes = fresh.get(digest);
+            const locked = await execute(
                 tx,
-                sql`insert into avatar_image (digest, bytes) values (${digest}, ${bytes})
-                    on conflict (digest) do update set digest = excluded.digest`,
+                bytes === undefined
+                    ? sql`select 1 from avatar_image where digest = ${digest} for update`
+                    : sql`insert into avatar_image (digest, bytes) values (${digest}, ${bytes})
+                          on conflict (digest) do update set digest = excluded.digest`,
             );
-            if (!stored.ok) return stored;
+            if (!locked.ok) return locked;
         }
         const named = await execute(
             tx,

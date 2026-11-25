@@ -26,6 +26,7 @@ const KNOWN: readonly RefusalCode[] = [
     "IMAGE_UNDECODABLE",
     "IMAGE_TIMED_OUT",
     "INVALID_REQUEST",
+    "THROTTLED",
 ];
 
 function parseAnswer(value: unknown): Outcome<null> {

@@ -12,11 +12,12 @@ import { exportOwnData } from "../src/community/export.ts";
 import { readProfile, setBio, setVisibility } from "../src/community/profiles.ts";
 import { createShout, listShouts } from "../src/community/shouts.ts";
 import { claimServiceEpoch, openEpochGuard } from "../src/db/epoch-guard.ts";
-import { type Db, queryAll, sql } from "../src/db/pool.ts";
+import { type Db, execute, queryAll, sql } from "../src/db/pool.ts";
+import { withTx } from "../src/db/tx.ts";
 import { createInternalWebApp } from "../src/listeners/internal/app.ts";
 import { createReport, listReports, resolveReport } from "../src/moderation/reports.ts";
 import { setRestriction } from "../src/moderation/restrictions.ts";
-import { catalog } from "./authority-fixtures.ts";
+import { catalog, waitForLockWaiters } from "./authority-fixtures.ts";
 import { member, moderator, NO_LOG } from "./community-fixtures.ts";
 import { createTestAuthDeps } from "./harness/auth.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
@@ -308,5 +309,69 @@ test("staff removing a profile take its avatar down and delete its images; a new
         );
         expect(await setBio(db, alice.token, { bio: "sorry" })).toEqual(ok(undefined));
         expect((await setAvatar(db, alice.token, images("again"))).ok).toBe(true);
+    });
+});
+
+test("past six uploads a minute an account is throttled before its body is read, and others are not", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ nativeDb: db }) => {
+        const rng = createSeededRng(9561);
+        const { upload } = await internalApp(db, 9562);
+        const alice = await member(db, rng, "alice@lucent.test", "alice");
+        const bob = await member(db, rng, "bob@lucent.test", "bob");
+        const text = await fixture("not-an-image.png");
+        for (let i = 0; i < 6; i++) {
+            expect((await upload(alice.token, text, text.length)).status).toBe(422);
+        }
+        let pulled = false;
+        const body = new ReadableStream<Uint8Array>(
+            {
+                pull(controller) {
+                    pulled = true;
+                    controller.close();
+                },
+            },
+            { highWaterMark: 0 },
+        );
+        const throttled = await upload(alice.token, body, 1_000);
+        expect(throttled.status).toBe(429);
+        expect(await throttled.json()).toEqual(err({ code: "THROTTLED" }));
+        expect(pulled).toBe(false);
+        expect((await upload(bob.token, text, text.length)).status).toBe(422);
+    });
+});
+
+// Each takes the other's picture. Without one lock order over new and old images, Alice would
+// hold Bob's images and wait for her old ones while Bob held those and waited for his.
+test("two members swapping pictures at once both get the other's", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ nativeDb: db }) => {
+        const rng = createSeededRng(9571);
+        const alice = await member(db, rng, "alice@lucent.test", "alice");
+        const bob = await member(db, rng, "bob@lucent.test", "bob");
+        const hers = await setAvatar(db, alice.token, images("alice"));
+        const his = await setAvatar(db, bob.token, images("bob"));
+        invariant(hers.ok && his.ok, "expected both avatars");
+        // Both writers park behind a lock on one of Bob's images before either runs.
+        let racing: ReturnType<typeof setAvatar>[] = [];
+        let parked = false;
+        const gate = await withTx(db, async (tx) => {
+            const held = await execute(
+                tx,
+                sql`select 1 from avatar_image where digest = ${his.value.large} for update`,
+            );
+            invariant(held.ok, "the gate holds the row");
+            const takesHis = setAvatar(db, alice.token, images("bob"));
+            parked = await waitForLockWaiters(db, 1);
+            racing = [takesHis, setAvatar(db, bob.token, images("alice"))];
+            parked = parked && (await waitForLockWaiters(db, 2));
+            return ok(undefined);
+        });
+        expect(gate.ok).toBe(true);
+        expect(parked).toBe(true);
+        expect(await Promise.all(racing)).toEqual([ok(his.value), ok(hers.value)]);
+        expect(await storedDigests(db)).toEqual(
+            [hers.value.large, hers.value.small, his.value.large, his.value.small].sort(),
+        );
     });
 });

@@ -1,3 +1,4 @@
+import { type Clock, systemClock } from "@lucent/core/clock";
 import { err, ok } from "@lucent/core/result";
 import { BearerToken } from "@lucent/core/scalars";
 import { RPC_HEADERS } from "@lucent/rpc/contract";
@@ -8,8 +9,13 @@ import { AVATAR_MAX_BYTES, transcodeAvatar } from "../../adapters/image/image.ts
 import { checkAvatarUpload, readAvatarImage, setAvatar } from "../../community/avatars.ts";
 import type { Logger } from "../../core/log.ts";
 import type { Db } from "../../db/pool.ts";
+import { createRateLimiter, type RateRule } from "../native/rate-limit.ts";
 
-type Status = 400 | 401 | 403 | 404 | 413 | 422 | 503;
+type Status = 400 | 401 | 403 | 404 | 413 | 422 | 429 | 503;
+
+const UPLOAD_ROUTE = "avatars.upload";
+// Per account, per minute: a member trying a few pictures in a row, not a decoder farm.
+const UPLOAD_RATE: Readonly<Record<string, RateRule>> = { [UPLOAD_ROUTE]: { perMinute: 6 } };
 
 function refusal(error: { readonly code: string }, status: Status): Response {
     return Response.json(err(error), { status, headers: { "cache-control": "no-store" } });
@@ -59,8 +65,12 @@ export function mountAvatars(
         readonly db: Db;
         readonly isSuperseded: () => boolean;
         readonly logger: Logger;
+        // Upload rate limits only; who may upload is decided on the database's clock.
+        readonly clock?: Clock;
     },
 ): void {
+    const limiter = createRateLimiter({ clock: deps.clock ?? systemClock, rules: UPLOAD_RATE });
+
     app.post(AVATAR_UPLOAD_PATH, async (c) => {
         if (deps.isSuperseded()) return refusal({ code: "SERVICE_UNAVAILABLE" }, 503);
         const token = BearerToken.safeParse(c.req.header(RPC_HEADERS.session));
@@ -72,6 +82,10 @@ export function mountAvatars(
         if (length > AVATAR_MAX_BYTES) return refusal({ code: "IMAGE_TOO_LARGE" }, 413);
         const allowed = await checkAvatarUpload(deps.db, token.data);
         if (!allowed.ok) return writeRefusal(allowed.error);
+        // Counted only for uploads the member may make, and before a byte of the body is read.
+        if (!limiter.take(UPLOAD_ROUTE, allowed.value.accountId).ok) {
+            return refusal({ code: "THROTTLED" }, 429);
+        }
         const body = c.req.raw.body;
         if (body === null) return refusal({ code: "INVALID_REQUEST" }, 400);
         const bytes = await readBounded(body, AVATAR_MAX_BYTES);
@@ -80,10 +94,14 @@ export function mountAvatars(
         const images = await transcodeAvatar(bytes);
         if (!images.ok) {
             const { error } = images;
-            if (error.code === "IMAGE_CHILD_FAILED") {
-                deps.logger.write("error", "avatar_child_failed", {
+            if (error.code === "IMAGE_BUSY") {
+                deps.logger.write("warn", "avatar_decoders_busy", { origin: "internal-web" });
+                return refusal({ code: "SERVICE_UNAVAILABLE" }, 503);
+            }
+            if (error.code === "IMAGE_CHILD_FAILED" || error.code === "IMAGE_CODEC_FAILED") {
+                deps.logger.write("error", "avatar_decoder_failed", {
                     origin: "internal-web",
-                    detail: error.detail,
+                    detail: `${error.code}: ${error.detail}`,
                 });
                 return refusal({ code: "SERVICE_UNAVAILABLE" }, 503);
             }

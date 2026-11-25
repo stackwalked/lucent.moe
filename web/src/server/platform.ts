@@ -286,6 +286,7 @@ const AVATAR_REFUSALS: ReadonlySet<string> = new Set<RefusalCode>([
     "IMAGE_UNDECODABLE",
     "IMAGE_TIMED_OUT",
     "INVALID_REQUEST",
+    "THROTTLED",
 ]);
 
 function isAvatarRefusal(code: unknown): code is RefusalCode {
