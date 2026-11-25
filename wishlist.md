@@ -134,9 +134,9 @@ Beside phases 2 and 3; nothing native waits on it except cutover.
   the new-country review rule with DB-IP geo and resources, items served to and written by a
   session over `/data`, the staff crashes page landed): the waitlist.
 - Slice 5 (profiles, guides, comments, shouts, the inbox, reports and removal, posting
-  restrictions apart from the licence, blocking, the data export, search, a presence stream
-  landed): avatars (the codecs are dependencies to approve), presence shown in web, self-service
-  account deletion (what survives it is undecided).
+  restrictions apart from the licence, blocking, the data export, search, a presence stream,
+  avatars landed): presence shown in web, self-service account deletion (what survives it is
+  undecided).
 - The public record: product status, known issues, the changelog, recovery time per game update,
   refusal-code pages.
 - Member docs.
@@ -973,10 +973,7 @@ live in `wishlist/protection.md`.
     member commands, notice DMs, the staff desk and Discord-invite deletion landed. Still to
     land: lucent.moe invite codes in the leak guard, with admission. Releases carry no notes
     yet, so the releases feed posts each promotion.
-  - Avatar uploads run `@jsquash/jpeg@1.6.0`, `@jsquash/png@3.1.1` and `@jsquash/webp@1.5.0` in a
-    5s-bounded `env: {}` `Bun.spawn` child process with WASM linear memory rewritten to `640 MiB`
-    max, stripping metadata and storing 256px/64px WebPs by SHA-256 in Postgres; release binaries
-    and `<= 64 MiB` resources stream to `ARTIFACT_DIR`.
+  - Release binaries and `<= 64 MiB` resources stream to `ARTIFACT_DIR`.
 
   - Unref'd periodic jobs (`1m` challenges/nonces/receipts/refusals; `10m` retention, risk scoring,
     `.mmdb` reload, 7d idle ticket auto-close) with explicit 30d / 90d / 365d / forever retention
