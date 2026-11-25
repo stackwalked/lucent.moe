@@ -1,18 +1,14 @@
 import { BearerToken, OperationId, ProductId } from "@lucent/core/scalars";
 import { z } from "zod";
 import { CloudId, ItemKind } from "../cloud-item.ts";
+import { isCloudItemName } from "../cloud-item-guards.ts";
 import { defineContract } from "../contract.ts";
 import { Done, refusal, Unavailable } from "./shared.ts";
 
 const Revision = z.int32().positive();
 export const CloudProduct = z.strictObject({ productId: ProductId });
 export const CloudItem = CloudProduct.extend({ itemId: CloudId });
-const Name = z
-    .string()
-    .min(1)
-    .refine(
-        (s) => s.trim().length > 0 && s.isWellFormed() && !s.includes("\0") && [...s].length <= 64,
-    );
+const Name = z.string().min(1).refine(isCloudItemName);
 export const CreateItem = CloudProduct.extend({
     operationId: OperationId,
     name: Name,

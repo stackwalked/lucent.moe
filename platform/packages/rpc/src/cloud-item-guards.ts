@@ -11,5 +11,17 @@ export const isCloudId = (value: unknown): value is string =>
 export const ITEM_KINDS = ["config", "inventory", "script"] as const;
 export type ItemKind = (typeof ITEM_KINDS)[number];
 
+const utf8 = new TextEncoder();
+
+// Every writer's rule, the site's and a running session's: not blank, well formed, no NUL, at
+// most 64 code points and 255 UTF-8 bytes, so the /data list can carry every name (its name size
+// is a u8).
+export const isCloudItemName = (name: string): boolean =>
+    name.trim().length > 0 &&
+    name.isWellFormed() &&
+    !name.includes("\0") &&
+    [...name].length <= 64 &&
+    utf8.encode(name).byteLength <= 255;
+
 export const isItemKind = (value: unknown): value is ItemKind =>
     ITEM_KINDS.some((kind) => kind === value);
