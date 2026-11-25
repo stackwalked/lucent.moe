@@ -110,6 +110,7 @@ test("the connector mirrors standing into the guild within a tick, and a reconci
         }).call("health.check", {}),
     ).toEqual({ ok: false, error: { code: "AUTH_REQUIRED" } });
 
+    const ruleIds: string[] = [];
     for (const fields of [
         { kind: "role", roleId: LINKED, condition: { kind: "linked" } },
         { kind: "role", roleId: CS2_ROLE, condition: { kind: "entitled", productId: "cs2" } },
@@ -117,7 +118,8 @@ test("the connector mirrors standing into the guild within a tick, and a reconci
         { kind: "feed", channelId: RESOURCES_CHANNEL, feed: "resources" },
     ] as const) {
         const added = await web.call("admin.discord.rules.add", { fields }, { session: staff });
-        expect(added.ok).toBe(true);
+        invariant(added.ok, "the rule was added");
+        ruleIds.push(added.value.ruleId);
     }
     expect(
         await web.call(
@@ -245,15 +247,30 @@ test("the connector mirrors standing into the guild within a tick, and a reconci
     await until("join synced", () => fake.roles(CAROL).length > 0);
     expect(fake.roles(CAROL)).toEqual([LINKED]);
 
-    // A resource for everyone goes out; one for a product the public home doesn't list stays.
-    for (const [title, productId] of [
-        ["*setup* guide", null],
-        ["seed notes", "cs2"],
+    // A removed rule takes its role off whoever it had given it to; a role in no rule would
+    // otherwise never be touched again, through suspension and unlinking alike.
+    const [linkedRule] = ruleIds;
+    invariant(linkedRule !== undefined, "the linked rule exists");
+    const removed = await web.call(
+        "admin.discord.rules.remove",
+        { ruleId: linkedRule },
+        { session: staff },
+    );
+    expect(removed.ok).toBe(true);
+    await connector.tick();
+    expect(fake.roles(CAROL)).toEqual([]);
+    expect(fake.roles(ALICE)).toEqual([HAND_GIVEN]);
+
+    // A resource for everyone goes out; ones for a product the public home doesn't list stay,
+    // and however many of those are waiting they never hold the others back.
+    for (const [title, productId, age] of [
+        ...Array.from({ length: 25 }, (_, i) => [`seed notes ${i}`, "cs2", 60 - i] as const),
+        ["*setup* guide", null, 0],
     ] as const) {
         await db`insert into resource (product_id, title, description, file_name, digest, size,
                                        published_by, published_at, updated_at)
                  values (${productId}, ${title}, '', 'file.txt', ${"0".repeat(64)}, 1, ${root.id},
-                         now(), now())`;
+                         now() - ${age} * interval '1 second', now())`;
     }
     await connector.tick();
     await connector.tick();

@@ -47,6 +47,7 @@ export type FeedPost = {
           };
 };
 
+// Per rule, so one channel's backlog never holds back another's.
 const POSTS_PER_READ = 20;
 
 function publicProducts(catalog: ProductCatalog): readonly ProductDefinition[] {
@@ -123,7 +124,7 @@ export async function readPendingPosts(
         const listed = new Map(publicProducts(catalog).map((p) => [p.id, p]));
         const posts: FeedPost[] = [];
         for (const rule of rules.value) {
-            if (rule.fields.kind !== "feed" || posts.length >= POSTS_PER_READ) continue;
+            if (rule.fields.kind !== "feed") continue;
             const base = {
                 ruleId: rule.id,
                 channelId: rule.fields.channelId,
@@ -163,8 +164,12 @@ export async function readPendingPosts(
                             title: z.string(),
                             product_id: ProductId.nullable(),
                         }),
+                        // Unlisted products are left out here, not after the limit: skipped
+                        // rows would otherwise fill every read and hold back the rest for good.
                         sql`select r.id::text as id, r.title, r.product_id from resource r
                             where r.published_at >= ${toTimestamptz(rule.createdAt)}::timestamptz
+                              and (r.product_id is null
+                                   or r.product_id = any(${[...listed.keys()]}::text[]))
                               and not exists (select 1 from connector_discord_post p
                                               where p.rule_id = ${rule.id}::uuid
                                                 and p.subject = r.id::text)
@@ -215,7 +220,7 @@ export async function readPendingPosts(
                 }
             }
         }
-        return ok({ posts: posts.slice(0, POSTS_PER_READ) });
+        return ok({ posts });
     });
 }
 

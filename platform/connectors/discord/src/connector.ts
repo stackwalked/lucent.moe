@@ -100,6 +100,12 @@ export function createConnector(params: {
     let siteOrigin: string | null = null;
     const timers: ReturnType<typeof setInterval>[] = [];
 
+    type Pass = { readonly retired: ReadonlySet<string>; readonly refused: Set<string> };
+    const newPass = (retired: readonly string[]): Pass => ({
+        retired: new Set(retired),
+        refused: new Set(),
+    });
+
     const warn = (origin: LogOrigin, msg: string, detail: string): void => {
         logger.write("warn", msg, { origin, detail });
     };
@@ -121,22 +127,44 @@ export function createConnector(params: {
         return true;
     }
 
+    // Discord's "Missing Permissions": the role sits above the bot's own, or the bot may not
+    // manage roles. Every member's change to that role would fail the same way.
+    const MISSING_PERMISSIONS = 50_013;
+
     // Only the roles some rule manages are touched; any other role is staff's to give by hand.
+    // `pass` lives for one sync or reconcile: the roles whose rule was just removed, still taken
+    // off, and the roles Discord refused, not asked for again. A refused request counts toward
+    // Discord's invalid-request limit, so one refusal per role per pass is all it gets.
     async function applyRoles(
+        pass: Pass,
         userId: string,
         current: readonly string[],
         desired: readonly string[],
     ): Promise<void> {
-        for (const roleId of new Set([...managedRoleIds, ...desired])) {
+        for (const roleId of new Set([...managedRoleIds, ...pass.retired, ...desired])) {
             const has = current.includes(roleId);
             const wants = desired.includes(roleId);
-            if (has === wants) continue;
-            await discord(wants ? "role add failed" : "role removal failed", () =>
-                wants
-                    ? api.guilds.addRoleToMember(guildId, userId, roleId, { reason: SYNC_REASON })
-                    : api.guilds.removeRoleFromMember(guildId, userId, roleId, {
-                          reason: SYNC_REASON,
-                      }),
+            if (has === wants || pass.refused.has(roleId)) continue;
+            const changed = await tryAsync(
+                () =>
+                    wants
+                        ? api.guilds.addRoleToMember(guildId, userId, roleId, {
+                              reason: SYNC_REASON,
+                          })
+                        : api.guilds.removeRoleFromMember(guildId, userId, roleId, {
+                              reason: SYNC_REASON,
+                          }),
+                (cause) => cause,
+            );
+            if (changed.ok) continue;
+            const refused =
+                changed.error instanceof DiscordAPIError &&
+                changed.error.code === MISSING_PERMISSIONS;
+            if (refused) pass.refused.add(roleId);
+            warn(
+                "sync",
+                refused ? "role not manageable, skipped for this pass" : "role change failed",
+                describeUnknownError(changed.error),
             );
         }
     }
@@ -159,6 +187,7 @@ export function createConnector(params: {
 
     async function syncUsers(userIds: readonly string[]): Promise<void> {
         if (userIds.length === 0) return;
+        const pass = newPass([]);
         const desired = await resolve(userIds);
         if (desired === null) return;
         for (const [userId, roleIds] of desired) {
@@ -174,12 +203,14 @@ export function createConnector(params: {
                 continue;
             }
             if (member.value.user.bot === true) continue;
-            await applyRoles(userId, member.value.roles, roleIds);
+            await applyRoles(pass, userId, member.value.roles, roleIds);
         }
     }
 
-    async function runReconcile(): Promise<void> {
-        if (!(await refreshRules()) || managedRoleIds.size === 0) return;
+    async function runReconcile(retired: readonly string[] = []): Promise<void> {
+        if (!(await refreshRules())) return;
+        const pass = newPass(retired.filter((roleId) => !managedRoleIds.has(roleId)));
+        if (managedRoleIds.size === 0 && pass.retired.size === 0) return;
         let after = "0";
         for (;;) {
             const page = await discord("member list failed", () =>
@@ -190,8 +221,15 @@ export function createConnector(params: {
             const desired = await resolve(humans.map((member) => member.user.id));
             if (desired === null) return;
             for (const member of humans) {
-                await applyRoles(member.user.id, member.roles, desired.get(member.user.id) ?? []);
+                await applyRoles(
+                    pass,
+                    member.user.id,
+                    member.roles,
+                    desired.get(member.user.id) ?? [],
+                );
             }
+            // A large guild takes longer than the health check's window; a page done is alive.
+            params.onAlive?.();
             const last = page.value.at(-1);
             if (page.value.length < MEMBERS_PER_PAGE || last === undefined) return;
             after = last.user.id;
@@ -204,7 +242,11 @@ export function createConnector(params: {
             warn("platform", "feeds unavailable", pending.error.code);
             return;
         }
+        // A channel that refused a post (deleted, or the bot lost it) is left alone until the
+        // next tick rather than failing once per pending post.
+        const failed = new Set<string>();
         for (const item of pending.value.posts) {
+            if (failed.has(item.channelId)) continue;
             const { post } = item;
             const content =
                 post.kind === "status"
@@ -231,7 +273,10 @@ export function createConnector(params: {
                     ],
                 }),
             );
-            if (!message.ok) continue;
+            if (!message.ok) {
+                failed.add(item.channelId);
+                continue;
+            }
             const recorded = await platform.call("feeds.posted", {
                 ruleId: item.ruleId,
                 subject: item.subject,
@@ -253,14 +298,14 @@ export function createConnector(params: {
         const first = cursor === null;
         cursor = changes.value.cursor;
         // The first read only finds the head; whatever came before it a reconcile covers.
-        if (first || changes.value.reconcile) await runReconcile();
+        if (first || changes.value.reconcile) await runReconcile(changes.value.retiredRoleIds);
         else await syncUsers(changes.value.userIds);
         await postFeeds();
         params.onAlive?.();
     }
 
     const tick = () => queue.push("tick", runTick);
-    const reconcile = () => queue.push("reconcile", runReconcile);
+    const reconcile = () => queue.push("reconcile", () => runReconcile());
     const syncLater = (userId: string) => queue.push(`member:${userId}`, () => syncUsers([userId]));
 
     async function link(userId: string, code: string | null): Promise<string> {

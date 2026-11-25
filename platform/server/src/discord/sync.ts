@@ -89,6 +89,7 @@ export async function readChanges(
             readonly cursor: string;
             readonly userIds: readonly string[];
             readonly reconcile: boolean;
+            readonly retiredRoleIds: readonly string[];
         },
         DbFailure
     >
@@ -101,7 +102,12 @@ export async function readChanges(
                 sql`select coalesce(max(id), 0)::text as head from audit`,
             );
             if (!head.ok) return head;
-            return ok({ cursor: head.value?.head ?? "0", userIds: [], reconcile: false });
+            return ok({
+                cursor: head.value?.head ?? "0",
+                userIds: [],
+                reconcile: false,
+                retiredRoleIds: [],
+            });
         }
         const rows = await queryAll(
             tx,
@@ -118,6 +124,7 @@ export async function readChanges(
         const accountIds = new Set<string>();
         const roleIds = new Set<string>();
         const userIds = new Set<string>();
+        const retired = new Set<string>();
         for (const row of rows.value) {
             if (BigInt(row.id) > cursor) cursor = BigInt(row.id);
             if (RULE_OPERATIONS.has(row.operation)) reconcile = true;
@@ -127,6 +134,15 @@ export async function readChanges(
             if (user.success) userIds.add(user.data);
             const role = z.string().safeParse(row.target["roleId"]);
             if (row.operation === "role.upsert" && role.success) roleIds.add(role.data);
+            // A removed role rule names the Discord role it managed.
+            const discordRole = Snowflake.safeParse(row.target["roleId"]);
+            if (
+                row.operation === "discord.rule_remove" &&
+                row.target["kind"] === "role" &&
+                discordRole.success
+            ) {
+                retired.add(discordRole.data);
+            }
         }
         const linked = await queryAll(
             tx,
@@ -138,6 +154,11 @@ export async function readChanges(
         );
         if (!linked.ok) return linked;
         for (const row of linked.value) userIds.add(row.discord_user_id);
-        return ok({ cursor: cursor.toString(), userIds: [...userIds].sort(), reconcile });
+        return ok({
+            cursor: cursor.toString(),
+            userIds: [...userIds].sort(),
+            reconcile,
+            retiredRoleIds: [...retired].sort(),
+        });
     });
 }

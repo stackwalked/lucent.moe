@@ -75,6 +75,8 @@ export const discordContract = defineContract({
     },
     // The Discord users whose roles may have changed since `after`, from the audit trail. Null
     // `after` starts at the end. `reconcile`: the rules changed, so every member is compared.
+    // `retiredRoleIds`: Discord roles whose rule was just removed. `rules.read` no longer lists
+    // them as managed, so that reconcile takes them off whoever the rule had given them to.
     "changes.read": {
         session: "none",
         effect: "read",
@@ -83,6 +85,7 @@ export const discordContract = defineContract({
             cursor: Cursor,
             userIds: z.array(Snowflake).readonly(),
             reconcile: z.boolean(),
+            retiredRoleIds: z.array(Snowflake).readonly(),
         }),
         error: Failure,
     },
