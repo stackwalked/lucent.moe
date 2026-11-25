@@ -1,0 +1,5 @@
+{
+  "public_key": "00e3c56b91ab0a017174b96645eaf928366cdbae1e87fd21bf86661d86f3e7ef",
+  "error": "MALFORMED",
+  "defect": "a byte after the signature"
+}

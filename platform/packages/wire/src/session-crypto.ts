@@ -72,6 +72,18 @@ export async function sharedSecret(
     return ok(secret);
 }
 
+// The Ed25519 public key of a 32-byte seed, as crypto_ed25519_key_pair computes it.
+export async function signingPublicKey(seed: Uint8Array): Promise<Uint8Array<ArrayBuffer>> {
+    const key = await crypto.subtle.importKey(
+        "pkcs8",
+        withPrefix(PKCS8_ED25519, seed),
+        { name: "Ed25519" },
+        true,
+        ["sign"],
+    );
+    return publicPartOf(key);
+}
+
 // An Ed25519 signature from a 32-byte seed, as Monocypher's crypto_ed25519_sign makes it.
 export async function signWithSeed(
     seed: Uint8Array,

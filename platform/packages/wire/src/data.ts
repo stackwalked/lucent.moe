@@ -19,9 +19,14 @@ import { isModuleList, readModules, writeModules } from "./start.ts";
 //   response: context "lucent data response v2" (32), u64 the sequence it answers, u64 data
 //     revision, u32 bundle size, the bundle, u8 unsupported module count, then the modules as in
 //     the request.
+// Response version 3 is version 2 with u32 override size and the release's override document
+// (overrides.ts) after the bundle; size 0 means none. A release's module reads one or the other,
+// never both, so version 2 stays as it is. Native has no codec for version 3 yet: its vectors are
+// this side's, and native must match them.
 
 const REQUEST_VERSION = 1;
 const RESPONSE_VERSION = 2;
+const RESPONSE_V3 = 3;
 
 const FEATURE_SIZE = 8;
 
@@ -142,4 +147,72 @@ export function parseDataResponse(bytes: Uint8Array): Result<DataResponse, Forma
         return unsupported;
     }
     return finish(input, { answers, dataRevision, bundle, unsupported: unsupported.value });
+}
+
+export type DataResponseV3 = DataResponse & {
+    // The release's override document as it was signed, opaque here like the bundle: the module
+    // parses and verifies it itself. Null when the release has none.
+    readonly overrides: Uint8Array | null;
+};
+
+export function toDataResponseV3Bytes(response: DataResponseV3): Uint8Array<ArrayBuffer> {
+    invariant(response.bundle.byteLength <= MAX_FRAME_PLAIN_SIZE, "bundle too large for a frame");
+    invariant(
+        response.overrides === null ||
+            (response.overrides.byteLength > 0 &&
+                response.overrides.byteLength <= MAX_FRAME_PLAIN_SIZE),
+        "an override document is 1 byte or more and fits a frame",
+    );
+    invariant(isModuleList(response.unsupported), "unsupported modules aren't canonical");
+    const out = createWriter();
+    writeContext(out, "data response", RESPONSE_V3);
+    out.u64(response.answers);
+    out.u64(response.dataRevision);
+    out.u32(response.bundle.byteLength);
+    out.bytes(response.bundle);
+    out.u32(response.overrides?.byteLength ?? 0);
+    if (response.overrides !== null) {
+        out.bytes(response.overrides);
+    }
+    writeModules(out, response.unsupported);
+    return out.finish();
+}
+
+// Canonical or nothing, as parseDataResponse, and an override document that fits in a frame's
+// plaintext. Version 2 bytes are VERSION_MISMATCH.
+export function parseDataResponseV3(bytes: Uint8Array): Result<DataResponseV3, FormatError> {
+    const input = openReader(bytes);
+    const context = readContext(input, "data response", RESPONSE_V3);
+    if (!context.ok) {
+        return context;
+    }
+    if (input.remaining() < 8 + 8 + 4) {
+        return malformed();
+    }
+    const answers = input.u64();
+    const dataRevision = input.u64();
+    const size = input.u32();
+    if (size > MAX_FRAME_PLAIN_SIZE || input.remaining() < size) {
+        return malformed();
+    }
+    const bundle = input.bytes(size);
+    if (input.remaining() < 4) {
+        return malformed();
+    }
+    const overridesSize = input.u32();
+    if (overridesSize > MAX_FRAME_PLAIN_SIZE || input.remaining() < overridesSize) {
+        return malformed();
+    }
+    const overrides = overridesSize === 0 ? null : input.bytes(overridesSize);
+    const unsupported = readModules(input);
+    if (!unsupported.ok) {
+        return unsupported;
+    }
+    return finish(input, {
+        answers,
+        dataRevision,
+        bundle,
+        overrides,
+        unsupported: unsupported.value,
+    });
 }

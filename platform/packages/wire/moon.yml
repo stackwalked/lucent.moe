@@ -2,7 +2,7 @@
 id: "platform-wire"
 
 project:
-  description: "The native /v1 messages in TypeScript, byte for byte with native/libs/wire: session hello and exchange, frames, leases, starts, enrollments and refusals; the module container, its download stream and the release seal."
+  description: "The native /v1 messages in TypeScript, byte for byte with native/libs/wire: session hello and exchange, frames, leases, starts, enrollments and refusals; the override document; the module container, its download stream and the release seal."
 
 language: "typescript"
 layer: "library"
@@ -21,3 +21,4 @@ tasks:
       - "/contracts/container-stream/**/*"
       - "/contracts/release-seal/**/*"
       - "/contracts/ed25519/**/*"
+      - "/contracts/overrides/**/*"

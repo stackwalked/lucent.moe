@@ -1,0 +1,11 @@
+{
+  "public_key": "00e3c56b91ab0a017174b96645eaf928366cdbae1e87fd21bf86661d86f3e7ef",
+  "release": "33333333333333333333333333333333",
+  "revision": 1,
+  "product": "cs2",
+  "features": [
+    "0000000000002222"
+  ],
+  "capabilities": [],
+  "signature": "82f49c0f1e96e80e5f8ba735b344709875d16c5e65631f7cb854c6b4c05ad1c500d9fc37aec7de5e38ce8d56164338312ee250eac9a78d01091c91a7aa68b70b"
+}
