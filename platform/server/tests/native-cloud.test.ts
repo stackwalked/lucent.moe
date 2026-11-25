@@ -125,8 +125,15 @@ test("a config written over /data by one session is read by the account's next s
         const at = await account(harness, "cloud@lucent.test");
         const first = await run(at);
         const config = text("[aim]\nfov = 6.5\n");
-        const made = written(await ask(at, first, create(config)));
+        const creating = first.module.cloudRequest(create(config));
+        const createId = newOperationId(harness.rng);
+        const made = written(
+            first.module.acceptCloud((await send(at, first, creating, createId)).bytes),
+        );
         expect(made).toEqual({ id: made.id, revision: 1, conflict: false });
+        // A retried create answers the same item and makes no second one (listed below).
+        const again = await send(at, first, creating, createId);
+        expect(written(first.module.acceptCloud(again.bytes))).toEqual(made);
 
         const second = await run(at);
         const stale = await send(at, first, first.module.cloudRequest({ operation: "list" }));
@@ -360,6 +367,15 @@ test("without cloud limits every cloud request answers UNAVAILABLE", async () =>
         const running = await run(at);
         for (const request of [{ operation: "list" } as const, create(Uint8Array.of(1))]) {
             expect((await ask(at, running, request)).result).toEqual(err({ code: "UNAVAILABLE" }));
+        }
+        // A retried write is told the same thing again.
+        const refused = running.module.cloudRequest(create(Uint8Array.of(2)));
+        const operationId = newOperationId(harness.rng);
+        for (const _attempt of [1, 2]) {
+            const reply = await send(at, running, refused, operationId);
+            expect(running.module.acceptCloud(reply.bytes).result).toEqual(
+                err({ code: "UNAVAILABLE" }),
+            );
         }
     });
 });

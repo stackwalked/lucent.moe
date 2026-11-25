@@ -234,6 +234,19 @@ export async function answerCloud(
 ): Promise<Result<CloudAnswer, CloudFailure>> {
     const { caller, request, answers, limits } = params;
     const { operation } = request;
+    if (request.operation === "create" || request.operation === "replace") {
+        // A write's outcome is stored whatever it was, an unavailable one included: a retry
+        // must find what it was told the first time, even if limits were configured since.
+        const stored =
+            params.replayed !== null
+                ? ok(params.replayed)
+                : limits === null
+                  ? ok<StoredWrite>({ status: "UNAVAILABLE" })
+                  : await write(tx, { caller, request, limits });
+        if (!stored.ok) return stored;
+        const plain = sealable(writtenResponse(answers, request.operation, stored.value));
+        return plain.ok ? ok({ plain: plain.value, stored: stored.value }) : plain;
+    }
     if (limits === null) {
         const plain = sealable({ answers, operation, result: err({ code: "UNAVAILABLE" }) });
         return plain.ok ? ok({ plain: plain.value, stored: null }) : plain;
@@ -244,17 +257,8 @@ export async function answerCloud(
         const plain = sealable({ answers, operation: "list", result: ok(items.value) });
         return plain.ok ? ok({ plain: plain.value, stored: null }) : plain;
     }
-    if (request.operation === "fetch") {
-        const items = await fetchItems(tx, caller, request.items);
-        if (!items.ok) return items;
-        const plain = sealable({ answers, operation: "fetch", result: ok(items.value) });
-        return plain.ok ? ok({ plain: plain.value, stored: null }) : plain;
-    }
-    const stored =
-        params.replayed === null
-            ? await write(tx, { caller, request, limits })
-            : ok(params.replayed);
-    if (!stored.ok) return stored;
-    const plain = sealable(writtenResponse(answers, request.operation, stored.value));
-    return plain.ok ? ok({ plain: plain.value, stored: stored.value }) : plain;
+    const items = await fetchItems(tx, caller, request.items);
+    if (!items.ok) return items;
+    const plain = sealable({ answers, operation: "fetch", result: ok(items.value) });
+    return plain.ok ? ok({ plain: plain.value, stored: null }) : plain;
 }
