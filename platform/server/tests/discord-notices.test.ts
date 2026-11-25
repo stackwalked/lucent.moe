@@ -117,6 +117,23 @@ test("a notice is queued as a DM only for a linked account that chose it, beside
                 ],
             }),
         );
+        // A product notice opens the product: the member may have kept it out of the inbox.
+        expect(
+            (
+                await execute(
+                    nativeDb,
+                    sql`insert into connector_discord_dm
+                            (account_id, kind, product_id, next_attempt_at, created_at)
+                        values (${chose.accountId}, 'product_status', 'lucent-loader', now(), now())`,
+                )
+            ).ok,
+        ).toBe(true);
+        const both = await readDueDms(nativeDb, { catalog: catalog(), siteOrigin: SITE });
+        invariant(both.ok, "the queue reads");
+        expect(both.value.dms.map((dm) => dm.url)).toEqual([
+            `${SITE}/account/inbox`,
+            `${SITE}/products/lucent-loader`,
+        ]);
     });
 });
 

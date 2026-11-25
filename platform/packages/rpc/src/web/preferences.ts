@@ -9,7 +9,14 @@ import { Done, refusal, Unavailable } from "./shared.ts";
 export const Channels = z.object({ inbox: z.boolean(), mail: z.boolean(), discord: z.boolean() });
 export type Channels = z.output<typeof Channels>;
 export const SetPreference = z.discriminatedUnion("kind", [
-    z.strictObject({ kind: z.literal("product_status"), ...Channels.shape }),
+    // discord may be left out: platform deploys before web, and the web of one deploy ago
+    // sends only inbox and mail. Left out, the stored choice stands.
+    z.strictObject({
+        kind: z.literal("product_status"),
+        inbox: z.boolean(),
+        mail: z.boolean(),
+        discord: z.boolean().optional(),
+    }),
     z.strictObject({ kind: z.literal("security"), discord: z.boolean() }),
 ]);
 export const SetSubscription = z.strictObject({ productId: ProductId, following: z.boolean() });

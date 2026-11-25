@@ -82,6 +82,16 @@ export const RETENTION: readonly Retained[] = [
                     select id from mail_outbox where state in ('pending', 'sending')
                     and due_at < ${cutoff}::timestamptz limit ${BATCH}))`,
     },
+    // The connector prunes these as it reads them. With the connector gone for good nothing
+    // would, and a DM this old is no longer news.
+    {
+        what: "connector_discord_dm",
+        tier: "30d",
+        sweep: (cutoff) =>
+            sql`delete from connector_discord_dm where id = any(array(
+                    select id from connector_discord_dm
+                    where created_at < ${cutoff}::timestamptz limit ${BATCH}))`,
+    },
     { what: "audit", tier: "forever" },
     { what: "fact_set, current_fact_set, release, current_release", tier: "forever" },
     { what: "fact_override, fact_override_revision", tier: "forever" },

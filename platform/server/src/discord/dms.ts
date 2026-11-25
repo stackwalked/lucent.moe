@@ -57,7 +57,6 @@ export async function readDueDms(
                 limit ${DMS_PER_READ}`,
         );
         if (!rows.ok) return rows;
-        const url = `${params.siteOrigin}/account/inbox`;
         return ok({
             dms: rows.value.map((row) => ({
                 id: row.id,
@@ -69,7 +68,12 @@ export async function readDueDms(
                               kind: "product_status" as const,
                               product: params.catalog.get(row.product_id)?.name ?? row.product_id,
                           },
-                url,
+                // A product notice may have been kept out of the inbox by the member's own choice,
+                // so its button opens the product, which always has something to show.
+                url:
+                    row.kind === "security" || row.product_id === null
+                        ? `${params.siteOrigin}/account/inbox`
+                        : `${params.siteOrigin}/products/${row.product_id}`,
             })),
         });
     });

@@ -152,7 +152,16 @@ async function lockLinked(tx: Tx, userId: string, txNow: EpochMs) {
         }
         return err(failure);
     }
-    return await findLinkedAccount(tx, userId);
+    const now = await findLinkedAccount(tx, userId);
+    // Relinked to another account between the two reads: that account is not the one locked.
+    if (
+        now.ok &&
+        now.value.standing !== "unlinked" &&
+        now.value.accountId !== seen.value.accountId
+    ) {
+        return ok({ standing: "unlinked" as const });
+    }
+    return now;
 }
 
 export async function openTicketFromDiscord(

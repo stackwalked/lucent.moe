@@ -62,9 +62,10 @@ export function setPreference(db: Db, token: BearerToken, choice: z.output<typeo
             await execute(
                 tx,
                 sql`insert into notification_preference (account_id, kind, inbox, mail, discord)
-            values (${id}, ${choice.kind}, ${channels.inbox}, ${channels.mail}, ${channels.discord})
+            values (${id}, ${choice.kind}, ${channels.inbox}, ${channels.mail}, ${channels.discord ?? false})
             on conflict (account_id, kind) do update
-            set inbox = excluded.inbox, mail = excluded.mail, discord = excluded.discord`,
+            set inbox = excluded.inbox, mail = excluded.mail,
+                discord = coalesce(${channels.discord ?? null}::boolean, notification_preference.discord)`,
             ),
         ),
     );

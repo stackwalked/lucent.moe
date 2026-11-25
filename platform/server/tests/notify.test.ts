@@ -117,6 +117,25 @@ test("a notification rolls back with its writer and follows only the recipient's
                 subscriptions: [],
             }),
         );
+        // The web of one deploy ago sends no discord field: the stored choice stands.
+        expect(await setPreference(db, bob.token, { ...preference, discord: true })).toEqual(
+            ok(undefined),
+        );
+        expect(
+            await setPreference(db, bob.token, {
+                kind: "product_status",
+                inbox: false,
+                mail: true,
+            }),
+        ).toEqual(ok(undefined));
+        expect(await listPreferences(db, bob.token, products)).toEqual(
+            ok({
+                security: { inbox: true, mail: true, discord: false },
+                product_status: { inbox: false, mail: true, discord: true },
+                subscriptions: [],
+            }),
+        );
+        expect(await setPreference(db, bob.token, preference)).toEqual(ok(undefined));
         const rolledBack = await withMember(db, alice.token, async (tx, id) => {
             expect(
                 await recordNotification(tx, {
