@@ -136,12 +136,25 @@ function WaysIn({ username }: { readonly username: string }) {
     if (refused !== null) return <RefusalNote refused={refused} />;
     if (paths === null) return null;
 
-    if (method === "passkey") return <AddPasskey onAdded={added} />;
+    if (method === "passkey") {
+        return (
+            <Stack gap={4}>
+                <h1 className={styles.title}>{SETUP_COPY.passkeyTitle}</h1>
+                <AddPasskey onAdded={added} />
+            </Stack>
+        );
+    }
     if (method === "password") {
         return paths.password ? (
-            <AddApp onAdded={added} />
+            <Stack gap={4}>
+                <h1 className={styles.title}>{SETUP_COPY.appTitle}</h1>
+                <AddApp onAdded={added} />
+            </Stack>
         ) : (
-            <SetPassword username={username} onSet={() => void reload()} />
+            <Stack gap={4}>
+                <h1 className={styles.title}>{SETUP_COPY.passwordTitle}</h1>
+                <SetPassword username={username} onSet={() => void reload()} />
+            </Stack>
         );
     }
     if (canSignIn(paths)) {

@@ -44,6 +44,34 @@ function AccountMenu({ viewer }: { readonly viewer: Viewer }) {
     );
 }
 
+// The account's corner of the bar: its pages, unread notifications while there are any, and the
+// menu. It stays beside the wordmark at every width; the places move to a row of their own.
+function AccountCorner({
+    viewer,
+    unreadCount,
+}: {
+    readonly viewer: Viewer;
+    readonly unreadCount: number | null;
+}) {
+    return (
+        <>
+            {unreadCount === null || unreadCount === 0 ? null : (
+                <Link
+                    to="/account/inbox"
+                    className={styles.place}
+                    activeProps={{ "aria-current": "page" }}
+                >
+                    {inboxLabel(unreadCount)}
+                </Link>
+            )}
+            <Link to="/account" className={styles.place} activeProps={{ "aria-current": "page" }}>
+                {SHELL_COPY.account}
+            </Link>
+            <AccountMenu viewer={viewer} />
+        </>
+    );
+}
+
 // The frame of every page with the site's bar: the account's places and menu when signed in,
 // "Sign in" when not.
 export function SiteShell({
@@ -108,34 +136,6 @@ export function SiteShell({
                         >
                             {SHELL_COPY.support}
                         </Link>
-                        <Link
-                            to="/account/devices"
-                            className={styles.place}
-                            activeProps={{ "aria-current": "page" }}
-                        >
-                            {SHELL_COPY.devices}
-                        </Link>
-                        <Link
-                            to="/account/security"
-                            className={styles.place}
-                            activeProps={{ "aria-current": "page" }}
-                        >
-                            {SHELL_COPY.account}
-                        </Link>
-                        <Link
-                            to="/account/invites"
-                            className={styles.place}
-                            activeProps={{ "aria-current": "page" }}
-                        >
-                            {SHELL_COPY.invites}
-                        </Link>
-                        <Link
-                            to="/account/inbox"
-                            className={styles.place}
-                            activeProps={{ "aria-current": "page" }}
-                        >
-                            {inboxLabel(unreadCount)}
-                        </Link>
                         {isStaff(viewer) ? (
                             <Link
                                 to="/admin"
@@ -148,7 +148,9 @@ export function SiteShell({
                     </>
                 )
             }
-            {...(viewer === null ? {} : { account: <AccountMenu viewer={viewer} /> })}
+            {...(viewer === null
+                ? {}
+                : { account: <AccountCorner viewer={viewer} unreadCount={unreadCount} /> })}
             {...(side === undefined ? {} : { side })}
         >
             {children}

@@ -30,6 +30,9 @@
     }
 
     .account {
+        display: flex;
+        align-items: center;
+        gap: var(--s-1);
         margin-inline-start: auto;
     }
 
@@ -69,12 +72,40 @@
         background: var(--raised);
     }
 
+    /* Where the places no longer fit beside the wordmark they take a row of their own, which
+       scrolls sideways by itself: the page never does. */
+    @media (max-width: 760px) {
+        .bar {
+            flex-wrap: wrap;
+            row-gap: 0;
+            block-size: auto;
+            min-block-size: var(--nav-h);
+        }
+
+        .wordmark {
+            display: flex;
+            align-items: center;
+            block-size: var(--nav-h);
+        }
+
+        .places {
+            order: 1;
+            flex-basis: 100%;
+            min-inline-size: 0;
+            overflow-x: auto;
+            scrollbar-width: thin;
+            padding-block-end: var(--s-2);
+        }
+    }
+
     @media (max-width: 640px) {
         .frame[data-side="nav"] {
             grid-template-columns: minmax(0, 1fr);
+            grid-template-rows: auto 1fr;
         }
 
         .side {
+            padding: var(--s-2) var(--gutter);
             border-inline-end: 0;
             border-block-end: 1px solid var(--line);
         }

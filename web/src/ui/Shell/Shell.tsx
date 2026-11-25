@@ -4,7 +4,7 @@ import { SkipLink } from "../SkipLink/SkipLink.tsx";
 import styles from "./Shell.module.css";
 
 // The frame of every signed-in page: a bar with the wordmark, the account's places and its menu;
-// below it, the admin side nav when there is one, and the page. Sign-in and setup use "bare": the
+// below it, the section's side nav when there is one, and the page. Sign-in and setup use "bare": the
 // page alone, as a centred card.
 export function Shell({
     layout = "app",
@@ -38,7 +38,7 @@ export function Shell({
                 {account === undefined ? null : <div className={styles.account}>{account}</div>}
             </header>
             <div className={styles.frame} data-side={side === undefined ? "none" : "nav"}>
-                {side === undefined ? null : <nav className={styles.side}>{side}</nav>}
+                {side === undefined ? null : <div className={styles.side}>{side}</div>}
                 <div className={styles.content}>{children}</div>
             </div>
         </div>

@@ -1,6 +1,7 @@
-import { createFileRoute, Outlet } from "@tanstack/react-router";
+import { createFileRoute, Outlet, useMatchRoute } from "@tanstack/react-router";
 import { APPEAL_PATH } from "../features/appeal/path.ts";
 import { rememberReturnTo } from "../features/auth/session.ts";
+import { AccountNav } from "../features/shell/AccountNav.tsx";
 import { SiteShell } from "../features/shell/SiteShell.tsx";
 import { toPage, toSignIn, toUnavailable } from "../server/route-control.ts";
 import { memberOf } from "../viewer.ts";
@@ -19,9 +20,15 @@ export const Route = createFileRoute("/_member")({
             toSignIn();
         }
     },
-    component: () => (
-        <SiteShell>
+    component: MemberFrame,
+});
+
+function MemberFrame() {
+    const matchRoute = useMatchRoute();
+    const onAccount = matchRoute({ to: "/account", fuzzy: true }) !== false;
+    return (
+        <SiteShell {...(onAccount ? { side: <AccountNav /> } : {})}>
             <Outlet />
         </SiteShell>
-    ),
-});
+    );
+}

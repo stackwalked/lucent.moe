@@ -1,6 +1,5 @@
-import { Link } from "@tanstack/react-router";
+import { SideNav } from "../../ui/SideNav/SideNav.tsx";
 import type { Viewer } from "../../viewer.ts";
-import styles from "./AdminNav.module.css";
 import { ADMIN_COPY } from "./copy.ts";
 import { adminSections, SECTION_PATHS } from "./sections.ts";
 
@@ -8,18 +7,11 @@ import { adminSections, SECTION_PATHS } from "./sections.ts";
 export function AdminNav({ viewer }: { readonly viewer: Viewer }) {
     const sections = adminSections(viewer);
     return (
-        <ul className={styles.nav}>
-            {SECTION_PATHS.filter(([section]) => sections[section]).map(([section, path]) => (
-                <li key={section}>
-                    <Link
-                        to={path}
-                        className={styles.item}
-                        activeProps={{ "aria-current": "page" }}
-                    >
-                        {ADMIN_COPY[section]}
-                    </Link>
-                </li>
-            ))}
-        </ul>
+        <SideNav
+            label={ADMIN_COPY.admin}
+            items={SECTION_PATHS.filter(([section]) => sections[section]).map(
+                ([section, path]) => ({ to: path, label: ADMIN_COPY[section] }),
+            )}
+        />
     );
 }

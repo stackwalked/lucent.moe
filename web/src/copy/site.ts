@@ -2,7 +2,8 @@
 export const SITE_COPY = {
     name: "lucent.moe",
     pageTitle: (page: string) => `${page} · lucent.moe`,
-    notFound: "not found.",
+    notFound: "not found",
+    home: "home",
     error: "error.",
     unavailable: "unavailable.",
     reference: "reference",

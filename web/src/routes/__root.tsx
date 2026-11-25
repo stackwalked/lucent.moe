@@ -3,15 +3,18 @@ import {
     createRootRoute,
     type ErrorComponentProps,
     HeadContent,
+    Link,
     Scripts,
 } from "@tanstack/react-router";
 import { type ReactNode, useEffect } from "react";
 import { SITE_COPY } from "../copy/site.ts";
 import { isUnavailable } from "../failure.ts";
 import { fetchUnread } from "../features/inbox/unread.ts";
+import { SiteShell } from "../features/shell/SiteShell.tsx";
 import { StepUpProvider } from "../features/step-up/StepUp.tsx";
 import { currentTheme } from "../theme.ts";
 import { currentTimeZone, reportTimeZone } from "../time-zone.ts";
+import { Page } from "../ui/Page/Page.tsx";
 import { TimeProvider } from "../ui/Time/TimeProvider.tsx";
 import { ToastProvider } from "../ui/Toast/Toast.tsx";
 import { loadSession, memberOf, rememberSession } from "../viewer.ts";
@@ -46,8 +49,17 @@ function Document({ children }: { readonly children: ReactNode }) {
     );
 }
 
+// Inside the site's frame, so the bar is the way on from a dead link.
 function NotFound() {
-    return <p>{SITE_COPY.notFound}</p>;
+    return (
+        <SiteShell>
+            <Page title={SITE_COPY.notFound} width="narrow">
+                <p>
+                    <Link to="/">{SITE_COPY.home}</Link>
+                </p>
+            </Page>
+        </SiteShell>
+    );
 }
 
 function Failure({ error }: ErrorComponentProps) {
