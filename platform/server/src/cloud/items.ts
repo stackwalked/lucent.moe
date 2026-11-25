@@ -4,7 +4,7 @@ import type { AccountId, ProductId } from "@lucent/core/scalars";
 import { ItemKind } from "@lucent/rpc/cloud-item";
 import { z } from "zod";
 import { execute, type Queryable, queryAll, queryOne, sql, type Tx } from "../db/pool.ts";
-import { type CloudLimits, decideAppend } from "./items.rules.ts";
+import { type AppendPlan, type CloudLimits, decideAppend } from "./items.rules.ts";
 
 // The transport derives this from authenticated authority, never from an item's claimed owner.
 export type CloudScope = { readonly accountId: AccountId; readonly productId: ProductId };
@@ -24,6 +24,8 @@ const inScope = (s: CloudScope) => sql`account_id = ${s.accountId} and product_i
 const isItem = (s: CloudItem) => sql`${inScope(s)} and item_id = ${s.itemId}`;
 const metadata = sql`item_id::text as "itemId", kind, revision, name`;
 const versions = sql`cloud_item join cloud_version using (account_id, product_id, item_id)`;
+// What a version costs against the product's storage: its name is part of the snapshot.
+const storedBytes = sql`octet_length(bytes)::bigint + octet_length(name)`;
 
 export function listItems(q: Queryable, scope: CloudScope) {
     return queryAll(
@@ -55,13 +57,21 @@ export async function readItem(q: Queryable, item: CloudItem, revision?: number)
     return version.value === null ? err({ code: "NOT_FOUND" }) : ok(version.value);
 }
 
-// Take before gathering usage or a head, including first-ever writers in an empty scope. The
-// caller already holds the scope's account lock: nothing here takes it, and a writer that
-// skipped it would race a suspension.
+// Every item writer takes this before gathering usage, a head or shares, including first-ever
+// writers in an empty scope: the account (as every writer does first, platform/AGENTS.md), then
+// the scope. Holding the account serializes the writer with a suspension; whether the account
+// may act is the caller's decision under this same lock (the member session's lock for web,
+// the session standing for a running session).
 const scopeLock = Symbol("cloud.scopeLock");
-type LockedScope = CloudScope & { readonly [scopeLock]: Tx };
+export type LockedScope = CloudScope & { readonly [scopeLock]: Tx };
 
 export async function lockCloudScope(tx: Tx, scope: CloudScope) {
+    const account = await execute(
+        tx,
+        sql`select 1 from account where id = ${scope.accountId} for update`,
+    );
+    if (!account.ok) return account;
+    if (account.value === 0) return err({ code: "NOT_FOUND" });
     const inserted = await execute(
         tx,
         sql`insert into cloud_scope (account_id, product_id)
@@ -77,36 +87,85 @@ export async function lockCloudScope(tx: Tx, scope: CloudScope) {
     return ok({ accountId: scope.accountId, productId: scope.productId, [scopeLock]: tx });
 }
 
-async function planAppend(
-    tx: Tx,
-    params: CloudScope &
-        Content & {
-            readonly head: number;
-            readonly base: number;
-            readonly limits: CloudLimits;
-        },
-) {
+export function txOf(scope: LockedScope): Tx {
+    return scope[scopeLock];
+}
+
+const ItemShape = z.object({ head: z.int(), versions: z.int() });
+const Droppable = z.object({ revision: z.int().positive(), storedBytes: z.coerce.number().int() });
+const Usage = z.object({ items: z.int(), storedBytes: z.coerce.number().int() });
+
+async function gatherAppend(scope: LockedScope, itemId: string | null) {
+    const tx = txOf(scope);
     const usage = await queryOne(
         tx,
-        z.object({ items: z.int(), storedBytes: z.coerce.number().int() }),
+        Usage,
         sql`select count(distinct item_id)::integer as items,
-            coalesce(sum(octet_length(bytes)::bigint + octet_length(name)), 0) as "storedBytes"
-            from cloud_version where ${inScope(params)}`,
+            coalesce(sum(${storedBytes}), 0) as "storedBytes"
+            from cloud_version where ${inScope(scope)}`,
     );
     if (!usage.ok) return usage;
     invariant(usage.value !== null, "cloud usage aggregate missing");
+    if (itemId === null) return ok({ head: 0, versions: 0, droppable: null, usage: usage.value });
+    const item = { ...scope, itemId };
+    const shape = await queryOne(
+        tx,
+        ItemShape,
+        sql`select coalesce(max(revision), 0)::integer as head, count(*)::integer as versions
+            from cloud_version where ${isItem(item)}`,
+    );
+    if (!shape.ok) return shape;
+    invariant(shape.value !== null, "cloud item aggregate missing");
+    const droppable = await queryOne(
+        tx,
+        Droppable,
+        sql`select revision, ${storedBytes} as "storedBytes" from cloud_version v
+            where ${isItem(item)} and revision < ${shape.value.head}
+            and not exists (select 1 from cloud_share s
+                where (s.account_id, s.product_id, s.item_id, s.revision) =
+                    (v.account_id, v.product_id, v.item_id, v.revision))
+            order by revision limit 1`,
+    );
+    if (!droppable.ok) return droppable;
+    return ok({ ...shape.value, droppable: droppable.value, usage: usage.value });
+}
+
+async function planAppend(
+    scope: LockedScope,
+    params: Content & {
+        readonly itemId: string | null;
+        readonly base: number;
+        readonly limits: CloudLimits;
+    },
+) {
+    const snapshot = await gatherAppend(scope, params.itemId);
+    if (!snapshot.ok) return snapshot;
     return decideAppend({
-        ...params,
-        usage: usage.value,
+        ...snapshot.value,
+        base: params.base,
+        limits: params.limits,
         versionBytes: params.bytes.byteLength + new TextEncoder().encode(params.name).byteLength,
     });
 }
 
-function appendVersion(tx: Tx, params: CloudItem & Content & { readonly revision: number }) {
+async function applyAppend(
+    scope: LockedScope,
+    params: Content & { readonly itemId: string; readonly plan: AppendPlan },
+) {
+    const tx = txOf(scope);
+    const item = { ...scope, itemId: params.itemId };
+    if (params.plan.drop !== null) {
+        const dropped = await execute(
+            tx,
+            sql`delete from cloud_version where ${isItem(item)} and revision = ${params.plan.drop}`,
+        );
+        if (!dropped.ok) return dropped;
+        invariant(dropped.value === 1, "the gathered droppable version exists under the lock");
+    }
     return execute(
         tx,
         sql`insert into cloud_version (account_id, product_id, item_id, revision, name, bytes)
-        values (${params.accountId}, ${params.productId}, ${params.itemId}, ${params.revision},
+        values (${scope.accountId}, ${scope.productId}, ${params.itemId}, ${params.plan.revision},
         ${params.name}, ${params.bytes})`,
     );
 }
@@ -128,22 +187,22 @@ export async function createLockedItem(
     scope: LockedScope,
     content: Omit<NewItem, keyof CloudScope>,
 ) {
-    const tx = scope[scopeLock];
+    const tx = txOf(scope);
     // Measure the same snapshot that is inserted even if the caller reuses its buffer.
-    const params = { ...content, ...scope, bytes: new Uint8Array(content.bytes) };
-    const plan = await planAppend(tx, { ...params, head: 0, base: 0 });
+    const params = { ...content, bytes: new Uint8Array(content.bytes) };
+    const plan = await planAppend(scope, { ...params, itemId: null, base: 0 });
     if (!plan.ok) return plan;
     const item = await queryOne(
         tx,
         z.object({ itemId: z.string() }),
         sql`insert into cloud_item (account_id, product_id, kind)
-            values (${params.accountId}, ${params.productId}, ${params.kind}) returning item_id::text as "itemId"`,
+            values (${scope.accountId}, ${scope.productId}, ${params.kind}) returning item_id::text as "itemId"`,
     );
     if (!item.ok) return item;
     invariant(item.value !== null, "cloud item insert returned no id");
-    const written = await appendVersion(tx, { ...params, ...item.value, ...plan.value });
+    const written = await applyAppend(scope, { ...params, ...item.value, plan: plan.value });
     if (!written.ok) return written;
-    return ok({ ...item.value, ...plan.value });
+    return ok({ itemId: item.value.itemId, revision: plan.value.revision });
 }
 
 type Change =
@@ -167,14 +226,15 @@ export async function changeItem(
     const source = change.type === "restore" ? await readItem(tx, params, change.revision) : head;
     if (!source.ok) return source;
     const content = {
+        itemId: params.itemId,
         name: change.type === "rename" ? change.name : source.value.name,
         bytes: change.type === "replace" ? new Uint8Array(change.bytes) : source.value.bytes,
     };
-    const plan = await planAppend(tx, { ...params, ...content, head: head.value.revision });
+    const plan = await planAppend(locked.value, { ...content, ...params });
     if (!plan.ok) return plan;
-    const written = await appendVersion(tx, { ...params, ...content, ...plan.value });
+    const written = await applyAppend(locked.value, { ...content, plan: plan.value });
     if (!written.ok) return written;
-    return plan;
+    return ok({ revision: plan.value.revision, conflict: plan.value.conflict });
 }
 
 export async function deleteItem(tx: Tx, item: CloudItem) {

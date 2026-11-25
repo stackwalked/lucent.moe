@@ -32,6 +32,7 @@ describe("password and TOTP", () => {
                 rp: TEST_RELYING_PARTY,
                 totpKeys: await createTotpKeyring(TEST_TOTP_KEYS),
                 breachCheck: NEVER_BREACHED,
+                mailEnabled: true,
                 passwords: {
                     hash: hasher.hash,
                     verify: (password, hash) => {
