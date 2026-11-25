@@ -6,7 +6,9 @@ import { type ReportEvent, toReportsAckBytes } from "@lucent/wire/reports";
 import { type DbFailure, execute, sql, type Tx, toTimestamptz } from "../db/pool.ts";
 
 // What the reports route keeps of a batch: each event as module_report holds it, under the
-// session's product and release and nothing that names the session, account or PC.
+// session's product and release and nothing that names the session, account or PC. The time is
+// the hour it arrived: an exact one would match the module_trap signal written in the same
+// transaction, which names the session and account.
 export async function storeReports(
     tx: Tx,
     params: {
@@ -17,6 +19,7 @@ export async function storeReports(
     },
 ): Promise<Result<void, DbFailure>> {
     const at = toTimestamptz(params.at);
+    const hour = sql`date_trunc('hour', ${at}::timestamptz, 'UTC')`;
     for (const event of params.events) {
         const stored = await execute(
             tx,
@@ -24,13 +27,13 @@ export async function storeReports(
                 ? sql`insert into module_report
                           (product_id, release_id, received_at, session_ms, kind, event_id, subject,
                            value)
-                      values (${params.productId}, ${params.releaseId}, ${at}::timestamptz,
+                      values (${params.productId}, ${params.releaseId}, ${hour},
                               ${event.time}, 'health', ${event.eventId}, ${event.subject},
                               ${event.value})`
                 : sql`insert into module_report
                           (product_id, release_id, received_at, session_ms, kind, exception_code,
                            module_hash, rva, frames)
-                      values (${params.productId}, ${params.releaseId}, ${at}::timestamptz,
+                      values (${params.productId}, ${params.releaseId}, ${hour},
                               ${event.time}, 'crash', ${event.exceptionCode}, ${event.moduleHash},
                               ${event.rva}, ${event.frames}::bigint[])`,
         );

@@ -34,10 +34,27 @@ export function decideRenewalSignals(params: {
     return ok(params.heldSequence >= 2n && !params.loaderAnswered ? ["loader_silent"] : []);
 }
 
+// The kinds decideIntegritySignals writes.
+export const INTEGRITY_KINDS: readonly SignalKind[] = [
+    "debugger_attached",
+    "hardware_breakpoints",
+    "kernel_debugging",
+    "test_signing",
+    "signature_enforcement_off",
+    "code_writable",
+    "virtual_machine",
+    "unsigned_module",
+];
+
 // What one renewal's integrity bits say, a kind per flag set (code_writable: our own image's code
 // pages, never the game's), one for any VM vendor and one for any unsigned module, however many
-// distinct hashes the slots name. An all-zero field says nothing.
-export function decideIntegritySignals(bits: RenewalBits): Result<readonly SignalKind[], never> {
+// distinct hashes the slots name. An all-zero field says nothing. Each kind is written once per
+// session: `recorded` holds those the session already has. Renewals come every 15 s and repeat
+// the same machine, and scoring counts a kind once per session, so later rows would only be bulk.
+export function decideIntegritySignals(
+    bits: RenewalBits,
+    recorded: ReadonlySet<SignalKind>,
+): Result<readonly SignalKind[], never> {
     const { flags } = bits;
     const kinds: SignalKind[] = [];
     if (flags.debugger) kinds.push("debugger_attached");
@@ -48,7 +65,7 @@ export function decideIntegritySignals(bits: RenewalBits): Result<readonly Signa
     if (flags.codeWritable) kinds.push("code_writable");
     if (bits.vmVendor !== null) kinds.push("virtual_machine");
     if (unsignedModulesOf(bits).length > 0) kinds.push("unsigned_module");
-    return ok(kinds);
+    return ok(kinds.filter((kind) => !recorded.has(kind)));
 }
 
 // Exceptions a debugger or an inline tracer leaves behind (ntstatus.h): a breakpoint, a single

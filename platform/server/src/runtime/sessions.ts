@@ -23,6 +23,7 @@ import {
     type Db,
     type DbFailure,
     execute,
+    queryAll,
     queryOne,
     sql,
     type Tx,
@@ -35,11 +36,13 @@ import { type AuthRequired, lockTokenHolder, type TokenHolder } from "../devices
 import { readFactDelivery } from "../facts/publishing.ts";
 import type { DpopProof } from "../listeners/native/dpop.ts";
 import { findReleaseManifest } from "../releases/reads.ts";
+import { SignalKindSchema } from "../risk/rows.ts";
 import {
     decideIntegritySignals,
     decideOpenSignals,
     decideRenewalSignals,
     decideReportSignals,
+    INTEGRITY_KINDS,
 } from "../risk/signals.rules.ts";
 import { appendSignals } from "../risk/signals.ts";
 import { answerCloud, StoredWrite } from "./cloud.ts";
@@ -60,7 +63,7 @@ import {
     toLeaseResponse,
     toSessionReply,
 } from "./leases.ts";
-import { decideReportsAnswer } from "./reports.rules.ts";
+import { decideReportsAnswer, REPORTS_ACCOUNT_WINDOW_MS } from "./reports.rules.ts";
 import { sealReportsAck, storeReports } from "./reports.ts";
 import { decideAskedBuilds } from "./revisions.rules.ts";
 import {
@@ -665,7 +668,18 @@ export async function renewLease(
             loaderAnswered: params.request.loaderAnswer !== null,
         });
         if (!kinds.ok) return kinds;
-        const integrity = decideIntegritySignals(bits.value);
+        // Under the session's lock, so two renewals of one session can't both write a kind.
+        const already = await queryAll(
+            tx,
+            z.object({ kind: SignalKindSchema }),
+            sql`select distinct kind from risk_signal
+                where session_id = ${session.id} and kind = any(${INTEGRITY_KINDS}::text[])`,
+        );
+        if (!already.ok) return already;
+        const integrity = decideIntegritySignals(
+            bits.value,
+            new Set(already.value.map((row) => row.kind)),
+        );
         if (!integrity.ok) return integrity;
         const recorded = await recordReceipt(tx, op, { sequence: sequence.toString() });
         if (!recorded.ok) return recorded;
@@ -1018,12 +1032,23 @@ export async function serveReports(
         plain.value.fill(0);
         if (!request.ok) return err({ code: "INVALID_REQUEST" });
         const { events } = request.value;
+        // Under the account's lock, taken above: two sessions' batches can't both take the room.
+        const accountRow = await queryOne(
+            tx,
+            z.object({ stored: z.coerce.number().int() }),
+            sql`select coalesce(sum(reports_accepted), 0) as stored from runtime_session
+                where account_id = ${accountId}
+                  and created_at > ${toTimestamptz(txNow)}::timestamptz
+                                   - make_interval(secs => ${REPORTS_ACCOUNT_WINDOW_MS / 1_000})`,
+        );
+        if (!accountRow.ok) return accountRow;
         const answer = decideReportsAnswer({
             frameSequence: frame.header.sequence,
             inSequence: route.reports_in_sequence,
             outSequence: route.reports_out_sequence,
             replayed: receipt === null ? null : BigInt(receipt.sequence),
             stored: route.reports_accepted,
+            accountStored: accountRow.value?.stored ?? 0,
             batch: events.length,
         });
         if (!answer.ok) return answer;

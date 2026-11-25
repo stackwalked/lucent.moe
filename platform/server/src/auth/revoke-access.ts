@@ -17,7 +17,8 @@ export async function revokeAccess(tx: Tx, id: AccountId) {
         sql`update product_slot set holder_session = null where account_id = ${id} and holder_session is not null`,
         sql`update session_start set consumed_at = now(), container_key = null where account_id = ${id} and consumed_at is null`,
         sql`update runtime_session set ended_at = now(), end_reason = 'closed', key_to_server = null,
-            key_to_module = null, data_key_to_server = null, data_key_to_module = null
+            key_to_module = null, data_key_to_server = null, data_key_to_module = null,
+            reports_key_to_server = null, reports_key_to_module = null
             where account_id = ${id} and ended_at is null`,
     ]) {
         const result = await execute(tx, statement);

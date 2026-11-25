@@ -141,7 +141,10 @@ const HONEST_LOOKING: readonly SignalKind[] = [
     "unsigned_module",
     "kernel_debugging",
     "signature_enforcement_off",
+    "hardware_breakpoints",
 ];
+
+const ENVIRONMENT_KINDS = HONEST_LOOKING.filter((kind) => kind !== "software_device_key");
 
 test.each(HONEST_LOOKING)("%s alone stays under the review threshold at any count", (kind) => {
     for (const count of [1, 2, 3, 4, 10, 100]) {
@@ -153,42 +156,67 @@ test.each(HONEST_LOOKING)("%s alone stays under the review threshold at any coun
     }
 });
 
-test("a VM, test signing and an unsigned module on one PC together stay under the threshold", () => {
-    const sessions = ["a", "b", "c"].flatMap((session) =>
-        (["virtual_machine", "test_signing", "unsigned_module"] as const).map((kind) =>
-            seen(kind, session),
-        ),
-    );
-    expect(riskOf(sessions)).toBe(27);
-});
+const everyEnvironmentKind = (sessions: number) =>
+    Array.from({ length: sessions }, (_, index) =>
+        ENVIRONMENT_KINDS.map((kind) => seen(kind, `s${index}`)),
+    ).flat();
+
+const many = (kind: SignalKind, count: number) =>
+    Array.from({ length: count }, (_, index) => seen(kind, `s${index}`));
 
 test.each([
+    [
+        "a driver developer's PC: kernel debugging, signature enforcement off, test signing",
+        [
+            seen("kernel_debugging", "a"),
+            seen("signature_enforcement_off", "a"),
+            seen("test_signing", "a"),
+        ],
+        25,
+    ],
+    [
+        "a VM, test signing, an unsigned module and a new country",
+        [
+            seen("virtual_machine", "a"),
+            seen("test_signing", "a"),
+            seen("unsigned_module", "a"),
+            seen("new_country", null),
+        ],
+        25,
+    ],
+    ["every environment kind in one session", everyEnvironmentKind(1), 25],
+    ["every environment kind in 100 sessions", everyEnvironmentKind(100), 25],
+    [
+        "every environment kind beside one silent session",
+        [...everyEnvironmentKind(1), silent("a")],
+        44,
+    ],
+    ["a trap in our image in one session", many("module_trap", 1), 15],
+    ["traps in our image in ten sessions, counted once", many("module_trap", 10), 15],
+    ["a trap beside a debugger", [seen("module_trap", "a"), seen("debugger_attached", "a")], 45],
     ["a debugger attached in one session", [seen("debugger_attached", "a")], 35],
     ["a new country beside a VM", [seen("new_country", null), seen("virtual_machine", "a")], 24],
-    [
-        "hardware breakpoints in two sessions, under",
-        [seen("hardware_breakpoints", "a"), seen("hardware_breakpoints", "b")],
-        28,
-    ],
-    [
-        "hardware breakpoints in three sessions, over",
-        ["a", "b", "c"].map((s) => seen("hardware_breakpoints", s)),
-        39,
-    ],
-    [
-        "traps in our image in three sessions",
-        ["a", "b", "c"].map((s) => seen("module_trap", s)),
-        39,
-    ],
-    [
-        "a VM in four sessions counts once",
-        ["a", "b", "c", "d"].map((s) => seen("virtual_machine", s)),
-        10,
-    ],
+    ["hardware breakpoints in three sessions", many("hardware_breakpoints", 3), 25],
+    ["writable code in three sessions", many("code_writable", 3), 39],
+    ["a VM in four sessions counts once", many("virtual_machine", 4), 10],
 ] as const)("%s scores risk %i", (_, signals, risk) => {
     expect(riskOf(signals)).toBe(risk);
 });
 
+test("the environment group never opens an item alone and a silent loader beside it does", () => {
+    expect(riskOf(everyEnvironmentKind(100))).toBeLessThan(REVIEW_THRESHOLD);
+    expect(riskOf([...everyEnvironmentKind(100), silent("x")])).toBeGreaterThanOrEqual(
+        REVIEW_THRESHOLD,
+    );
+});
+
+test("contributions keep each environment kind's own weight", () => {
+    const score = decideRiskScore([seen("virtual_machine", "a"), seen("test_signing", "a")], now);
+    expect(score.ok && score.value.signals.map((signal) => [signal.kind, signal.weight])).toEqual([
+        ["test_signing", 0.1],
+        ["virtual_machine", 0.1],
+    ]);
+});
 const CLEAN_FLAGS = {
     debugger: false,
     hardwareBreakpoints: false,
@@ -265,7 +293,27 @@ test.each([
         ],
     ],
 ] as const)("integrity bits with %s signal what the rules name", (_, bits, kinds) => {
-    expect(decideIntegritySignals(bits)).toEqual({ ok: true, value: [...kinds] });
+    expect(decideIntegritySignals(bits, new Set())).toEqual({ ok: true, value: [...kinds] });
+});
+
+test("an integrity kind the session already has is not written again, a new one is", () => {
+    const bits = {
+        ...clean,
+        flags: { ...CLEAN_FLAGS, debugger: true, testSigning: true },
+        vmVendor: "vmware",
+    } as const;
+    expect(decideIntegritySignals(bits, new Set(["debugger_attached", "virtual_machine"]))).toEqual(
+        {
+            ok: true,
+            value: ["test_signing"],
+        },
+    );
+    expect(
+        decideIntegritySignals(
+            bits,
+            new Set(["debugger_attached", "test_signing", "virtual_machine"]),
+        ),
+    ).toEqual({ ok: true, value: [] });
 });
 
 const crash = (exceptionCode: number, moduleHash = 0n) =>

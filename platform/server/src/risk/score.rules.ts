@@ -12,10 +12,12 @@ import type { SignalKind } from "./signals.rules.ts";
 // another.
 //
 // The human's standing rule: nothing common among honest members opens a review item alone, at
-// any count. Members use VPNs and travel; some run VMs, load unsigned mods or overlays, or keep
-// test signing or kernel debugging on for other software. Those kinds weigh little and count a
-// capped number of times, so each alone stays under REVIEW_THRESHOLD, and they still add to
-// anything else (score.rules.test.ts holds this).
+// any count, and that covers honest combinations too. Members use VPNs and travel; some run VMs,
+// load unsigned mods or overlays, or keep test signing or kernel debugging on for other software,
+// and one PC can have several of these at once (a driver developer's has three). So those kinds
+// form ENVIRONMENT, scored as one group whose contribution is capped at ENVIRONMENT_CAP, under
+// REVIEW_THRESHOLD: no set of them opens an item at any count, and the group still adds to any
+// kind outside it, so a silent loader beside a full group does (score.rules.test.ts holds this).
 
 const WEIGHTS: Readonly<Record<SignalKind, number>> = {
     loader_silent: 0.25,
@@ -28,14 +30,15 @@ const WEIGHTS: Readonly<Record<SignalKind, number>> = {
     // changes nothing for the member.
     debugger_attached: 0.35,
     // Debug registers set on the game's threads: what a debugger leaves, or a tracer that wants
-    // to look like none. Rarely honest (a few overlays set them), so a pattern of three sessions.
+    // to look like none. A few overlays set them too, so it is in ENVIRONMENT.
     hardware_breakpoints: 0.15,
     // Code pages of our own image (loader or module) made writable, never the game's, which
-    // overlays hook: someone patching us. Three sessions, as above.
+    // overlays hook: someone patching us. A pattern of three sessions.
     code_writable: 0.15,
     // A breakpoint, single step or guard page hit raised inside our own image (signals.rules.ts).
-    // Three sessions: one could be a bug of ours sending control into padding, which staff would
-    // also see on the crashes page for every member of the release.
+    // Counted once: a bug of ours sending control into padding would crash every member of a
+    // release on every launch, and staff see that on the crashes page; alone it stays at 15 and
+    // still adds beside a debugger.
     module_trap: 0.15,
     // Properties of the machine, not of play: they repeat every session on the same PC, so a
     // second sighting says nothing new and each counts once (COUNTED_CAP). Kernel debugging and
@@ -64,7 +67,21 @@ const COUNTED_CAP: Readonly<Partial<Record<SignalKind, number>>> = {
     test_signing: 1,
     virtual_machine: 1,
     unsigned_module: 1,
+    module_trap: 1,
 };
+
+// Kinds common on honest PCs, scored together: their product of (1 - weight) per counted
+// occurrence is floored at 1 - ENVIRONMENT_CAP, so all of them at any count add at most 25 risk.
+const ENVIRONMENT: ReadonlySet<SignalKind> = new Set([
+    "kernel_debugging",
+    "signature_enforcement_off",
+    "test_signing",
+    "virtual_machine",
+    "unsigned_module",
+    "new_country",
+    "hardware_breakpoints",
+]);
+const ENVIRONMENT_CAP = 0.25;
 
 // Urgency counts the weighted sessions of the last day, each a quarter of the scale.
 const URGENT_WINDOW_MS = 24 * 60 * 60 * 1_000;
@@ -116,10 +133,13 @@ export function decideRiskScore(
     });
 
     let clean = 1;
+    let environmentClean = 1;
     const contributions: Contribution[] = [];
     for (const [kind, sessions] of [...sessionsOf].sort(([a], [b]) => a.localeCompare(b))) {
         const counted = Math.min(sessions.size, COUNTED_CAP[kind] ?? SESSION_CAP);
-        clean *= (1 - WEIGHTS[kind]) ** counted;
+        const kept = (1 - WEIGHTS[kind]) ** counted;
+        if (ENVIRONMENT.has(kind)) environmentClean *= kept;
+        else clean *= kept;
         contributions.push({
             kind,
             sessions: sessions.size,
@@ -127,6 +147,7 @@ export function decideRiskScore(
             weight: WEIGHTS[kind],
         });
     }
+    clean *= Math.max(environmentClean, 1 - ENVIRONMENT_CAP);
     for (const combination of COMBINATIONS) {
         if (combination.kinds.every((kind) => sessionsOf.has(kind)))
             clean *= 1 - combination.weight;

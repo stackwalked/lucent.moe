@@ -11,8 +11,11 @@ alter table runtime_session
 
 -- Product-scoped, through its release: one health event or crash summary a module reported, as
 -- the reports layout carries it and nothing more. No account, session or device: nothing here
--- identifies a PC. `session_ms` is the module's monotonic time since its session opened. Kept 30
--- days (jobs/retention.ts). Hashes and keys are u64, so numeric.
+-- identifies a PC. `received_at` is the hour the batch arrived, not the moment: an exact time
+-- would match the module_trap risk_signal written in the same transaction, which names the
+-- account and session. The 30-day sweep and the crashes page's newest-first order work at that
+-- grain (the page breaks ties by row id). `session_ms` is the module's monotonic time since its
+-- session opened. Kept 30 days (jobs/retention.ts). Hashes and keys are u64, so numeric.
 create table module_report (
     id              bigint generated always as identity primary key,
     product_id      text not null,
@@ -45,4 +48,7 @@ create table module_report (
 create index module_report_received_idx on module_report (received_at);
 -- The crashes page: a release's crashes grouped by where they happened.
 create index module_report_crash_idx on module_report (release_id, module_hash, rva, received_at)
+    where kind = 'crash';
+-- Its product filter, which names no release.
+create index module_report_crash_product_idx on module_report (product_id, received_at)
     where kind = 'crash';

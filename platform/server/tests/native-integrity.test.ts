@@ -176,3 +176,43 @@ test("a renewal with a reserved bit or byte set is refused and writes nothing", 
         expect((await running.module.acceptLease(renewed.bytes)).sequence).toBe(2n);
     });
 });
+
+test("renewals with the same bits leave one signal row per kind, and a new bit later adds its kind", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ nativeDb }) => {
+        const running = await runModule(
+            await createNativeHarness(nativeDb, createSeededRng(9_905)),
+            "steady@lucent.test",
+        );
+        const withVm = toRenewalBitsBytes({
+            flags: {
+                debugger: false,
+                hardwareBreakpoints: false,
+                kernelDebugging: false,
+                testSigning: false,
+                signatureEnforcementOff: false,
+                codeWritable: false,
+            },
+            vmVendor: "virtualbox",
+            windowsBuild: 26_100,
+            moduleSlots: [0x99n, 0n, 0n, 0n],
+        });
+        for (let renewal = 0; renewal < 3; renewal += 1) {
+            const renewed = await renew(running, withVm);
+            expect(renewed.status).toBe(200);
+            await running.module.acceptLease(renewed.bytes);
+        }
+        expect(await signalKinds(nativeDb)).toEqual(["virtual_machine", "unsigned_module"]);
+
+        const withTestSigning = withVm.slice();
+        withTestSigning[0] = 1 << 3;
+        const renewed = await renew(running, withTestSigning);
+        expect(renewed.status).toBe(200);
+        await running.module.acceptLease(renewed.bytes);
+        expect(await signalKinds(nativeDb)).toEqual([
+            "virtual_machine",
+            "unsigned_module",
+            "test_signing",
+        ]);
+    });
+});

@@ -27,7 +27,7 @@ import { finish, readContext, writeContext } from "./codec.ts";
 // encoder and decoder must match them byte for byte.
 //
 // Beyond the layout, this side reads an ack's accepted count as at most 64, since no batch holds
-// more events than that.
+// more events than that; native's decoder applies the same bound (not yet written: it must).
 
 const VERSION = 1;
 

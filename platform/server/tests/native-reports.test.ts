@@ -1,12 +1,19 @@
 import { expect, test } from "bun:test";
 import { invariant } from "@lucent/core/contain";
 import { createSeededRng } from "@lucent/core/rng";
-import { newOperationId, ProductId, toHex } from "@lucent/core/scalars";
+import { AccountId, newOperationId, ProductId, toHex } from "@lucent/core/scalars";
 import type { ReportEvent } from "@lucent/wire/reports";
 import { z } from "zod";
+import { revokeAccess } from "../src/auth/revoke-access.ts";
 import { type Db, execute, queryAll, sql } from "../src/db/pool.ts";
+import { withTx } from "../src/db/tx.ts";
+import { sweepRetention } from "../src/jobs/retention.ts";
 import { listCrashSummaries } from "../src/runtime/crashes.ts";
-import { MAX_REPORTS_PER_SESSION } from "../src/runtime/reports.rules.ts";
+import { sweepNative } from "../src/runtime/expiry.ts";
+import {
+    MAX_REPORTS_PER_ACCOUNT_DAY,
+    MAX_REPORTS_PER_SESSION,
+} from "../src/runtime/reports.rules.ts";
 import { seedRootOnce } from "./auth-fixtures.ts";
 import { seedRole, seedStaff, steppedUp } from "./authority-fixtures.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
@@ -386,5 +393,127 @@ test("the crash list pages by its newest crash, refuses a cursor it didn't hand 
                 cursor: null,
             }),
         ).toEqual({ ok: false, error: { code: "FORBIDDEN" } });
+    });
+});
+
+const KEY_COLUMNS = sql`key_to_server, key_to_module, data_key_to_server, data_key_to_module,
+    reports_key_to_server, reports_key_to_module`;
+
+async function heldKeys(db: Db, session: Uint8Array): Promise<number> {
+    const row = await queryAll(
+        db,
+        z.object({ held: z.coerce.number() }),
+        sql`select num_nonnulls(${KEY_COLUMNS}) as held from runtime_session where id = ${session}`,
+    );
+    invariant(row.ok && row.value[0] !== undefined, "reading the session's keys failed");
+    return row.value[0].held;
+}
+
+test("a session the expiry sweep ends, and one ended by revoking access, keeps no key of any route", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ nativeDb }) => {
+        const harness = await createNativeHarness(nativeDb, createSeededRng(9_809));
+        const lapsed = await runModule(harness, "lapsed-keys@lucent.test");
+        const revoked = await runModule(harness, "revoked-keys@lucent.test");
+        expect(await heldKeys(nativeDb, lapsed.module.session())).toBe(6);
+
+        const aged = await execute(
+            nativeDb,
+            sql`update runtime_session set lease_expires_at = now() - interval '1 hour'
+                where id = ${lapsed.module.session()}`,
+        );
+        invariant(aged.ok, "ageing the lease failed");
+        const swept = await sweepNative(nativeDb);
+        invariant(swept.ok, "the expiry sweep failed");
+        expect(await heldKeys(nativeDb, lapsed.module.session())).toBe(0);
+
+        const owner = await queryAll(
+            nativeDb,
+            z.object({ account_id: AccountId }),
+            sql`select account_id from runtime_session where id = ${revoked.module.session()}`,
+        );
+        invariant(owner.ok && owner.value[0] !== undefined, "reading the session's account failed");
+        const accountId = owner.value[0].account_id;
+        const done = await withTx(nativeDb, (tx) => revokeAccess(tx, accountId));
+        invariant(done.ok, "revoking access failed");
+        expect(await heldKeys(nativeDb, revoked.module.session())).toBe(0);
+    });
+});
+
+test("a stored report's time is the hour it arrived, not the moment", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ nativeDb }) => {
+        const at = await runModule(
+            await createNativeHarness(nativeDb, createSeededRng(9_810)),
+            "hour@lucent.test",
+        );
+        expect((await post(at, at.module.reports(BATCH))).status).toBe(200);
+
+        const times = await queryAll(
+            nativeDb,
+            z.object({ off_hour: z.boolean(), recent: z.boolean() }),
+            sql`select received_at <> date_trunc('hour', received_at, 'UTC') as off_hour,
+                       received_at > now() - interval '1 hour' as recent
+                from module_report`,
+        );
+        invariant(times.ok, "reading report times failed");
+        expect(times.value).toEqual(Array(3).fill({ off_hour: false, recent: true }));
+    });
+});
+
+test("an account's sessions of the last day share one cap on stored events", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ nativeDb }) => {
+        const harness = await createNativeHarness(nativeDb, createSeededRng(9_811));
+        const first = await runModule(harness, "day-cap@lucent.test");
+        // An earlier session of the day stored all but one; once it is two days old, it no longer
+        // counts.
+        const filled = await execute(
+            nativeDb,
+            sql`update runtime_session
+                set reports_accepted = ${MAX_REPORTS_PER_ACCOUNT_DAY - 1}
+                where id = ${first.module.session()}`,
+        );
+        invariant(filled.ok, "filling the first session failed");
+        const second = { ...first, ...(await openOne(harness, first.releases, first.loader)) };
+
+        const acked = await post(second, second.module.reports(BATCH));
+        expect(second.module.acceptReports(acked.bytes).ack.accepted).toBe(1);
+
+        const aged = await execute(
+            nativeDb,
+            sql`update runtime_session set created_at = now() - interval '2 days'
+                where id = ${first.module.session()}`,
+        );
+        invariant(aged.ok, "ageing the first session failed");
+        const later = await post(second, second.module.reports(BATCH));
+        expect(second.module.acceptReports(later.bytes).ack.accepted).toBe(3);
+        expect(await stored(nativeDb)).toHaveLength(4);
+    });
+});
+
+test("retention removes reports past 30 days and keeps newer ones", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ nativeDb }) => {
+        const rng = createSeededRng(9_812);
+        const releases = await publishBoth(nativeDb, rng);
+        const seeded = await execute(
+            nativeDb,
+            sql`insert into module_report
+                    (product_id, release_id, received_at, session_ms, kind, event_id, subject, value)
+                select 'cs2', ${releases.module.id}, now() - make_interval(days => d), d, 'health',
+                       1, 0, 0
+                from unnest(array[1, 29, 31, 90]) as d`,
+        );
+        invariant(seeded.ok, "seeding reports failed");
+
+        const swept = await sweepRetention(nativeDb);
+        invariant(swept.ok, "the retention sweep failed");
+        const kept = await queryAll(
+            nativeDb,
+            z.object({ session_ms: z.coerce.number() }),
+            sql`select session_ms from module_report order by session_ms`,
+        );
+        expect(kept.ok && kept.value.map((row) => row.session_ms)).toEqual([1, 29]);
     });
 });

@@ -31,7 +31,8 @@ export async function sweepNative(db: Db): Promise<Result<number, DbFailure>> {
                   and lease_expires_at <= now() - make_interval(secs => ${RESUME_WINDOW_MS / 1_000}))`,
         sql`update runtime_session
             set ended_at = now(), end_reason = 'expired', key_to_server = null, key_to_module = null,
-                data_key_to_server = null, data_key_to_module = null
+                data_key_to_server = null, data_key_to_module = null,
+                reports_key_to_server = null, reports_key_to_module = null
             where ended_at is null
               and lease_expires_at <= now() - make_interval(secs => ${RESUME_WINDOW_MS / 1_000})`,
     ];
