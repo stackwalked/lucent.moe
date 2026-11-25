@@ -5,6 +5,7 @@ import { type AuthDeps, createAuthDeps } from "../../src/auth/deps.ts";
 import { createArgon2idHasher } from "../../src/auth/password.ts";
 import { createTotpKeyring } from "../../src/auth/totp.ts";
 import type { Db } from "../../src/db/pool.ts";
+import { createEmailHasher } from "../../src/deletion/email-hash.ts";
 
 // The keyring every auth test seals TOTP secrets under: "old" is still listed, so secrets sealed
 // before a rotation keep opening.
@@ -23,6 +24,7 @@ export async function createTestAuthDeps(db: Db, rng: SeededRng): Promise<AuthDe
         rng,
         rp: TEST_RELYING_PARTY,
         totpKeys: await createTotpKeyring(TEST_TOTP_KEYS),
+        emailHasher: await createEmailHasher(TEST_TOTP_KEYS),
         passwords: createArgon2idHasher({ memoryCostKiB: 64, timeCost: 1 }),
         breachCheck: NEVER_BREACHED,
         mailEnabled: true,

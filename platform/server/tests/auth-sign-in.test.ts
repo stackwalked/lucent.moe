@@ -15,6 +15,7 @@ import {
 import { createTotpKeyring } from "../src/auth/totp.ts";
 import { resolveCaller, resolveViewer } from "../src/auth/viewer.ts";
 import { execute, sql } from "../src/db/pool.ts";
+import { createEmailHasher } from "../src/deletion/email-hash.ts";
 import { codeAt, MEMBER_PASSWORD, newMember } from "./auth-fixtures.ts";
 import { createTestAuthDeps, NEVER_BREACHED, TEST_TOTP_KEYS } from "./harness/auth.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
@@ -31,6 +32,7 @@ describe("password and TOTP", () => {
                 rng,
                 rp: TEST_RELYING_PARTY,
                 totpKeys: await createTotpKeyring(TEST_TOTP_KEYS),
+                emailHasher: await createEmailHasher(TEST_TOTP_KEYS),
                 breachCheck: NEVER_BREACHED,
                 mailEnabled: true,
                 passwords: {

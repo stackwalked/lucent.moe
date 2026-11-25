@@ -19,6 +19,7 @@ import { claimServiceEpoch, openEpochGuard } from "./db/epoch-guard.ts";
 import type { MigrationError, MigrationFile } from "./db/migrate.ts";
 import { verifySchemaCurrent } from "./db/migrate.ts";
 import { openPool } from "./db/pool.ts";
+import { createEmailHasher } from "./deletion/email-hash.ts";
 import { retentionJob } from "./jobs/retention.ts";
 import { type Every, startJobs } from "./jobs/runner.ts";
 import { createInternalWebApp, routeInternal } from "./listeners/internal/app.ts";
@@ -186,6 +187,7 @@ export async function startServer(params: {
         rng: systemCryptoRng,
         rp: config.relyingParty,
         totpKeys: await createTotpKeyring(config.totpKeys),
+        emailHasher: await createEmailHasher(config.totpKeys),
         passwords: params.passwords ?? createArgon2idHasher(),
         passwordOnly: config.passwordOnly,
         breachCheck: createPwnedPasswordsCheck({
