@@ -56,7 +56,7 @@ export async function transferRoot(params: {
         if (!plan.ok) return plan;
         const { from, to } = plan.value;
 
-        // migrations/0020_root_transfer.sql: these two rows, this transaction only. Cleared again before
+        // migrations/0022_root_transfer.sql: these two rows, this transaction only. Cleared again before
         // anything else runs in it.
         const relaxed = await execute(
             tx,
