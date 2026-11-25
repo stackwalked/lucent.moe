@@ -3,7 +3,7 @@ import { decideProductLifecycle } from "@lucent/catalog/lifecycle.rules";
 import type { ProductDefinition } from "@lucent/catalog/product";
 import { ok, type Result } from "@lucent/core/result";
 import { ChannelId, EpochMs, ProductId } from "@lucent/core/scalars";
-import type { FeedKind } from "@lucent/rpc/discord/rules";
+import { type FeedKind, STAFF_FEEDS } from "@lucent/rpc/discord/rules";
 import { z } from "zod";
 import {
     type Db,
@@ -30,6 +30,8 @@ export type FeedPost = {
     readonly subject: string;
     readonly state: string;
     readonly url: string;
+    // The message a queue item was posted as, to be edited in place; null for a new post.
+    readonly messageId: string | null;
     readonly post:
         | {
               readonly kind: "status";
@@ -44,8 +46,47 @@ export type FeedPost = {
               readonly channel: ChannelId;
               readonly number: string;
               readonly promotedAt: EpochMs;
+          }
+        | {
+              readonly kind: "tickets";
+              readonly ticketKind: "help" | "appeal";
+              readonly subject: string | null;
+              readonly product: string | null;
+              readonly username: string | null;
+              readonly state: "open" | "answered" | "closed";
+          }
+        | {
+              readonly kind: "review";
+              readonly username: string | null;
+              readonly riskScore: number;
+              readonly urgencyScore: number;
+              readonly state: "open" | "decided";
+              readonly outcome: "no_action" | "actioned" | null;
           };
 };
+
+// The latest post of each subject a queue rule has posted, joined to its item: an item not yet
+// posted goes out while it is still open; one posted goes out again, as an edit, when its state
+// has moved on.
+const QueueTicketRow = z.object({
+    id: z.string(),
+    kind: z.enum(["help", "appeal"]),
+    subject: z.string().nullable(),
+    product_id: ProductId.nullable(),
+    username: z.string().nullable(),
+    state: z.enum(["open", "answered", "closed"]),
+    message_id: z.string().nullable(),
+});
+
+const QueueReviewRow = z.object({
+    id: z.string(),
+    username: z.string().nullable(),
+    risk_score: z.number().int(),
+    urgency_score: z.number().int(),
+    state: z.enum(["open", "decided"]),
+    outcome: z.enum(["no_action", "actioned"]).nullable(),
+    message_id: z.string().nullable(),
+});
 
 // Per rule, so one channel's backlog never holds back another's.
 const POSTS_PER_READ = 20;
@@ -130,13 +171,24 @@ export async function readPendingPosts(
         if (!current.ok) return current;
         const listed = new Map(publicProducts(catalog).map((p) => [p.id, p]));
         const posts: FeedPost[] = [];
+        const staffChannels = new Set(
+            rules.value.flatMap(({ fields }) =>
+                fields.kind === "staff_channel" ? [fields.channelId] : [],
+            ),
+        );
         for (const rule of rules.value) {
             if (rule.fields.kind !== "feed") continue;
+            // A queue whose channel is no longer marked staff says nothing more there.
+            if (STAFF_FEEDS.has(rule.fields.feed) && !staffChannels.has(rule.fields.channelId)) {
+                continue;
+            }
             const base = {
                 ruleId: rule.id,
                 channelId: rule.fields.channelId,
                 feed: rule.fields.feed,
+                messageId: null,
             };
+            const since = toTimestamptz(rule.createdAt);
             // The latest state each subject was posted in, for status; any post, for the others.
             const posted = await queryAll(
                 tx,
@@ -197,6 +249,88 @@ export async function readPendingPosts(
                                 kind: "resources",
                                 title: resource.title,
                                 product: product?.name ?? null,
+                            },
+                        });
+                    }
+                    break;
+                }
+                case "tickets": {
+                    const tickets = await queryAll(
+                        tx,
+                        QueueTicketRow,
+                        sql`select t.id::text as id, t.kind, t.subject, t.product_id, a.username,
+                                   t.state, p.message_id
+                            from ticket t
+                            join account a on a.id = t.account_id
+                            left join lateral (
+                                select state, message_id from connector_discord_post
+                                where rule_id = ${rule.id}::uuid and subject = t.id::text
+                                order by posted_at desc limit 1) p on true
+                            where t.opened_at >= ${since}::timestamptz
+                              and ((p.state is null and t.state <> 'closed')
+                                   or p.state <> t.state)
+                            order by t.last_activity_at, t.id
+                            limit ${POSTS_PER_READ}`,
+                    );
+                    if (!tickets.ok) return tickets;
+                    for (const row of tickets.value) {
+                        posts.push({
+                            ...base,
+                            subject: row.id,
+                            state: row.state,
+                            url: `${siteOrigin}/admin/tickets/${row.id}`,
+                            messageId: row.message_id,
+                            post: {
+                                kind: "tickets",
+                                ticketKind: row.kind,
+                                subject: row.subject,
+                                product:
+                                    row.product_id === null
+                                        ? null
+                                        : (catalog.get(row.product_id)?.name ?? row.product_id),
+                                username: row.username,
+                                state: row.state,
+                            },
+                        });
+                    }
+                    break;
+                }
+                case "review": {
+                    const items = await queryAll(
+                        tx,
+                        QueueReviewRow,
+                        sql`select r.id::text as id, a.username, r.risk_score, r.urgency_score,
+                                   case when r.decided_at is null then 'open' else 'decided' end
+                                       as state,
+                                   r.outcome, p.message_id
+                            from review_item r
+                            join account a on a.id = r.account_id
+                            left join lateral (
+                                select state, message_id from connector_discord_post
+                                where rule_id = ${rule.id}::uuid and subject = r.id::text
+                                order by posted_at desc limit 1) p on true
+                            where r.opened_at >= ${since}::timestamptz
+                              and ((p.state is null and r.decided_at is null)
+                                   or p.state <> (case when r.decided_at is null
+                                                       then 'open' else 'decided' end))
+                            order by r.opened_at, r.id
+                            limit ${POSTS_PER_READ}`,
+                    );
+                    if (!items.ok) return items;
+                    for (const row of items.value) {
+                        posts.push({
+                            ...base,
+                            subject: row.id,
+                            state: row.state,
+                            url: `${siteOrigin}/admin/review`,
+                            messageId: row.message_id,
+                            post: {
+                                kind: "review",
+                                username: row.username,
+                                riskScore: row.risk_score,
+                                urgencyScore: row.urgency_score,
+                                state: row.state,
+                                outcome: row.outcome,
                             },
                         });
                     }

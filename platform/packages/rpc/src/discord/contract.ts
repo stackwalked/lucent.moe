@@ -1,5 +1,5 @@
 import { ProductState } from "@lucent/catalog/product";
-import { ChannelId, EpochMs, ProductId } from "@lucent/core/scalars";
+import { AccountId, ChannelId, EpochMs, ProductId } from "@lucent/core/scalars";
 import { z } from "zod";
 import { defineContract } from "../contract.ts";
 import { RestrictionKind } from "../web/community.ts";
@@ -51,7 +51,31 @@ const Post = z.discriminatedUnion("kind", [
         number: SealNumber,
         promotedAt: EpochMs,
     }),
+    // A queue post, for a staff channel: what the staff queue page shows of the item.
+    z.object({
+        kind: z.literal("tickets"),
+        ticketKind: z.enum(["help", "appeal"]),
+        subject: z.string().nullable(),
+        product: z.string().nullable(),
+        username: z.string().nullable(),
+        state: z.enum(["open", "answered", "closed"]),
+    }),
+    z.object({
+        kind: z.literal("review"),
+        username: z.string().nullable(),
+        riskScore: z.number().int(),
+        urgencyScore: z.number().int(),
+        state: z.enum(["open", "decided"]),
+        outcome: z.enum(["no_action", "actioned"]).nullable(),
+    }),
 ]);
+
+// Who asks a staff read, and where: the server finds the linked account and checks can() for it
+// on every call, and answers only in a channel the rules mark staff.
+const StaffAsk = { userId: Snowflake, channelId: Snowflake };
+// One refusal for every reason a staff read is not answered (unlinked, without the Action, a
+// channel not marked staff), so asking tells nobody which it was.
+const StaffFailure = z.discriminatedUnion("code", [Unavailable, refusal("FORBIDDEN")]);
 
 // How the linked account stands. "unlinked" is also the answer for a Discord user nobody linked:
 // it says nothing about whether any account exists. Suspended and locked accounts get no detail.
@@ -158,12 +182,86 @@ export const discordContract = defineContract({
                         subject: z.string(),
                         state: z.string(),
                         url: z.url(),
+                        // A queue item already posted is edited in place: this is its message.
+                        messageId: Snowflake.nullable(),
                         post: Post,
                     }),
                 )
                 .readonly(),
         }),
         error: Failure,
+    },
+    // `/who` and "who is this": an account as the admin account page has it, less what a channel
+    // may not show (email, devices' ids, addresses, sign-in methods, audit). accounts:read.
+    "staff.who": {
+        session: "none",
+        effect: "read",
+        input: z.strictObject({
+            ...StaffAsk,
+            target: z.discriminatedUnion("kind", [
+                z.strictObject({ kind: z.literal("member"), userId: Snowflake }),
+                z.strictObject({
+                    kind: z.literal("query"),
+                    text: z.string().trim().min(1).max(64),
+                }),
+            ]),
+        }),
+        output: z.object({
+            accountId: AccountId,
+            username: z.string().nullable(),
+            status: z.enum(["active", "suspended", "locked", "setup_pending"]),
+            roles: z.array(z.string()).readonly(),
+            licences: z
+                .array(z.object({ product: z.string(), until: EpochMs.nullable() }))
+                .readonly(),
+            devices: z.object({ count: z.number().int(), limit: z.number().int() }),
+            lastSeenAt: EpochMs.nullable(),
+            lastSession: z.object({ at: EpochMs, running: z.boolean() }).nullable(),
+            inReview: z.boolean(),
+            discordUserId: Snowflake.nullable(),
+            url: z.url(),
+        }),
+        error: z.discriminatedUnion("code", [
+            Unavailable,
+            refusal("FORBIDDEN"),
+            refusal("NOT_FOUND"),
+        ]),
+    },
+    // `/brief`: the day so far. audit:read, as the system page.
+    "staff.brief": {
+        session: "none",
+        effect: "read",
+        input: z.strictObject(StaffAsk),
+        output: z.object({
+            sessionsRunning: z.number().int(),
+            startsToday: z.number().int(),
+            licencesActive: z.number().int(),
+            licencesEnding: z.number().int(),
+            reviewOpen: z.number().int(),
+            ticketsOpen: z.number().int(),
+            url: z.url(),
+        }),
+        error: StaffFailure,
+    },
+    // `/releases`: each product and channel's current seal, as the admin releases page has it.
+    // releases:promote or facts:promote.
+    "staff.releases": {
+        session: "none",
+        effect: "read",
+        input: z.strictObject(StaffAsk),
+        output: z.object({
+            lines: z
+                .array(
+                    z.object({
+                        product: z.string(),
+                        channel: ChannelId,
+                        current: z.object({ number: SealNumber, promotedAt: EpochMs }).nullable(),
+                    }),
+                )
+                .readonly(),
+            url: z.url(),
+        }),
+        error: StaffFailure,
     },
     // `/me`: what the site shows the linked account, in one answer: its products and channels as
     // products.list has them, its devices against its limit, the soonest end among its running

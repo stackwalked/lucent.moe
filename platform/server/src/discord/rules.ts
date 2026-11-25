@@ -3,7 +3,7 @@ import { invariant } from "@lucent/core/contain";
 import { err, ok, type Result } from "@lucent/core/result";
 import { EpochMs, RoleId } from "@lucent/core/scalars";
 import type { AuthzRefusal, Caller } from "@lucent/policy/policy";
-import { RuleFields } from "@lucent/rpc/discord/rules";
+import { RuleFields, STAFF_FEEDS } from "@lucent/rpc/discord/rules";
 import { z } from "zod";
 import { lockAuthorized, readAsStaff } from "../authority/staff.ts";
 import { appendAudit } from "../db/audit.ts";
@@ -102,6 +102,7 @@ export async function addRule(
         { readonly ruleId: string },
         | { readonly code: "UNKNOWN_PRODUCT" }
         | { readonly code: "NOT_FOUND" }
+        | { readonly code: "STAFF_CHANNEL_REQUIRED" }
         | AuthzRefusal
         | DbFailure
     >
@@ -131,6 +132,17 @@ export async function addRule(
             );
             if (!role.ok) return role;
             if (role.value === null) return err({ code: "NOT_FOUND" as const });
+        }
+        // Anyone who can read the channel reads a queue post, so it goes only where staff are.
+        if (fields.kind === "feed" && STAFF_FEEDS.has(fields.feed)) {
+            const staff = await queryOne(
+                tx,
+                z.object({ id: z.string() }),
+                sql`select id::text as id from connector_discord_rule
+                    where kind = 'staff_channel' and discord_id = ${fields.channelId}`,
+            );
+            if (!staff.ok) return staff;
+            if (staff.value === null) return err({ code: "STAFF_CHANNEL_REQUIRED" as const });
         }
         const inserted = await queryOne(
             tx,

@@ -14,10 +14,12 @@ export const RoleCondition = z.discriminatedUnion("kind", [
 ]);
 export type RoleCondition = z.output<typeof RoleCondition>;
 
-// What a feed channel is told: product status changes, newly published resources, and release
-// promotions.
-export const FeedKind = z.enum(["status", "resources", "releases"]);
+// What a feed channel is told: product status changes, newly published resources, release
+// promotions, and the staff queues (open tickets, open review items), which go only to a channel
+// marked staff since anyone who can read the channel reads them.
+export const FeedKind = z.enum(["status", "resources", "releases", "tickets", "review"]);
 export type FeedKind = z.output<typeof FeedKind>;
+export const STAFF_FEEDS: ReadonlySet<FeedKind> = new Set(["tickets", "review"]);
 
 // One rule as staff set it: a Discord role and who gets it, a channel where staff reads may be
 // answered, or a channel and the feed it gets.

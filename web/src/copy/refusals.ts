@@ -79,6 +79,7 @@ export const REFUSALS: Readonly<Record<RefusalCode, string>> = {
     TICKET_FULL: "this ticket is full. open a new one.",
     TICKET_LIMIT: "you have too many open tickets. close one first.",
     ALREADY_LINKED: "this account is already linked to discord. unlink it first.",
+    STAFF_CHANNEL_REQUIRED: "queues go only to a staff channel. mark the channel staff first.",
 };
 // The text for one refusal, a form's own wording first where it has one.
 export function refusalText(

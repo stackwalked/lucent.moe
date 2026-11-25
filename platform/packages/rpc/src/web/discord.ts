@@ -66,6 +66,8 @@ export const discordContract = defineContract({
             ...StaffRefusals,
             refusal("UNKNOWN_PRODUCT"),
             refusal("NOT_FOUND"),
+            // A queue feed (tickets, review) on a channel not marked staff.
+            refusal("STAFF_CHANNEL_REQUIRED"),
         ]),
     },
     "admin.discord.rules.remove": {

@@ -20,6 +20,7 @@ import {
     readTicketProducts,
 } from "../../discord/member.ts";
 import { listRules } from "../../discord/rules.ts";
+import { readBrief, readStaffReleases, readWho } from "../../discord/staff.ts";
 import { readChanges, resolveMembers } from "../../discord/sync.ts";
 import { done, mapOk, served } from "./web-shared.ts";
 
@@ -72,6 +73,25 @@ export const discordProcedures = implement<DiscordRpcContext, DiscordContract>(d
     "dms.read": async (ctx) =>
         served(await readDueDms(ctx.db, { catalog: ctx.catalog, siteOrigin: ctx.siteOrigin })),
     "dms.settled": async (ctx, input) => served(done(await settleDm(ctx.db, input))),
+    "staff.who": async (ctx, { target, ...ask }) =>
+        served(
+            await readWho(ctx.db, {
+                catalog: ctx.catalog,
+                siteOrigin: ctx.siteOrigin,
+                ask,
+                target,
+            }),
+        ),
+    "staff.brief": async (ctx, ask) =>
+        served(await readBrief(ctx.db, { siteOrigin: ctx.siteOrigin, ask })),
+    "staff.releases": async (ctx, ask) =>
+        served(
+            await readStaffReleases(ctx.db, {
+                catalog: ctx.catalog,
+                siteOrigin: ctx.siteOrigin,
+                ask,
+            }),
+        ),
 });
 
 // Its own mount, path and peer key: the connector's key opens nothing on web's path, and nothing
