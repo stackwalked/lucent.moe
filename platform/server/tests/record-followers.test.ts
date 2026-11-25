@@ -1,0 +1,128 @@
+import { expect, test } from "bun:test";
+import { createSeededRng, type SeededRng } from "@lucent/core/rng";
+import type { AccountId } from "@lucent/core/scalars";
+import { z } from "zod";
+import { type Db, execute, sql } from "../src/db/pool.ts";
+import { tellFollowers } from "../src/record/followers.ts";
+import { scalar, seedAccount } from "./authority-fixtures.ts";
+import { GAME } from "./fact-set-fixtures.ts";
+import { sharedTestCluster } from "./harness/pg-test.ts";
+import { liveCatalog, supportWorld, UPDATED } from "./record-fixtures.ts";
+
+async function follower(
+    db: Db,
+    rng: SeededRng,
+    params: { readonly email: string; readonly follows: boolean; readonly mail: boolean },
+): Promise<AccountId> {
+    const id = await seedAccount(db, rng, params.email);
+    if (params.follows) {
+        await execute(
+            db,
+            sql`insert into product_subscription (account_id, product_id) values (${id}, 'cs2')`,
+        );
+    }
+    if (params.mail) {
+        await execute(
+            db,
+            sql`insert into notification_preference (account_id, kind, inbox, mail, discord)
+                values (${id}, 'product_status', true, true, false)`,
+        );
+    }
+    return id;
+}
+
+const inboxOf = (db: Db, id: AccountId) =>
+    scalar(
+        db,
+        z.coerce.number(),
+        sql`select count(*) as value from inbox_entry
+            where account_id = ${id} and kind = 'product_status' and product_id = 'cs2'`,
+    );
+
+const mailTo = (db: Db, email: string) =>
+    scalar(
+        db,
+        z.coerce.number(),
+        sql`select count(*) as value from mail_outbox where recipient = ${email}`,
+    );
+
+test("each follower is told once per support drop, by inbox and by mail as they chose, and someone following nothing is told nothing", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ nativeDb, browserDb }) => {
+        const rng = createSeededRng(11_101);
+        const products = liveCatalog();
+        const world = await supportWorld(nativeDb, rng, products);
+        const alice = await follower(browserDb, rng, {
+            email: "alice@lucent.test",
+            follows: true,
+            mail: true,
+        });
+        const bob = await follower(browserDb, rng, {
+            email: "bob@lucent.test",
+            follows: true,
+            mail: false,
+        });
+        const carol = await follower(browserDb, rng, {
+            email: "carol@lucent.test",
+            follows: false,
+            mail: true,
+        });
+        const tell = () => tellFollowers(browserDb, { catalog: products, mail: true });
+
+        await world.support(GAME);
+        expect(await world.start(GAME)).toBe("NOT_A_REFUSAL");
+        expect(await tell()).toEqual({ ok: true, value: 0 });
+
+        expect(await world.start(UPDATED)).toBe("GAME_BUILD_UNSUPPORTED");
+        expect(await world.start(UPDATED)).toBe("GAME_BUILD_UNSUPPORTED");
+        // Two runners at once still tell each follower once.
+        const [first, second] = await Promise.all([tell(), tell()]);
+        expect((first.ok ? first.value : -1) + (second.ok ? second.value : -1)).toBe(2);
+        expect(await tell()).toEqual({ ok: true, value: 0 });
+
+        expect(await inboxOf(browserDb, alice)).toBe(1);
+        expect(await mailTo(browserDb, "alice@lucent.test")).toBe(1);
+        expect(await inboxOf(browserDb, bob)).toBe(1);
+        expect(await mailTo(browserDb, "bob@lucent.test")).toBe(0);
+        expect(await inboxOf(browserDb, carol)).toBe(0);
+        expect(await mailTo(browserDb, "carol@lucent.test")).toBe(0);
+
+        // The recovery tells nobody.
+        await world.support(UPDATED);
+        expect(await tell()).toEqual({ ok: true, value: 0 });
+        expect(await inboxOf(browserDb, alice)).toBe(1);
+        expect(await inboxOf(browserDb, bob)).toBe(1);
+    });
+});
+
+test("a drop already recovered from before anyone was told tells nobody", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ nativeDb, browserDb }) => {
+        const rng = createSeededRng(11_102);
+        const products = liveCatalog();
+        const world = await supportWorld(nativeDb, rng, products);
+        const alice = await follower(browserDb, rng, {
+            email: "alice@lucent.test",
+            follows: true,
+            mail: true,
+        });
+
+        await world.support(GAME);
+        expect(await world.start(GAME)).toBe("NOT_A_REFUSAL");
+        expect(await world.start(UPDATED)).toBe("GAME_BUILD_UNSUPPORTED");
+        await world.support(UPDATED);
+
+        expect(await tellFollowers(browserDb, { catalog: products, mail: true })).toEqual({
+            ok: true,
+            value: 0,
+        });
+        expect(await inboxOf(browserDb, alice)).toBe(0);
+        expect(
+            await scalar(
+                browserDb,
+                z.coerce.number(),
+                sql`select count(*) as value from product_support_change where notified_at is null`,
+            ),
+        ).toBe(0);
+    });
+});

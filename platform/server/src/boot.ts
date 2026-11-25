@@ -29,6 +29,7 @@ import { createNativeApp } from "./listeners/native/app.ts";
 import { refusalResponse } from "./listeners/native/http.ts";
 import { restrictionExpiryJob } from "./moderation/restrictions.ts";
 import { mailDeliveryJob } from "./notify/mail.ts";
+import { followerNoticeJob } from "./record/followers.ts";
 import { riskScoringJob } from "./risk/scoring.ts";
 import { checkCloudLimits } from "./runtime/cloud.ts";
 import { nativeExpiryJob } from "./runtime/expiry.ts";
@@ -264,6 +265,7 @@ export async function startServer(params: {
             deletionJob({ db, emailHasher: auth.emailHasher, logger }),
             riskScoringJob(db),
             idleTicketJob(db),
+            followerNoticeJob({ db, catalog: catalog.value, mail: mail !== undefined }),
             signInCountriesJob(db, geo),
             ...(geo === null ? [] : [geoReloadJob(geo)]),
             ...(nativeDb === null ? [] : [nativeExpiryJob(nativeDb)]),
