@@ -63,13 +63,15 @@ export async function readUsage(
                         where created_at < ${until}::timestamptz
                           and least(ended_at, lease_expires_at) > ${from}::timestamptz
                     )
-                    select w.week as week_start,
+                    -- Weeks are cut in UTC, as the window is: date_trunc on a timestamptz would
+                    -- follow the session's time zone and move Monday.
+                    select w.week at time zone 'UTC' as week_start,
                            to_char(w.week, 'IYYY') as iso_year, to_char(w.week, 'IW') as iso_week,
                            a.product_id, count(distinct a.account_id) as accounts
                     from active a
                     cross join lateral generate_series(
-                        date_trunc('week', greatest(a.starts, ${from}::timestamptz)),
-                        date_trunc('week', least(a.ends, ${until}::timestamptz) - interval '1 microsecond'),
+                        date_trunc('week', greatest(a.starts, ${from}::timestamptz) at time zone 'UTC'),
+                        date_trunc('week', (least(a.ends, ${until}::timestamptz) - interval '1 microsecond') at time zone 'UTC'),
                         interval '1 week') as w (week)
                     group by w.week, a.product_id
                     order by w.week desc, a.product_id`,

@@ -110,8 +110,14 @@ async function measureArtifacts(dir: string | null): Promise<ArtifactUse> {
             let bytes = 0;
             for (const entry of entries) {
                 if (!entry.isFile()) continue;
+                // A publish renames its partial file into place between the listing and here.
+                const size = await stat(join(entry.parentPath, entry.name)).then(
+                    (s) => s.size,
+                    () => null,
+                );
+                if (size === null) continue;
                 files += 1;
-                bytes += (await stat(join(entry.parentPath, entry.name))).size;
+                bytes += size;
             }
             return { files, bytes };
         },
