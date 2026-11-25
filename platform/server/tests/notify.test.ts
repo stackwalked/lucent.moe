@@ -100,15 +100,20 @@ test("a notification rolls back with its writer and follows only the recipient's
         const bob = await member(db, rng, "bob@lucent.test");
         const productId = ProductId.parse("lucent-loader");
         const choice = { productId, catalog: products };
-        const preference = { kind: "product_status", inbox: false, mail: true } as const;
+        const preference = {
+            kind: "product_status",
+            inbox: false,
+            mail: true,
+            discord: false,
+        } as const;
         expect(await setSubscription(db, alice.token, { ...choice, following: true })).toEqual(
             ok(undefined),
         );
         expect(await setPreference(db, bob.token, preference)).toEqual(ok(undefined));
         expect(await listPreferences(db, bob.token, products)).toEqual(
             ok({
-                security: { inbox: true, mail: true },
-                product_status: { inbox: false, mail: true },
+                security: { inbox: true, mail: true, discord: false },
+                product_status: { inbox: false, mail: true, discord: false },
                 subscriptions: [],
             }),
         );
@@ -119,17 +124,23 @@ test("a notification rolls back with its writer and follows only the recipient's
                     mail: true,
                     notice: { kind: "product_status", ...choice },
                 }),
-            ).toEqual(ok({ inbox: true, mail: false }));
+            ).toEqual(ok({ inbox: true, mail: false, discord: false }));
             return err({ code: "ABORT" });
         });
         expect(rolledBack).toEqual(err({ code: "ABORT" }));
         expect(await alice.unread()).toEqual(ok({ count: 0 }));
-        expect(await bob.emit(productId)).toEqual(ok({ inbox: false, mail: false }));
-        expect(await alice.emit(productId)).toEqual(ok({ inbox: true, mail: false }));
+        expect(await bob.emit(productId)).toEqual(
+            ok({ inbox: false, mail: false, discord: false }),
+        );
+        expect(await alice.emit(productId)).toEqual(
+            ok({ inbox: true, mail: false, discord: false }),
+        );
         expect(await bob.unread()).toEqual(ok({ count: 0 }));
         expect(await alice.unread()).toEqual(ok({ count: 1 }));
         expect(await setPreference(db, alice.token, preference)).toEqual(ok(undefined));
-        expect(await alice.emit(productId)).toEqual(ok({ inbox: false, mail: true }));
+        expect(await alice.emit(productId)).toEqual(
+            ok({ inbox: false, mail: true, discord: false }),
+        );
         expect(await alice.unread()).toEqual(ok({ count: 1 }));
         expect(
             await withMember(db, alice.token, (tx, id) =>
@@ -139,12 +150,14 @@ test("a notification rolls back with its writer and follows only the recipient's
                     notice: { kind: "security", productId: null },
                 }),
             ),
-        ).toEqual(ok({ inbox: true, mail: true }));
+        ).toEqual(ok({ inbox: true, mail: true, discord: false }));
         expect(await alice.unread()).toEqual(ok({ count: 2 }));
         expect(await setSubscription(db, alice.token, { ...choice, following: false })).toEqual(
             ok(undefined),
         );
-        expect(await alice.emit(productId)).toEqual(ok({ inbox: false, mail: false }));
+        expect(await alice.emit(productId)).toEqual(
+            ok({ inbox: false, mail: false, discord: false }),
+        );
         expect(
             await queryAll(
                 db,
@@ -218,7 +231,7 @@ test("losing a seed entitlement hides its follow and history, suppresses new del
         expect(
             await client.call(
                 "preferences.channels.set",
-                { kind: "product_status", inbox: true, mail: true },
+                { kind: "product_status", inbox: true, mail: true, discord: false },
                 caller,
             ),
         ).toEqual(ok({}));
@@ -229,7 +242,7 @@ test("losing a seed entitlement hides its follow and history, suppresses new del
             select ${alice.id}, 'security', '2020-01-01'::timestamptz from generate_series(1, 26)`,
             ),
         ).toEqual(ok(26));
-        expect(await alice.emit(seed)).toEqual(ok({ inbox: true, mail: true }));
+        expect(await alice.emit(seed)).toEqual(ok({ inbox: true, mail: true, discord: false }));
         const visible = await alice.list(null);
         invariant(
             visible.ok && visible.value.items[0]?.productId === seed,
@@ -251,13 +264,13 @@ test("losing a seed entitlement hides its follow and history, suppresses new del
                     notice: { kind: "product_status", productId: seed, catalog: products },
                 });
             }),
-        ).toEqual(ok({ inbox: false, mail: false }));
+        ).toEqual(ok({ inbox: false, mail: false, discord: false }));
         expect(
             await execute(db, sql`update entitlement set status='revoked' where id=${entitlement}`),
         ).toEqual(ok(1));
         expect(await change(seed, "follow")).toEqual(err({ code: "NOT_FOUND" }));
         expect(await follows()).toEqual([]);
-        expect(await alice.emit(seed)).toEqual(ok({ inbox: false, mail: false }));
+        expect(await alice.emit(seed)).toEqual(ok({ inbox: false, mail: false, discord: false }));
         expect(await alice.unread()).toEqual(ok({ count: 26 }));
         expect(await alice.list(entry)).toEqual(ok({ items: [], nextCursor: null }));
         expect(await alice.mark(entry)).toEqual(ok(undefined));

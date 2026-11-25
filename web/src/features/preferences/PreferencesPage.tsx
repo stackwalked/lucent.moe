@@ -19,7 +19,19 @@ export function PreferencesPage() {
     const [refused, setRefused] = useState<Refused | null>(null);
     const save = async (data: FormData) => {
         const reply = await savePreference({
-            data: { kind: "product_status", inbox: data.has("inbox"), mail: data.has("mail") },
+            data: {
+                kind: "product_status",
+                inbox: data.has("inbox"),
+                mail: data.has("mail"),
+                discord: data.has("discord"),
+            },
+        });
+        setRefused(reply.ok ? null : reply.refused);
+        if (reply.ok) await router.invalidate();
+    };
+    const saveSecurity = async (data: FormData) => {
+        const reply = await savePreference({
+            data: { kind: "security", discord: data.has("discord") },
         });
         setRefused(reply.ok ? null : reply.refused);
         if (reply.ok) await router.invalidate();
@@ -34,10 +46,29 @@ export function PreferencesPage() {
             {outcome.ok ? (
                 <>
                     <Section caption={PREFERENCES_COPY.security}>
-                        <p>{PREFERENCES_COPY.required}</p>
+                        <form action={saveSecurity} key={`${outcome.value.securityDiscord}`}>
+                            <Stack gap={2}>
+                                <p>{PREFERENCES_COPY.required}</p>
+                                <Check
+                                    name="discord"
+                                    label={PREFERENCES_COPY.discord}
+                                    defaultChecked={outcome.value.securityDiscord}
+                                />
+                                <Button type="submit">{PREFERENCES_COPY.save}</Button>
+                            </Stack>
+                        </form>
                     </Section>
+                    {outcome.value.discordLinked ? null : (
+                        <p>
+                            {PREFERENCES_COPY.discordUnlinked}{" "}
+                            <Link to="/account/discord">{PREFERENCES_COPY.linkDiscord}</Link>
+                        </p>
+                    )}
                     <Section caption={PREFERENCES_COPY.status}>
-                        <form action={save} key={`${outcome.value.inbox}/${outcome.value.mail}`}>
+                        <form
+                            action={save}
+                            key={`${outcome.value.inbox}/${outcome.value.mail}/${outcome.value.discord}`}
+                        >
                             <Stack gap={2}>
                                 <Check
                                     name="inbox"
@@ -48,6 +79,11 @@ export function PreferencesPage() {
                                     name="mail"
                                     label={PREFERENCES_COPY.mail}
                                     defaultChecked={outcome.value.mail}
+                                />
+                                <Check
+                                    name="discord"
+                                    label={PREFERENCES_COPY.discord}
+                                    defaultChecked={outcome.value.discord}
                                 />
                                 <Button type="submit">{PREFERENCES_COPY.save}</Button>
                             </Stack>

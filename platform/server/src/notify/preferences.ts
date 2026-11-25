@@ -1,25 +1,38 @@
 import type { ProductCatalog } from "@lucent/catalog/catalog";
-import { err, ok } from "@lucent/core/result";
+import { err, ok, type Result } from "@lucent/core/result";
 import { type AccountId, type BearerToken, ProductId } from "@lucent/core/scalars";
 import { Channels, type SetPreference, type SetSubscription } from "@lucent/rpc/web/preferences";
 import { z } from "zod";
-import { type Db, execute, queryAll, queryOne, sql, type Tx } from "../db/pool.ts";
+import { type Db, type DbFailure, execute, queryAll, sql, type Tx } from "../db/pool.ts";
 import { filterListedProducts } from "../products/visibility.ts";
 import { withMember, written } from "./account.ts";
-import { PRODUCT_DEFAULTS, SECURITY_CHANNELS } from "./deliveries.rules.ts";
+import { PRODUCT_DEFAULTS, SECURITY_CHANNELS, type StoredPreferences } from "./deliveries.rules.ts";
 
-export function findProductPreference(tx: Tx, accountId: AccountId) {
-    return queryOne(
+export async function findPreferences(
+    tx: Tx,
+    accountId: AccountId,
+): Promise<Result<StoredPreferences, DbFailure>> {
+    const rows = await queryAll(
         tx,
-        Channels,
-        sql`select inbox, mail from notification_preference where account_id = ${accountId} and kind = 'product_status'`,
+        Channels.extend({ kind: z.enum(["product_status", "security"]) }),
+        sql`select kind, inbox, mail, discord from notification_preference
+            where account_id = ${accountId}`,
     );
+    if (!rows.ok) return rows;
+    const product = rows.value.find((row) => row.kind === "product_status");
+    return ok({
+        productStatus:
+            product === undefined
+                ? null
+                : { inbox: product.inbox, mail: product.mail, discord: product.discord },
+        securityDiscord: rows.value.some((row) => row.kind === "security" && row.discord),
+    });
 }
 
 export function listPreferences(db: Db, token: BearerToken, catalog: ProductCatalog) {
     return withMember(db, token, async (tx, id) => {
-        const product = await findProductPreference(tx, id);
-        if (!product.ok) return product;
+        const stored = await findPreferences(tx, id);
+        if (!stored.ok) return stored;
         const rows = await queryAll(
             tx,
             z.object({ product_id: ProductId }),
@@ -33,21 +46,25 @@ export function listPreferences(db: Db, token: BearerToken, catalog: ProductCata
         );
         if (!listed.ok) return listed;
         return ok({
-            security: SECURITY_CHANNELS,
-            product_status: product.value ?? PRODUCT_DEFAULTS,
+            security: { ...SECURITY_CHANNELS, discord: stored.value.securityDiscord },
+            product_status: stored.value.productStatus ?? PRODUCT_DEFAULTS,
             subscriptions: listed.value,
         });
     });
 }
 
+// A security row keeps inbox and mail on: only its Discord choice is the member's.
 export function setPreference(db: Db, token: BearerToken, choice: z.output<typeof SetPreference>) {
+    const channels =
+        choice.kind === "security" ? { ...SECURITY_CHANNELS, discord: choice.discord } : choice;
     return withMember(db, token, async (tx, id) =>
         written(
             await execute(
                 tx,
-                sql`insert into notification_preference (account_id, kind, inbox, mail)
-            values (${id}, ${choice.kind}, ${choice.inbox}, ${choice.mail})
-            on conflict (account_id, kind) do update set inbox = excluded.inbox, mail = excluded.mail`,
+                sql`insert into notification_preference (account_id, kind, inbox, mail, discord)
+            values (${id}, ${choice.kind}, ${channels.inbox}, ${channels.mail}, ${channels.discord})
+            on conflict (account_id, kind) do update
+            set inbox = excluded.inbox, mail = excluded.mail, discord = excluded.discord`,
             ),
         ),
     );

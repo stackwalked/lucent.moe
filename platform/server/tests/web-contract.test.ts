@@ -140,7 +140,12 @@ const inputs: SinglePurpose = {
     "inbox.entries.read": { id: "00000000-0000-4000-8000-000000000001" },
     "inbox.unread.count": {},
     "preferences.channels.list": {},
-    "preferences.channels.set": { kind: "product_status", inbox: true, mail: false },
+    "preferences.channels.set": {
+        kind: "product_status",
+        inbox: true,
+        mail: false,
+        discord: false,
+    },
     "preferences.subscriptions.set": { productId: "cs2", following: true },
     "session.list": {},
     "session.endOthers": {},

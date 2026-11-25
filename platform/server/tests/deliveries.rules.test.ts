@@ -6,21 +6,44 @@ import { decideDeliveries } from "../src/notify/deliveries.rules.ts";
 const productId = ProductId.parse("cs2");
 const security: Notice = { kind: "security", productId: null };
 const status: Notice = { kind: "product_status", productId };
-const both = { inbox: true, mail: true };
-const neither = { inbox: false, mail: false };
-const inbox = { inbox: true, mail: false };
-const mail = { inbox: false, mail: true };
+const all = { inbox: true, mail: true, discord: true };
+const both = { inbox: true, mail: true, discord: false };
+const neither = { inbox: false, mail: false, discord: false };
+const inbox = { inbox: true, mail: false, discord: false };
+const mail = { inbox: false, mail: true, discord: false };
+const discord = { inbox: false, mail: false, discord: true };
+
+const chosen = (productStatus: typeof all | null, securityDiscord = false) => ({
+    productStatus,
+    securityDiscord,
+});
 
 test.each([
-    ["security ignores opt-outs", security, neither, [], both],
-    ["security does not need any settings", security, null, [], both],
-    ["opting in alone does not follow a product", status, both, [], neither],
-    ["following another product is not enough", status, both, [ProductId.parse("other")], neither],
-    ["following defaults to inbox", status, null, [productId], inbox],
-    ["following respects a mail-only choice", status, mail, [productId], mail],
-    ["following respects an inbox-only choice", status, inbox, [productId], inbox],
-    ["following respects both channels", status, both, [productId], both],
-    ["following respects both opt-outs", status, neither, [productId], neither],
+    ["security ignores opt-outs", security, chosen(neither), [], both],
+    ["security does not need any settings", security, chosen(null), [], both],
+    ["security goes to discord only when chosen for it", security, chosen(all), [], both],
+    ["security's discord choice adds a DM", security, chosen(null, true), [], all],
+    ["opting in alone does not follow a product", status, chosen(both), [], neither],
+    [
+        "following another product is not enough",
+        status,
+        chosen(all),
+        [ProductId.parse("other")],
+        neither,
+    ],
+    ["following defaults to inbox", status, chosen(null), [productId], inbox],
+    ["following respects a mail-only choice", status, chosen(mail), [productId], mail],
+    ["following respects an inbox-only choice", status, chosen(inbox), [productId], inbox],
+    ["following respects a discord-only choice", status, chosen(discord), [productId], discord],
+    ["following respects every channel", status, chosen(all), [productId], all],
+    ["following respects every opt-out", status, chosen(neither), [productId], neither],
+    [
+        "security's discord choice says nothing of products",
+        status,
+        chosen(null, true),
+        [productId],
+        inbox,
+    ],
 ] as const)("%s", (_name, notice, preferences, subscriptions, expected) => {
     expect(decideDeliveries(notice, preferences, subscriptions)).toEqual({
         ok: true,

@@ -13,7 +13,7 @@ import {
 import { withMember, written } from "./account.ts";
 import { notificationMail } from "./copy.ts";
 import { decideDeliveries } from "./deliveries.rules.ts";
-import { findProductPreference } from "./preferences.ts";
+import { findPreferences } from "./preferences.ts";
 
 type Notification =
     | Extract<Notice, { kind: "security" }>
@@ -21,24 +21,30 @@ type Notification =
           readonly catalog: ProductCatalog;
       });
 
+const NO_PREFERENCES = { productStatus: null, securityDiscord: false } as const;
+
 async function planDelivery(tx: Tx, recipient: AccountId, notice: Notification) {
-    if (notice.kind === "security") return decideDeliveries(notice, null, []);
+    if (notice.kind === "security") {
+        const preferences = await findPreferences(tx, recipient);
+        if (!preferences.ok) return preferences;
+        return decideDeliveries(notice, preferences.value, []);
+    }
     const recipientRow = await queryOne(
         tx,
         z.object({ id: AccountId }),
         sql`select id from account where id = ${recipient} for update`,
     );
     if (!recipientRow.ok) return recipientRow;
-    if (recipientRow.value === null) return decideDeliveries(notice, null, []);
+    if (recipientRow.value === null) return decideDeliveries(notice, NO_PREFERENCES, []);
     const listed = await isListedForMember(
         tx,
         { accountId: recipient, catalog: notice.catalog },
         notice.productId,
     );
     if (!listed.ok) return listed;
-    if (!listed.value) return decideDeliveries(notice, null, []);
-    const preference = await findProductPreference(tx, recipient);
-    if (!preference.ok) return preference;
+    if (!listed.value) return decideDeliveries(notice, NO_PREFERENCES, []);
+    const preferences = await findPreferences(tx, recipient);
+    if (!preferences.ok) return preferences;
     const followed = await queryOne(
         tx,
         z.object({ product_id: ProductId }),
@@ -47,7 +53,7 @@ async function planDelivery(tx: Tx, recipient: AccountId, notice: Notification) 
     if (!followed.ok) return followed;
     return decideDeliveries(
         notice,
-        preference.value,
+        preferences.value,
         followed.value === null ? [] : [followed.value.product_id],
     );
 }
@@ -73,6 +79,16 @@ export async function recordNotification(
             tx,
             sql`insert into mail_outbox (recipient, subject, body)
                 values ((select email from account where id = ${recipient}), ${mail.subject}, ${mail.body})`,
+        );
+        if (!queued.ok) return queued;
+    }
+    // Only a linked account has anyone to message; the connector sends it (discord/dms.ts).
+    if (plan.value.discord) {
+        const queued = await execute(
+            tx,
+            sql`insert into connector_discord_dm (account_id, kind, product_id, next_attempt_at, created_at)
+                select account_id, ${notice.kind}, ${notice.productId}, now(), now()
+                from connector_discord_link where account_id = ${recipient}`,
         );
         if (!queued.ok) return queued;
     }

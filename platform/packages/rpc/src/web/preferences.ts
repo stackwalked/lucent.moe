@@ -4,12 +4,14 @@ import { defineContract } from "../contract.ts";
 import { MemberRefusal } from "./inbox.ts";
 import { Done, refusal, Unavailable } from "./shared.ts";
 
-export const Channels = z.object({ inbox: z.boolean(), mail: z.boolean() });
+// `discord`: a DM to the linked Discord user, saying that something happened. Security notices
+// always reach the inbox and mail; their Discord DM is the one choice a member has there.
+export const Channels = z.object({ inbox: z.boolean(), mail: z.boolean(), discord: z.boolean() });
 export type Channels = z.output<typeof Channels>;
-export const SetPreference = z.strictObject({
-    kind: z.literal("product_status"),
-    ...Channels.shape,
-});
+export const SetPreference = z.discriminatedUnion("kind", [
+    z.strictObject({ kind: z.literal("product_status"), ...Channels.shape }),
+    z.strictObject({ kind: z.literal("security"), discord: z.boolean() }),
+]);
 export const SetSubscription = z.strictObject({ productId: ProductId, following: z.boolean() });
 
 export const preferencesContract = defineContract({

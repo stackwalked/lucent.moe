@@ -8,8 +8,12 @@ export const fetchPreferences = createServerFn({ method: "GET" }).handler(async 
     if (!preferences.ok) return refuse(preferences.error);
     const listed = await readPlatform("products.list", {});
     if (!listed.ok) return refuse(listed.error);
+    const discord = await readPlatform("discord.link.read", {});
+    if (!discord.ok) return refuse(discord.error);
     return done({
         ...preferences.value.product_status,
+        securityDiscord: preferences.value.security.discord,
+        discordLinked: discord.value.linkedAt !== null,
         products: listed.value.products.map(({ productId, name }) => ({
             productId,
             name,
