@@ -8,7 +8,7 @@ import {
 } from "@lucent/bundle/wire";
 import { invariant, trySync } from "@lucent/core/contain";
 import { err, ok, type Result } from "@lucent/core/result";
-import { finish, readContext, readFlag, writeContext } from "./codec.ts";
+import { CONTEXT_SIZE, finish, readContext, readFlag, writeContext } from "./codec.ts";
 import { MAX_FRAME_PLAIN_SIZE } from "./frame.ts";
 
 // The cloud kinds of the data route (POST /v1/sessions/:id/data): a module lists, fetches, creates
@@ -202,8 +202,24 @@ function hasUniqueIds(items: readonly { readonly id: bigint }[]): boolean {
 
 function finished(out: Writer): Uint8Array<ArrayBuffer> {
     const bytes = out.finish();
-    invariant(bytes.byteLength <= MAX_FRAME_PLAIN_SIZE, "cloud message too large for a frame");
+    invariant(bytes.byteLength <= MAX_FRAME_PLAIN_SIZE, "cloud request too large for a frame");
     return bytes;
+}
+
+// The largest plaintexts the cloud kinds take, for a server to bound its limits against the frame
+// and body limits. `versionBytes` is a version's body and name together, as the caps count it.
+export function maxWriteRequestSize(versionBytes: number): number {
+    // replace: operation, id, base, body size; create's kind, name size and body size are fewer.
+    return CONTEXT_SIZE + 1 + 8 + 4 + 4 + versionBytes;
+}
+
+export function maxFetchResponseSize(versionBytes: number): number {
+    const entry = 8 + 1 + 4 + 1 + 1 + 4 + versionBytes;
+    return CONTEXT_SIZE + 8 + 1 + 1 + MAX_FETCH_ITEMS * entry;
+}
+
+export function maxListResponseSize(items: number): number {
+    return CONTEXT_SIZE + 8 + 1 + 1 + 2 + items * (8 + 1 + 4 + 4 + 1 + MAX_NAME_BYTES);
 }
 
 export function toCloudRequestBytes(request: CloudRequest): Uint8Array<ArrayBuffer> {
@@ -322,7 +338,7 @@ export function toCloudResponseBytes(response: CloudResponse): Uint8Array<ArrayB
     out.u8(OPERATIONS.indexOf(response.operation) + 1);
     if (!response.result.ok) {
         out.u8(CLOUD_STATUSES.indexOf(response.result.error.code) + 1);
-        return finished(out);
+        return out.finish();
     }
     out.u8(0);
     switch (response.operation) {
@@ -337,7 +353,9 @@ export function toCloudResponseBytes(response: CloudResponse): Uint8Array<ArrayB
             writeWritten(out, response.result.value);
             break;
     }
-    return finished(out);
+    // Unbounded here: what a list or fetch holds is the server's, which refuses a response no
+    // frame can carry before it seals one.
+    return out.finish();
 }
 
 function writeListing(out: Writer, items: readonly CloudListing[]): void {

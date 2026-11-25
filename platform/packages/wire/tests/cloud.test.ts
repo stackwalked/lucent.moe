@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { join } from "node:path";
 import { createWriter } from "@lucent/bundle/wire";
 import { z } from "zod";
 import {
@@ -10,11 +11,15 @@ import {
     toCloudRequestBytes,
     toCloudResponseBytes,
 } from "../src/cloud.ts";
+import { cloudVectors, toVectorJson } from "./cloud-vectors.ts";
 import { bigintNumber, hexAny, hexU64, readContractFile, readContractJson } from "./fixtures.ts";
 
-// contracts/wire/v1/cloud_*, produced by src/cloud.ts's encoder; native/libs/wire must match them.
-// The refusals below build or patch bytes at offsets written out here, so they state the layout
-// independently of the encoder.
+const contractPath = (file: string) =>
+    join(import.meta.dir, "..", "..", "..", "..", "contracts", "wire", "v1", file);
+
+// contracts/wire/v1/cloud_*, produced by src/cloud.ts's encoder through cloud-vectors.ts;
+// native/libs/wire must match them. The refusals below build or patch bytes at offsets written out
+// here, so they state the layout independently of the encoder.
 
 const MALFORMED = { ok: false, error: { code: "MALFORMED" } } as const;
 
@@ -126,6 +131,18 @@ const ResponseVector = z.union([
 
 const REQUESTS = ["list", "fetch", "create", "replace"].map((name) => `cloud_request_${name}`);
 const RESPONSES = ["list", "fetch", "write", "refused"].map((name) => `cloud_response_${name}`);
+
+test("the committed cloud vectors are what cloud-vectors.ts makes", async () => {
+    const made = cloudVectors();
+
+    expect(Object.keys(made).sort()).toEqual([...REQUESTS, ...RESPONSES].sort());
+    for (const [name, vector] of Object.entries(made)) {
+        expect(new Uint8Array(await readContractFile("wire", `${name}.bin`))).toEqual(
+            new Uint8Array(vector.bytes),
+        );
+        expect(await Bun.file(contractPath(`${name}.json`)).text()).toBe(toVectorJson(vector.json));
+    }
+});
 
 test("the cloud request vectors decode to what they state, and encode back to their bytes", async () => {
     for (const name of REQUESTS) {
