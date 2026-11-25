@@ -411,11 +411,17 @@ function isCanonicalV3(manifest: ReleaseManifestV3): boolean {
 
 // The manifest must be canonical, as its members describe; anything else is our own bug.
 export function toReleaseManifestV3Bytes(manifest: ReleaseManifestV3): Uint8Array<ArrayBuffer> {
+    const out = createWriter();
+    writeV3(out, RELEASE_MANIFEST_V3, manifest);
+    return out.finish();
+}
+
+// Everything version 3 writes, under `version`; version 4 appends to it.
+function writeV3(out: Writer, version: number, manifest: ReleaseManifestV3): void {
     invariant(isCanonicalV3(manifest), "release manifest isn't canonical");
     invariant(manifest.facts.length <= MAX_FACTS, "too many facts");
-    const out = createWriter();
     out.u32(RELEASE_MANIFEST_MAGIC);
-    out.u16(RELEASE_MANIFEST_V3);
+    out.u16(version);
     writeText(out, manifest.product);
     out.u32(manifest.facts.length);
     for (const fact of manifest.facts) {
@@ -425,7 +431,6 @@ export function toReleaseManifestV3Bytes(manifest: ReleaseManifestV3): Uint8Arra
     }
     writeCapabilities(out, manifest.capabilities);
     writeFeatures(out, manifest.features);
-    return out.finish();
 }
 
 // Not yet checked for order.
@@ -448,15 +453,36 @@ function readLocatedFacts(input: Reader): LocatedFact[] | null {
 // Version 1 and 2 bytes are VERSION_MISMATCH.
 export function parseReleaseManifestV3(bytes: Uint8Array): Result<ReleaseManifestV3, FormatError> {
     const input = openReader(bytes);
+    const version = readVersion(input);
+    if (!version.ok) {
+        return version;
+    }
+    if (version.value !== RELEASE_MANIFEST_V3) {
+        return versionMismatch();
+    }
+    const manifest = readV3Body(input);
+    if (!manifest.ok) {
+        return manifest;
+    }
+    if (input.remaining() !== 0) {
+        return malformed();
+    }
+    return manifest;
+}
+
+// The magic and the version that follows it.
+function readVersion(input: Reader): Result<number, FormatError> {
     if (input.remaining() < 4 + 2) {
         return malformed();
     }
     if (input.u32() !== RELEASE_MANIFEST_MAGIC) {
         return malformed();
     }
-    if (input.u16() !== RELEASE_MANIFEST_V3) {
-        return versionMismatch();
-    }
+    return ok(input.u16());
+}
+
+// Version 3 after its version: canonical, and anything after it left for the caller.
+function readV3Body(input: Reader): Result<ReleaseManifestV3, FormatError> {
     const product = readText(input);
     if (product === null) {
         return malformed();
@@ -479,10 +505,79 @@ export function parseReleaseManifestV3(bytes: Uint8Array): Result<ReleaseManifes
         capabilities: capabilities.value,
         features,
     };
-    if (input.remaining() !== 0 || !isCanonicalV3(manifest)) {
+    if (!isCanonicalV3(manifest)) {
         return malformed();
     }
     return ok(manifest);
+}
+
+// Version 4 (contracts/release-manifest/v4): version 3 and a trailing u8 naming the data response
+// version the release's module reads, 2 or 3. Which one is the module's to say, not the server's:
+// the server answers a module in the version its build decodes, and the manifest's digest in the
+// seal puts the field under the offline code key. Made by this side first; native must match its
+// vectors.
+//
+//   u32 magic "LRM1", u16 version 4, everything version 3 has after its version, u8 data response
+//   version.
+
+const RELEASE_MANIFEST_V4 = 4;
+
+export type DataResponseVersion = 2 | 3;
+
+export type ReleaseManifestV4 = ReleaseManifestV3 & {
+    readonly dataResponse: DataResponseVersion;
+};
+
+export function toReleaseManifestV4Bytes(manifest: ReleaseManifestV4): Uint8Array<ArrayBuffer> {
+    invariant(manifest.dataResponse === 2 || manifest.dataResponse === 3, "data response version");
+    const out = createWriter();
+    writeV3(out, RELEASE_MANIFEST_V4, manifest);
+    out.u8(manifest.dataResponse);
+    return out.finish();
+}
+
+function readDataResponse(input: Reader): DataResponseVersion | null {
+    if (input.remaining() !== 1) {
+        return null;
+    }
+    const version = input.u8();
+    return version === 2 || version === 3 ? version : null;
+}
+
+// Canonical or nothing, as parseReleaseManifestV3, and a data response version of 2 or 3 as the
+// last byte. Version 1 to 3 bytes are VERSION_MISMATCH.
+export function parseReleaseManifestV4(bytes: Uint8Array): Result<ReleaseManifestV4, FormatError> {
+    const input = openReader(bytes);
+    const version = readVersion(input);
+    if (!version.ok) {
+        return version;
+    }
+    if (version.value !== RELEASE_MANIFEST_V4) {
+        return versionMismatch();
+    }
+    const manifest = readV3Body(input);
+    if (!manifest.ok) {
+        return manifest;
+    }
+    const dataResponse = readDataResponse(input);
+    if (dataResponse === null) {
+        return malformed();
+    }
+    return ok({ ...manifest.value, dataResponse });
+}
+
+// What a module release may publish: version 4, or version 3, whose module reads data response
+// version 2 (it was built before version 3 existed). Versions 1 and 2 are VERSION_MISMATCH.
+export function parseModuleManifest(bytes: Uint8Array): Result<ReleaseManifestV4, FormatError> {
+    const v4 = parseReleaseManifestV4(bytes);
+    if (v4.ok || v4.error.code === "MALFORMED") {
+        return v4;
+    }
+    const v3 = parseReleaseManifestV3(bytes);
+    if (!v3.ok) {
+        return v3;
+    }
+    return ok({ ...v3.value, dataResponse: 2 });
 }
 
 function sortedUnique(keys: Iterable<bigint>): bigint[] {
