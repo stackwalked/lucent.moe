@@ -20,7 +20,7 @@ import {
 } from "@lucent/testing/postgres";
 import { SQL } from "bun";
 import { createConnector } from "../src/connector.ts";
-import { FEEDS_COPY, REPLIES } from "../src/copy.ts";
+import { DM_COPY, FEEDS_COPY, ME_COPY, REPLIES, TICKET_COPY } from "../src/copy.ts";
 import type { LogFields, Logger } from "../src/log.ts";
 import { startFakeDiscord } from "../testing/fake-discord.ts";
 
@@ -157,20 +157,24 @@ test("the connector mirrors standing into the guild within a tick, and a reconci
     await fake.ready();
     await until("ready", () => lines.some((line) => line.msg === "ready"));
     await connector.idle();
-    expect(fake.commands()).toEqual(["link", "unlink"]);
+    expect(fake.commands()).toEqual(["link", "unlink", "me", "status", "ticket"]);
     expect(fake.roles(BOB)).toEqual([]);
 
     // Linking: a wrong code is refused; the member's own links and syncs at once.
     expect(await fake.command("link", ALICE, { code: "AAAAA-AAAAA" })).toEqual({
+        kind: "message",
         content: REPLIES.codeInvalid(`${site}/account/discord`),
         ephemeral: true,
+        buttonUrl: null,
     });
     const memberSession = await sessionFor(member);
     const started = await web.call("discord.link.start", {}, { session: memberSession });
     invariant(started.ok, "a code was issued");
     expect(await fake.command("link", ALICE, { code: started.value.code })).toEqual({
+        kind: "message",
         content: REPLIES.linked,
         ephemeral: true,
+        buttonUrl: null,
     });
     await connector.idle();
     expect(fake.roles(ALICE)).toEqual(sorted(LINKED, HAND_GIVEN));
@@ -229,8 +233,10 @@ test("the connector mirrors standing into the guild within a tick, and a reconci
     await connector.tick();
     expect(fake.roles(ALICE)).toEqual([HAND_GIVEN]);
     expect(await fake.command("unlink", ALICE)).toEqual({
+        kind: "message",
         content: REPLIES.notLinked,
         ephemeral: true,
+        buttonUrl: null,
     });
 
     // Linked before joining: the join syncs them.
@@ -298,4 +304,226 @@ test("the connector mirrors standing into the guild within a tick, and a reconci
     expect(lines.filter((line) => line.msg.endsWith("failed"))).toEqual([]);
     await connector.stop();
     await fake.stop();
+}, 30_000);
+
+const webClient = () =>
+    createRpcClient(webContract, {
+        endpointUrl: `${platform.internalUrl}/internal/web/rpc`,
+        peerKey: platform.peerKey,
+    });
+const discordClient = () =>
+    createRpcClient(discordContract, {
+        endpointUrl: `${platform.internalUrl}${DISCORD_RPC_PATH}`,
+        peerKey: KEY,
+    });
+
+async function rootSession(): Promise<BearerToken> {
+    const [root] = await db`select id from account where is_root`;
+    invariant(typeof root?.id === "string", "root was bootstrapped");
+    return await sessionFor(root.id);
+}
+
+// An account with a member session, linked to `userId` the way /link links it.
+async function linkedMember(email: string, userId: string) {
+    const accountId: AccountId = newAccountId(rng);
+    await db`insert into account (id, email) values (${accountId}, ${email})`;
+    const session = await sessionFor(accountId);
+    const code = await webClient().call("discord.link.start", {}, { session });
+    invariant(code.ok, "a code was issued");
+    const redeemed = await discordClient().call("links.redeem", { userId, code: code.value.code });
+    invariant(redeemed.ok, "the code linked");
+    return { accountId, session };
+}
+
+async function connected(guildId: string, members: readonly string[]) {
+    const lines: { readonly msg: string; readonly fields?: LogFields }[] = [];
+    const logger: Logger = {
+        write: (_level, msg, fields) => {
+            lines.push(fields === undefined ? { msg } : { msg, fields });
+        },
+    };
+    const fake = startFakeDiscord({ guildId });
+    for (const member of members) fake.addMember(member);
+    const connector = createConnector({
+        platform: discordClient(),
+        botToken: `bot.${"t".repeat(66)}`,
+        guildId,
+        logger,
+        discordApi: fake.api,
+        schedule: "manual",
+    });
+    expect((await connector.start()).ok).toBe(true);
+    await fake.ready();
+    await until("ready", () => lines.some((line) => line.msg === "ready"));
+    await connector.idle();
+    return {
+        fake,
+        connector,
+        lines,
+        stop: async () => {
+            await connector.stop();
+            await fake.stop();
+        },
+    };
+}
+
+test("/me says what the site shows the linked account, and an unlinked user learns nothing", async () => {
+    const DANA = "510000000000000001";
+    const EVE = "510000000000000002";
+    const FRANK = "510000000000000003";
+    const web = webClient();
+    const staff = await rootSession();
+    const dana = await linkedMember("dana@lucent.test", DANA);
+    const frank = await linkedMember("frank@lucent.test", FRANK);
+    const [now] = await db`select (extract(epoch from now()) * 1000)::bigint as ms`;
+    const until30 = Number(now?.ms) + 30 * 24 * 60 * 60_000;
+    const issued = await web.call(
+        "admin.entitlements.issue",
+        {
+            operationId: newOperationId(rng),
+            accountId: dana.accountId,
+            validFrom: Number(now?.ms),
+            validUntil: until30,
+            products: [{ productId: "cs2", features: "*", channels: ["stable"] }],
+        },
+        { session: staff },
+    );
+    expect(issued.ok).toBe(true);
+    expect((await web.call("discord.link.remove", {}, { session: frank.session })).ok).toBe(true);
+    const { fake, stop } = await connected("510000000000000100", [DANA, EVE, FRANK]);
+
+    const me = await discordClient().call("me.read", { userId: DANA });
+    const products = await web.call("products.list", {}, { session: dana.session });
+    const devices = await web.call("devices.list", {}, { session: dana.session });
+    invariant(me.ok && products.ok && devices.ok, "both sides answered");
+    invariant(me.value.standing === "active", "dana is in good standing");
+    expect(me.value.products).toEqual(
+        products.value.products.map(({ productId, name, state, features, channels }) => ({
+            productId,
+            name,
+            state,
+            features,
+            channels,
+        })),
+    );
+    expect(me.value.devices).toEqual({
+        count: devices.value.devices.length,
+        limit: devices.value.limit,
+    });
+    expect(Number(me.value.nextExpiry)).toBe(until30);
+    const reply = await fake.command("me", DANA);
+    invariant(reply.kind === "message", "a message");
+    expect(reply.ephemeral).toBe(true);
+    for (const product of me.value.products)
+        expect(reply.content).toContain(ME_COPY.product(product));
+    expect(reply.content).toContain(ME_COPY.devices(0, devices.value.limit));
+    expect(reply.content).toContain(ME_COPY.nextExpiry(me.value.nextExpiry));
+
+    // Never linked, and linked to an account since unlinked: the same words, about nobody.
+    const nobody = await fake.command("me", EVE);
+    expect(nobody).toEqual({
+        kind: "message",
+        content: REPLIES.linkFirst(`${site}/account/discord`),
+        ephemeral: true,
+        buttonUrl: null,
+    });
+    expect(await fake.command("me", FRANK)).toEqual(nobody);
+    expect(await discordClient().call("me.read", { userId: FRANK })).toEqual({
+        ok: true,
+        value: { standing: "unlinked" },
+    });
+
+    expect(await fake.command("status", EVE)).toEqual({
+        kind: "message",
+        content: FEEDS_COPY.status("Lucent Loader", "live", null),
+        ephemeral: false,
+        buttonUrl: null,
+    });
+    await stop();
+}, 30_000);
+
+test("/ticket opens a ticket the site shows under the linked account", async () => {
+    const GRACE = "520000000000000001";
+    const HEIDI = "520000000000000002";
+    const web = webClient();
+    const grace = await linkedMember("grace@lucent.test", GRACE);
+    const { fake, stop } = await connected("520000000000000100", [GRACE, HEIDI]);
+
+    const listed = await web.call("products.list", {}, { session: grace.session });
+    invariant(listed.ok, "products listed");
+    const form = await fake.command("ticket", GRACE);
+    expect(form).toEqual({
+        kind: "modal",
+        customId: "ticket",
+        options: ["none", ...listed.value.products.map((p) => p.productId)],
+    });
+    const answer = await fake.submit(
+        "ticket",
+        GRACE,
+        { subject: "it won't start", body: "the loader closes at once" },
+        ["none"],
+    );
+    invariant(answer.kind === "message", "a message");
+    expect(answer.ephemeral).toBe(true);
+    expect(answer.content).toBe(TICKET_COPY.opened);
+    const tickets = await web.call("tickets.list", { cursor: null }, { session: grace.session });
+    invariant(tickets.ok, "tickets listed");
+    const [ticket] = tickets.value.items;
+    expect(ticket?.subject).toBe("it won't start");
+    expect(answer.buttonUrl).toBe(`${site}/tickets/${ticket?.id}`);
+
+    expect(await fake.command("ticket", HEIDI)).toEqual({
+        kind: "message",
+        content: REPLIES.linkFirst(`${site}/account/discord`),
+        ephemeral: true,
+        buttonUrl: null,
+    });
+    await stop();
+}, 30_000);
+
+test("a notice goes out as a DM; closed DMs and failures lose nothing and are not retried forever", async () => {
+    const IVAN = "530000000000000001";
+    const JUDY = "530000000000000002";
+    const KARL = "530000000000000003";
+    const members = await Promise.all(
+        [
+            ["ivan@lucent.test", IVAN],
+            ["judy@lucent.test", JUDY],
+            ["karl@lucent.test", KARL],
+        ].map(([email = "", userId = ""]) => linkedMember(email, userId)),
+    );
+    const { fake, connector, stop } = await connected("530000000000000100", [IVAN, JUDY, KARL]);
+    fake.setDms(JUDY, "closed");
+    fake.setDms(KARL, "failing");
+    // As a security notice's transaction leaves them for members who chose Discord.
+    for (const { accountId } of members) {
+        await db`insert into inbox_entry (account_id, kind) values (${accountId}, 'security')`;
+        await db`insert into connector_discord_dm (account_id, kind, next_attempt_at, created_at)
+                 values (${accountId}, 'security', now(), now())`;
+    }
+    await connector.tick();
+
+    expect(fake.dms(IVAN)).toEqual([
+        {
+            channelId: expect.any(String),
+            content: DM_COPY.security,
+            buttonUrl: `${site}/account/inbox`,
+        },
+    ]);
+    expect(fake.dmAttempts(JUDY)).toBe(1);
+    for (let round = 0; round < 6; round += 1) {
+        await db`update connector_discord_dm set next_attempt_at = now()`;
+        await connector.tick();
+    }
+    expect(fake.dmAttempts(JUDY)).toBe(1);
+    expect(fake.dmAttempts(KARL)).toBe(4);
+    expect(fake.dms(JUDY)).toEqual([]);
+    expect(fake.dms(KARL)).toEqual([]);
+    const [left] = await db`select count(*)::int as count from connector_discord_dm`;
+    expect(left?.count).toBe(0);
+    const ids = members.map((m) => m.accountId);
+    const [inbox] = await db`select count(*)::int as count from inbox_entry
+                             where account_id in ${db(ids)}`;
+    expect(inbox?.count).toBe(3);
+    await stop();
 }, 30_000);

@@ -1,23 +1,19 @@
 import {
-    type APIInteraction,
-    ApplicationCommandOptionType,
-    ApplicationCommandType,
     ButtonStyle,
     Client,
     ComponentType,
     GatewayDispatchEvents,
     GatewayIntentBits,
-    InteractionType,
-    MessageFlags,
-    type RESTPutAPIApplicationGuildCommandsJSONBody,
 } from "@discordjs/core";
 import { DiscordAPIError, REST } from "@discordjs/rest";
 import { WebSocketManager } from "@discordjs/ws";
 import { containBoundary, describeUnknownError, tryAsync } from "@lucent/core/contain";
 import { err, ok, type Result } from "@lucent/core/result";
 import type { RpcClient } from "@lucent/rpc/client";
-import { type DiscordContract, LinkCode } from "@lucent/rpc/discord/contract";
-import { COMMANDS_COPY, FEEDS_COPY, REPLIES } from "./copy.ts";
+import type { DiscordContract } from "@lucent/rpc/discord/contract";
+import { FEEDS_COPY } from "./copy.ts";
+import { sendDueDms } from "./dms.ts";
+import { COMMANDS, createInteractions } from "./interactions.ts";
 import type { Logger, LogOrigin } from "./log.ts";
 import { createSerialQueue } from "./queue.ts";
 
@@ -31,29 +27,6 @@ export const RECONCILE_MS = 60 * 60 * 1_000;
 const MEMBERS_PER_PAGE = 1_000;
 const USERS_PER_RESOLVE = 100;
 const SYNC_REASON = "lucent.moe role sync";
-
-const COMMANDS: RESTPutAPIApplicationGuildCommandsJSONBody = [
-    {
-        name: "link",
-        description: COMMANDS_COPY.link,
-        type: ApplicationCommandType.ChatInput,
-        options: [
-            {
-                name: "code",
-                description: COMMANDS_COPY.linkCode,
-                type: ApplicationCommandOptionType.String,
-                required: true,
-                min_length: 10,
-                max_length: 11,
-            },
-        ],
-    },
-    {
-        name: "unlink",
-        description: COMMANDS_COPY.unlink,
-        type: ApplicationCommandType.ChatInput,
-    },
-];
 
 export type Connector = {
     // Connects the gateway and reads the audit cursor's head. Fails only when Discord refuses
@@ -301,6 +274,7 @@ export function createConnector(params: {
         if (first || changes.value.reconcile) await runReconcile(changes.value.retiredRoleIds);
         else await syncUsers(changes.value.userIds);
         await postFeeds();
+        await sendDueDms({ api, platform, warn: (msg, detail) => warn("dms", msg, detail) });
         params.onAlive?.();
     }
 
@@ -308,57 +282,16 @@ export function createConnector(params: {
     const reconcile = () => queue.push("reconcile", () => runReconcile());
     const syncLater = (userId: string) => queue.push(`member:${userId}`, () => syncUsers([userId]));
 
-    async function link(userId: string, code: string | null): Promise<string> {
-        const page = `${siteOrigin ?? "lucent.moe"}/account/discord`;
-        const typed = LinkCode.safeParse(code ?? "");
-        if (!typed.success) return REPLIES.codeInvalid(page);
-        const linked = await platform.call("links.redeem", { userId, code: typed.data });
-        if (linked.ok) {
+    const answer = createInteractions({
+        api,
+        platform,
+        guildId,
+        siteOrigin: () => siteOrigin,
+        attempt: discord,
+        syncLater: (userId) => {
             void syncLater(userId);
-            return REPLIES.linked;
-        }
-        switch (linked.error.code) {
-            case "CODE_INVALID":
-                return REPLIES.codeInvalid(page);
-            case "ALREADY_LINKED":
-                return REPLIES.alreadyLinked;
-            default:
-                return REPLIES.unavailable;
-        }
-    }
-
-    async function unlink(userId: string): Promise<string> {
-        const removed = await platform.call("links.remove", { userId });
-        if (!removed.ok) return REPLIES.unavailable;
-        if (!removed.value.removed) return REPLIES.notLinked;
-        void syncLater(userId);
-        return REPLIES.unlinked;
-    }
-
-    // Answered outside the queue: Discord drops an interaction not acknowledged within three
-    // seconds. Who is asking is the user Discord put in the interaction; platform decides the rest.
-    async function answer(interaction: APIInteraction): Promise<void> {
-        if (interaction.type !== InteractionType.ApplicationCommand) return;
-        if (interaction.data.type !== ApplicationCommandType.ChatInput) return;
-        if (interaction.guild_id !== guildId) return;
-        const userId = interaction.member?.user.id;
-        const { name } = interaction.data;
-        if (userId === undefined || (name !== "link" && name !== "unlink")) return;
-        const deferred = await discord("interaction not acknowledged", () =>
-            api.interactions.defer(interaction.id, interaction.token, {
-                flags: MessageFlags.Ephemeral,
-            }),
-        );
-        if (!deferred.ok) return;
-        const option = interaction.data.options?.find((o) => o.name === "code");
-        const code = option?.type === ApplicationCommandOptionType.String ? option.value : null;
-        const content = name === "link" ? await link(userId, code) : await unlink(userId);
-        await discord("interaction reply failed", () =>
-            api.interactions.editReply(interaction.application_id, interaction.token, {
-                content,
-            }),
-        );
-    }
+        },
+    });
 
     const contained = (origin: LogOrigin, work: () => Promise<void>) =>
         containBoundary({

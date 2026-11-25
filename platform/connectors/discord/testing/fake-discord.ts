@@ -15,6 +15,20 @@ export type FakeMessage = {
     readonly buttonUrl: string | null;
 };
 
+// What an interaction was answered with: a message (deferred and edited, or sent at once), or a
+// form.
+export type FakeAnswer =
+    | {
+          readonly kind: "message";
+          readonly content: string;
+          readonly ephemeral: boolean;
+          readonly buttonUrl: string | null;
+      }
+    | { readonly kind: "modal"; readonly customId: string; readonly options: readonly string[] };
+
+// How a member's DMs answer the bot: delivered, closed to it (Discord's 50007), or failing.
+export type DmMode = "open" | "closed" | "failing";
+
 export type FakeDiscord = {
     // The REST base the connector is given.
     readonly api: string;
@@ -25,16 +39,27 @@ export type FakeDiscord = {
     readonly roles: (userId: string) => readonly string[];
     // What staff do by hand in Discord.
     readonly setRoles: (userId: string, roles: readonly string[]) => void;
+    // Channel messages, not DMs.
     readonly messages: () => readonly FakeMessage[];
+    readonly dms: (userId: string) => readonly FakeMessage[];
+    readonly dmAttempts: (userId: string) => number;
+    readonly setDms: (userId: string, mode: DmMode) => void;
     readonly commands: () => readonly string[];
     // Resolves once a gateway session is ready and the commands are registered.
     readonly ready: () => Promise<void>;
-    // Runs a slash command as `userId` and resolves with the ephemeral reply.
+    // Runs a slash command as `userId` and resolves with its answer.
     readonly command: (
         name: string,
         userId: string,
         options?: Readonly<Record<string, string>>,
-    ) => Promise<{ readonly content: string; readonly ephemeral: boolean }>;
+    ) => Promise<FakeAnswer>;
+    // Submits a form as `userId`: a select's chosen value or a text input's text, by custom id.
+    readonly submit: (
+        customId: string,
+        userId: string,
+        fields: Readonly<Record<string, string>>,
+        selects: readonly string[],
+    ) => Promise<FakeAnswer>;
     // Closes the gateway connection with a code the client may resume after.
     readonly dropGateway: () => void;
     readonly identifies: () => number;
@@ -48,32 +73,60 @@ const Members = /^\/api\/v10\/guilds\/(\d+)\/members$/;
 const Commands = /^\/api\/v10\/applications\/(\d+)\/guilds\/(\d+)\/commands$/;
 const ChannelMessages = /^\/api\/v10\/channels\/(\d+)\/messages$/;
 const Callback = /^\/api\/v10\/interactions\/(\d+)\/([^/]+)\/callback$/;
-const Original = /^\/api\/v10\/webhooks\/(\d+)\/([^/]+)\/messages\/(?:@|%40)original$/;
+const Original = /^\/api\/v10\/webhooks\/(\d+)\/([^/]+)\/messages\/@original$/;
 
-const MessageBody = z.object({
-    content: z.string(),
-    components: z
-        .array(z.object({ components: z.array(z.object({ url: z.string().optional() })) }))
-        .optional(),
-});
+const Buttons = z
+    .array(z.object({ components: z.array(z.object({ url: z.string().optional() })) }))
+    .optional();
+const MessageBody = z.object({ content: z.string(), components: Buttons });
 const CallbackBody = z.object({
     type: z.number(),
-    data: z.object({ flags: z.number() }).optional(),
+    data: z
+        .object({
+            flags: z.number().optional(),
+            content: z.string().optional(),
+            custom_id: z.string().optional(),
+            components: Buttons.or(
+                z.array(
+                    z.object({
+                        component: z
+                            .object({
+                                options: z.array(z.object({ value: z.string() })).optional(),
+                            })
+                            .optional(),
+                    }),
+                ),
+            ),
+        })
+        .optional(),
 });
-const EditBody = z.object({ content: z.string() });
+const EditBody = MessageBody;
 const CommandsBody = z.array(z.object({ name: z.string() }));
+const DmBody = z.object({ recipient_id: z.string() });
 const GatewayPayload = z.object({ op: z.number() });
 
 const EPHEMERAL = 1 << 6;
+// Discord's interaction callback types.
+const REPLY = 4;
+const DEFER = 5;
+const MODAL = 9;
 
 function notFound(): Response {
     return Response.json({ message: "Unknown Member", code: 10007 }, { status: 404 });
+}
+
+function buttonOf(components: z.output<typeof Buttons>): string | null {
+    return components?.[0]?.components[0]?.url ?? null;
 }
 
 export function startFakeDiscord(params: { readonly guildId: string }): FakeDiscord {
     const { guildId } = params;
     const members = new Map<string, Set<string>>();
     const messages: FakeMessage[] = [];
+    const dmChannels = new Map<string, string>();
+    const dmModes = new Map<string, DmMode>();
+    const dmAttempts = new Map<string, number>();
+    const dmsSent: (FakeMessage & { readonly userId: string })[] = [];
     let commands: readonly string[] = [];
     let nextId = 300_000_000_000_000_000n;
     const newId = () => {
@@ -86,9 +139,9 @@ export function startFakeDiscord(params: { readonly guildId: string }): FakeDisc
     let socket: ServerWebSocket<undefined> | null = null;
     let readyWaiters: (() => void)[] = [];
     let isReady = false;
-    const replies = new Map<
+    const answers = new Map<
         string,
-        { ephemeral: boolean; resolve: (r: { content: string; ephemeral: boolean }) => void }
+        { ephemeral: boolean; resolve: (answer: FakeAnswer) => void }
     >();
 
     const dispatch = (t: string, d: unknown): void => {
@@ -103,6 +156,42 @@ export function startFakeDiscord(params: { readonly guildId: string }): FakeDisc
         deaf: false,
         mute: false,
         flags: 0,
+    });
+    const messageJson = (channelId: string, content: string) => ({
+        id: newId(),
+        channel_id: channelId,
+        content,
+        author: BOT,
+        timestamp: "2026-01-01T00:00:00.000Z",
+        edited_timestamp: null,
+        tts: false,
+        mention_everyone: false,
+        mentions: [],
+        mention_roles: [],
+        attachments: [],
+        embeds: [],
+        pinned: false,
+        type: 0,
+    });
+    const interact = (data: unknown): Promise<FakeAnswer> =>
+        new Promise((resolve) => {
+            const token = `token-${newId()}`;
+            answers.set(token, { ephemeral: false, resolve });
+            dispatch("INTERACTION_CREATE", { token, ...(typeof data === "object" ? data : {}) });
+        });
+    const interactionBase = (userId: string, type: number) => ({
+        id: newId(),
+        application_id: APPLICATION_ID,
+        type,
+        version: 1,
+        guild_id: guildId,
+        channel_id: "400000000000000001",
+        member: { ...memberJson(userId), permissions: "0" },
+        app_permissions: "0",
+        locale: "en-US",
+        entitlements: [],
+        authorizing_integration_owners: {},
+        context: 0,
     });
 
     const gateway = Bun.serve({
@@ -148,7 +237,9 @@ export function startFakeDiscord(params: { readonly guildId: string }): FakeDisc
         hostname: "127.0.0.1",
         port: 0,
         fetch: async (req) => {
-            const { pathname, searchParams } = new URL(req.url);
+            const url = new URL(req.url);
+            const pathname = decodeURIComponent(url.pathname);
+            const { searchParams } = url;
             if (pathname === "/api/v10/gateway/bot") {
                 return Response.json({
                     url: `ws://127.0.0.1:${gateway.port}`,
@@ -184,6 +275,12 @@ export function startFakeDiscord(params: { readonly guildId: string }): FakeDisc
                     .slice(0, limit);
                 return Response.json(ids.map(memberJson));
             }
+            if (pathname === "/api/v10/users/@me/channels" && req.method === "POST") {
+                const { recipient_id } = DmBody.parse(await req.json());
+                const channelId = newId();
+                dmChannels.set(channelId, recipient_id);
+                return Response.json({ id: channelId, type: 1, recipients: [] });
+            }
             const registered = Commands.exec(pathname);
             if (registered !== null && req.method === "PUT") {
                 const body = CommandsBody.parse(await req.json());
@@ -196,47 +293,90 @@ export function startFakeDiscord(params: { readonly guildId: string }): FakeDisc
             }
             const channel = ChannelMessages.exec(pathname);
             if (channel !== null && req.method === "POST") {
+                const channelId = channel[1] ?? "";
                 const body = MessageBody.parse(await req.json());
-                messages.push({
-                    channelId: channel[1] ?? "",
-                    content: body.content,
-                    buttonUrl: body.components?.[0]?.components[0]?.url ?? null,
-                });
-                return Response.json({
-                    id: newId(),
-                    channel_id: channel[1],
-                    content: body.content,
-                    author: BOT,
-                    timestamp: "2026-01-01T00:00:00.000Z",
-                    edited_timestamp: null,
-                    tts: false,
-                    mention_everyone: false,
-                    mentions: [],
-                    mention_roles: [],
-                    attachments: [],
-                    embeds: [],
-                    pinned: false,
-                    type: 0,
-                });
+                const recipient = dmChannels.get(channelId);
+                if (recipient !== undefined) {
+                    dmAttempts.set(recipient, (dmAttempts.get(recipient) ?? 0) + 1);
+                    const mode = dmModes.get(recipient) ?? "open";
+                    if (mode === "closed") {
+                        return Response.json(
+                            { message: "Cannot send messages to this user", code: 50007 },
+                            { status: 403 },
+                        );
+                    }
+                    if (mode === "failing") {
+                        return Response.json(
+                            { message: "Missing Access", code: 50001 },
+                            { status: 403 },
+                        );
+                    }
+                    dmsSent.push({
+                        userId: recipient,
+                        channelId,
+                        content: body.content,
+                        buttonUrl: buttonOf(body.components),
+                    });
+                } else {
+                    messages.push({
+                        channelId,
+                        content: body.content,
+                        buttonUrl: buttonOf(body.components),
+                    });
+                }
+                return Response.json(messageJson(channelId, body.content));
             }
             const callback = Callback.exec(pathname);
             if (callback !== null) {
                 const body = CallbackBody.parse(await req.json());
-                const waiting = replies.get(callback[2] ?? "");
+                const token = callback[2] ?? "";
+                const waiting = answers.get(token);
                 if (waiting !== undefined) {
                     waiting.ephemeral = ((body.data?.flags ?? 0) & EPHEMERAL) !== 0;
+                    if (body.type === REPLY) {
+                        answers.delete(token);
+                        waiting.resolve({
+                            kind: "message",
+                            content: body.data?.content ?? "",
+                            ephemeral: waiting.ephemeral,
+                            buttonUrl: null,
+                        });
+                    }
+                    if (body.type === MODAL) {
+                        answers.delete(token);
+                        const fields = body.data?.components ?? [];
+                        waiting.resolve({
+                            kind: "modal",
+                            customId: body.data?.custom_id ?? "",
+                            options: fields.flatMap((field) =>
+                                "component" in field
+                                    ? (field.component?.options ?? []).map((o) => o.value)
+                                    : [],
+                            ),
+                        });
+                    }
+                    invariant(
+                        body.type === REPLY || body.type === MODAL || body.type === DEFER,
+                        `callback type ${body.type} is one the connector uses`,
+                    );
                 }
                 return new Response(null, { status: 204 });
             }
             const original = Original.exec(pathname);
             if (original !== null && req.method === "PATCH") {
                 const body = EditBody.parse(await req.json());
-                const waiting = replies.get(original[2] ?? "");
+                const token = original[2] ?? "";
+                const waiting = answers.get(token);
                 if (waiting !== undefined) {
-                    replies.delete(original[2] ?? "");
-                    waiting.resolve({ content: body.content, ephemeral: waiting.ephemeral });
+                    answers.delete(token);
+                    waiting.resolve({
+                        kind: "message",
+                        content: body.content,
+                        ephemeral: waiting.ephemeral,
+                        buttonUrl: buttonOf(body.components),
+                    });
                 }
-                return Response.json({ id: newId(), content: body.content });
+                return Response.json(messageJson("400000000000000001", body.content));
             }
             return Response.json({ message: "404: Not Found", code: 0 }, { status: 404 });
         },
@@ -257,6 +397,14 @@ export function startFakeDiscord(params: { readonly guildId: string }): FakeDisc
             members.set(userId, new Set(roles));
         },
         messages: () => [...messages],
+        dms: (userId) =>
+            dmsSent
+                .filter((dm) => dm.userId === userId)
+                .map(({ channelId, content, buttonUrl }) => ({ channelId, content, buttonUrl })),
+        dmAttempts: (userId) => dmAttempts.get(userId) ?? 0,
+        setDms: (userId, mode) => {
+            dmModes.set(userId, mode);
+        },
         commands: () => commands,
         ready: () =>
             isReady
@@ -265,34 +413,37 @@ export function startFakeDiscord(params: { readonly guildId: string }): FakeDisc
                       readyWaiters.push(resolve);
                   }),
         command: (name, userId, options = {}) =>
-            new Promise((resolve) => {
-                const token = `token-${newId()}`;
-                replies.set(token, { ephemeral: false, resolve });
-                dispatch("INTERACTION_CREATE", {
+            interact({
+                ...interactionBase(userId, 2),
+                data: {
                     id: newId(),
-                    application_id: APPLICATION_ID,
-                    type: 2,
-                    token,
-                    version: 1,
-                    guild_id: guildId,
-                    channel_id: "400000000000000001",
-                    member: { ...memberJson(userId), permissions: "0" },
-                    app_permissions: "0",
-                    locale: "en-US",
-                    entitlements: [],
-                    authorizing_integration_owners: {},
-                    context: 0,
-                    data: {
-                        id: newId(),
-                        name,
-                        type: 1,
-                        options: Object.entries(options).map(([option, value]) => ({
-                            name: option,
-                            type: 3,
-                            value,
+                    name,
+                    type: 1,
+                    options: Object.entries(options).map(([option, value]) => ({
+                        name: option,
+                        type: 3,
+                        value,
+                    })),
+                },
+            }),
+        submit: (customId, userId, fields, selects) =>
+            interact({
+                ...interactionBase(userId, 5),
+                data: {
+                    custom_id: customId,
+                    components: [
+                        ...selects.map((value) => ({
+                            type: 18,
+                            id: Number(newId().slice(-6)),
+                            component: { type: 3, id: 1, custom_id: "product", values: [value] },
                         })),
-                    },
-                });
+                        ...Object.entries(fields).map(([field, value]) => ({
+                            type: 18,
+                            id: Number(newId().slice(-6)),
+                            component: { type: 4, id: 2, custom_id: field, value },
+                        })),
+                    ],
+                },
             }),
         dropGateway: () => {
             socket?.close(4000, "unknown error");
