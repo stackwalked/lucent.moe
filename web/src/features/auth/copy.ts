@@ -4,8 +4,8 @@ export const RESET_COPY = {
     email: "email",
     password: "new password",
     redeem: "change password",
-    sent: "if your account can use email reset, check your email. staff accounts use staff recovery.",
-    changed: "your password has changed. sign in with your enrolled factor.",
+    sent: "if this account can reset by email, a link is on its way.",
+    changed: "password changed.",
     signIn: "sign in",
 };
 export const SIGN_IN_COPY = {
@@ -17,21 +17,20 @@ export const SIGN_IN_COPY = {
     secondTitle: "one more step",
     usePasskey: "use your passkey",
     useCode: "use a code instead",
-    code: "code",
-    codeHint: "from your authenticator app",
+    code: "authenticator code",
     startOver: "start over",
     signInAgain: "sign in again",
-    passkeyUnusable: "your browser couldn't use a passkey here.",
+    passkeyUnusable: "no passkey available in this browser.",
     triesLeft: (n: number) => (n === 1 ? "1 try left." : `${n} tries left.`),
 } as const;
 
 // Where a sign-in step changes what a refusal means.
 export const SIGN_IN_REFUSALS = {
     code: {
-        INVALID_CREDENTIALS: "that code didn't work. codes change every 30 seconds.",
-        FLOW_INVALID: "this sign-in timed out or had too many tries. start again.",
+        INVALID_CREDENTIALS: "wrong code.",
+        FLOW_INVALID: "sign-in timed out or too many tries. start again.",
     },
     secondFactor: {
-        FLOW_INVALID: "this sign-in timed out or had too many tries. start again.",
+        FLOW_INVALID: "sign-in timed out or too many tries. start again.",
     },
 } as const;

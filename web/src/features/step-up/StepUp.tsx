@@ -121,7 +121,6 @@ export function StepUpProvider({ children }: { readonly children: ReactNode }) {
                 }
             >
                 <Stack gap={3}>
-                    <p>{STEP_UP_COPY.body}</p>
                     <RefusalNote refused={refused} />
                 </Stack>
             </Dialog>

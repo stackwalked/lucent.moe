@@ -71,7 +71,7 @@ function Waiting({ enrollment, list }: { readonly enrollment: Enrollment; readon
             </Stack>
             {change.kind === "waits" ? (
                 <p>
-                    {DEVICES_COPY.waitsUntil} <Time at={change.until} />
+                    {DEVICES_COPY.nextChange} <Time at={change.until} />
                 </p>
             ) : (
                 <p>{change.kind === "adds" ? DEVICES_COPY.adds : DEVICES_COPY.replaces}</p>
@@ -166,7 +166,6 @@ function Rename({ device }: { readonly device: Device }) {
                             <TextField
                                 name="name"
                                 label={DEVICES_COPY.newName}
-                                hint={DEVICES_COPY.newNameHint}
                                 maxLength={64}
                                 defaultValue={device.name ?? ""}
                             />
@@ -320,18 +319,14 @@ export function DevicesPage() {
                         rowKey={(d) => d.deviceId}
                     />
                 )}
-                {list.devices.some((d) => d.storage === "software") ? (
-                    <p>{DEVICES_COPY.softwareHint}</p>
-                ) : null}
-            </Section>
-            <Section caption={DEVICES_COPY.window}>
-                {list.replaceableFrom === null ? (
-                    <p>{DEVICES_COPY.windowOpen}</p>
-                ) : (
-                    <p>
-                        {DEVICES_COPY.windowClosed} <Time at={list.replaceableFrom} />
-                    </p>
-                )}
+                <p>
+                    {DEVICES_COPY.nextChange}{" "}
+                    {list.replaceableFrom === null ? (
+                        DEVICES_COPY.now
+                    ) : (
+                        <Time at={list.replaceableFrom} />
+                    )}
+                </p>
             </Section>
         </Page>
     );

@@ -1,7 +1,7 @@
 export const RESOURCES_TITLE = "resources";
 
 export const RESOURCES_COPY = {
-    none: "nothing here yet.",
+    none: "no files",
     title: "file",
     product: "product",
     everyone: "all members",

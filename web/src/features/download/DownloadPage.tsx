@@ -47,7 +47,6 @@ function Loader({ offer }: { readonly offer: Offer }) {
     if (offer.state === "no_product") return <Empty>{DOWNLOAD_COPY.none}</Empty>;
     return (
         <Stack gap={3}>
-            <p>{DOWNLOAD_COPY.intro}</p>
             {offer.state === "ready" ? (
                 <form method="get" action={LOADER_FILE_PATH}>
                     <Button tone="pink" type="submit">

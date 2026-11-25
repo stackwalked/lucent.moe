@@ -1,20 +1,20 @@
 export const APPEAL_TITLE = "appeal";
 
 export const APPEAL_COPY = {
-    suspended: "this account is suspended. you can appeal here.",
+    suspended: "account suspended",
     reason: "reason given",
-    noReason: "no reason was recorded.",
+    noReason: "none recorded",
     since: "suspended",
     thread: "your appeal",
-    none: "you haven't appealed yet.",
-    first: "why should the suspension be lifted?",
+    none: "no messages",
+    first: "why lift the suspension?",
     more: "write to staff",
     send: "send",
     signOut: "sign out",
     states: {
         open: "waiting for staff",
         answered: "staff answered",
-        closed: "closed. writing again reopens it.",
+        closed: "closed",
     },
-    window: "this session ends 30 minutes after you signed in. sign in again to come back.",
+    window: "this session lasts 30 minutes.",
 } as const;

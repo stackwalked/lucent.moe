@@ -62,7 +62,6 @@ export function ApplyPage() {
     return (
         <Page title={WAITLIST_COPY.title} width="narrow">
             <Stack gap={4}>
-                <p>{WAITLIST_COPY.intro}</p>
                 {sent ? (
                     <p role="status">{WAITLIST_COPY.sent}</p>
                 ) : products.length === 0 ? (
@@ -97,18 +96,15 @@ export function ApplyPage() {
                                 maxLength={2000}
                                 required
                             />
-                            <p className={styles.hint}>{WAITLIST_COPY.aboutHint}</p>
                             <TextField
                                 name="discord"
                                 label={WAITLIST_COPY.discord}
-                                hint={WAITLIST_COPY.discordHint}
                                 maxLength={64}
                                 autoComplete="off"
                             />
                             <TextField
                                 name="knownBy"
                                 label={WAITLIST_COPY.knownBy}
-                                hint={WAITLIST_COPY.knownByHint}
                                 maxLength={64}
                                 autoComplete="off"
                             />

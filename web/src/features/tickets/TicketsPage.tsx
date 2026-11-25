@@ -88,7 +88,6 @@ export function TicketsPage() {
                                     void router.navigate({ to: "/tickets", search: { cursor } })
                                 }
                             />
-                            <p>{TICKETS_COPY.idle}</p>
                         </Stack>
                     )}
                 </Section>
@@ -119,7 +118,6 @@ function OpenTicket({ products }: { readonly products: readonly Product[] }) {
         <Section caption={TICKETS_COPY.open}>
             <form action={submit}>
                 <Stack gap={3}>
-                    <p>{TICKETS_COPY.openHint}</p>
                     <TextField
                         name="subject"
                         label={TICKETS_COPY.subject}

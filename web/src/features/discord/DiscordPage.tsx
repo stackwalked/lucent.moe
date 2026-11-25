@@ -1,5 +1,5 @@
 import type { EpochMs } from "@lucent/core/brands";
-import { getRouteApi, Link, useRouter } from "@tanstack/react-router";
+import { getRouteApi, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
 import type { Refused } from "../../server/outcome.ts";
 import { Button } from "../../ui/Button/Button.tsx";
@@ -55,9 +55,6 @@ export function DiscordPage() {
                             ]}
                         />
                         <p>{C.rolesFollow}</p>
-                        <p>
-                            {C.notices} <Link to="/account/preferences">{C.preferences}</Link>
-                        </p>
                         <div>
                             <Button tone="danger" pending={pending} onClick={unlink}>
                                 {C.unlink}

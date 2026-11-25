@@ -184,11 +184,7 @@ export function SignInPage() {
                     <form action={submitCode} noValidate className={styles.form}>
                         <fieldset disabled={codePending}>
                             <Stack gap={4}>
-                                <CodeInput
-                                    name="code"
-                                    label={SIGN_IN_COPY.code}
-                                    hint={SIGN_IN_COPY.codeHint}
-                                />
+                                <CodeInput name="code" label={SIGN_IN_COPY.code} />
                                 <RefusalNote
                                     refused={codeRefused}
                                     overrides={SIGN_IN_REFUSALS.code}

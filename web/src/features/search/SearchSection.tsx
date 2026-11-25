@@ -32,7 +32,6 @@ export function SearchSection() {
                                 name="q"
                                 type="search"
                                 label={SEARCH_COPY.field}
-                                hint={SEARCH_COPY.hint}
                                 maxLength={64}
                                 required
                             />

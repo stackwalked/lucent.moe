@@ -11,10 +11,4 @@
         color: var(--ink-2);
         font-size: var(--size-13);
     }
-
-    .hint {
-        margin-block-start: calc(var(--s-3) * -1);
-        color: var(--ink-2);
-        font-size: var(--size-13);
-    }
 }

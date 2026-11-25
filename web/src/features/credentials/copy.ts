@@ -5,10 +5,10 @@ export const CREDENTIALS_COPY = {
     setPassword: "set password",
     newPassword: "new password",
     addApp: "add authenticator app",
-    scan: "scan this with your authenticator app, or enter the key.",
+    scan: "scan with your authenticator app, or enter the key.",
     key: "key",
     qrLabel: "qr code for your authenticator app",
     code: "code",
-    codeHint: "the 6 digits your app shows now",
+    codeHint: "6 digits",
     confirmApp: "confirm",
 } as const;

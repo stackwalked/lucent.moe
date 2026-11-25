@@ -43,7 +43,6 @@ export function RedeemPage() {
                 ) : token === null ? null : (
                     <form action={submit}>
                         <Stack gap={4}>
-                            <p>{INVITES_COPY.redeemBody}</p>
                             <TextField
                                 name="email"
                                 label={INVITES_COPY.email}
