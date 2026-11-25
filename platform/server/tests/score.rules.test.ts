@@ -7,7 +7,13 @@ import {
     type ObservedSignal,
     REVIEW_THRESHOLD,
 } from "../src/risk/score.rules.ts";
-import { decideOpenSignals, decideRenewalSignals } from "../src/risk/signals.rules.ts";
+import {
+    decideIntegritySignals,
+    decideOpenSignals,
+    decideRenewalSignals,
+    decideReportSignals,
+    type SignalKind,
+} from "../src/risk/signals.rules.ts";
 
 const DAY = 24 * 60 * 60 * 1_000;
 const now = EpochMs.parse(100 * DAY);
@@ -114,4 +120,157 @@ test("a session on a software-backed key is marked, one on a TPM key is not", ()
         value: ["software_device_key"],
     });
     expect(decideOpenSignals({ storage: "tpm" })).toEqual({ ok: true, value: [] });
+});
+
+function seen(kind: SignalKind, session: string | null): ObservedSignal {
+    return { kind, sessionId: session, observedAt: now };
+}
+
+function riskOf(signals: readonly ObservedSignal[]): number {
+    const score = decideRiskScore(signals, now);
+    return score.ok ? score.value.risk : Number.NaN;
+}
+
+// Common among honest members (VPNs, VMs, mods and overlays, test signing or kernel debugging on
+// for other software, a software-held key): none may open a review item by itself.
+const HONEST_LOOKING: readonly SignalKind[] = [
+    "software_device_key",
+    "new_country",
+    "virtual_machine",
+    "test_signing",
+    "unsigned_module",
+    "kernel_debugging",
+    "signature_enforcement_off",
+];
+
+test.each(HONEST_LOOKING)("%s alone stays under the review threshold at any count", (kind) => {
+    for (const count of [1, 2, 3, 4, 10, 100]) {
+        const sessions = Array.from({ length: count }, (_, index) => seen(kind, `s${index}`));
+        const outside = Array.from({ length: count }, () => seen(kind, null));
+
+        expect({ count, risk: riskOf(sessions) < REVIEW_THRESHOLD }).toEqual({ count, risk: true });
+        expect({ count, risk: riskOf(outside) < REVIEW_THRESHOLD }).toEqual({ count, risk: true });
+    }
+});
+
+test("a VM, test signing and an unsigned module on one PC together stay under the threshold", () => {
+    const sessions = ["a", "b", "c"].flatMap((session) =>
+        (["virtual_machine", "test_signing", "unsigned_module"] as const).map((kind) =>
+            seen(kind, session),
+        ),
+    );
+    expect(riskOf(sessions)).toBe(27);
+});
+
+test.each([
+    ["a debugger attached in one session", [seen("debugger_attached", "a")], 35],
+    ["a new country beside a VM", [seen("new_country", null), seen("virtual_machine", "a")], 24],
+    [
+        "hardware breakpoints in two sessions, under",
+        [seen("hardware_breakpoints", "a"), seen("hardware_breakpoints", "b")],
+        28,
+    ],
+    [
+        "hardware breakpoints in three sessions, over",
+        ["a", "b", "c"].map((s) => seen("hardware_breakpoints", s)),
+        39,
+    ],
+    [
+        "traps in our image in three sessions",
+        ["a", "b", "c"].map((s) => seen("module_trap", s)),
+        39,
+    ],
+    [
+        "a VM in four sessions counts once",
+        ["a", "b", "c", "d"].map((s) => seen("virtual_machine", s)),
+        10,
+    ],
+] as const)("%s scores risk %i", (_, signals, risk) => {
+    expect(riskOf(signals)).toBe(risk);
+});
+
+const CLEAN_FLAGS = {
+    debugger: false,
+    hardwareBreakpoints: false,
+    kernelDebugging: false,
+    testSigning: false,
+    signatureEnforcementOff: false,
+    codeWritable: false,
+} as const;
+
+const clean = { flags: CLEAN_FLAGS, vmVendor: 0, windowsBuild: 0, unsignedModules: [] } as const;
+
+test.each([
+    ["an all-zero field", clean, []],
+    ["a Windows build alone", { ...clean, windowsBuild: 26_100 }, []],
+    ["a debugger", { ...clean, flags: { ...CLEAN_FLAGS, debugger: true } }, ["debugger_attached"]],
+    [
+        "hardware breakpoints",
+        { ...clean, flags: { ...CLEAN_FLAGS, hardwareBreakpoints: true } },
+        ["hardware_breakpoints"],
+    ],
+    [
+        "kernel debugging",
+        { ...clean, flags: { ...CLEAN_FLAGS, kernelDebugging: true } },
+        ["kernel_debugging"],
+    ],
+    ["test signing", { ...clean, flags: { ...CLEAN_FLAGS, testSigning: true } }, ["test_signing"]],
+    [
+        "signature enforcement off",
+        { ...clean, flags: { ...CLEAN_FLAGS, signatureEnforcementOff: true } },
+        ["signature_enforcement_off"],
+    ],
+    [
+        "writable code pages",
+        { ...clean, flags: { ...CLEAN_FLAGS, codeWritable: true } },
+        ["code_writable"],
+    ],
+    ["any VM vendor", { ...clean, vmVendor: 1 }, ["virtual_machine"]],
+    ["the last VM vendor byte", { ...clean, vmVendor: 0xff }, ["virtual_machine"]],
+    ["one unsigned module", { ...clean, unsignedModules: [5n] }, ["unsigned_module"]],
+    ["four unsigned modules", { ...clean, unsignedModules: [1n, 2n, 3n, 4n] }, ["unsigned_module"]],
+    [
+        "everything",
+        {
+            flags: {
+                debugger: true,
+                hardwareBreakpoints: true,
+                kernelDebugging: true,
+                testSigning: true,
+                signatureEnforcementOff: true,
+                codeWritable: true,
+            },
+            vmVendor: 3,
+            windowsBuild: 19_045,
+            unsignedModules: [9n],
+        },
+        [
+            "debugger_attached",
+            "hardware_breakpoints",
+            "kernel_debugging",
+            "test_signing",
+            "signature_enforcement_off",
+            "code_writable",
+            "virtual_machine",
+            "unsigned_module",
+        ],
+    ],
+] as const)("integrity bits with %s signal what the rules name", (_, bits, kinds) => {
+    expect(decideIntegritySignals(bits)).toEqual({ ok: true, value: [...kinds] });
+});
+
+const crash = (exceptionCode: number, moduleHash = 0n) =>
+    ({ kind: "crash", time: 1, exceptionCode, moduleHash, rva: 0x10, frames: [] }) as const;
+
+test.each([
+    ["nothing but health", [{ kind: "health", time: 1, eventId: 1, subject: 0n, value: 0 }], []],
+    ["an access violation in our image", [crash(0xc000_0005)], []],
+    ["a fail-fast in our image", [crash(0xc000_0409)], []],
+    ["a breakpoint in another module", [crash(0x8000_0003, 0x77n)], []],
+    ["a breakpoint in our image", [crash(0x8000_0003)], ["module_trap"]],
+    ["a single step in our image", [crash(0x8000_0004)], ["module_trap"]],
+    ["a guard page hit in our image", [crash(0x8000_0001)], ["module_trap"]],
+    ["two traps in one batch, once", [crash(0x8000_0003), crash(0x8000_0004)], ["module_trap"]],
+] as const)("a reports batch with %s signals what the rules name", (_, events, kinds) => {
+    expect(decideReportSignals(events)).toEqual({ ok: true, value: [...kinds] });
 });

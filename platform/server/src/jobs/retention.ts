@@ -45,6 +45,7 @@ export const RETENTION: readonly Retained[] = [
                     limit ${BATCH}))`,
     },
     // Modules' health events and crash summaries (wishlist/protection.md: health events a month).
+    // What a crash showed lives on as risk_signal rows.
     {
         what: "module_report",
         tier: "30d",

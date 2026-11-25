@@ -6,9 +6,16 @@ import type { SignalKind } from "./signals.rules.ts";
 // violation is, urgency how fast the harm grows; both run 0 to 100. People act on the queue this
 // fills; nothing here bans, revokes or delays anything (wishlist/protection.md, "Signals").
 //
-// Each kind weighs once per session it was seen in, up to SESSION_CAP sessions, so one long
-// session can't outweigh a pattern across many. Combinations carry weight of their own: a kind
-// that is only a mark (weight 0) counts when it appears beside another.
+// Each kind weighs once per session it was seen in, up to SESSION_CAP sessions (COUNTED_CAP for
+// some kinds), so one long session can't outweigh a pattern across many. Combinations carry
+// weight of their own: a kind that is only a mark (weight 0) counts when it appears beside
+// another.
+//
+// The human's standing rule: nothing common among honest members opens a review item alone, at
+// any count. Members use VPNs and travel; some run VMs, load unsigned mods or overlays, or keep
+// test signing or kernel debugging on for other software. Those kinds weigh little and count a
+// capped number of times, so each alone stays under REVIEW_THRESHOLD, and they still add to
+// anything else (score.rules.test.ts holds this).
 
 const WEIGHTS: Readonly<Record<SignalKind, number>> = {
     loader_silent: 0.25,
@@ -16,6 +23,29 @@ const WEIGHTS: Readonly<Record<SignalKind, number>> = {
     // Members travel and use VPNs, so a new country alone stays under the review threshold; it
     // still adds to any other signal.
     new_country: 0.15,
+    // A debugger on the game, the host or our loader: no honest play needs one attached to our
+    // own processes. It opens an item alone, at one session; the item asks staff to look and
+    // changes nothing for the member.
+    debugger_attached: 0.35,
+    // Debug registers set on the game's threads: what a debugger leaves, or a tracer that wants
+    // to look like none. Rarely honest (a few overlays set them), so a pattern of three sessions.
+    hardware_breakpoints: 0.15,
+    // Our code made writable: someone patching it, unless the bit also covers pages an overlay
+    // hooks in the game, in which case this should drop to a mark. Three sessions, as above.
+    code_writable: 0.15,
+    // A breakpoint, single step or guard page hit raised inside our own image (signals.rules.ts).
+    // Three sessions: one could be a bug of ours sending control into padding, which staff would
+    // also see on the crashes page for every member of the release.
+    module_trap: 0.15,
+    // Properties of the machine, not of play: they repeat every session on the same PC, so a
+    // second sighting says nothing new and each counts once (COUNTED_CAP). Kernel debugging and
+    // signature enforcement off are how unsigned kernel drivers load, cheats among them, so they
+    // weigh a little more than a VM, test signing or an unsigned module in the game.
+    kernel_debugging: 0.15,
+    signature_enforcement_off: 0.15,
+    test_signing: 0.1,
+    virtual_machine: 0.1,
+    unsigned_module: 0.1,
 };
 
 const COMBINATIONS: readonly { readonly kinds: readonly SignalKind[]; readonly weight: number }[] =
@@ -25,8 +55,16 @@ const SESSION_CAP = 4;
 
 // A kind counted fewer times than that. Every new country is an occurrence of its own, and a
 // member hopping VPN exits collects several: counted once, any number of them alone stays where
-// one does, under the review threshold.
-const COUNTED_CAP: Readonly<Partial<Record<SignalKind, number>>> = { new_country: 1 };
+// one does, under the review threshold. Machine properties repeat every session on the same PC,
+// so a second sighting says nothing new: counted once too.
+const COUNTED_CAP: Readonly<Partial<Record<SignalKind, number>>> = {
+    new_country: 1,
+    kernel_debugging: 1,
+    signature_enforcement_off: 1,
+    test_signing: 1,
+    virtual_machine: 1,
+    unsigned_module: 1,
+};
 
 // Urgency counts the weighted sessions of the last day, each a quarter of the scale.
 const URGENT_WINDOW_MS = 24 * 60 * 60 * 1_000;

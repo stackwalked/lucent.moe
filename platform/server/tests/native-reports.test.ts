@@ -229,3 +229,33 @@ test("a session whose slot was taken is refused on the reports route, and one fr
         expect(await stored(nativeDb)).toHaveLength(0);
     });
 });
+
+test("a trap in the module's own image becomes a risk signal on its session, and an honest crash does not", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ nativeDb }) => {
+        const at = await runModule(
+            await createNativeHarness(nativeDb, createSeededRng(9_806)),
+            "trap-reports@lucent.test",
+        );
+        const trap: ReportEvent = {
+            kind: "crash",
+            time: 4_000,
+            exceptionCode: 0x8000_0004,
+            moduleHash: 0n,
+            rva: 0x2000,
+            frames: [],
+        };
+        expect((await post(at, at.module.reports(BATCH))).status).toBe(200);
+        expect((await post(at, at.module.reports([trap]))).status).toBe(200);
+
+        const signals = await queryAll(
+            nativeDb,
+            z.object({ kind: z.string(), session_id: z.instanceof(Uint8Array) }),
+            sql`select kind, session_id from risk_signal order by id`,
+        );
+        invariant(signals.ok, "reading risk_signal failed");
+        expect(signals.value.map((row) => [row.kind, toHex(row.session_id)])).toEqual([
+            ["module_trap", toHex(at.module.session())],
+        ]);
+    });
+});

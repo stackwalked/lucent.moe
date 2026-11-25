@@ -34,7 +34,11 @@ import { type AuthRequired, lockTokenHolder, type TokenHolder } from "../devices
 import { readFactDelivery } from "../facts/publishing.ts";
 import type { DpopProof } from "../listeners/native/dpop.ts";
 import { findReleaseManifest } from "../releases/reads.ts";
-import { decideOpenSignals, decideRenewalSignals } from "../risk/signals.rules.ts";
+import {
+    decideOpenSignals,
+    decideRenewalSignals,
+    decideReportSignals,
+} from "../risk/signals.rules.ts";
 import { appendSignals } from "../risk/signals.ts";
 import { answerCloud, StoredWrite } from "./cloud.ts";
 import {
@@ -1043,6 +1047,17 @@ export async function serveReports(
             accepted: store,
         });
         if (!recorded.ok) return recorded;
+        // From the whole batch: what a module reports is evidence whether or not it is kept.
+        const kinds = decideReportSignals(events);
+        if (!kinds.ok) return kinds;
+        const signalled = await appendSignals(tx, {
+            accountId,
+            releaseId: session.release_id,
+            sessionId: session.id,
+            kinds: kinds.value,
+            at: txNow,
+        });
+        if (!signalled.ok) return signalled;
         return ok({ key, sequence, accepted: store });
     });
     if (!served.ok) return served;
