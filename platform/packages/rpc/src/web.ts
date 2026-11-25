@@ -23,6 +23,7 @@ import { preferencesContract } from "./web/preferences.ts";
 import { privacyContract } from "./web/privacy.ts";
 import { productsContract } from "./web/products.ts";
 import { profileContract } from "./web/profile.ts";
+import { recordContract } from "./web/record.ts";
 import { releasesContract } from "./web/releases.ts";
 import { resourcesContract } from "./web/resources.ts";
 import { reviewContract } from "./web/review.ts";
@@ -94,6 +95,7 @@ function composeWebContract() {
         ...waitlistContract,
         ...applicationsContract,
         ...deletionContract,
+        ...recordContract,
     });
 }
 

@@ -23,7 +23,7 @@ async function changes(db: Db) {
 async function status(db: Db, products: ProductCatalog) {
     const read = await readPublicStatus(db, { catalog: products });
     invariant(read.ok, "the public status reads");
-    return read.value;
+    return read.value.products;
 }
 
 test("a game update no promoted set covers shows not yet supported once, and its promotion records the recovery", async () => {
