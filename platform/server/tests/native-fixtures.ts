@@ -18,6 +18,12 @@ import {
     toHex,
 } from "@lucent/core/scalars";
 import {
+    type CloudRequest,
+    type CloudResponse,
+    parseCloudResponse,
+    toCloudRequestBytes,
+} from "@lucent/wire/cloud";
+import {
     CHUNK_NONCE_SIZE,
     CHUNK_TAG_SIZE,
     CONTAINER_CHUNK_SIZE,
@@ -56,6 +62,7 @@ import { xchacha20poly1305 } from "@noble/ciphers/chacha.js";
 import { calculateJwkThumbprint, SignJWT } from "jose";
 import { z } from "zod";
 import { issueEntitlement } from "../src/authority/writers.ts";
+import { CLOUD_LIMITS, type CloudLimits } from "../src/cloud/items.rules.ts";
 import { type Db, execute, sql } from "../src/db/pool.ts";
 import { approveEnrollment } from "../src/devices/devices.ts";
 import { answerSignInRequest, SignInRequestId } from "../src/devices/sign-in.ts";
@@ -87,8 +94,11 @@ export async function createNativeHarness(
         readonly rateLimits?: Readonly<Record<string, RateRule>>;
         readonly artifactDir?: string;
         readonly catalog?: ProductCatalog;
+        // The site's defaults unless given; null runs without them.
+        readonly cloudLimits?: CloudLimits | null;
     },
 ): Promise<NativeHarness> {
+    const cloudLimits = options?.cloudLimits === undefined ? CLOUD_LIMITS : options.cloudLimits;
     const products = options?.catalog ?? catalog();
     const signer = await createLeaseSigner(LEASE_SEED);
     const app = createNativeApp({
@@ -102,6 +112,7 @@ export async function createNativeHarness(
         isSuperseded: () => false,
         logger: { write: () => {} },
         rateLimits: options?.rateLimits ?? DEFAULT_RATE_LIMITS,
+        ...(cloudLimits === null ? {} : { cloudLimits }),
     });
     return {
         db,
@@ -572,6 +583,13 @@ export type TestModule = {
         params?: { readonly sequence?: bigint },
     ) => Uint8Array;
     readonly acceptData: (reply: Uint8Array) => DataResponse;
+    // A cloud_request frame, sealed under the data keys on the data route's sequences, as
+    // dataRequest is.
+    readonly cloudRequest: (
+        request: CloudRequest,
+        params?: { readonly sequence?: bigint },
+    ) => Uint8Array;
+    readonly acceptCloud: (reply: Uint8Array) => CloudResponse;
     readonly session: () => Uint8Array;
     readonly held: () => Lease;
 };
@@ -595,6 +613,17 @@ export function createTestModule(rng: SeededRng, leaseKey: Uint8Array): TestModu
         const parsed = parseDataResponse(plain.value);
         invariant(parsed.ok, "the data response parses");
         return parsed.value;
+    };
+
+    const sealData = (plain: Uint8Array, sequence: bigint | undefined): Uint8Array => {
+        invariant(keys !== null, "the session is open");
+        sentData += 1n;
+        const frame = sealFrame(keys.data.moduleToServer, {
+            header: { session, direction: "module_to_server", sequence: sequence ?? sentData },
+            nonce: rng.fillBytes(new Uint8Array(24)),
+            plain,
+        });
+        return toFrameBytes(frame);
     };
 
     const openLease = async (frame: Parameters<typeof openFrame>[1]): Promise<Lease> => {
@@ -684,24 +713,22 @@ export function createTestModule(rng: SeededRng, leaseKey: Uint8Array): TestModu
             invariant(firstData !== null, "a session reply was accepted");
             return firstData;
         },
-        dataRequest: (modules, params) => {
-            invariant(keys !== null, "the session is open");
-            sentData += 1n;
-            const frame = sealFrame(keys.data.moduleToServer, {
-                header: {
-                    session,
-                    direction: "module_to_server",
-                    sequence: params?.sequence ?? sentData,
-                },
-                nonce: rng.fillBytes(new Uint8Array(24)),
-                plain: toDataRequestBytes({ modules, features: null }),
-            });
-            return toFrameBytes(frame);
-        },
+        dataRequest: (modules, params) =>
+            sealData(toDataRequestBytes({ modules, features: null }), params?.sequence),
         acceptData: (reply) => {
             const frame = parseFrame(reply);
             invariant(frame.ok, "the data reply is a frame");
             return openData(frame.value);
+        },
+        cloudRequest: (request, params) => sealData(toCloudRequestBytes(request), params?.sequence),
+        acceptCloud: (reply) => {
+            const frame = parseFrame(reply);
+            invariant(frame.ok && keys !== null, "the cloud reply is a frame of an open session");
+            const plain = openFrame(keys.data.serverToModule, frame.value);
+            invariant(plain.ok, "the cloud frame opens under the data route's key");
+            const parsed = parseCloudResponse(plain.value);
+            invariant(parsed.ok, "the cloud response parses");
+            return parsed.value;
         },
         session: () => session,
         held: () => {

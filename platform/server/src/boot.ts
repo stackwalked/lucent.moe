@@ -27,6 +27,7 @@ import { refusalResponse } from "./listeners/native/http.ts";
 import { restrictionExpiryJob } from "./moderation/restrictions.ts";
 import { mailDeliveryJob } from "./notify/mail.ts";
 import { riskScoringJob } from "./risk/scoring.ts";
+import { checkCloudLimits } from "./runtime/cloud.ts";
 import { nativeExpiryJob } from "./runtime/expiry.ts";
 import { createLeaseSigner } from "./runtime/lease-key.ts";
 import { geoReloadJob, signInCountriesJob } from "./support/sign-in-countries.ts";
@@ -40,6 +41,7 @@ export type BootFailure =
     | { readonly code: "SCHEMA_NOT_CURRENT"; readonly detail: string }
     | { readonly code: "DATABASE_UNAVAILABLE"; readonly detail: string }
     | { readonly code: "CATALOG_INVALID"; readonly detail: string }
+    | { readonly code: "CLOUD_LIMITS_INVALID"; readonly detail: string }
     | { readonly code: "LISTEN_FAILED"; readonly detail: string };
 
 export type RunningServer = {
@@ -128,6 +130,10 @@ export async function startServer(params: {
         return err(failure);
     };
 
+    const cloudLimits = params.cloudLimits ?? CLOUD_LIMITS;
+    const cloudFits = checkCloudLimits(cloudLimits);
+    if (!cloudFits.ok) return await fail({ code: "CLOUD_LIMITS_INVALID", detail: cloudFits.error });
+
     const schema = await verifySchemaCurrent(db, params.migrations);
     if (!schema.ok) return await fail(schemaFailure(schema.error));
 
@@ -200,7 +206,7 @@ export async function startServer(params: {
     const events = createEventHub();
     serve = createInternalWebApp({
         events,
-        cloudLimits: params.cloudLimits ?? CLOUD_LIMITS,
+        cloudLimits,
         auth,
         catalog: catalog.value,
         epochGuard,
@@ -219,6 +225,7 @@ export async function startServer(params: {
             artifactDir: config.native.artifactDir,
             isSuperseded: epochGuard.isSuperseded,
             logger,
+            cloudLimits,
         }).fetch;
     }
     // Loaded before the jobs start so the first sign-ins are judged; a file that won't load is

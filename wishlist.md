@@ -131,9 +131,8 @@ Beside phases 2 and 3; nothing native waits on it except cutover.
   format the human decides; a review action of its own in place of `accounts:suspend`.
 - `ops replay-removals` (what a `removed` line holds and who writes it waits on the human).
 - Slice 4 (account-held items with history, share links, the member pages, tickets and appeals,
-  the new-country review rule with DB-IP geo and resources landed): items served to and written
-  by a session over `/data` (its format and codec landed; the route waits on the human's rule for
-  entitlement on `/data`), crash reports, the waitlist.
+  the new-country review rule with DB-IP geo and resources, items served to and written by a
+  session over `/data` landed): crash reports, the waitlist.
 - Slice 5 (profiles, guides, comments, shouts, the inbox, reports and removal, posting
   restrictions apart from the licence, blocking, the data export, search, a presence stream
   landed): avatars (the codecs are dependencies to approve), presence shown in web, self-service

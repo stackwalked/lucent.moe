@@ -7,7 +7,9 @@ import { webContract } from "@lucent/rpc/web";
 import { TEST_RELYING_PARTY } from "@lucent/testing/authenticator";
 import { WORKSPACE_ROOT } from "@lucent/testing/postgres";
 import { type RunningServer, startServer } from "../src/boot.ts";
+import { CLOUD_LIMITS } from "../src/cloud/items.rules.ts";
 import type { ServerConfig } from "../src/config.ts";
+import { checkCloudLimits } from "../src/runtime/cloud.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 
 const PEER_KEY = "test-peer-key-0123456789abcdefghijklmnopqrstuvwxyz";
@@ -45,6 +47,24 @@ test("a server refuses to boot against a database whose schema is not current", 
         },
         { template: "empty" },
     );
+});
+
+test("cloud limits under which a write or a full fetch and list outgrow the data route fail boot", async () => {
+    expect(checkCloudLimits(CLOUD_LIMITS)).toEqual(ok(undefined));
+    expect(checkCloudLimits({ ...CLOUD_LIMITS, maxVersionBytes: 64 * 1024 }).ok).toBe(false);
+    // Fits a write (64 KiB of body), not 16 fetched versions beside a full list (1 MiB of frame).
+    expect(checkCloudLimits({ ...CLOUD_LIMITS, maxVersionBytes: 63 * 1024 }).ok).toBe(false);
+    expect(checkCloudLimits({ ...CLOUD_LIMITS, maxItems: 4_000 }).ok).toBe(false);
+
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ databaseUrl }) => {
+        const started = await startServer({
+            config: configFor(databaseUrl),
+            logger: silent,
+            cloudLimits: { ...CLOUD_LIMITS, maxVersionBytes: 64 * 1024 },
+        });
+        expect(!started.ok && started.error.code).toBe("CLOUD_LIMITS_INVALID");
+    });
 });
 
 test("a booted server stops answering once a newer instance boots", async () => {

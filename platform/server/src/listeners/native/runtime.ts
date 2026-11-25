@@ -134,6 +134,7 @@ export function mountRuntime(
         if (operationId === null || !frame.ok) return refusalResponse({ code: "INVALID_REQUEST" });
         const served = await serveData(deps.db, {
             rng: deps.rng,
+            cloudLimits: deps.cloudLimits ?? null,
             ...caller.value,
             sessionId,
             frame: frame.value,

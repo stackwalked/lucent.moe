@@ -5,6 +5,7 @@ import { invariant } from "@lucent/core/contain";
 import { err, ok, type Result } from "@lucent/core/result";
 import type { CryptoRng } from "@lucent/core/rng";
 import { AccountId, EpochMs, type OperationId, toBase64Url, toHex } from "@lucent/core/scalars";
+import { parseCloudRequest } from "@lucent/wire/cloud";
 import { parseDataRequest } from "@lucent/wire/data";
 import { type Frame, openFrame, toFrameBytes } from "@lucent/wire/frame";
 import { parseLeaseRenewal } from "@lucent/wire/lease";
@@ -14,6 +15,7 @@ import { exchangePublicKey, sharedSecret } from "@lucent/wire/session-crypto";
 import { z } from "zod";
 import { type AccountInactive, lockAccountStanding } from "../authority/accounts.ts";
 import { readEffectiveProductAccess } from "../authority/entitlements.ts";
+import type { CloudLimits } from "../cloud/items.rules.ts";
 import { newWireId } from "../core/ids.ts";
 import {
     type Db,
@@ -33,6 +35,7 @@ import type { DpopProof } from "../listeners/native/dpop.ts";
 import { findReleaseManifest } from "../releases/reads.ts";
 import { decideOpenSignals, decideRenewalSignals } from "../risk/signals.rules.ts";
 import { appendSignals } from "../risk/signals.ts";
+import { answerCloud, StoredWrite } from "./cloud.ts";
 import {
     assembleData,
     type DataTooLarge,
@@ -665,7 +668,34 @@ export async function renewLease(
     );
 }
 
-const DataReceipt = z.object({ sequence: z.string().regex(/^\d+$/) });
+const DataReceipt = z.object({
+    sequence: z.string().regex(/^\d+$/),
+    // A cloud write's outcome; a data request, a list and a fetch are rebuilt on retry instead.
+    cloud: StoredWrite.optional(),
+});
+
+// Takes the module's frame and the server's next sequence on the data route.
+async function advanceData(
+    tx: Tx,
+    params: {
+        readonly session: SessionRow;
+        readonly received: bigint;
+        readonly asked: readonly ModuleKey[] | null;
+    },
+): Promise<Result<void, DbFailure>> {
+    const { asked } = params;
+    const advanced = await execute(
+        tx,
+        sql`update runtime_session
+            set data_in_sequence = ${params.received},
+                data_out_sequence = data_out_sequence + 1,
+                asked_modules = coalesce(${asked === null ? null : toModulesJson(asked)}::jsonb,
+                                         asked_modules)
+            where id = ${params.session.id}`,
+    );
+    if (!advanced.ok) return advanced;
+    return ok(undefined);
+}
 
 // POST /v1/sessions/:id/data: the loader's DPoP around the module's data_request frame, which must
 // be newer than any accepted on the data route (its sequences are its own: a renewal never stales
@@ -674,11 +704,16 @@ const DataReceipt = z.object({ sequence: z.string().regex(/^\d+$/) });
 // ask too, and a set applies when each build it lists is asked or was reported at start. Phase 1
 // ignores the request's feature list. A retry gets the response rebuilt from the same builds at
 // the same sequence, so it is the first answer unless a set was promoted since. A response over
-// the frame bound is refused before the receipt, so the request stays unanswered.
+// the frame bound is refused before the receipt, so the request stays unanswered. The frame may
+// carry a cloud request instead (runtime/cloud.ts), answered on the same sequences; its writes
+// are replayed from the receipt, never applied twice. Lock order: the account, device, slot and
+// session taken here, then the cloud scope inside the cloud writers.
 export async function serveData(
     db: Db,
     params: {
         readonly rng: CryptoRng;
+        // Null when the server runs without them: every cloud request answers UNAVAILABLE.
+        readonly cloudLimits: CloudLimits | null;
         readonly holder: TokenHolder;
         readonly proof: DpopProof;
         readonly sessionId: Uint8Array;
@@ -730,11 +765,16 @@ export async function serveData(
 
         const replay = await readReplay(tx, op, DataReceipt);
         if (!replay.ok) return replay;
-        const replayed = replay.value.replayed ? BigInt(replay.value.result.sequence) : null;
+        const receipt = replay.value.replayed ? replay.value.result : null;
+        const replayed = receipt === null ? null : BigInt(receipt.sequence);
         if (replayed !== null && replayed !== session.data_out_sequence - 1n) {
             return err({ code: "STALE_SEQUENCE" });
         }
 
+        // Entitlement is not part of this standing, here or at renewal: it is decided when a load
+        // starts and when its session opens, and nowhere after. A lapsed or revoked entitlement
+        // refuses the next start; a running session is never ended for it and keeps this route,
+        // cloud items included. The human chose not to end a session mid-game.
         const eligibility = decideSessionStanding({
             session,
             slot: slot.value,
@@ -755,9 +795,41 @@ export async function serveData(
         invariant(session.data_key_to_server !== null, "a live session holds its keys");
         const plain = openFrame(session.data_key_to_server, frame);
         if (!plain.ok) return err({ code: "PROOF_INVALID" });
-        const request = parseDataRequest(plain.value);
+        // The context tells the kinds apart; a cloud request's body is its own copy.
+        const cloud = parseCloudRequest(plain.value);
+        const request = cloud.ok ? null : parseDataRequest(plain.value);
         plain.value.fill(0);
-        if (!request.ok) return err({ code: "INVALID_REQUEST" });
+        if (cloud.ok) {
+            const write = cloud.value.operation === "create" || cloud.value.operation === "replace";
+            invariant(
+                replayed === null || !write || receipt?.cloud !== undefined,
+                "a cloud write's receipt keeps its outcome",
+            );
+            const answered = await answerCloud(tx, {
+                caller: { accountId, sessionId: session.id, txNow },
+                request: cloud.value,
+                answers: frame.header.sequence,
+                limits: params.cloudLimits,
+                replayed: receipt?.cloud ?? null,
+            });
+            if (!answered.ok) return answered;
+            const { plain: answer, stored } = answered.value;
+            if (replayed !== null) return ok({ session, answer, sequence: replayed });
+            const sequence = session.data_out_sequence;
+            const advanced = await advanceData(tx, {
+                session,
+                received: frame.header.sequence,
+                asked: null,
+            });
+            if (!advanced.ok) return advanced;
+            const recorded = await recordReceipt(tx, op, {
+                sequence: sequence.toString(),
+                ...(stored === null ? {} : { cloud: stored }),
+            });
+            if (!recorded.ok) return recorded;
+            return ok({ session, answer, sequence });
+        }
+        if (request === null || !request.ok) return err({ code: "INVALID_REQUEST" });
         const started = await queryOne(
             tx,
             z.object({ modules: StartModules }),
@@ -787,15 +859,11 @@ export async function serveData(
         });
         if (!asked.ok) return asked;
         const sequence = session.data_out_sequence;
-        const advanced = await execute(
-            tx,
-            sql`update runtime_session
-                set data_in_sequence = ${frame.header.sequence},
-                    data_out_sequence = data_out_sequence + 1,
-                    asked_modules = coalesce(${asked.value === null ? null : toModulesJson(asked.value)}::jsonb,
-                                             asked_modules)
-                where id = ${session.id}`,
-        );
+        const advanced = await advanceData(tx, {
+            session,
+            received: frame.header.sequence,
+            asked: asked.value,
+        });
         if (!advanced.ok) return advanced;
         const recorded = await recordReceipt(tx, op, { sequence: sequence.toString() });
         if (!recorded.ok) return recorded;

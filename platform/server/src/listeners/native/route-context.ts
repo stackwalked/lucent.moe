@@ -5,6 +5,7 @@ import { err, ok, type Result } from "@lucent/core/result";
 import type { CryptoRng } from "@lucent/core/rng";
 import { BearerToken } from "@lucent/core/scalars";
 import type { Context } from "hono";
+import type { CloudLimits } from "../../cloud/items.rules.ts";
 import type { Logger } from "../../core/log.ts";
 import type { Db } from "../../db/pool.ts";
 import { resolveAccessToken, type TokenHolder } from "../../devices/sign-in.ts";
@@ -37,6 +38,9 @@ export type NativeDeps = {
     readonly isSuperseded: () => boolean;
     readonly logger: Logger;
     readonly rateLimits?: Readonly<Record<string, RateRule>>;
+    // The site's caps, which session writes meet too; without them /data's cloud kinds answer
+    // UNAVAILABLE. Boot checks them against the data route's bounds (runtime/cloud.ts).
+    readonly cloudLimits?: CloudLimits;
 };
 
 // Per device key, per minute. Renewals come every 15 s and polls every few seconds; the rest is a
