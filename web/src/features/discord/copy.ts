@@ -9,4 +9,6 @@ export const DISCORD_COPY = {
     getCode: "get a code",
     newCode: "get a new code",
     expires: "expires",
+    notices: "choose which notices also come as a discord message in",
+    preferences: "notification preferences",
 } as const;
