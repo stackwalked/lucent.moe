@@ -1,0 +1,21 @@
+{
+  "answers": 7,
+  "operation": "list",
+  "status": "DONE",
+  "items": [
+    {
+      "id": "0000000000000007",
+      "kind": "script",
+      "revision": 5,
+      "size": 32,
+      "name": "loot.lua"
+    },
+    {
+      "id": "000000000000002a",
+      "kind": "config",
+      "revision": 3,
+      "size": 30,
+      "name": "Ranked — 日本語 🎯"
+    }
+  ]
+}

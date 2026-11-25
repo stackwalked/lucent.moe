@@ -1,0 +1,10 @@
+{
+  "answers": 9,
+  "operation": "replace",
+  "status": "DONE",
+  "written": {
+    "id": "000000000000002a",
+    "revision": 4,
+    "conflict": true
+  }
+}
