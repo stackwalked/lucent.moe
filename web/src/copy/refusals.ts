@@ -95,6 +95,7 @@ export const REFUSALS: Readonly<Record<RefusalCode, string>> = {
         "this invite has expired, was used or was revoked. ask whoever sent it for a new one.",
     MAIL_DISABLED: "invites can't be redeemed right now. try again later.",
     BELOW_SPENT: "that's fewer than this account has already used.",
+    PRODUCT_NOT_OFFERED: "that product isn't open to applications. reload and choose again.",
 };
 // The text for one refusal, a form's own wording first where it has one.
 export function refusalText(

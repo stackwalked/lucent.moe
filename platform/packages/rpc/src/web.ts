@@ -1,5 +1,6 @@
 import { defineContract } from "./contract.ts";
 import { appealsContract } from "./web/appeals.ts";
+import { applicationsContract } from "./web/applications.ts";
 import { auditContract } from "./web/audit.ts";
 import { authContract } from "./web/auth.ts";
 import { authorityContract, AccountStatus as Status } from "./web/authority.ts";
@@ -29,6 +30,7 @@ import { shoutsContract } from "./web/shouts.ts";
 import { systemContract } from "./web/system.ts";
 import { ticketsContract } from "./web/tickets.ts";
 import { updatesContract } from "./web/updates.ts";
+import { waitlistContract } from "./web/waitlist.ts";
 
 export const AccountStatus = Status;
 export type AccountStatus = Status;
@@ -88,6 +90,8 @@ function composeWebContract() {
         ...systemContract,
         ...discordContract,
         ...invitesContract,
+        ...waitlistContract,
+        ...applicationsContract,
     });
 }
 
