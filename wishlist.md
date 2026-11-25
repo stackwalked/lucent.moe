@@ -136,7 +136,8 @@ Beside phases 2 and 3; nothing native waits on it except cutover.
 - Slice 5 (profiles, guides, comments, shouts, the inbox, reports and removal, posting
   restrictions apart from the licence, blocking, the data export, search, a presence stream
   landed): avatars (the codecs are dependencies to approve), presence shown in web, self-service
-  account deletion (what survives it is undecided), `connectors/discord`.
+  account deletion (what survives it is undecided), the Discord connector's member commands and
+  staff desk.
 - The public record: product status, known issues, the changelog, recovery time per game update,
   refusal-code pages, legal pages. Old lucent had no privacy or terms page.
 - Member docs.
@@ -881,7 +882,7 @@ live in `wishlist/protection.md`.
   `platform/server/src/{core,db,products,authority,internal}`. Exact package pins in this section
   are provisional until their slice starts and checks them (TypeScript 7.0.2 was pinned before
   any tool needing its API was tried). Still to land:
-  - `contracts/*` and `platform/connectors/discord` (`discord`) as their slices arrive;
+  - `contracts/*` as their slices arrive;
   - `core`, `rpc`, `policy`, `catalog` and `testing` landed in `platform/packages/` (moon ids
     `platform-core` and `platform-testing`: native has `core` and `testing`); web's HTTP-level
     integration tests are `testing`'s second consumer (`web:integration`);
@@ -892,7 +893,7 @@ live in `wishlist/protection.md`.
     each request's CSP nonce to the router through `fetch(request, { context })`. Found on the
     way: the server-fn input method is `.validator` (not `.inputValidator`), and server
     functions demand `Origin` + `Sec-Fetch-Site` and seroval-encoded bodies;
-  - optional plan templates and `connector_discord_rule` tables when their consumers land.
+  - optional plan templates when their consumer lands.
 - Auth, credentials, sessions and authority:
   - No `better-auth`: old lucent spent too long fighting it, and its model has no room for the
     native DPoP flow. Browser credentials and sessions landed in `platform/server/src/auth/` with
@@ -969,12 +970,11 @@ live in `wishlist/protection.md`.
     releases and revisions, manages online-signed overrides, and tracks update-day latency per
     `module_build_key`.
 - Connectors, jobs and untrusted boundaries:
-  - `platform/connectors/discord` (`discord`, Slice 5): outbound-only worker on
-    `@discordjs/core@2.6.0` + `@discordjs/rest@2.6.3` + `@discordjs/ws@2.0.4`, calling
-    `platform-server` strictly via `discordRpc` (zero authority writes, no emails/IPs/PC IDs). Role
-    sync is driven by declarative `connector_discord_rule` rows over one serial queue (15s audit
-    cursor feed + hourly reconcile + on-join), alongside `#status`, `#resources`, `#bugs` ↔ GitHub
-    Issues `/triage`, and invite-leak deletion.
+  - `platform/connectors/discord` (`discord`): the process, linking, role sync and the status,
+    resources and promotions feeds landed. Still to land: `/me`, `/status`, `/ticket` and notice
+    DMs; the staff desk (`/who`, `/brief`, `/releases`, `/refusals`, queue posts, "who is this"),
+    then invite-leak deletion and `#bugs` ↔ GitHub Issues `/triage`. Releases carry no notes yet,
+    so the releases feed posts each promotion.
   - Avatar uploads run `@jsquash/jpeg@1.6.0`, `@jsquash/png@3.1.1` and `@jsquash/webp@1.5.0` in a
     5s-bounded `env: {}` `Bun.spawn` child process with WASM linear memory rewritten to `640 MiB`
     max, stripping metadata and storing 256px/64px WebPs by SHA-256 in Postgres; release binaries

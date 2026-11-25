@@ -7,6 +7,8 @@
 !platform/server/package.json
 !platform/server/src/**/*.ts
 !platform/server/migrations/*.sql
+!platform/connectors/*/package.json
+!platform/connectors/*/src/**/*.ts
 !products/*.toml
 !web/package.json
 !web/tsconfig.json

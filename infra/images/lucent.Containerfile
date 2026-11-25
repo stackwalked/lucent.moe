@@ -6,6 +6,7 @@ COPY .config/tsconfig.base.json ./.config/
 COPY platform/packages ./platform/packages
 COPY platform/server/package.json ./platform/server/
 COPY web/package.json ./web/
+COPY platform/connectors/discord/package.json ./platform/connectors/discord/
 
 FROM workspace AS platform-server
 RUN bun install --frozen-lockfile --production --filter @lucent/server
@@ -25,4 +26,10 @@ RUN bun install --frozen-lockfile --production --filter @lucent/web
 COPY --from=web-build /app/web/src ./web/src
 COPY --from=web-build /app/web/dist ./web/dist
 WORKDIR /app/web
+CMD ["sh", "-c", "umask 0007; exec bun src/main.ts"]
+
+FROM workspace AS connector-discord
+RUN bun install --frozen-lockfile --production --filter @lucent/connector-discord
+COPY platform/connectors/discord/src ./platform/connectors/discord/src
+WORKDIR /app/platform/connectors/discord
 CMD ["sh", "-c", "umask 0007; exec bun src/main.ts"]

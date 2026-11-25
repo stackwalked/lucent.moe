@@ -77,6 +77,8 @@ services:
       LUCENT_WEBAUTHN_RP_ID: lucent.moe
       LUCENT_WEBAUTHN_ORIGIN: https://lucent.moe
       LUCENT_WEB_INTERNAL_KEY: ${LUCENT_WEB_INTERNAL_KEY:?set the web peer key}
+      # Blank until the connector runs: the server then answers no discord procedure.
+      LUCENT_DISCORD_INTERNAL_KEY: ${LUCENT_DISCORD_INTERNAL_KEY:-}
       LUCENT_TOTP_KEYS: ${LUCENT_TOTP_KEYS:?set the TOTP keyring}
       LUCENT_MAIL_PROVIDER: ${LUCENT_MAIL_PROVIDER:-}
       LUCENT_MAIL_API_KEY: ${LUCENT_MAIL_API_KEY:-}
@@ -152,6 +154,36 @@ services:
           const r = await fetch("http://localhost/_health?deep", {unix:"/run/lucent/web/http.sock"});
           process.exit(r.ok ? 0 : 1)
 
+  # Outbound only: the gateway connection it opens and Discord's REST API, and platform's
+  # internal socket. No listener, so the health check reads the file each successful tick touches.
+  # Blank variables keep `compose` usable before the bot exists; the connector refuses to start
+  # without them.
+  connector-discord:
+    <<: *service
+    build:
+      <<: *build
+      target: connector-discord
+    user: "21004:21100"
+    networks: [discord-egress]
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    environment:
+      LUCENT_PLATFORM_INTERNAL_URL: unix:/run/lucent/internal/http.sock
+      LUCENT_DISCORD_INTERNAL_KEY: ${LUCENT_DISCORD_INTERNAL_KEY:-}
+      LUCENT_DISCORD_BOT_TOKEN: ${LUCENT_DISCORD_BOT_TOKEN:-}
+      LUCENT_DISCORD_GUILD_ID: ${LUCENT_DISCORD_GUILD_ID:-}
+    volumes:
+      - /var/lib/lucent/internal-socket:/run/lucent/internal:ro
+    healthcheck:
+      <<: *health
+      test:
+        - CMD
+        - bun
+        - -e
+        - |
+          const s = require("node:fs").statSync("/tmp/lucent-discord-alive", {throwIfNoEntry: false});
+          process.exit(s !== undefined && Date.now() - s.mtimeMs < 60000 ? 0 : 1)
+
   caddy:
     <<: *service
     image: caddy:2.11.9-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0
@@ -176,3 +208,4 @@ services:
 networks:
   edge: {}
   platform-egress: {}
+  discord-egress: {}
