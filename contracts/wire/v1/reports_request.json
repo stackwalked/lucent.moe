@@ -1,0 +1,38 @@
+{
+  "events": [
+    {
+      "kind": "health",
+      "time": 1500,
+      "event_id": 3,
+      "subject": "0000000000002222",
+      "value": 7
+    },
+    {
+      "kind": "crash",
+      "time": 61000,
+      "exception_code": "c0000005",
+      "module_hash": "0000000000000000",
+      "rva": "0001a2b0",
+      "frames": [
+        "0001a2b0",
+        "0001c004",
+        "00009f10"
+      ]
+    },
+    {
+      "kind": "crash",
+      "time": 4294967280,
+      "exception_code": "80000003",
+      "module_hash": "8000000000000001",
+      "rva": "00000400",
+      "frames": []
+    },
+    {
+      "kind": "health",
+      "time": 4294967281,
+      "event_id": 65535,
+      "subject": "0000000000000000",
+      "value": 4294967295
+    }
+  ]
+}
