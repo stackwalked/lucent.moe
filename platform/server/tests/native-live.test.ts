@@ -17,7 +17,7 @@ import { sweepRetention } from "../src/jobs/retention.ts";
 import { decideReviewItem, listReviewItems } from "../src/risk/review.ts";
 import { scoreRisk } from "../src/risk/scoring.ts";
 import { seedRootOnce } from "./auth-fixtures.ts";
-import { scalar, seedAccount, steppedUp } from "./authority-fixtures.ts";
+import { grantRole, scalar, seedAccount, seedRole, steppedUp } from "./authority-fixtures.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 import {
     createNativeHarness,
@@ -354,16 +354,42 @@ test("renewals the loader leaves unanswered become signals, and the scoring job 
     });
 });
 
-test("staff without accounts:suspend can't read the review queue", async () => {
+test("the review queue takes risk:review, and the power to suspend does not open it", async () => {
     const cluster = await sharedTestCluster();
     await cluster.withTestDb(async ({ nativeDb }) => {
         const rng = createSeededRng(9_906);
         const memberId = await seedAccount(nativeDb, rng, "nobody@lucent.test");
-        const listed = await listReviewItems(nativeDb, {
-            caller: await steppedUp(nativeDb, memberId),
+        const suspenderId = await seedAccount(nativeDb, rng, "suspender@lucent.test");
+        const triageId = await seedAccount(nativeDb, rng, "triage@lucent.test");
+        await grantRole(nativeDb, {
+            accountId: suspenderId,
+            roleId: await seedRole(nativeDb, {
+                id: "role_suspender",
+                rank: 2,
+                permissions: ["accounts:suspend"],
+            }),
+        });
+        await grantRole(nativeDb, {
+            accountId: triageId,
+            roleId: await seedRole(nativeDb, {
+                id: "role_triage",
+                rank: 1,
+                permissions: ["risk:review"],
+            }),
+        });
+        for (const accountId of [memberId, suspenderId]) {
+            expect(
+                await listReviewItems(nativeDb, {
+                    caller: await steppedUp(nativeDb, accountId),
+                    state: "open",
+                }),
+            ).toEqual({ ok: false, error: { code: "FORBIDDEN" } });
+        }
+        const triaged = await listReviewItems(nativeDb, {
+            caller: await steppedUp(nativeDb, triageId),
             state: "open",
         });
-        expect(listed).toEqual({ ok: false, error: { code: "FORBIDDEN" } });
+        expect(triaged.ok).toBe(true);
     });
 });
 

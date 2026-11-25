@@ -21,6 +21,7 @@ export const ACTIONS = [
     "tickets:reply",
     "moderation:remove",
     "applications:review",
+    "risk:review",
     "audit:read",
 ] as const;
 
@@ -54,5 +55,9 @@ export const ACTION_POLICY: Readonly<Record<Action, ActionPolicy>> = {
     "tickets:reply": { stepUp: false, audit: true },
     "moderation:remove": { stepUp: false, audit: true },
     "applications:review": { stepUp: false, audit: true },
+    // Working the review queue and reading crash summaries. Its own action so that whoever
+    // triages the queue need not hold the power to suspend; what staff then do about an account
+    // is a separate, stepped-up action.
+    "risk:review": { stepUp: false, audit: true },
     "audit:read": { stepUp: false, audit: false },
 };

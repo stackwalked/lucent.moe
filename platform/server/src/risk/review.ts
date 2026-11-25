@@ -21,10 +21,10 @@ import type { Contribution } from "./score.rules.ts";
 
 // The review queue as staff work it. Members never see an item or what contributed to it. Acting
 // on an item records the outcome; whatever staff do about the account (a suspension, a word in
-// support) is its own audited action. Reading and deciding take accounts:suspend, the action of
-// whoever could act on what the queue shows; the crashes page reads under it too.
+// support) is its own audited action. Reading and deciding take risk:review, so triaging the queue
+// does not need the power to suspend; the crashes page reads under it too.
 
-export const REVIEW_ACTION = "accounts:suspend";
+export const REVIEW_ACTION = "risk:review";
 
 // The queue is short-lived work, not an archive: the newest QUEUE_LIMIT of each state.
 const QUEUE_LIMIT = 100;

@@ -176,7 +176,7 @@ function Decide({ item }: { readonly item: Item }) {
     return (
         <Stack direction="row" gap={2} align="center">
             <AccountAction
-                action="accounts:suspend"
+                action="risk:review"
                 label={REVIEW_COPY.dismiss}
                 title={REVIEW_COPY.dismissTitle(name)}
                 fields={
@@ -192,7 +192,7 @@ function Decide({ item }: { readonly item: Item }) {
                 }
             />
             <AccountAction
-                action="accounts:suspend"
+                action="risk:review"
                 label={REVIEW_COPY.actioned}
                 title={REVIEW_COPY.actionedTitle(name)}
                 tone="pink"
