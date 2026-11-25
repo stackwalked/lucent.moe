@@ -42,6 +42,10 @@ export type NativeConfig = {
     // The 32-byte Ed25519 seed. Never generated at startup: its public half ships inside every
     // signed release, so a key the server made up would sign leases no module accepts.
     readonly leaseSigningSeed: Uint8Array;
+    // The override key's 32-byte Ed25519 seed: it signs each release's override document when a
+    // kill switch changes it. Its public half ships in every module build that reads data response
+    // version 3, so, like the lease key, it is never generated at startup.
+    readonly overrideSigningSeed: Uint8Array;
     // Where `ops publish-loader` wrote the loader's and host's bytes, by digest; served on /v1.
     readonly artifactDir: string;
 };
@@ -84,6 +88,7 @@ export type Environment = {
     readonly LUCENT_NATIVE_LISTEN?: string | undefined;
     readonly LUCENT_NATIVE_ORIGIN?: string | undefined;
     readonly LUCENT_LEASE_SIGNING_KEY?: string | undefined;
+    readonly LUCENT_OVERRIDE_SIGNING_KEY?: string | undefined;
     readonly LUCENT_ARTIFACT_DIR?: string | undefined;
     readonly LUCENT_CODE_PUBLIC_KEY?: string | undefined;
     readonly LUCENT_FACTS_PUBLIC_KEYS?: string | undefined;
@@ -121,6 +126,12 @@ const DEV_PEER_KEY = "lucent-dev-internal-key-public-not-a-secret-0000";
 
 function isDevTotpKey(key: TotpKeyMaterial): boolean {
     return key.raw.every((byte) => byte === 0);
+}
+
+// All 1 bytes is .config/dev.env's: the dev lease key is all zero, and the two must differ. All
+// zero is refused as well, as the lease key's is.
+function isDevOverrideKey(seed: Uint8Array): boolean {
+    return seed.every((byte) => byte === 0) || seed.every((byte) => byte === 1);
 }
 
 // Browsers only allow WebAuthn on https, or http on localhost; the RP ID must be the origin's
@@ -171,18 +182,20 @@ function parseNativeOrigin(raw: string): string | null {
     return secure ? raw : null;
 }
 
-function parseLeaseSigningKey(raw: string): Uint8Array | null {
+function parseSigningSeed(raw: string): Uint8Array | null {
     if (!/^[A-Za-z0-9_-]{43}$/.test(raw)) return null;
     return Uint8Array.fromBase64(raw, { alphabet: "base64url" });
 }
 
-// All four variables or none: a server half-configured for loaders refuses to start rather
-// than guessing which half was meant.
+// All five variables or none: a server half-configured for loaders refuses to start rather
+// than guessing which half was meant. Without the override key a module reading data response
+// version 3 would never hear of a kill switch, so it is no less required than the lease key.
 function readNativeConfig(env: Environment, problems: string[]): NativeConfig | null {
     const raw = {
         listen: env.LUCENT_NATIVE_LISTEN ?? "",
         origin: env.LUCENT_NATIVE_ORIGIN ?? "",
         key: env.LUCENT_LEASE_SIGNING_KEY ?? "",
+        overrideKey: env.LUCENT_OVERRIDE_SIGNING_KEY ?? "",
         artifactDir: env.LUCENT_ARTIFACT_DIR ?? "",
     };
     if (Object.values(raw).every((value) => value === "")) return null;
@@ -194,17 +207,32 @@ function readNativeConfig(env: Environment, problems: string[]): NativeConfig | 
     if (origin === null) {
         problems.push("LUCENT_NATIVE_ORIGIN must be an https:// origin (or http://localhost)");
     }
-    const leaseSigningSeed = parseLeaseSigningKey(raw.key);
+    const leaseSigningSeed = parseSigningSeed(raw.key);
     if (leaseSigningSeed === null) {
         problems.push("LUCENT_LEASE_SIGNING_KEY must be a 32-byte Ed25519 seed in base64url");
+    }
+    const overrideSigningSeed = parseSigningSeed(raw.overrideKey);
+    if (overrideSigningSeed === null) {
+        problems.push("LUCENT_OVERRIDE_SIGNING_KEY must be a 32-byte Ed25519 seed in base64url");
+    }
+    // One key per role: a stolen override key then can't sign leases, and either rotates alone.
+    if (raw.key !== "" && raw.key === raw.overrideKey) {
+        problems.push("LUCENT_OVERRIDE_SIGNING_KEY must differ from LUCENT_LEASE_SIGNING_KEY");
     }
     if (raw.artifactDir === "") {
         problems.push("LUCENT_ARTIFACT_DIR must name the directory ops publish-loader writes to");
     }
-    if (listen === null || origin === null || leaseSigningSeed === null || raw.artifactDir === "") {
+    if (
+        listen === null ||
+        origin === null ||
+        leaseSigningSeed === null ||
+        overrideSigningSeed === null ||
+        raw.key === raw.overrideKey ||
+        raw.artifactDir === ""
+    ) {
         return null;
     }
-    return { listen, origin, leaseSigningSeed, artifactDir: raw.artifactDir };
+    return { listen, origin, leaseSigningSeed, overrideSigningSeed, artifactDir: raw.artifactDir };
 }
 
 function readDatabaseUrl(env: Environment, problems: string[]): string {
@@ -284,6 +312,11 @@ export function readServerConfig(env: Environment): Result<ServerConfig, ConfigE
         if (native?.leaseSigningSeed.every((byte) => byte === 0) === true) {
             problems.push("LUCENT_LEASE_SIGNING_KEY is the published dev key (all zero bytes)");
         }
+        if (native !== null && isDevOverrideKey(native.overrideSigningSeed)) {
+            problems.push(
+                "LUCENT_OVERRIDE_SIGNING_KEY is a published dev key (all zero or all 1 bytes)",
+            );
+        }
     }
     if (
         problems.length > 0 ||
@@ -362,6 +395,7 @@ export function processEnvironment(): Environment {
         LUCENT_NATIVE_LISTEN,
         LUCENT_NATIVE_ORIGIN,
         LUCENT_LEASE_SIGNING_KEY,
+        LUCENT_OVERRIDE_SIGNING_KEY,
         LUCENT_ARTIFACT_DIR,
         LUCENT_CODE_PUBLIC_KEY,
         LUCENT_FACTS_PUBLIC_KEYS,
@@ -384,6 +418,7 @@ export function processEnvironment(): Environment {
         LUCENT_NATIVE_LISTEN,
         LUCENT_NATIVE_ORIGIN,
         LUCENT_LEASE_SIGNING_KEY,
+        LUCENT_OVERRIDE_SIGNING_KEY,
         LUCENT_ARTIFACT_DIR,
         LUCENT_CODE_PUBLIC_KEY,
         LUCENT_FACTS_PUBLIC_KEYS,

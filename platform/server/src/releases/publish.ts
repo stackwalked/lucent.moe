@@ -1,5 +1,5 @@
 import { blake2b256 } from "@lucent/bundle/crypto";
-import { parseReleaseManifestV3 } from "@lucent/bundle/release-manifest";
+import { type DataResponseVersion, parseModuleManifest } from "@lucent/bundle/release-manifest";
 import { equalBytes } from "@lucent/bundle/wire";
 import { invariant } from "@lucent/core/contain";
 import { err, ok, type Result } from "@lucent/core/result";
@@ -73,8 +73,12 @@ async function verifiedSeal(
 }
 
 // Everything the module's artifacts can be checked for without the database: the seal's digests,
-// and that the container and manifest say what the seal says.
-function checkModule(seal: ReleaseSeal, artifacts: ModuleArtifacts): Result<null, PublishRefusal> {
+// and that the container and manifest say what the seal says. Gives the data response version
+// the manifest says the module reads.
+function checkModule(
+    seal: ReleaseSeal,
+    artifacts: ModuleArtifacts,
+): Result<DataResponseVersion, PublishRefusal> {
     if (!isModuleSeal(seal)) return err({ code: "WRONG_KIND", expected: "module" });
     if (!matches(seal, "container", artifacts.container)) {
         return err({ code: "DIGEST_MISMATCH", artifact: "container" });
@@ -90,10 +94,10 @@ function checkModule(seal: ReleaseSeal, artifacts: ModuleArtifacts): Result<null
     if (container.value.bootInfoVersion !== seal.bootInfoVersion) {
         return err({ code: "CONTAINER_DISAGREES", field: "boot_info_version" });
     }
-    const manifest = parseReleaseManifestV3(artifacts.manifest);
+    const manifest = parseModuleManifest(artifacts.manifest);
     if (!manifest.ok) return err({ code: "MANIFEST_INVALID" });
     if (manifest.value.product !== seal.product) return err({ code: "MANIFEST_DISAGREES" });
-    return ok(null);
+    return ok(manifest.value.dataResponse);
 }
 
 function checkLoader(seal: ReleaseSeal, artifacts: LoaderArtifacts): Result<null, PublishRefusal> {
@@ -146,9 +150,9 @@ async function storeRelease(
     const { seal } = params;
     const inserted = await execute(
         tx,
-        sql`insert into release (id, product_id, channel, container, manifest)
+        sql`insert into release (id, product_id, channel, container, manifest, data_response)
             values (${seal.release}, ${seal.product}, ${seal.channel}, ${params.container},
-                    ${params.manifest})
+                    ${params.manifest}, ${params.dataResponse})
             on conflict (id) do nothing`,
     );
     if (!inserted.ok) return inserted;
@@ -178,6 +182,8 @@ type StoreParams = {
     readonly sealBytes: Uint8Array;
     readonly container: Uint8Array | null;
     readonly manifest: Uint8Array | null;
+    // From the manifest; a loader release has none and stores 2, which nothing asks.
+    readonly dataResponse: DataResponseVersion;
 };
 
 async function store(
@@ -224,6 +230,7 @@ export async function publishModuleRelease(
         sealBytes: artifacts.seal,
         container: artifacts.container,
         manifest: artifacts.manifest,
+        dataResponse: checked.value,
     });
 }
 
@@ -243,6 +250,7 @@ export async function publishLoaderRelease(
         sealBytes: artifacts.seal,
         container: null,
         manifest: null,
+        dataResponse: 2,
     });
 }
 

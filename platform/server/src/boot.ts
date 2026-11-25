@@ -30,7 +30,7 @@ import { mailDeliveryJob } from "./notify/mail.ts";
 import { riskScoringJob } from "./risk/scoring.ts";
 import { checkCloudLimits } from "./runtime/cloud.ts";
 import { nativeExpiryJob } from "./runtime/expiry.ts";
-import { createLeaseSigner } from "./runtime/lease-key.ts";
+import { createLeaseSigner, createOverrideSigner } from "./runtime/lease-key.ts";
 import { geoReloadJob, signInCountriesJob } from "./support/sign-in-countries.ts";
 import { idleTicketJob } from "./support/tickets.ts";
 import { recordJobRuns } from "./system/jobs.ts";
@@ -213,6 +213,10 @@ export async function startServer(params: {
         epochGuard,
         webInternalKey: config.webInternalKey,
         artifactDir: config.native?.artifactDir ?? null,
+        overrideSigner:
+            config.native === null
+                ? null
+                : await createOverrideSigner(config.native.overrideSigningSeed),
         logger,
     });
     const discord =

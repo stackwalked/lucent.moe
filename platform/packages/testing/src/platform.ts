@@ -12,6 +12,7 @@ const SERVER_DIR = join(WORKSPACE_ROOT, "platform/server");
 const PEER_KEY = "integration-test-peer-key-not-a-secret-0123456789";
 const TOTP_KEYS = `it:${"B".repeat(43)}`;
 const LEASE_SIGNING_KEY = "C".repeat(43);
+const OVERRIDE_SIGNING_KEY = "D".repeat(43);
 
 export type RunningPlatform = {
     readonly internalUrl: string;
@@ -102,6 +103,7 @@ export async function startPlatform(params: {
                   LUCENT_NATIVE_LISTEN: `127.0.0.1:${nativePort}`,
                   LUCENT_NATIVE_ORIGIN: `http://localhost:${nativePort}`,
                   LUCENT_LEASE_SIGNING_KEY: LEASE_SIGNING_KEY,
+                  LUCENT_OVERRIDE_SIGNING_KEY: OVERRIDE_SIGNING_KEY,
                   LUCENT_ARTIFACT_DIR: params.artifactDir,
               };
     const server = spawnServer({

@@ -1,5 +1,5 @@
 import type { ModuleKey } from "@lucent/bundle/fact-set";
-import { parseReleaseManifestV3 } from "@lucent/bundle/release-manifest";
+import { parseModuleManifest } from "@lucent/bundle/release-manifest";
 import type { ProductCatalog } from "@lucent/catalog/catalog";
 import { invariant } from "@lucent/core/contain";
 import { err, ok, type Result } from "@lucent/core/result";
@@ -39,10 +39,10 @@ import { answerCloud, StoredWrite } from "./cloud.ts";
 import {
     assembleData,
     type DataTooLarge,
-    dataFormatOf,
     FIRST_DATA_ANSWERS,
     FIRST_DATA_SEQUENCE,
     INITIAL_DATA_REVISION,
+    readDataFormat,
     sealData,
 } from "./data.ts";
 import type { LeaseSigner } from "./lease-key.ts";
@@ -249,11 +249,13 @@ async function assembleFirstData(
         builds: params.startBuilds,
     });
     if (!delivery.ok) return delivery;
+    const format = await readDataFormat(tx, params.releaseId);
+    if (!format.ok) return format;
     return assembleData({
         answers: FIRST_DATA_ANSWERS,
         dataRevision: params.dataRevision,
         delivery: delivery.value,
-        format: dataFormatOf(params.releaseId),
+        format: format.value,
     });
 }
 
@@ -403,7 +405,7 @@ export async function openSession(
         const manifestBytes = await findReleaseManifest(tx, start.release_id);
         if (!manifestBytes.ok) return manifestBytes;
         invariant(manifestBytes.value !== null, "a started release has a manifest");
-        const manifest = parseReleaseManifestV3(manifestBytes.value);
+        const manifest = parseModuleManifest(manifestBytes.value);
         invariant(manifest.ok, "a published release manifest parses");
         const entitled = entitledFeaturesOf(access.value.features, manifest.value);
         // A promotion or kill switch on the release either committed before this reads what the
@@ -846,11 +848,13 @@ export async function serveData(
             loaded: started.value.modules,
         });
         if (!delivery.ok) return delivery;
+        const format = await readDataFormat(tx, session.release_id);
+        if (!format.ok) return format;
         const answer = assembleData({
             answers: frame.header.sequence,
             dataRevision: session.data_revision,
             delivery: delivery.value,
-            format: dataFormatOf(session.release_id),
+            format: format.value,
         });
         if (!answer.ok) return answer;
         if (replayed !== null) return ok({ session, answer: answer.value, sequence: replayed });

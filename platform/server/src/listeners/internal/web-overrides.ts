@@ -18,6 +18,7 @@ export const overridesHandlers = {
                 releaseId: Uint8Array.fromHex(input.releaseId),
                 target: { kind: input.kind, key: BigInt(`0x${input.key}`) },
                 off: input.off,
+                signer: ctx.overrideSigner ?? null,
             }),
         ),
 } satisfies Partial<Handlers<WebRpcContext, WebContract>>;

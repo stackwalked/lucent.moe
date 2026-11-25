@@ -8,6 +8,7 @@ import type { CloudLimits } from "../../cloud/items.rules.ts";
 import { createEventHub, type EventHub } from "../../community/events.ts";
 import type { Logger } from "../../core/log.ts";
 import type { EpochGuard } from "../../db/epoch-guard.ts";
+import type { OverrideSigner } from "../../runtime/lease-key.ts";
 import { mountLoaderDownload } from "./download.ts";
 import { mountCommunityEvents } from "./events.ts";
 import { mountResourceFiles } from "./resources.ts";
@@ -27,6 +28,8 @@ export function createInternalWebApp(deps: {
     // Where `ops publish-loader` wrote the loader's bytes, and resources are kept; null without
     // the loaders' listener.
     readonly artifactDir: string | null;
+    // Null without the loaders' listener.
+    readonly overrideSigner?: OverrideSigner | null;
     readonly logger: Logger;
 }): Hono {
     const events = deps.events ?? createEventHub();
@@ -44,6 +47,7 @@ export function createInternalWebApp(deps: {
                     auth: deps.auth,
                     logger: deps.logger,
                     artifactDir: deps.artifactDir,
+                    overrideSigner: deps.overrideSigner ?? null,
                     ...(deps.cloudLimits === undefined ? {} : { cloudLimits: deps.cloudLimits }),
                 }),
             );

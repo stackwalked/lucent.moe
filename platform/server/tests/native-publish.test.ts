@@ -1,7 +1,10 @@
 import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { blake2b256 } from "@lucent/bundle/crypto";
-import { toReleaseManifestV3Bytes } from "@lucent/bundle/release-manifest";
+import {
+    toReleaseManifestV3Bytes,
+    toReleaseManifestV4Bytes,
+} from "@lucent/bundle/release-manifest";
 import { createWriter, equalBytes } from "@lucent/bundle/wire";
 import { invariant } from "@lucent/core/contain";
 import { createSeededRng } from "@lucent/core/rng";
@@ -187,6 +190,46 @@ test("a module release verified under the code key is stored staged, not promote
             sql`select number from current_release`,
         );
         expect(promoted.ok && promoted.value).toEqual([]);
+    });
+});
+
+test("a module release keeps the data response version its manifest names: 3 from version 4, 2 from version 3", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ nativeDb }) => {
+        const v4Release = new Uint8Array(16).fill(0x34);
+        const v4Manifest = toReleaseManifestV4Bytes({
+            product: "cs2",
+            facts: [],
+            capabilities: [],
+            features: [{ key: 0x1111n, tag: "aim" }],
+            dataResponse: 3,
+        });
+        const v4Container = containerFor(v4Release);
+        const v4Seal = await signed({
+            product: "cs2",
+            channel: "alpha",
+            number: 2n,
+            release: v4Release,
+            bootInfoVersion: BOOT_INFO_VERSION,
+            artifacts: moduleArtifacts(v4Container, v4Manifest),
+        });
+
+        expect((await publishModule(nativeDb, await moduleSeal({ number: 1n }))).ok).toBe(true);
+        const published = await publishModuleRelease(nativeDb, {
+            codeKey: CODE_KEY,
+            artifacts: { seal: v4Seal, container: v4Container, manifest: v4Manifest },
+        });
+        expect(published.ok).toBe(true);
+        const rows = await queryAll(
+            nativeDb,
+            z.object({ number: z.string(), data_response: z.coerce.number() }),
+            sql`select s.number::text as number, r.data_response
+                from release_seal s join release r on r.id = s.release_id order by s.number`,
+        );
+        expect(rows.ok && rows.value).toEqual([
+            { number: "1", data_response: 2 },
+            { number: "2", data_response: 3 },
+        ]);
     });
 });
 

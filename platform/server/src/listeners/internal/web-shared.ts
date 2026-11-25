@@ -8,6 +8,7 @@ import { resolveCaller } from "../../auth/viewer.ts";
 import type { CloudLimits } from "../../cloud/items.rules.ts";
 import type { Logger } from "../../core/log.ts";
 import type { DbFailure } from "../../db/pool.ts";
+import type { OverrideSigner } from "../../runtime/lease-key.ts";
 
 export type WebRpcContext = {
     readonly cloudLimits?: CloudLimits;
@@ -18,6 +19,9 @@ export type WebRpcContext = {
     // Where ARTIFACT_DIR is: resource bytes are kept there and the system page measures it; null
     // or left out without the loaders' listener.
     readonly artifactDir?: string | null;
+    // Signs the override document a kill switch changes; null or left out without the loaders'
+    // listener, which nothing then serves.
+    readonly overrideSigner?: OverrideSigner | null;
 };
 
 type Unavailable = { readonly code: "SERVICE_UNAVAILABLE" };

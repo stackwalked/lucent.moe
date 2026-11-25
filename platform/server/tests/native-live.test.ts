@@ -155,6 +155,7 @@ test("a kill switch set in admin raises the running session's data revision on i
             releaseId: releases.module.id,
             target: { kind: "feature", key: ESP },
             off: true,
+            signer: null,
         });
         expect(switched).toEqual({ ok: true, value: { changed: true, revision: 1 } });
 
@@ -166,6 +167,7 @@ test("a kill switch set in admin raises the running session's data revision on i
             releaseId: releases.module.id,
             target: { kind: "feature", key: ESP },
             off: true,
+            signer: null,
         });
         expect(again).toEqual({ ok: true, value: { changed: false, revision: 1 } });
         expect((await renew(running)).dataRevision).toBe(1n);
@@ -199,6 +201,7 @@ test("a key the release's manifest doesn't declare can't be switched off", async
             releaseId: releases.module.id,
             target: { kind: "capability", key: ESP },
             off: true,
+            signer: null,
         });
         expect(refused).toEqual({ ok: false, error: { code: "UNKNOWN_TARGET" } });
         const loader = await setOverride(nativeDb, {
@@ -206,6 +209,7 @@ test("a key the release's manifest doesn't declare can't be switched off", async
             releaseId: releases.loader.id,
             target: { kind: "feature", key: ESP },
             off: true,
+            signer: null,
         });
         expect(loader).toEqual({ ok: false, error: { code: "NOT_FOUND" } });
     });

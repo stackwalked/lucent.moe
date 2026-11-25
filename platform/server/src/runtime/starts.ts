@@ -1,5 +1,5 @@
 import type { ModuleKey } from "@lucent/bundle/fact-set";
-import { parseReleaseManifestV3 } from "@lucent/bundle/release-manifest";
+import { parseModuleManifest } from "@lucent/bundle/release-manifest";
 import type { ProductCatalog } from "@lucent/catalog/catalog";
 import { invariant } from "@lucent/core/contain";
 import { err, ok, type Result } from "@lucent/core/result";
@@ -226,7 +226,7 @@ export async function coversCoreFacts(
     const bytes = await findReleaseManifest(q, releaseId);
     if (!bytes.ok) return bytes;
     invariant(bytes.value !== null, "a module release has a manifest");
-    const manifest = parseReleaseManifestV3(bytes.value);
+    const manifest = parseModuleManifest(bytes.value);
     invariant(manifest.ok, "a stored release manifest was verified when it was published");
     const needed = decideNeededFacts(manifest.value, builds);
     if (!needed.ok) return needed;

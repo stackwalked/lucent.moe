@@ -166,11 +166,12 @@ test("the published dev keys and password-only sign-in are refused unless browse
     expect(local.ok && local.value.passwordOnly).toBe(true);
 });
 
-test("the loaders' listener is configured by all four of its variables or none", () => {
+test("the loaders' listener is configured by all five of its variables or none", () => {
     const native = {
         LUCENT_NATIVE_LISTEN: "0.0.0.0:4001",
         LUCENT_NATIVE_ORIGIN: "https://api.lucent.moe",
         LUCENT_LEASE_SIGNING_KEY: "C".repeat(43),
+        LUCENT_OVERRIDE_SIGNING_KEY: "D".repeat(43),
         LUCENT_ARTIFACT_DIR: "/srv/lucent/artifacts",
     };
     const without = readServerConfig(env({}));
@@ -185,23 +186,47 @@ test("the loaders' listener is configured by all four of its variables or none",
     expect(!half.ok && half.error.problems).toEqual([
         "LUCENT_NATIVE_ORIGIN must be an https:// origin (or http://localhost)",
         "LUCENT_LEASE_SIGNING_KEY must be a 32-byte Ed25519 seed in base64url",
+        "LUCENT_OVERRIDE_SIGNING_KEY must be a 32-byte Ed25519 seed in base64url",
         "LUCENT_ARTIFACT_DIR must name the directory ops publish-loader writes to",
     ]);
     expect(
         readServerConfig(env({ ...native, LUCENT_NATIVE_ORIGIN: "http://api.lucent.moe" })).ok,
     ).toBe(false);
+    const { LUCENT_OVERRIDE_SIGNING_KEY: _, ...withoutOverrideKey } = native;
+    const unsigned = readServerConfig(env(withoutOverrideKey));
+    expect(!unsigned.ok && unsigned.error.problems).toEqual([
+        "LUCENT_OVERRIDE_SIGNING_KEY must be a 32-byte Ed25519 seed in base64url",
+    ]);
+    const shared = readServerConfig(
+        env({ ...native, LUCENT_OVERRIDE_SIGNING_KEY: native.LUCENT_LEASE_SIGNING_KEY }),
+    );
+    expect(!shared.ok && shared.error.problems).toEqual([
+        "LUCENT_OVERRIDE_SIGNING_KEY must differ from LUCENT_LEASE_SIGNING_KEY",
+    ]);
 });
 
-test("the published dev lease key is refused unless browsers reach the server from this machine", () => {
+test("the published dev lease and override keys are refused unless browsers reach the server from this machine", () => {
     const devLease = {
         LUCENT_NATIVE_LISTEN: "127.0.0.1:4711",
         LUCENT_NATIVE_ORIGIN: "http://127.0.0.1:4711",
         LUCENT_LEASE_SIGNING_KEY: "A".repeat(43),
+        LUCENT_OVERRIDE_SIGNING_KEY: "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE",
         LUCENT_ARTIFACT_DIR: "/srv/lucent/artifacts",
     };
     const released = readServerConfig(env(devLease));
     expect(!released.ok && released.error.problems).toEqual([
         "LUCENT_LEASE_SIGNING_KEY is the published dev key (all zero bytes)",
+        "LUCENT_OVERRIDE_SIGNING_KEY is a published dev key (all zero or all 1 bytes)",
+    ]);
+    const zeroOverride = readServerConfig(
+        env({
+            ...devLease,
+            LUCENT_LEASE_SIGNING_KEY: "C".repeat(43),
+            LUCENT_OVERRIDE_SIGNING_KEY: "A".repeat(43),
+        }),
+    );
+    expect(!zeroOverride.ok && zeroOverride.error.problems).toEqual([
+        "LUCENT_OVERRIDE_SIGNING_KEY is a published dev key (all zero or all 1 bytes)",
     ]);
     const local = readServerConfig(
         env({

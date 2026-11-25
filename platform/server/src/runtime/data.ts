@@ -1,7 +1,10 @@
+import { invariant } from "@lucent/core/contain";
 import { err, ok, type Result } from "@lucent/core/result";
 import type { CryptoRng } from "@lucent/core/rng";
 import { toDataResponseBytes, toDataResponseV3Bytes } from "@lucent/wire/data";
 import { type Frame, MAX_FRAME_PLAIN_SIZE, NONCE_SIZE, sealFrame } from "@lucent/wire/frame";
+import { z } from "zod";
+import { type DbFailure, type Queryable, queryOne, sql } from "../db/pool.ts";
 import type { FactDelivery } from "../facts/publishing.ts";
 
 // Bundles reach a module as data_response plaintexts, sealed on the data route: the first in the
@@ -24,14 +27,29 @@ export type DataFormat =
     | { readonly version: 2 }
     | { readonly version: 3; readonly overrides: Uint8Array | null };
 
-const V2: DataFormat = { version: 2 };
-
-// The one place a release's data response version is chosen. Every release reads version 2 for
-// now: which releases' modules read version 3 is a field of the release manifest that waits on the
-// human, and version 3 carries the stored document that OVERRIDE_SIGNING_KEY signs, which config
-// doesn't read yet. Both land here, and only here.
-export function dataFormatOf(_releaseId: Uint8Array): DataFormat {
-    return V2;
+// The one place a release's data response version is chosen: the version its manifest says its
+// module reads (release.data_response, from publishing), and for version 3 the override document
+// stored with the release's latest revision. The document and the sessions' raised data revisions
+// commit together (facts/overrides.ts), so whatever revision a lease announced, this reads a
+// document at least that new.
+export async function readDataFormat(
+    q: Queryable,
+    releaseId: Uint8Array,
+): Promise<Result<DataFormat, DbFailure>> {
+    const row = await queryOne(
+        q,
+        z.object({
+            data_response: z.coerce.number().pipe(z.union([z.literal(2), z.literal(3)])),
+            document: z.instanceof(Uint8Array).nullable(),
+        }),
+        sql`select r.data_response, o.document
+            from release r left join fact_override_revision o on o.release_id = r.id
+            where r.id = ${releaseId}`,
+    );
+    if (!row.ok) return row;
+    invariant(row.value !== null, "a session's release exists");
+    if (row.value.data_response === 2) return ok({ version: 2 });
+    return ok({ version: 3, overrides: row.value.document });
 }
 
 // The response's plaintext, built where a response too large for a frame is still a refusal: the

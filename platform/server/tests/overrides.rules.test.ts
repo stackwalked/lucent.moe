@@ -7,6 +7,11 @@ import { decideReviewOutcome } from "../src/risk/review.rules.ts";
 const known = { features: [0x11n, 0x22n], capabilities: [0x33n] };
 const current = [{ kind: "feature" as const, key: 0x22n }];
 
+const offs = (features: readonly bigint[], capabilities: readonly bigint[] = []) => ({
+    features,
+    capabilities,
+});
+
 test.each([
     ["an undeclared feature", "feature", 0x33n, true, 4n, { code: "UNKNOWN_TARGET" }],
     ["a capability key used as a feature", "feature", 0x44n, true, 4n, { code: "UNKNOWN_TARGET" }],
@@ -18,12 +23,41 @@ test.each([
         4n,
         { code: "UNKNOWN_TARGET" },
     ],
-    ["a feature on", "feature", 0x11n, true, 4n, { change: "set", revision: 5n }],
-    ["a feature on, first switch", "feature", 0x11n, true, null, { change: "set", revision: 1n }],
+    // The document lists what is off after the change, each list ascending.
+    [
+        "a feature on",
+        "feature",
+        0x11n,
+        true,
+        4n,
+        { change: "set", revision: 5n, off: offs([0x11n, 0x22n]) },
+    ],
+    [
+        "a feature on, first switch",
+        "feature",
+        0x11n,
+        true,
+        null,
+        { change: "set", revision: 1n, off: offs([0x11n, 0x22n]) },
+    ],
     ["a feature already off", "feature", 0x22n, true, 4n, { change: "none" }],
-    ["an off feature back on", "feature", 0x22n, false, 4n, { change: "clear", revision: 5n }],
+    [
+        "an off feature back on, leaving every switch on",
+        "feature",
+        0x22n,
+        false,
+        4n,
+        { change: "clear", revision: 5n, off: offs([]) },
+    ],
     ["a capability already on", "capability", 0x33n, false, 4n, { change: "none" }],
-    ["a capability on", "capability", 0x33n, true, 4n, { change: "set", revision: 5n }],
+    [
+        "a capability on",
+        "capability",
+        0x33n,
+        true,
+        4n,
+        { change: "set", revision: 5n, off: offs([0x22n], [0x33n]) },
+    ],
 ] as const)("switching %s off=%s", (_, kind, key, off, revision, expected) => {
     const plan = decideOverrideChange({ known, current, revision, target: { kind, key }, off });
     expect(plan.ok ? plan.value : plan.error).toEqual(expected);

@@ -1,8 +1,9 @@
-import { parseReleaseManifestV3 } from "@lucent/bundle/release-manifest";
+import { parseModuleManifest } from "@lucent/bundle/release-manifest";
 import { invariant } from "@lucent/core/contain";
 import { err, ok, type Result } from "@lucent/core/result";
 import { EpochMs, toHex } from "@lucent/core/scalars";
 import type { AuthzRefusal, Caller } from "@lucent/policy/policy";
+import { type Overrides, toOverridesBytes, toOverridesSignedBytes } from "@lucent/wire/overrides";
 import { z } from "zod";
 import { type Forbidden, lockAuthorized, readAsStaff } from "../authority/staff.ts";
 import { appendAudit } from "../db/audit.ts";
@@ -18,13 +19,22 @@ import {
 } from "../db/pool.ts";
 import { withTx } from "../db/tx.ts";
 import { findReleaseManifest } from "../releases/reads.ts";
+import type { OverrideSigner } from "../runtime/lease-key.ts";
 import { bumpDataRevisions } from "../runtime/revisions.ts";
 import { decideOverrideChange, type OverrideKind, type OverrideTarget } from "./overrides.rules.ts";
 
 // Kill switches as staff set them, per module release. A change commits the switch, the release's
-// next document revision and the data revision of every live session on the release, so their next
-// lease says something changed. The override document itself, signed with OVERRIDE_SIGNING_KEY
-// after the commit and served on the data route, waits for its format in contracts/.
+// next document revision, that revision's override document signed with the override key
+// (contracts/overrides/v1), and the data revision of every live session on the release, so their
+// next lease says something changed and their next data request (version 3) carries it.
+
+async function signedDocument(
+    signer: OverrideSigner,
+    fields: Omit<Overrides, "signature">,
+): Promise<Uint8Array<ArrayBuffer>> {
+    const signature = await signer.sign(toOverridesSignedBytes(fields));
+    return toOverridesBytes({ ...fields, signature });
+}
 
 // A u64 key as staff read and type it: 16 hex digits.
 function toKeyHex(key: bigint): string {
@@ -76,7 +86,7 @@ async function readRelease(q: Queryable, releaseId: Uint8Array) {
     const bytes = await findReleaseManifest(q, releaseId);
     if (!bytes.ok) return bytes;
     invariant(bytes.value !== null, "a module release has a manifest");
-    const manifest = parseReleaseManifestV3(bytes.value);
+    const manifest = parseModuleManifest(bytes.value);
     invariant(manifest.ok, "a stored release manifest was verified when it was published");
     return ok({ ...release.value, manifest: manifest.value });
 }
@@ -153,6 +163,8 @@ export async function setOverride(
         readonly releaseId: Uint8Array;
         readonly target: OverrideTarget;
         readonly off: boolean;
+        // Null on a server without native config: nothing is signed, and no module is served.
+        readonly signer: OverrideSigner | null;
     },
 ): Promise<
     Result<{ readonly changed: boolean; readonly revision: number }, SetOverrideRefusal | DbFailure>
@@ -207,12 +219,27 @@ export async function setOverride(
         );
         if (!switched.ok) return switched;
         const next = plan.value.revision;
+        // Signed here, inside the transaction that takes the revision and raises the sessions'
+        // data revisions, so all three commit together. Signed after the commit instead, a module
+        // told by its lease that the revision changed could ask before the new document was
+        // stored, get the old one, and never ask again: nothing would raise its revision a second
+        // time. Signing is CPU work under the advisory lock above, not I/O.
+        const document =
+            params.signer === null
+                ? null
+                : await signedDocument(params.signer, {
+                      release: releaseId,
+                      revision: next,
+                      product: release.value.product_id,
+                      ...plan.value.off,
+                  });
         const revised = await execute(
             tx,
-            sql`insert into fact_override_revision (release_id, revision, changed_at)
-                values (${releaseId}, ${next}, ${at}::timestamptz)
+            sql`insert into fact_override_revision (release_id, revision, changed_at, document)
+                values (${releaseId}, ${next}, ${at}::timestamptz, ${document})
                 on conflict (release_id) do update
-                set revision = excluded.revision, changed_at = excluded.changed_at`,
+                set revision = excluded.revision, changed_at = excluded.changed_at,
+                    document = excluded.document`,
         );
         if (!revised.ok) return revised;
         const bumped = await bumpDataRevisions(tx, { releaseId, change: { kind: "override" } });

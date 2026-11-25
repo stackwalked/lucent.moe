@@ -8,6 +8,14 @@ export type LeaseSigner = {
     readonly sign: (message: Uint8Array) => Promise<Uint8Array<ArrayBuffer>>;
 };
 
+// The online override key: the same kind of key, kept apart so either rotates alone and a stolen
+// one signs only its own kind. It signs override documents (facts/overrides.ts) and nothing else.
+export type OverrideSigner = LeaseSigner;
+
+export async function createOverrideSigner(seed: Uint8Array): Promise<OverrideSigner> {
+    return await createLeaseSigner(seed);
+}
+
 // RFC 8410's PKCS #8 wrapping of a raw 32-byte Ed25519 seed, which WebCrypto imports.
 const PKCS8_ED25519 = Uint8Array.fromHex("302e020100300506032b657004220420");
 

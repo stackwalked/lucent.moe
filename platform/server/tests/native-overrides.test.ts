@@ -1,15 +1,32 @@
 import { expect, test } from "bun:test";
 import type { ModuleKey } from "@lucent/bundle/fact-set";
 import { invariant } from "@lucent/core/contain";
+import { ok } from "@lucent/core/result";
 import { createSeededRng } from "@lucent/core/rng";
+import { type BearerToken, toHex } from "@lucent/core/scalars";
+import { createRpcClient } from "@lucent/rpc/client";
+import { mountInternalRpc } from "@lucent/rpc/mount";
+import { webContract } from "@lucent/rpc/web";
 import { parseDataResponse, toDataResponseBytes } from "@lucent/wire/data";
 import { openFrame, parseFrame, toFrameBytes } from "@lucent/wire/frame";
-import { type Overrides, toOverridesBytes, toOverridesSignedBytes } from "@lucent/wire/overrides";
+import {
+    type Overrides,
+    parseOverrides,
+    toOverridesBytes,
+    toOverridesSignedBytes,
+} from "@lucent/wire/overrides";
 import { signingPublicKey, signWithSeed } from "@lucent/wire/session-crypto";
 import { z } from "zod";
-import { type Db, queryOne, sql } from "../src/db/pool.ts";
+import { hashToken } from "../src/auth/tokens.ts";
+import { type Db, execute, queryOne, sql } from "../src/db/pool.ts";
 import { readFactDelivery } from "../src/facts/publishing.ts";
-import { assembleData, dataFormatOf, sealData } from "../src/runtime/data.ts";
+import { webProcedures } from "../src/listeners/internal/web-rpc.ts";
+import { assembleData, readDataFormat, sealData } from "../src/runtime/data.ts";
+import { createOverrideSigner } from "../src/runtime/lease-key.ts";
+import { memberSession, seedRootOnce } from "./auth-fixtures.ts";
+import { catalog } from "./authority-fixtures.ts";
+import { NO_LOG } from "./community-fixtures.ts";
+import { createTestAuthDeps } from "./harness/auth.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 import {
     createNativeHarness,
@@ -20,8 +37,9 @@ import {
     entitledMember,
     FEATURES,
     type NativeHarness,
-    publishBoth,
-    type Releases,
+    OVERRIDE_SEED,
+    type PublishedRelease,
+    publishRelease,
     refusalCodeOf,
     sessionPath,
     signIn,
@@ -30,18 +48,36 @@ import {
     type TestModule,
 } from "./native-fixtures.ts";
 
-// Data response v3 as the server builds it, taken by the simulated module. No release is answered
-// in v3 yet (dataFormatOf), and nothing signs a stored document yet, so these drive assembleData
-// with documents signed here under a test override key, sealed under the session's own data key.
+// Kill switches reaching a module: the admin procedure signs the release's override document,
+// data response version 3 carries it to a release whose manifest says its module reads it, and
+// the simulated module takes it under the override key's public half.
 
 const GAME: ModuleKey = { nameHash: 0x1234n, timeDateStamp: 0x5566_7788, sizeOfImage: 0x0040_0000 };
-const OVERRIDE_SEED = new Uint8Array(32).fill(0x0d);
 const ESP = FEATURES[1].key;
+const PEER_KEY = "test-peer-key-0123456789abcdefghijklmnopqrstuvwxyz";
 
 type Running = { readonly loader: TestLoader; readonly module: TestModule; readonly path: string };
 
-async function run(harness: NativeHarness, releases: Releases, email: string): Promise<Running> {
-    const member = await entitledMember(harness, { email, channels: ["alpha"] });
+async function publishPair(harness: NativeHarness, dataResponse: 2 | 3 | null) {
+    return {
+        loader: await publishRelease(harness.db, harness.rng, {
+            product: "lucent-loader",
+            channel: "stable",
+        }),
+        module: await publishRelease(harness.db, harness.rng, {
+            product: "cs2",
+            channel: "alpha",
+            ...(dataResponse === null ? {} : { dataResponse }),
+        }),
+    };
+}
+
+async function run(
+    harness: NativeHarness,
+    releases: { readonly loader: PublishedRelease; readonly module: PublishedRelease },
+    params: { readonly email: string; readonly readsV3: boolean },
+): Promise<Running> {
+    const member = await entitledMember(harness, { email: params.email, channels: ["alpha"] });
     const loader = createTestLoader(harness, await createTestDevice(harness.rng));
     await signIn(harness, loader, member.browserSession);
     await enroll(harness, loader, member.browserSession);
@@ -49,7 +85,7 @@ async function run(harness: NativeHarness, releases: Releases, email: string): P
     const module = createTestModule(
         harness.rng,
         harness.signer.publicKey,
-        await signingPublicKey(OVERRIDE_SEED),
+        params.readsV3 ? await signingPublicKey(OVERRIDE_SEED) : null,
     );
     const opened = await loader.send({
         method: "POST",
@@ -60,6 +96,153 @@ async function run(harness: NativeHarness, releases: Releases, email: string): P
     await module.acceptSession(opened.bytes);
     return { loader, module, path: sessionPath(module.session()) };
 }
+
+async function renew(running: Running) {
+    const sent = await running.loader.send({
+        method: "POST",
+        path: `${running.path}/lease`,
+        body: running.module.renewal(),
+    });
+    invariant(sent.status === 200, `the renewal was refused: ${refusalCodeOf(sent)}`);
+    return await running.module.acceptLease(sent.bytes);
+}
+
+async function askData(running: Running): Promise<Uint8Array> {
+    const sent = await running.loader.send({
+        method: "POST",
+        path: `${running.path}/data`,
+        body: running.module.dataRequest([GAME]),
+    });
+    invariant(sent.status === 200, `the data request was refused: ${refusalCodeOf(sent)}`);
+    return sent.bytes;
+}
+
+// admin.overrides.set as web calls it, for a stepped-up root holding a member session.
+async function adminClient(harness: NativeHarness) {
+    const auth = await createTestAuthDeps(harness.db, harness.rng);
+    const root: BearerToken = await memberSession(
+        auth,
+        await seedRootOnce(harness.db, harness.rng),
+    );
+    const stepped = await execute(
+        harness.db,
+        sql`update browser_session set step_up_at = now() where token_hash = ${await hashToken(root)}`,
+    );
+    invariant(stepped.ok, "stepping up failed");
+    const overrideSigner = await createOverrideSigner(OVERRIDE_SEED);
+    const app = mountInternalRpc({
+        path: "/rpc",
+        peerKey: PEER_KEY,
+        procedures: webProcedures,
+        createContext: () =>
+            Promise.resolve(ok({ catalog: catalog(), auth, logger: NO_LOG, overrideSigner })),
+        onUnhandledError: () => {},
+    });
+    const client = createRpcClient(webContract, {
+        endpointUrl: "http://localhost/rpc",
+        peerKey: PEER_KEY,
+        fetcher: async (req) => await app.fetch(req),
+    });
+    return async (release: Uint8Array, esp: "off" | "on") => {
+        const set = await client.call(
+            "admin.overrides.set",
+            {
+                releaseId: toHex(release),
+                kind: "feature",
+                key: ESP.toString(16).padStart(16, "0"),
+                off: esp === "off",
+            },
+            { session: root },
+        );
+        invariant(set.ok, `switching failed: ${JSON.stringify(set)}`);
+        return set.value;
+    };
+}
+
+test("a kill switch set in admin reaches a running v4-manifest session at its next data request after the lease says the revision changed", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ nativeDb }) => {
+        const harness = await createNativeHarness(nativeDb, createSeededRng(9_951));
+        const releases = await publishPair(harness, 3);
+        const running = await run(harness, releases, { email: "v4@lucent.test", readsV3: true });
+        const setEsp = await adminClient(harness);
+
+        // The first response, in the session reply, already reads version 3: nothing switched yet.
+        expect(running.module.firstOverrides()).toBe("none");
+        expect((await renew(running)).dataRevision).toBe(0n);
+
+        expect(await setEsp(releases.module.id, "off")).toEqual({ changed: true, revision: 1 });
+        expect((await renew(running)).dataRevision).toBe(1n);
+        const offFrame = await askData(running);
+        const off = await running.module.acceptDataV3(offFrame);
+        expect(off.response.dataRevision).toBe(1n);
+        expect(off.overrides).toBe("taken");
+        expect(running.module.overrides()).toMatchObject({
+            revision: 1n,
+            product: "cs2",
+            features: [ESP],
+            capabilities: [],
+        });
+
+        // Back on: an empty document at the next revision.
+        expect(await setEsp(releases.module.id, "on")).toEqual({ changed: true, revision: 2 });
+        expect((await renew(running)).dataRevision).toBe(2n);
+        expect((await running.module.acceptDataV3(await askData(running))).overrides).toBe("taken");
+        expect(running.module.overrides()).toMatchObject({ revision: 2n, features: [] });
+
+        // The revision-1 response replayed to the module: it keeps the newer document.
+        expect((await running.module.acceptDataV3(offFrame)).overrides).toBe("older_revision");
+        expect(running.module.overrides()).toMatchObject({ revision: 2n, features: [] });
+
+        // A session opened after the switch has its document from the session reply.
+        expect(await setEsp(releases.module.id, "off")).toEqual({ changed: true, revision: 3 });
+        const later = await run(harness, releases, { email: "later@lucent.test", readsV3: true });
+        expect(later.module.firstOverrides()).toBe("taken");
+        expect(later.module.overrides()).toMatchObject({ revision: 3n, features: [ESP] });
+    });
+});
+
+test("a v3-manifest release is still answered in data response v2, byte for byte, with a switch set on it", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ nativeDb }) => {
+        const harness = await createNativeHarness(nativeDb, createSeededRng(9_953));
+        const releases = await publishPair(harness, null);
+        const running = await run(harness, releases, { email: "v2@lucent.test", readsV3: false });
+        const setEsp = await adminClient(harness);
+
+        expect(await setEsp(releases.module.id, "off")).toEqual({ changed: true, revision: 1 });
+        expect(await readDataFormat(nativeDb, releases.module.id)).toEqual({
+            ok: true,
+            value: { version: 2 },
+        });
+        // The document is signed and stored all the same, for no module that reads it.
+        const stored = await queryOne(
+            nativeDb,
+            z.object({ document: z.instanceof(Uint8Array) }),
+            sql`select document from fact_override_revision where release_id = ${releases.module.id}`,
+        );
+        invariant(stored.ok && stored.value !== null, "the document is stored");
+        expect(parseOverrides(stored.value.document).ok).toBe(true);
+
+        expect((await renew(running)).dataRevision).toBe(1n);
+        const sent = await askData(running);
+        const keys = await queryOne(
+            nativeDb,
+            z.object({ key: z.instanceof(Uint8Array) }),
+            sql`select data_key_to_module as key from runtime_session
+                where id = ${running.module.session()}`,
+        );
+        invariant(keys.ok && keys.value !== null, "the session's data key is stored");
+        const frame = parseFrame(sent);
+        invariant(frame.ok, "the reply is a frame");
+        const plain = openFrame(keys.value.key, frame.value);
+        invariant(plain.ok, "the frame opens under the data key");
+        const response = parseDataResponse(plain.value);
+        invariant(response.ok, "the reply is a data response v2");
+        expect(response.value.dataRevision).toBe(1n);
+        expect(plain.value).toEqual(toDataResponseBytes(response.value));
+    });
+});
 
 async function signedDocument(
     seed: Uint8Array,
@@ -76,22 +259,21 @@ async function v3Frame(
         readonly running: Running;
         readonly releaseId: Uint8Array;
         readonly sequence: bigint;
-        readonly overrides: Uint8Array | null;
+        readonly overrides: Uint8Array;
     },
 ): Promise<Uint8Array> {
     const session = params.running.module.session();
     const row = await queryOne(
         db,
-        z.object({ key: z.instanceof(Uint8Array), revision: z.coerce.bigint() }),
-        sql`select data_key_to_module as key, data_revision as revision
-            from runtime_session where id = ${session}`,
+        z.object({ key: z.instanceof(Uint8Array) }),
+        sql`select data_key_to_module as key from runtime_session where id = ${session}`,
     );
     invariant(row.ok && row.value !== null, "the session's data key is stored");
     const delivery = await readFactDelivery(db, { releaseId: params.releaseId, builds: [GAME] });
     invariant(delivery.ok, "reading the delivery failed");
     const plain = assembleData({
         answers: params.sequence,
-        dataRevision: row.value.revision,
+        dataRevision: 0n,
         delivery: delivery.value,
         format: { version: 3, overrides: params.overrides },
     });
@@ -107,45 +289,15 @@ async function v3Frame(
     );
 }
 
-test("the module takes a v3 response's signed document for its release, and refuses an older revision replayed after it", async () => {
-    const cluster = await sharedTestCluster();
-    await cluster.withTestDb(async ({ nativeDb }) => {
-        const rng = createSeededRng(9_951);
-        const harness = await createNativeHarness(nativeDb, rng);
-        const releases = await publishBoth(nativeDb, rng);
-        const running = await run(harness, releases, "v3@lucent.test");
-        const base = { release: releases.module.id, product: "cs2", capabilities: [] };
-        const off = await signedDocument(OVERRIDE_SEED, { ...base, revision: 1n, features: [ESP] });
-        const on = await signedDocument(OVERRIDE_SEED, { ...base, revision: 2n, features: [] });
-        const frame = (sequence: bigint, overrides: Uint8Array | null) =>
-            v3Frame(nativeDb, { running, releaseId: releases.module.id, sequence, overrides });
-        const take = async (sequence: bigint, overrides: Uint8Array | null) =>
-            (await running.module.acceptDataV3(await frame(sequence, overrides))).overrides;
-
-        const none = await running.module.acceptDataV3(await frame(1n, null));
-        expect(none.overrides).toBe("none");
-        expect(none.response.overrides).toBeNull();
-        expect(none.response.answers).toBe(1n);
-
-        expect(await take(2n, off)).toBe("taken");
-        expect(running.module.overrides()?.features).toEqual([ESP]);
-        // The same document again, as every response until the next switch carries it.
-        expect(await take(3n, off)).toBe("taken");
-        expect(await take(4n, on)).toBe("taken");
-        expect(running.module.overrides()?.features).toEqual([]);
-
-        expect(await take(5n, off)).toBe("older_revision");
-        expect(running.module.overrides()?.revision).toBe(2n);
-    });
-});
-
 test("the module refuses a v3 document another key signed or another release's", async () => {
     const cluster = await sharedTestCluster();
     await cluster.withTestDb(async ({ nativeDb }) => {
-        const rng = createSeededRng(9_952);
-        const harness = await createNativeHarness(nativeDb, rng);
-        const releases = await publishBoth(nativeDb, rng);
-        const running = await run(harness, releases, "forged@lucent.test");
+        const harness = await createNativeHarness(nativeDb, createSeededRng(9_952));
+        const releases = await publishPair(harness, 3);
+        const running = await run(harness, releases, {
+            email: "forged@lucent.test",
+            readsV3: true,
+        });
         const fields = {
             release: releases.module.id,
             product: "cs2",
@@ -168,38 +320,5 @@ test("the module refuses a v3 document another key signed or another release's",
             "other_release",
         );
         expect(running.module.overrides()).toBeNull();
-    });
-});
-
-test("every release is still answered in data response v2, byte for byte as the v2 encoder writes it", async () => {
-    const cluster = await sharedTestCluster();
-    await cluster.withTestDb(async ({ nativeDb }) => {
-        const rng = createSeededRng(9_953);
-        const harness = await createNativeHarness(nativeDb, rng);
-        const releases = await publishBoth(nativeDb, rng);
-        const running = await run(harness, releases, "v2@lucent.test");
-
-        expect(dataFormatOf(releases.module.id)).toEqual({ version: 2 });
-        const sent = await running.loader.send({
-            method: "POST",
-            path: `${running.path}/data`,
-            body: running.module.dataRequest([GAME]),
-        });
-        expect(sent.status).toBe(200);
-        const keys = await queryOne(
-            nativeDb,
-            z.object({ key: z.instanceof(Uint8Array) }),
-            sql`select data_key_to_module as key from runtime_session
-                where id = ${running.module.session()}`,
-        );
-        invariant(keys.ok && keys.value !== null, "the session's data key is stored");
-        const frame = parseFrame(sent.bytes);
-        invariant(frame.ok, "the reply is a frame");
-        const plain = openFrame(keys.value.key, frame.value);
-        invariant(plain.ok, "the frame opens under the data key");
-        const response = parseDataResponse(plain.value);
-        invariant(response.ok, "the reply is a data response v2");
-        expect(plain.value).toEqual(toDataResponseBytes(response.value));
-        expect(running.module.firstData().answers).toBe(0n);
     });
 });

@@ -1,6 +1,11 @@
 import { join } from "node:path";
 import { blake2b256 } from "@lucent/bundle/crypto";
-import { type ReleaseManifestV3, toReleaseManifestV3Bytes } from "@lucent/bundle/release-manifest";
+import {
+    type DataResponseVersion,
+    type ReleaseManifestV3,
+    toReleaseManifestV3Bytes,
+    toReleaseManifestV4Bytes,
+} from "@lucent/bundle/release-manifest";
 import type { ProductCatalog } from "@lucent/catalog/catalog";
 import { type Clock, systemClock } from "@lucent/core/clock";
 import { invariant, trySync } from "@lucent/core/contain";
@@ -84,6 +89,8 @@ import { createTestAuthDeps } from "./harness/auth.ts";
 export const ORIGIN = "https://api.lucent.test";
 // A fixed lease key: tests check signatures against its public half, as a module would.
 export const LEASE_SEED = new Uint8Array(32).fill(7);
+// A fixed override key: the simulated module checks documents against its public half.
+export const OVERRIDE_SEED = new Uint8Array(32).fill(0x0d);
 
 export type NativeHarness = {
     readonly db: Db;
@@ -391,24 +398,31 @@ export async function publishRelease(
         readonly container?: Uint8Array;
         readonly facts?: ReleaseManifestV3["facts"];
         readonly capabilities?: ReleaseManifestV3["capabilities"];
+        // Given, the manifest is version 4 and says so, as publishing stores it; left out, it is
+        // version 3, whose module reads data response version 2.
+        readonly dataResponse?: DataResponseVersion;
     },
 ): Promise<PublishedRelease> {
     const id = rng.fillBytes(new Uint8Array(16));
     const seal = rng.fillBytes(new Uint8Array(96));
     const isModule = params.product !== "lucent-loader";
-    const manifest = isModule
-        ? toReleaseManifestV3Bytes({
-              product: params.product,
-              facts: params.facts ?? [],
-              capabilities: params.capabilities ?? [],
-              features: [...FEATURES],
-          })
-        : null;
+    const fields = {
+        product: params.product,
+        facts: params.facts ?? [],
+        capabilities: params.capabilities ?? [],
+        features: [...FEATURES],
+    };
+    const manifest = !isModule
+        ? null
+        : params.dataResponse === undefined
+          ? toReleaseManifestV3Bytes(fields)
+          : toReleaseManifestV4Bytes({ ...fields, dataResponse: params.dataResponse });
     const container = isModule ? (params.container ?? rng.fillBytes(new Uint8Array(1_000))) : null;
     const inserted = await execute(
         db,
-        sql`insert into release (id, product_id, channel, container, manifest)
-            values (${id}, ${params.product}, ${params.channel}, ${container}, ${manifest})`,
+        sql`insert into release (id, product_id, channel, container, manifest, data_response)
+            values (${id}, ${params.product}, ${params.channel}, ${container}, ${manifest},
+                    ${params.dataResponse ?? 2})`,
     );
     invariant(inserted.ok, `inserting the release failed: ${JSON.stringify(inserted)}`);
     const sealed = await execute(
@@ -597,6 +611,9 @@ export type TestModule = {
         readonly response: DataResponseV3;
         readonly overrides: OverridesTaken;
     }>;
+    // What became of the document the session reply's first response carried (version 3 only).
+    readonly firstOverrides: () => OverridesTaken;
+    // The document the module holds: the newest it took.
     readonly overrides: () => Overrides | null;
     // A cloud_request frame, sealed under the data keys on the data route's sequences, as
     // dataRequest is.
@@ -617,8 +634,8 @@ export type OverridesTaken =
     | "other_release"
     | "older_revision";
 
-// The override key's public half as a module build would carry it; a test module without one
-// takes no document.
+// A module build that reads data response version 3 carries the override key's public half, and
+// reads version 3 from its first response on; one given null reads version 2.
 export function createTestModule(
     rng: SeededRng,
     leaseKey: Uint8Array,
@@ -636,6 +653,7 @@ export function createTestModule(
     let receivedFrames = 0n;
     let sentData = 0n;
     let firstData: DataResponse | null = null;
+    let firstOverrides: OverridesTaken | null = null;
 
     const openData = (frame: Parameters<typeof openFrame>[1]): DataResponse => {
         invariant(keys !== null, "the session is open");
@@ -643,6 +661,15 @@ export function createTestModule(
         invariant(plain.ok, "the data frame opens under the data route's key");
         const parsed = parseDataResponse(plain.value);
         invariant(parsed.ok, "the data response parses");
+        return parsed.value;
+    };
+
+    const openDataV3 = (frame: Parameters<typeof openFrame>[1]): DataResponseV3 => {
+        invariant(keys !== null, "the session is open");
+        const plain = openFrame(keys.data.serverToModule, frame);
+        invariant(plain.ok, "the data frame opens under the data route's key");
+        const parsed = parseDataResponseV3(plain.value);
+        invariant(parsed.ok, "the data response v3 parses");
         return parsed.value;
     };
 
@@ -729,7 +756,13 @@ export function createTestModule(
             });
             session = exchange.session;
             invariant(parsed.value.firstData.header.sequence === 0n, "the first data frame is 0");
-            firstData = openData(parsed.value.firstData);
+            if (overrideKey === null) {
+                firstData = openData(parsed.value.firstData);
+            } else {
+                const opened = openDataV3(parsed.value.firstData);
+                firstData = opened;
+                firstOverrides = await takeOverrides(opened.overrides);
+            }
             return await openLease(parsed.value.firstLease);
         },
         renewal: (params) => {
@@ -769,15 +802,13 @@ export function createTestModule(
         },
         acceptDataV3: async (reply) => {
             const frame = parseFrame(reply);
-            invariant(frame.ok && keys !== null, "the data reply is a frame of an open session");
-            const plain = openFrame(keys.data.serverToModule, frame.value);
-            invariant(plain.ok, "the data frame opens under the data route's key");
-            const parsed = parseDataResponseV3(plain.value);
-            invariant(parsed.ok, "the data response v3 parses");
-            return {
-                response: parsed.value,
-                overrides: await takeOverrides(parsed.value.overrides),
-            };
+            invariant(frame.ok, "the data reply is a frame");
+            const response = openDataV3(frame.value);
+            return { response, overrides: await takeOverrides(response.overrides) };
+        },
+        firstOverrides: () => {
+            invariant(firstOverrides !== null, "a version 3 session reply was accepted");
+            return firstOverrides;
         },
         overrides: () => overrides,
         cloudRequest: (request, params) => sealData(toCloudRequestBytes(request), params?.sequence),
