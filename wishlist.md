@@ -126,12 +126,14 @@ Beside phases 2 and 3; nothing native waits on it except cutover.
 
 - Slice 3, the rest (scoring, the review queue, retention tiers, update-day latency, data
   revisions raised by promotions and kill switches, the signed override document and its delivery
-  on `/data` to v4-manifest releases landed): the reports route and the signals from it, the
-  renewal's integrity bits and checked challenge answers. Each waits on a format the human
-  decides; a review action of its own in place of `accounts:suspend`.
+  on `/data` to v4-manifest releases, the reports route and the signal from its crashes, the
+  integrity bits' codec and signal rules landed): the renewal reading its integrity bits (waits
+  on the VM vendor's values and on test fixtures that fill the field canonically), health event
+  ids, and checked challenge answers. Each waits on a format the human decides; a review action
+  of its own in place of `accounts:suspend`.
 - Slice 4 (account-held items with history, share links, the member pages, tickets and appeals,
   the new-country review rule with DB-IP geo and resources, items served to and written by a
-  session over `/data` landed): crash reports, the waitlist.
+  session over `/data`, the staff crashes page landed): the waitlist.
 - Slice 5 (profiles, guides, comments, shouts, the inbox, reports and removal, posting
   restrictions apart from the licence, blocking, the data export, search, a presence stream
   landed): avatars (the codecs are dependencies to approve), presence shown in web, self-service
