@@ -22,7 +22,15 @@ import {
 import { SQL } from "bun";
 import { z } from "zod";
 import { createConnector } from "../src/connector.ts";
-import { DM_COPY, FEEDS_COPY, ME_COPY, REPLIES, TICKET_COPY } from "../src/copy.ts";
+import {
+    DM_COPY,
+    FEEDS_COPY,
+    ME_COPY,
+    QUEUE_COPY,
+    REPLIES,
+    STAFF_COPY,
+    TICKET_COPY,
+} from "../src/copy.ts";
 import type { LogFields, Logger } from "../src/log.ts";
 import { startFakeDiscord } from "../testing/fake-discord.ts";
 
@@ -159,7 +167,17 @@ test("the connector mirrors standing into the guild within a tick, and a reconci
     await fake.ready();
     await until("ready", () => lines.some((line) => line.msg === "ready"));
     await connector.idle();
-    expect(fake.commands()).toEqual(["link", "unlink", "me", "status", "ticket"]);
+    expect(fake.commands()).toEqual([
+        "link",
+        "unlink",
+        "me",
+        "status",
+        "ticket",
+        "who",
+        "brief",
+        "releases",
+        "who is this",
+    ]);
     expect(fake.roles(BOB)).toEqual([]);
 
     // Linking: a wrong code is refused; the member's own links and syncs at once.
@@ -590,5 +608,135 @@ test("a notice goes out as a DM; closed DMs and failures lose nothing and are no
     const [inbox] = await db`select count(*)::int as count from inbox_entry
                              where account_id in ${db(ids)}`;
     expect(inbox?.count).toBe(3);
+    await stop();
+}, 30_000);
+
+test("staff reads answer in a staff channel only, and a ticket's queue post follows the site within a tick", async () => {
+    const GUILD = "560000000000000100";
+    const STAFF_ROOM = "560000000000000200";
+    const LOBBY = "560000000000000201";
+    const ROOT_USER = "560000000000000001";
+    const NINA = "560000000000000002";
+    const web = webClient();
+    const staff = await rootSession();
+    const [root] = await db`select id from account where is_root`;
+    invariant(typeof root?.id === "string", "root was bootstrapped");
+    const rootCode = await web.call("discord.link.start", {}, { session: staff });
+    invariant(rootCode.ok, "root has a code");
+    expect(
+        (
+            await discordClient().call("links.redeem", {
+                userId: ROOT_USER,
+                code: rootCode.value.code,
+            })
+        ).ok,
+    ).toBe(true);
+    for (const fields of [
+        { kind: "staff_channel", channelId: STAFF_ROOM },
+        { kind: "feed", channelId: STAFF_ROOM, feed: "tickets" },
+    ] as const) {
+        expect((await web.call("admin.discord.rules.add", { fields }, { session: staff })).ok).toBe(
+            true,
+        );
+    }
+    const nina = await linkedMember("nina@lucent.test", NINA);
+    await db`update account set username = 'nina' where id = ${nina.accountId}`;
+    const { fake, connector, stop } = await connected(GUILD, [ROOT_USER, NINA]);
+
+    // In the staff channel the answer is for the channel; anywhere else, or for a member, it is
+    // the one refusal, said only to the asker.
+    const who = await fake.command(
+        "who",
+        ROOT_USER,
+        { account: "nina" },
+        { channelId: STAFF_ROOM },
+    );
+    invariant(who.kind === "message", "a message");
+    expect(who.ephemeral).toBe(false);
+    // nina has no credentials yet: the admin page says the same.
+    expect(who.content).toContain(STAFF_COPY.whoHeading("nina", "setup_pending"));
+    expect(who.content).toContain(STAFF_COPY.discord(NINA));
+    expect(who.content).not.toContain("nina@lucent.test");
+    expect(who.buttonUrl).toBe(`${site}/admin/accounts/${nina.accountId}`);
+    const refused = {
+        kind: "message",
+        content: STAFF_COPY.refused,
+        ephemeral: true,
+        buttonUrl: null,
+    } as const;
+    expect(await fake.command("who", ROOT_USER, { account: "nina" }, { channelId: LOBBY })).toEqual(
+        refused,
+    );
+    expect(await fake.command("who", NINA, { account: "nina" }, { channelId: LOBBY })).toEqual(
+        refused,
+    );
+    const byMenu = await fake.userCommand("who is this", ROOT_USER, NINA, STAFF_ROOM);
+    invariant(byMenu.kind === "message", "a message");
+    expect(byMenu.buttonUrl).toBe(`${site}/admin/accounts/${nina.accountId}`);
+    const byMember = await fake.command(
+        "who",
+        ROOT_USER,
+        {},
+        {
+            channelId: STAFF_ROOM,
+            users: { member: NINA },
+        },
+    );
+    invariant(byMember.kind === "message", "a message");
+    expect(byMember.content).toBe(byMenu.content);
+    for (const name of ["brief", "releases"]) {
+        const read = await fake.command(name, ROOT_USER, {}, { channelId: STAFF_ROOM });
+        invariant(read.kind === "message", "a message");
+        expect(read.ephemeral).toBe(false);
+        expect(read.content).not.toBe(STAFF_COPY.refused);
+    }
+
+    // A ticket opened on the site is posted to the queue; answered there, the post is edited.
+    const opened = await web.call(
+        "tickets.open",
+        { productId: null, subject: "help please", body: "it closes" },
+        { session: nina.session },
+    );
+    invariant(opened.ok, "the ticket opened");
+    await connector.tick();
+    const queued = {
+        ticketKind: "help",
+        subject: "help please",
+        product: null,
+        username: "nina",
+    } as const;
+    expect(fake.messages().filter((m) => m.channelId === STAFF_ROOM)).toEqual([
+        {
+            channelId: STAFF_ROOM,
+            content: QUEUE_COPY.ticket({ ...queued, state: "open" }),
+            buttonUrl: `${site}/admin/tickets/${opened.value.ticketId}`,
+        },
+    ]);
+    const replied = await web.call(
+        "admin.tickets.reply",
+        { ticketId: opened.value.ticketId, body: "try again" },
+        { session: staff },
+    );
+    expect(replied.ok).toBe(true);
+    await connector.tick();
+    expect(fake.edits()).toEqual([
+        {
+            channelId: STAFF_ROOM,
+            messageId: expect.any(String),
+            content: QUEUE_COPY.ticket({ ...queued, state: "answered" }),
+            buttonUrl: `${site}/admin/tickets/${opened.value.ticketId}`,
+        },
+    ]);
+    expect(fake.messages().filter((m) => m.channelId === STAFF_ROOM)).toHaveLength(1);
+    await connector.tick();
+    expect(fake.edits()).toHaveLength(1);
+
+    // A Discord invite is taken down where members talk, and left alone in a staff channel.
+    const leaked = fake.say(LOBBY, NINA, "join us at discord.gg/abcdef");
+    fake.say(STAFF_ROOM, ROOT_USER, "the partner server: discord.gg/abcdef");
+    fake.say(LOBBY, NINA, "no links here");
+    await until("the invite is removed", () => fake.deleted().length > 0);
+    await Bun.sleep(50);
+    expect(fake.deleted()).toEqual([{ channelId: LOBBY, messageId: leaked }]);
     await stop();
 }, 30_000);

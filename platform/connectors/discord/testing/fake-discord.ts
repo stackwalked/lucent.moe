@@ -45,6 +45,19 @@ export type FakeDiscord = {
     readonly setRoles: (userId: string, roles: readonly string[]) => void;
     // Channel messages, not DMs.
     readonly messages: () => readonly FakeMessage[];
+    // Edits of channel messages, in order, by the id the message was posted as.
+    readonly edits: () => readonly (FakeMessage & { readonly messageId: string })[];
+    // Messages taken down: the bot's deletions.
+    readonly deleted: () => readonly { readonly channelId: string; readonly messageId: string }[];
+    // A member writes in a channel; resolves with the message's id.
+    readonly say: (channelId: string, userId: string, content: string) => string;
+    // Runs a user context-menu command on `targetId`.
+    readonly userCommand: (
+        name: string,
+        userId: string,
+        targetId: string,
+        channelId?: string,
+    ) => Promise<FakeAnswer>;
     readonly dms: (userId: string) => readonly FakeMessage[];
     readonly dmAttempts: (userId: string) => number;
     readonly setDms: (userId: string, mode: DmMode) => void;
@@ -56,6 +69,8 @@ export type FakeDiscord = {
         name: string,
         userId: string,
         options?: Readonly<Record<string, string>>,
+        // Where it is run, and options that name Discord users rather than text.
+        where?: { readonly channelId?: string; readonly users?: Readonly<Record<string, string>> },
     ) => Promise<FakeAnswer>;
     // Submits a form as `userId`: a select's chosen value or a text input's text, by custom id.
     readonly submit: (
@@ -76,6 +91,7 @@ const Member = /^\/api\/v10\/guilds\/(\d+)\/members\/(\d+)$/;
 const Members = /^\/api\/v10\/guilds\/(\d+)\/members$/;
 const Commands = /^\/api\/v10\/applications\/(\d+)\/guilds\/(\d+)\/commands$/;
 const ChannelMessages = /^\/api\/v10\/channels\/(\d+)\/messages$/;
+const ChannelMessage = /^\/api\/v10\/channels\/(\d+)\/messages\/(\d+)$/;
 const Callback = /^\/api\/v10\/interactions\/(\d+)\/([^/]+)\/callback$/;
 const Original = /^\/api\/v10\/webhooks\/(\d+)\/([^/]+)\/messages\/@original$/;
 
@@ -148,6 +164,9 @@ export function startFakeDiscord(params: {
     const dmModes = new Map<string, DmMode>();
     const dmAttempts = new Map<string, number>();
     const dmsSent: (FakeMessage & { readonly userId: string })[] = [];
+    const posts = new Map<string, string>();
+    const edits: (FakeMessage & { readonly messageId: string })[] = [];
+    const deletions: { readonly channelId: string; readonly messageId: string }[] = [];
     let commands: readonly string[] = [];
     let nextId = 300_000_000_000_000_000n;
     const newId = () => {
@@ -200,13 +219,14 @@ export function startFakeDiscord(params: {
             answers.set(token, { ephemeral: false, at: clock.now(), resolve });
             dispatch("INTERACTION_CREATE", { token, ...(typeof data === "object" ? data : {}) });
         });
-    const interactionBase = (userId: string, type: number) => ({
+    const interactionBase = (userId: string, type: number, channelId = "400000000000000001") => ({
         id: newId(),
         application_id: APPLICATION_ID,
         type,
         version: 1,
         guild_id: guildId,
-        channel_id: "400000000000000001",
+        channel_id: channelId,
+        channel: { id: channelId, type: 0 },
         member: { ...memberJson(userId), permissions: "0" },
         app_permissions: "0",
         locale: "en-US",
@@ -346,7 +366,38 @@ export function startFakeDiscord(params: {
                         buttonUrl: buttonOf(body.components),
                     });
                 }
-                return Response.json(messageJson(channelId, body.content));
+                const posted = messageJson(channelId, body.content);
+                posts.set(posted.id, channelId);
+                return Response.json(posted);
+            }
+            const one = ChannelMessage.exec(pathname);
+            if (one !== null) {
+                const channelId = one[1] ?? "";
+                const messageId = one[2] ?? "";
+                if (req.method === "DELETE") {
+                    deletions.push({ channelId, messageId });
+                    return new Response(null, { status: 204 });
+                }
+                if (req.method === "PATCH") {
+                    if (posts.get(messageId) !== channelId) {
+                        return Response.json(
+                            { message: "Unknown Message", code: 10008 },
+                            { status: 404 },
+                        );
+                    }
+                    const body = MessageBody.parse(await req.json());
+                    if (invalidButton(body.components)) return invalidBody();
+                    edits.push({
+                        channelId,
+                        messageId,
+                        content: body.content,
+                        buttonUrl: buttonOf(body.components),
+                    });
+                    return Response.json({
+                        ...messageJson(channelId, body.content),
+                        id: messageId,
+                    });
+                }
             }
             const callback = Callback.exec(pathname);
             if (callback !== null) {
@@ -447,20 +498,51 @@ export function startFakeDiscord(params: {
                 : new Promise((resolve) => {
                       readyWaiters.push(resolve);
                   }),
-        command: (name, userId, options = {}) =>
+        command: (name, userId, options = {}, where = {}) =>
             interact({
-                ...interactionBase(userId, 2),
+                ...interactionBase(userId, 2, where.channelId),
                 data: {
                     id: newId(),
                     name,
                     type: 1,
-                    options: Object.entries(options).map(([option, value]) => ({
-                        name: option,
-                        type: 3,
-                        value,
-                    })),
+                    options: [
+                        ...Object.entries(options).map(([option, value]) => ({
+                            name: option,
+                            type: 3,
+                            value,
+                        })),
+                        ...Object.entries(where.users ?? {}).map(([option, value]) => ({
+                            name: option,
+                            type: 6,
+                            value,
+                        })),
+                    ],
                 },
             }),
+        userCommand: (name, userId, targetId, channelId) =>
+            interact({
+                ...interactionBase(userId, 2, channelId),
+                data: {
+                    id: newId(),
+                    name,
+                    type: 2,
+                    target_id: targetId,
+                    resolved: { users: { [targetId]: memberJson(targetId).user } },
+                },
+            }),
+        say: (channelId, userId, content) => {
+            const id = newId();
+            dispatch("MESSAGE_CREATE", {
+                ...messageJson(channelId, content),
+                id,
+                guild_id: guildId,
+                author: memberJson(userId).user,
+                member: { ...memberJson(userId), user: undefined },
+            });
+            return id;
+        },
+        edits: () => [...edits],
+        deleted: () => [...deletions],
         submit: (customId, userId, fields, selects) =>
             interact({
                 ...interactionBase(userId, 5),

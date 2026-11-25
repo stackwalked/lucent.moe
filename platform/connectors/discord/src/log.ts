@@ -1,7 +1,15 @@
 import { type Clock, toIsoTimestamp } from "@lucent/core/clock";
 
 export type LogLevel = "info" | "warn" | "error";
-export type LogOrigin = "boot" | "gateway" | "platform" | "sync" | "feeds" | "dms" | "commands";
+export type LogOrigin =
+    | "boot"
+    | "gateway"
+    | "platform"
+    | "sync"
+    | "feeds"
+    | "dms"
+    | "commands"
+    | "guard";
 
 // A closed set of fields, as platform's: a value reaches the log only through a field named
 // here, so an interaction's token or a member's message can't be logged by passing it along.

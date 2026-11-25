@@ -103,6 +103,110 @@ export const TICKET_COPY = {
     limit: "you have too many open tickets, or opened many today. close one on lucent.moe first.",
 } as const;
 
+export const STAFF_COPY = {
+    whoCommand: "an account, for staff",
+    whoMember: "a discord member",
+    whoAccount: "a username or account id",
+    whoNeither: "name a member, or a username or account id.",
+    briefCommand: "the day so far, for staff",
+    releasesCommand: "current releases, for staff",
+    // One answer for every reason a staff read is refused: nobody learns which it was.
+    refused: "you can't read that here.",
+    notFound: "no account matches that.",
+    whoHeading: (username: string | null, status: string) =>
+        `**${username === null ? "no username yet" : plain(username)}** · ${status.replace("_", " ")}`,
+    roles: (roles: readonly string[]) =>
+        roles.length === 0 ? "no roles" : `roles: ${roles.map(plain).join(", ")}`,
+    licences: (licences: readonly { readonly product: string; readonly until: number | null }[]) =>
+        licences.length === 0
+            ? "no licence"
+            : `licences: ${licences
+                  .map(
+                      (l) =>
+                          `${plain(l.product)} ${l.until === null ? "with no end" : `until ${when(l.until)}`}`,
+                  )
+                  .join(", ")}`,
+    devices: (count: number, limit: number) => `pcs: ${count} of ${limit}`,
+    lastSeen: (at: number | null) =>
+        at === null ? "never signed in on the site" : `last on the site ${when(at)}`,
+    lastSession: (session: { readonly at: number; readonly running: boolean } | null) =>
+        session === null
+            ? "no session yet"
+            : `last session ${when(session.at)}${session.running ? ", running" : ""}`,
+    inReview: "in review",
+    discord: (userId: string) => `discord: <@${userId}>`,
+    accountId: (id: string) => `\`${id}\``,
+    openAccount: "account",
+    brief: (b: {
+        readonly sessionsRunning: number;
+        readonly startsToday: number;
+        readonly licencesActive: number;
+        readonly licencesEnding: number;
+        readonly reviewOpen: number;
+        readonly ticketsOpen: number;
+    }) =>
+        [
+            `sessions running: ${b.sessionsRunning}`,
+            `starts in the last day: ${b.startsToday}`,
+            `licences: ${b.licencesActive} running, ${b.licencesEnding} ending within a week`,
+            `review: ${b.reviewOpen} open`,
+            `tickets waiting on staff: ${b.ticketsOpen}`,
+        ].join("\n"),
+    openSystem: "system",
+    noReleases: "no product has a channel.",
+    release: (line: {
+        readonly product: string;
+        readonly channel: string;
+        readonly current: { readonly number: string; readonly promotedAt: number } | null;
+    }) =>
+        line.current === null
+            ? `**${plain(line.product)}** ${line.channel}: nothing promoted`
+            : `**${plain(line.product)}** ${line.channel}: release ${line.current.number}, ${when(line.current.promotedAt)}`,
+    openReleases: "releases",
+} as const;
+
+export const QUEUE_COPY = {
+    ticket: (t: {
+        readonly ticketKind: "help" | "appeal";
+        readonly subject: string | null;
+        readonly product: string | null;
+        readonly username: string | null;
+        readonly state: "open" | "answered" | "closed";
+    }) => {
+        const who = t.username === null ? "an account with no username" : plain(t.username);
+        const what =
+            t.ticketKind === "appeal"
+                ? `appeal from ${who}`
+                : `**${plain(t.subject ?? "")}** from ${who}`;
+        const product = t.product === null ? "" : ` · ${plain(t.product)}`;
+        const state =
+            t.state === "open"
+                ? "waiting on staff"
+                : t.state === "answered"
+                  ? "answered"
+                  : "closed";
+        return `ticket: ${what}${product} · ${state}`;
+    },
+    review: (r: {
+        readonly username: string | null;
+        readonly riskScore: number;
+        readonly urgencyScore: number;
+        readonly state: "open" | "decided";
+        readonly outcome: "no_action" | "actioned" | null;
+    }) => {
+        const who = r.username === null ? "an account with no username" : plain(r.username);
+        const state =
+            r.state === "open"
+                ? "open"
+                : r.outcome === "actioned"
+                  ? "closed, actioned"
+                  : "closed, no action";
+        return `review: ${who} · risk ${r.riskScore}, urgency ${r.urgencyScore} · ${state}`;
+    },
+    openTicket: "open ticket",
+    openReview: "open review",
+} as const;
+
 export const DM_COPY = {
     security: "there's a new security notice on your lucent.moe account.",
     productStatus: (product: string) => `support for **${plain(product)}** changed.`,

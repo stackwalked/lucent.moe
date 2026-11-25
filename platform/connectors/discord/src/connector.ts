@@ -4,15 +4,18 @@ import {
     ComponentType,
     GatewayDispatchEvents,
     GatewayIntentBits,
+    type RESTPatchAPIChannelMessageJSONBody,
+    type RESTPostAPIChannelMessageJSONBody,
 } from "@discordjs/core";
 import { DiscordAPIError, REST } from "@discordjs/rest";
 import { WebSocketManager } from "@discordjs/ws";
 import { containBoundary, describeUnknownError, tryAsync } from "@lucent/core/contain";
 import { err, ok, type Result } from "@lucent/core/result";
-import type { RpcClient } from "@lucent/rpc/client";
+import type { ReplyOf, RpcClient } from "@lucent/rpc/client";
 import type { DiscordContract } from "@lucent/rpc/discord/contract";
-import { FEEDS_COPY } from "./copy.ts";
+import { FEEDS_COPY, QUEUE_COPY } from "./copy.ts";
 import { sendDueDms } from "./dms.ts";
+import { guardMessage } from "./guard.ts";
 import { COMMANDS, createInteractions } from "./interactions.ts";
 import type { Logger, LogOrigin } from "./log.ts";
 import { createSerialQueue } from "./queue.ts";
@@ -27,6 +30,38 @@ export const RECONCILE_MS = 60 * 60 * 1_000;
 const MEMBERS_PER_PAGE = 1_000;
 const USERS_PER_RESOLVE = 100;
 const SYNC_REASON = "lucent.moe role sync";
+
+// What a feed post says, by kind.
+function feedContent(post: FeedItem["post"]): string {
+    switch (post.kind) {
+        case "status":
+            return FEEDS_COPY.status(post.product, post.state, post.supported);
+        case "resources":
+            return FEEDS_COPY.resource(post.title, post.product);
+        case "releases":
+            return FEEDS_COPY.release(post.product, post.channel, post.number);
+        case "tickets":
+            return QUEUE_COPY.ticket(post);
+        case "review":
+            return QUEUE_COPY.review(post);
+    }
+}
+
+function feedButton(post: FeedItem["post"]): string {
+    if (post.kind === "tickets") return QUEUE_COPY.openTicket;
+    if (post.kind === "review") return QUEUE_COPY.openReview;
+    return FEEDS_COPY.open;
+}
+
+// Discord's "unknown message": the post was deleted in the channel.
+function isUnknownMessage(cause: unknown): boolean {
+    return cause instanceof DiscordAPIError && cause.code === 10008;
+}
+
+type FeedItem = Extract<
+    ReplyOf<DiscordContract["feeds.read"]>,
+    { ok: true }
+>["value"]["posts"][number];
 
 export type Connector = {
     // Connects the gateway and reads the audit cursor's head. Fails only when Discord refuses
@@ -59,7 +94,13 @@ export function createConnector(params: {
     }).setToken(params.botToken);
     const gateway = new WebSocketManager({
         token: params.botToken,
-        intents: GatewayIntentBits.Guilds | GatewayIntentBits.GuildMembers,
+        // GuildMembers and MessageContent are privileged: both are switched on for the bot in
+        // Discord's developer portal, or the gateway refuses the session (close code 4014).
+        intents:
+            GatewayIntentBits.Guilds |
+            GatewayIntentBits.GuildMembers |
+            GatewayIntentBits.GuildMessages |
+            GatewayIntentBits.MessageContent,
         rest,
     });
     const client = new Client({ rest, gateway });
@@ -70,6 +111,7 @@ export function createConnector(params: {
 
     let cursor: string | null = null;
     let managedRoleIds: ReadonlySet<string> = new Set();
+    let staffChannelIds: ReadonlySet<string> = new Set();
     let siteOrigin: string | null = null;
     const timers: ReturnType<typeof setInterval>[] = [];
 
@@ -96,6 +138,7 @@ export function createConnector(params: {
             return false;
         }
         managedRoleIds = new Set(rules.value.managedRoleIds);
+        staffChannelIds = new Set(rules.value.staffChannelIds);
         siteOrigin = rules.value.siteOrigin;
         return true;
     }
@@ -220,32 +263,44 @@ export function createConnector(params: {
         const failed = new Set<string>();
         for (const item of pending.value.posts) {
             if (failed.has(item.channelId)) continue;
-            const { post } = item;
-            const content =
-                post.kind === "status"
-                    ? FEEDS_COPY.status(post.product, post.state, post.supported)
-                    : post.kind === "resources"
-                      ? FEEDS_COPY.resource(post.title, post.product)
-                      : FEEDS_COPY.release(post.product, post.channel, post.number);
-            const message = await discord("feed post failed", () =>
-                api.channels.createMessage(item.channelId, {
-                    content,
-                    allowed_mentions: { parse: [] },
-                    components: [
-                        {
-                            type: ComponentType.ActionRow,
-                            components: [
-                                {
-                                    type: ComponentType.Button,
-                                    style: ButtonStyle.Link,
-                                    label: FEEDS_COPY.open,
-                                    url: item.url,
-                                },
-                            ],
-                        },
-                    ],
-                }),
-            );
+            const body: RESTPostAPIChannelMessageJSONBody & RESTPatchAPIChannelMessageJSONBody = {
+                content: feedContent(item.post),
+                allowed_mentions: { parse: [] },
+                components: [
+                    {
+                        type: ComponentType.ActionRow,
+                        components: [
+                            {
+                                type: ComponentType.Button,
+                                style: ButtonStyle.Link,
+                                label: feedButton(item.post),
+                                url: item.url,
+                            },
+                        ],
+                    },
+                ],
+            };
+            // A queue item already posted is edited where it stands; one whose message is gone
+            // (deleted by hand) is posted again.
+            const { messageId } = item;
+            const edited =
+                messageId === null
+                    ? null
+                    : await tryAsync(
+                          () => api.channels.editMessage(item.channelId, messageId, body),
+                          (cause) => cause,
+                      );
+            if (edited !== null && !edited.ok && !isUnknownMessage(edited.error)) {
+                warn("feeds", "feed edit failed", describeUnknownError(edited.error));
+                failed.add(item.channelId);
+                continue;
+            }
+            const message =
+                edited?.ok === true
+                    ? edited
+                    : await discord("feed post failed", () =>
+                          api.channels.createMessage(item.channelId, body),
+                      );
             if (!message.ok) {
                 failed.add(item.channelId);
                 continue;
@@ -291,6 +346,7 @@ export function createConnector(params: {
         syncLater: (userId) => {
             void syncLater(userId);
         },
+        staffChannels: () => staffChannelIds,
     });
 
     const contained = (origin: LogOrigin, work: () => Promise<void>) =>
@@ -319,6 +375,11 @@ export function createConnector(params: {
             if (data.guild_id !== guildId || data.user.bot === true) return;
             await syncLater(data.user.id);
         }),
+    );
+    client.on(GatewayDispatchEvents.MessageCreate, ({ data }) =>
+        contained("guard", () =>
+            guardMessage({ api, guildId, staffChannels: () => staffChannelIds, logger }, data),
+        ),
     );
     client.on(GatewayDispatchEvents.InteractionCreate, ({ data }) =>
         contained("commands", () => answer(data)),

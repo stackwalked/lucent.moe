@@ -4,6 +4,7 @@ import {
     type APIInteraction,
     type APIModalSubmissionComponent,
     type APIModalSubmitInteraction,
+    type APIUserApplicationCommandInteraction,
     ApplicationCommandOptionType,
     ApplicationCommandType,
     ButtonStyle,
@@ -17,7 +18,16 @@ import type { Result } from "@lucent/core/result";
 import type { RpcClient } from "@lucent/rpc/client";
 import { type DiscordContract, LinkCode } from "@lucent/rpc/discord/contract";
 import { MessageBody, TicketSubject } from "@lucent/rpc/web/tickets";
-import { COMMANDS_COPY, FEEDS_COPY, ME_COPY, REPLIES, STATUS_COPY, TICKET_COPY } from "./copy.ts";
+import {
+    COMMANDS_COPY,
+    FEEDS_COPY,
+    ME_COPY,
+    REPLIES,
+    STAFF_COPY,
+    STATUS_COPY,
+    TICKET_COPY,
+} from "./copy.ts";
+import { createStaffReads, STAFF_COMMANDS, WHO_IS_THIS } from "./staff.ts";
 
 export const COMMANDS: RESTPutAPIApplicationGuildCommandsJSONBody = [
     {
@@ -39,6 +49,7 @@ export const COMMANDS: RESTPutAPIApplicationGuildCommandsJSONBody = [
     { name: "me", description: COMMANDS_COPY.me, type: ApplicationCommandType.ChatInput },
     { name: "status", description: COMMANDS_COPY.status, type: ApplicationCommandType.ChatInput },
     { name: "ticket", description: COMMANDS_COPY.ticket, type: ApplicationCommandType.ChatInput },
+    ...STAFF_COMMANDS,
 ];
 
 const TICKET_MODAL = "ticket";
@@ -50,7 +61,7 @@ const SELECT_OPTIONS = 25;
 // time for the answer itself (a refusal, if platform was too slow).
 const FORM_READ_MS = 2_000;
 
-type Reply = {
+export type Reply = {
     readonly content: string;
     readonly link?: { readonly label: string; readonly url: string };
 };
@@ -66,6 +77,9 @@ export type InteractionDeps = {
     readonly attempt: <T>(what: string, work: () => Promise<T>) => Promise<Result<T, unknown>>;
     // A role sync for someone who linked or unlinked just now.
     readonly syncLater: (userId: string) => void;
+    // The channels the rules mark staff, as platform last said: a staff read there is answered
+    // for the channel to see. Platform decides whether it is answered at all.
+    readonly staffChannels: () => ReadonlySet<string>;
 };
 
 function componentsOf(reply: Reply) {
@@ -118,7 +132,10 @@ export function createInteractions(deps: InteractionDeps) {
     }
 
     async function deferThen(
-        interaction: APIChatInputApplicationCommandInteraction | APIModalSubmitInteraction,
+        interaction:
+            | APIChatInputApplicationCommandInteraction
+            | APIUserApplicationCommandInteraction
+            | APIModalSubmitInteraction,
         visibility: Visibility,
         work: () => Promise<Reply>,
     ): Promise<void> {
@@ -320,10 +337,30 @@ export function createInteractions(deps: InteractionDeps) {
         }
     }
 
+    const staff = createStaffReads(platform);
+
     return async (interaction: APIInteraction): Promise<void> => {
         if (interaction.guild_id !== deps.guildId) return;
         const userId = interaction.member?.user.id;
         if (userId === undefined) return;
+        const channelId = interaction.channel?.id ?? interaction.channel_id ?? "";
+        const ask = { userId, channelId };
+        const staffVisibility: Visibility = deps.staffChannels().has(channelId)
+            ? "public"
+            : "ephemeral";
+        if (
+            interaction.type === InteractionType.ApplicationCommand &&
+            interaction.data.type === ApplicationCommandType.User &&
+            interaction.data.name === WHO_IS_THIS
+        ) {
+            const target = { kind: "member" as const, userId: interaction.data.target_id };
+            const asked: APIUserApplicationCommandInteraction = {
+                ...interaction,
+                data: interaction.data,
+            };
+            await deferThen(asked, staffVisibility, () => staff.who(ask, target));
+            return;
+        }
         if (interaction.type === InteractionType.ModalSubmit) {
             if (interaction.data.custom_id !== TICKET_MODAL) return;
             await deferThen(interaction, "ephemeral", () => openTicket(interaction, userId));
@@ -354,6 +391,29 @@ export function createInteractions(deps: InteractionDeps) {
                 return;
             case "ticket":
                 await ticketForm(command, userId);
+                return;
+            case "who": {
+                const member = command.data.options?.find((o) => o.name === "member");
+                const account = command.data.options?.find((o) => o.name === "account");
+                const target =
+                    member?.type === ApplicationCommandOptionType.User
+                        ? { kind: "member" as const, userId: member.value }
+                        : account?.type === ApplicationCommandOptionType.String &&
+                            account.value.trim() !== ""
+                          ? { kind: "query" as const, text: account.value.trim() }
+                          : null;
+                await deferThen(command, target === null ? "ephemeral" : staffVisibility, () =>
+                    target === null
+                        ? Promise.resolve({ content: STAFF_COPY.whoNeither })
+                        : staff.who(ask, target),
+                );
+                return;
+            }
+            case "brief":
+                await deferThen(command, staffVisibility, () => staff.brief(ask));
+                return;
+            case "releases":
+                await deferThen(command, staffVisibility, () => staff.releases(ask));
                 return;
         }
     };
