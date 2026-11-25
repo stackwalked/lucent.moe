@@ -1,0 +1,13 @@
+{
+  "debugger": false,
+  "hardware_breakpoints": false,
+  "kernel_debugging": false,
+  "test_signing": true,
+  "signature_enforcement_off": false,
+  "code_writable": false,
+  "vm_vendor": 0,
+  "windows_build": 19045,
+  "unsigned_modules": [
+    "5a5a00000000a5a5"
+  ]
+}

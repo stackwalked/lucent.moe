@@ -1,0 +1,16 @@
+{
+  "debugger": true,
+  "hardware_breakpoints": true,
+  "kernel_debugging": true,
+  "test_signing": true,
+  "signature_enforcement_off": true,
+  "code_writable": true,
+  "vm_vendor": 0,
+  "windows_build": 26100,
+  "unsigned_modules": [
+    "0000000000000001",
+    "0123456789abcdef",
+    "7fffffffffffffff",
+    "fedcba9876543210"
+  ]
+}
