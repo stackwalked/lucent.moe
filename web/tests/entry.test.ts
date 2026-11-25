@@ -60,6 +60,24 @@ test("a page's CSP names the nonce Start stamped on its scripts", async () => {
     expect(res.headers.get("cache-control")).toBe("no-store");
 });
 
+test("an avatar image keeps the caching its route set, and every other route still gets no-store", async () => {
+    const cached = "private, max-age=31536000, immutable";
+    const start: StartHandler = () =>
+        Promise.resolve(new Response("bytes", { headers: { "cache-control": cached } }));
+    const { entry } = entryWith({ start });
+    const digest = "a".repeat(64);
+    expect((await entry(request(`/avatars/${digest}`), null)).headers.get("cache-control")).toBe(
+        cached,
+    );
+    for (const path of ["/", "/resources/1/download", "/avatar/upload", "/members/alice"]) {
+        expect((await entry(request(path), null)).headers.get("cache-control")).toBe("no-store");
+    }
+    const { entry: plain } = entryWith();
+    expect((await plain(request(`/avatars/${digest}`), null)).headers.get("cache-control")).toBe(
+        "no-store",
+    );
+});
+
 test("every request gets its own nonce", async () => {
     const { entry } = entryWith();
     const first = (await entry(request("/"), null)).headers.get("content-security-policy");

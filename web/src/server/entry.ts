@@ -21,6 +21,9 @@ export type AssetServer = (pathname: string) => Promise<Response | null>;
 
 export type WebEntry = (req: Request, peerIp: string | null) => Promise<Response>;
 
+// routes/avatars.$digest.tsx
+const AVATAR_IMAGES = "/avatars/";
+
 function text(status: number, body: string): Response {
     return new Response(body, {
         status,
@@ -104,7 +107,12 @@ export function createWebEntry(deps: {
             },
         });
         const res = new Response(started.body, started);
-        res.headers.set("cache-control", "no-store");
+        // Nothing Start answers is cached, with one exception named by path rather than trusted
+        // from whatever header a handler (or Start) sets: an avatar image is its digest's bytes
+        // forever, and its route (serveAvatar) sets its own private, immutable caching.
+        const ownCaching =
+            url.pathname.startsWith(AVATAR_IMAGES) && res.headers.has("cache-control");
+        if (!ownCaching) res.headers.set("cache-control", "no-store");
         return { res, page: true };
     };
 
