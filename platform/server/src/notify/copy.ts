@@ -11,7 +11,7 @@ export function passwordResetMail(link: string) {
 export function setupLinkMail(link: string) {
     return {
         subject: "set up your lucent account",
-        body: `an account was made for this address. use this link within 3 days to choose a username and how you sign in:\n\n${link}\n\nif you did not ask for an account, ignore this email.`,
+        body: `finish setting up your account within 3 days:\n\n${link}\n\nnot you? ignore this email.`,
     };
 }
 
