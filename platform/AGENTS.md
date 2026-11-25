@@ -44,7 +44,8 @@ They break ties between the rules below.
 - Canonical lock order across every writer:
   `account` (`ORDER BY id`, through `lockCallerWith`) → `device` (`ORDER BY id`) → `entitlement`
   (`ORDER BY id`) → `product_slot`
-  (`ORDER BY product_id`) → `load` / `runtime_session` → append-only `audit` / `inbox` / `receipt`
+  (`ORDER BY product_id`) → `load` / `runtime_session` → `cloud_scope` (one per writer, through
+  `lockCloudScope`) → `cloud_share` → append-only `audit` / `inbox` / `receipt`
   (written last, never locked).
 - Time-sensitive eligibility (session freshness, 30-minute passkey step-up, entitlement windows,
   device replacement windows, leases) is evaluated against `txNow` from PostgreSQL `now()`, never
