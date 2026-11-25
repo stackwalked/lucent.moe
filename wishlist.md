@@ -132,8 +132,7 @@ Beside phases 2 and 3; nothing native waits on it except cutover.
   of its own in place of `accounts:suspend`.
 - Slice 5 (profiles, guides, comments, shouts, the inbox, reports and removal, posting
   restrictions apart from the licence, blocking, the data export, search, a presence stream,
-  avatars landed): presence shown in web, self-service account deletion (what survives it is
-  undecided).
+  avatars, self-service account deletion landed): presence shown in web.
 - The public record: product status, known issues, the changelog, recovery time per game update,
   refusal-code pages.
 - Member docs.
