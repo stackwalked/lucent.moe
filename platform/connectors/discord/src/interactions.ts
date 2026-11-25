@@ -45,6 +45,10 @@ const TICKET_MODAL = "ticket";
 const NO_PRODUCT = "none";
 // Discord's most options in one select; one of them is "no product".
 const SELECT_OPTIONS = 25;
+// A form can't be deferred: it must be Discord's first answer, within three seconds of the
+// command. The client's own deadline is longer, so the products are read under this one, leaving
+// time for the answer itself (a refusal, if platform was too slow).
+const FORM_READ_MS = 2_000;
 
 type Reply = {
     readonly content: string;
@@ -176,10 +180,14 @@ export function createInteractions(deps: InteractionDeps) {
             ME_COPY.nextExpiry(account.nextExpiry),
             ...account.restrictions.map((r) => ME_COPY.restriction(r.kind, r.product, r.endsAt)),
         ];
-        return {
-            content: lines.join("\n"),
-            link: { label: ME_COPY.page, url: `${site()}/products` },
-        };
+        // A link button needs an absolute URL: Discord refuses the whole reply over a bare host.
+        const origin = deps.siteOrigin();
+        return origin === null
+            ? { content: lines.join("\n") }
+            : {
+                  content: lines.join("\n"),
+                  link: { label: ME_COPY.page, url: `${origin}/products` },
+              };
     }
 
     async function status(): Promise<Reply> {
@@ -199,7 +207,11 @@ export function createInteractions(deps: InteractionDeps) {
         interaction: APIChatInputApplicationCommandInteraction,
         userId: string,
     ) {
-        const offered = await platform.call("tickets.products", { userId });
+        const offered = await platform.call(
+            "tickets.products",
+            { userId },
+            { signal: AbortSignal.timeout(FORM_READ_MS) },
+        );
         const refusal: Reply | null = !offered.ok
             ? { content: REPLIES.unavailable }
             : offered.value.standing !== "active"
@@ -281,7 +293,7 @@ export function createInteractions(deps: InteractionDeps) {
         const typedBody = MessageBody.safeParse(
             body?.type === ComponentType.TextInput ? body.value : "",
         );
-        if (!typedSubject.success || !typedBody.success) return { content: REPLIES.unavailable };
+        if (!typedSubject.success || !typedBody.success) return { content: TICKET_COPY.empty };
         const opened = await platform.call("tickets.open", {
             userId,
             productId: chosen === NO_PRODUCT ? null : chosen,

@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, expect, test } from "bun:test";
+import { systemClock } from "@lucent/core/clock";
 import { invariant } from "@lucent/core/contain";
 import { createSeededRng } from "@lucent/core/rng";
 import {
@@ -19,6 +20,7 @@ import {
     shutdownSharedEphemeralCluster,
 } from "@lucent/testing/postgres";
 import { SQL } from "bun";
+import { z } from "zod";
 import { createConnector } from "../src/connector.ts";
 import { DM_COPY, FEEDS_COPY, ME_COPY, REPLIES, TICKET_COPY } from "../src/copy.ts";
 import type { LogFields, Logger } from "../src/log.ts";
@@ -141,7 +143,7 @@ test("the connector mirrors standing into the guild within a tick, and a reconci
             lines.push(fields === undefined ? { msg } : { msg, fields });
         },
     };
-    const fake = startFakeDiscord({ guildId: GUILD });
+    const fake = startFakeDiscord({ guildId: GUILD, clock: systemClock });
     fake.addMember(ALICE, [HAND_GIVEN]);
     // Given a synced role by hand without a link: the first reconcile takes it back.
     fake.addMember(BOB, [LINKED]);
@@ -311,11 +313,32 @@ const webClient = () =>
         endpointUrl: `${platform.internalUrl}/internal/web/rpc`,
         peerKey: platform.peerKey,
     });
-const discordClient = () =>
+const discordClient = (fetcher?: (req: Request) => Promise<Response>) =>
     createRpcClient(discordContract, {
         endpointUrl: `${platform.internalUrl}${DISCORD_RPC_PATH}`,
         peerKey: KEY,
+        ...(fetcher === undefined ? {} : { fetcher }),
     });
+
+const Called = z.object({ procedure: z.string() });
+
+// Platform as the connector reaches it, except that `procedure` takes `slow` (or until the call
+// gives up) or is never answered at all.
+function degraded(procedure: string, how: { readonly slowMs: number } | "down") {
+    return discordClient(async (req) => {
+        const { procedure: called } = Called.parse(await req.clone().json());
+        if (called !== procedure) return await fetch(req);
+        if (how === "down") return new Response(null, { status: 503 });
+        await new Promise<void>((resolve) => {
+            const timer = setTimeout(resolve, how.slowMs);
+            req.signal.addEventListener("abort", () => {
+                clearTimeout(timer);
+                resolve();
+            });
+        });
+        return await fetch(req);
+    });
+}
 
 async function rootSession(): Promise<BearerToken> {
     const [root] = await db`select id from account where is_root`;
@@ -335,17 +358,21 @@ async function linkedMember(email: string, userId: string) {
     return { accountId, session };
 }
 
-async function connected(guildId: string, members: readonly string[]) {
+async function connected(
+    guildId: string,
+    members: readonly string[],
+    reach: ReturnType<typeof discordClient> = discordClient(),
+) {
     const lines: { readonly msg: string; readonly fields?: LogFields }[] = [];
     const logger: Logger = {
         write: (_level, msg, fields) => {
             lines.push(fields === undefined ? { msg } : { msg, fields });
         },
     };
-    const fake = startFakeDiscord({ guildId });
+    const fake = startFakeDiscord({ guildId, clock: systemClock });
     for (const member of members) fake.addMember(member);
     const connector = createConnector({
-        platform: discordClient(),
+        platform: reach,
         botToken: `bot.${"t".repeat(66)}`,
         guildId,
         logger,
@@ -478,6 +505,44 @@ test("/ticket opens a ticket the site shows under the linked account", async () 
         ephemeral: true,
         buttonUrl: null,
     });
+
+    // Text that is only blank is said to be blank, not taken for platform being away.
+    expect(
+        await fake.submit("ticket", GRACE, { subject: "   ", body: "the loader closes" }, ["none"]),
+    ).toEqual({ kind: "message", content: TICKET_COPY.empty, ephemeral: true, buttonUrl: null });
+    await stop();
+}, 30_000);
+
+test("/ticket answers within Discord's three seconds when platform is slow to list products", async () => {
+    const LEO = "540000000000000001";
+    await linkedMember("leo@lucent.test", LEO);
+    const { fake, stop } = await connected(
+        "540000000000000100",
+        [LEO],
+        degraded("tickets.products", { slowMs: 3_500 }),
+    );
+    expect(await fake.command("ticket", LEO)).toEqual({
+        kind: "message",
+        content: REPLIES.unavailable,
+        ephemeral: true,
+        buttonUrl: null,
+    });
+    await stop();
+}, 30_000);
+
+test("/me still answers when the connector hasn't learnt the site's origin yet", async () => {
+    const MIA = "550000000000000001";
+    await linkedMember("mia@lucent.test", MIA);
+    const { fake, stop } = await connected(
+        "550000000000000100",
+        [MIA],
+        degraded("rules.read", "down"),
+    );
+    const reply = await fake.command("me", MIA);
+    invariant(reply.kind === "message", `a message, not ${reply.kind}`);
+    expect(reply.ephemeral).toBe(true);
+    expect(reply.content).toContain(ME_COPY.heading);
+    expect(reply.buttonUrl).toBeNull();
     await stop();
 }, 30_000);
 

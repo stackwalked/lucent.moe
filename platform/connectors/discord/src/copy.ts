@@ -97,6 +97,8 @@ export const TICKET_COPY = {
     body: "what happened",
     opened: "your ticket is open. staff answer on lucent.moe, where you can follow it.",
     open: "open ticket",
+    // Discord holds the form to its lengths; only blank text gets this far.
+    empty: "the subject and what happened can't be blank. open the form again.",
     unknownProduct: "that product isn't one your account can see. open the form again.",
     limit: "you have too many open tickets, or opened many today. close one on lucent.moe first.",
 } as const;

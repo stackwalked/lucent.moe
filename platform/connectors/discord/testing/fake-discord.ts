@@ -1,3 +1,4 @@
+import type { Clock } from "@lucent/core/clock";
 import { invariant } from "@lucent/core/contain";
 import type { ServerWebSocket } from "bun";
 import { z } from "zod";
@@ -24,7 +25,10 @@ export type FakeAnswer =
           readonly ephemeral: boolean;
           readonly buttonUrl: string | null;
       }
-    | { readonly kind: "modal"; readonly customId: string; readonly options: readonly string[] };
+    | { readonly kind: "modal"; readonly customId: string; readonly options: readonly string[] }
+    // Refused as Discord refuses it: a first answer after three seconds, or a link button whose
+    // URL isn't absolute. The member sees the interaction fail.
+    | { readonly kind: "lost"; readonly why: "expired" | "invalid" };
 
 // How a member's DMs answer the bot: delivered, closed to it (Discord's 50007), or failing.
 export type DmMode = "open" | "closed" | "failing";
@@ -115,12 +119,29 @@ function notFound(): Response {
     return Response.json({ message: "Unknown Member", code: 10007 }, { status: 404 });
 }
 
+// Discord's window for an interaction's first answer.
+const ANSWER_WITHIN_MS = 3_000;
+
 function buttonOf(components: z.output<typeof Buttons>): string | null {
     return components?.[0]?.components[0]?.url ?? null;
 }
 
-export function startFakeDiscord(params: { readonly guildId: string }): FakeDiscord {
-    const { guildId } = params;
+function invalidButton(components: z.output<typeof Buttons>): boolean {
+    return (components ?? []).some((row) =>
+        row.components.some((c) => c.url !== undefined && !/^https?:\/\/[^/]/.test(c.url)),
+    );
+}
+
+function invalidBody(): Response {
+    return Response.json({ message: "Invalid Form Body", code: 50035 }, { status: 400 });
+}
+
+// `clock`: what the three-second window for a first answer is measured against.
+export function startFakeDiscord(params: {
+    readonly guildId: string;
+    readonly clock: Clock;
+}): FakeDiscord {
+    const { guildId, clock } = params;
     const members = new Map<string, Set<string>>();
     const messages: FakeMessage[] = [];
     const dmChannels = new Map<string, string>();
@@ -141,7 +162,7 @@ export function startFakeDiscord(params: { readonly guildId: string }): FakeDisc
     let isReady = false;
     const answers = new Map<
         string,
-        { ephemeral: boolean; resolve: (answer: FakeAnswer) => void }
+        { ephemeral: boolean; readonly at: number; resolve: (answer: FakeAnswer) => void }
     >();
 
     const dispatch = (t: string, d: unknown): void => {
@@ -176,7 +197,7 @@ export function startFakeDiscord(params: { readonly guildId: string }): FakeDisc
     const interact = (data: unknown): Promise<FakeAnswer> =>
         new Promise((resolve) => {
             const token = `token-${newId()}`;
-            answers.set(token, { ephemeral: false, resolve });
+            answers.set(token, { ephemeral: false, at: clock.now(), resolve });
             dispatch("INTERACTION_CREATE", { token, ...(typeof data === "object" ? data : {}) });
         });
     const interactionBase = (userId: string, type: number) => ({
@@ -295,6 +316,7 @@ export function startFakeDiscord(params: { readonly guildId: string }): FakeDisc
             if (channel !== null && req.method === "POST") {
                 const channelId = channel[1] ?? "";
                 const body = MessageBody.parse(await req.json());
+                if (invalidButton(body.components)) return invalidBody();
                 const recipient = dmChannels.get(channelId);
                 if (recipient !== undefined) {
                     dmAttempts.set(recipient, (dmAttempts.get(recipient) ?? 0) + 1);
@@ -332,6 +354,14 @@ export function startFakeDiscord(params: { readonly guildId: string }): FakeDisc
                 const token = callback[2] ?? "";
                 const waiting = answers.get(token);
                 if (waiting !== undefined) {
+                    if (clock.now() - waiting.at > ANSWER_WITHIN_MS) {
+                        answers.delete(token);
+                        waiting.resolve({ kind: "lost", why: "expired" });
+                        return Response.json(
+                            { message: "Unknown interaction", code: 10062 },
+                            { status: 404 },
+                        );
+                    }
                     waiting.ephemeral = ((body.data?.flags ?? 0) & EPHEMERAL) !== 0;
                     if (body.type === REPLY) {
                         answers.delete(token);
@@ -367,6 +397,11 @@ export function startFakeDiscord(params: { readonly guildId: string }): FakeDisc
                 const body = EditBody.parse(await req.json());
                 const token = original[2] ?? "";
                 const waiting = answers.get(token);
+                if (invalidButton(body.components)) {
+                    answers.delete(token);
+                    waiting?.resolve({ kind: "lost", why: "invalid" });
+                    return invalidBody();
+                }
                 if (waiting !== undefined) {
                     answers.delete(token);
                     waiting.resolve({
