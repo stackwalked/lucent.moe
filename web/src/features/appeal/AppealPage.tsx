@@ -10,6 +10,7 @@ import { Time } from "../../ui/Time/Time.tsx";
 import { forgetSession } from "../../viewer.ts";
 import { RefusalNote } from "../auth/RefusalNote.tsx";
 import { signOut } from "../auth/session.ts";
+import { DeletionSection } from "../privacy/DeletionSection.tsx";
 import { Reply, Thread } from "../tickets/Thread.tsx";
 import { APPEAL_COPY, APPEAL_TITLE } from "./copy.ts";
 import { sendAppeal } from "./server.ts";
@@ -41,7 +42,7 @@ export function AppealPage() {
             </Page>
         );
     }
-    const { suspension, appeal } = outcome.value;
+    const { suspension, appeal, deletion } = outcome.value;
     return (
         <Page title={APPEAL_TITLE} actions={leave} width="narrow">
             <Stack gap={6}>
@@ -76,6 +77,7 @@ export function AppealPage() {
                         />
                     </Stack>
                 </Section>
+                <DeletionSection status={deletion} purpose="appeal" />
                 <p>{APPEAL_COPY.window}</p>
             </Stack>
         </Page>

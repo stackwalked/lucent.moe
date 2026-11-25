@@ -82,7 +82,7 @@ function Issue({
     readonly account: Account;
     readonly products: readonly Product[];
 }) {
-    const name = account.username ?? account.email;
+    const name = account.username ?? account.email ?? account.accountId;
     return (
         <AccountAction
             action="entitlements:issue"

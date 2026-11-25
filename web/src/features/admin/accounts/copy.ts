@@ -2,6 +2,17 @@ import { RULES_COPY } from "../../../copy/rules.ts";
 
 export const ACCOUNTS_COPY = {
     title: "accounts",
+    gone: "gone",
+    deletion: "deletion",
+    deletionAsked: "asked",
+    deletionDue: "deleted on",
+    deletedAt: "deleted",
+    suspendedWhenDeleted: "suspended when deleted",
+    yes: "yes",
+    no: "no",
+    addressHashKept: "kept only as a keyed hash, to recognise it applying again",
+    remains:
+        "what remains: the account id, its audit history, invite edges, devices, ended licences, suspension and posting restrictions, and what staff wrote. its own ticket messages go 30 days after deletion.",
     search: "search",
     searchHint: "status:suspended role:role_id, or the start of a username or email",
     newest: "newest",
@@ -94,4 +105,5 @@ export const STATUS_COPY = {
     suspended: "suspended",
     locked: "locked",
     setup_pending: "setup pending",
+    deleted: "deleted",
 } as const;

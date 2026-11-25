@@ -14,6 +14,8 @@ export const fetchPrivacy = createServerFn({ method: "GET" })
         if (!restrictions.ok) return refuse(restrictions.error);
         const blocks = await readPlatform("privacy.blocks.list", {});
         if (!blocks.ok) return refuse(blocks.error);
+        const deletion = await readPlatform("deletion.request.read", {});
+        if (!deletion.ok) return refuse(deletion.error);
         const profile =
             data.username === null
                 ? null
@@ -21,6 +23,7 @@ export const fetchPrivacy = createServerFn({ method: "GET" })
         return done({
             restrictions: restrictions.value.restrictions,
             blocks: blocks.value.blocks,
+            deletion: deletion.value,
             visibility: profile?.ok === true ? profile.value.visibility : ("members" as const),
         });
     });
@@ -48,4 +51,25 @@ export const saveVisibility = createServerFn({ method: "POST" })
 export const fetchExport = createServerFn({ method: "GET" }).handler(async () => {
     const reply = await readPlatform("privacy.export.read", {});
     return reply.ok ? done(reply.value) : refuse(reply.error);
+});
+
+// Deletion from a member session; the appeal session's pair follows.
+export const askDeletion = createServerFn({ method: "POST" }).handler(async () => {
+    const reply = await callPlatform("deletion.request.create", {});
+    return reply.ok ? done(reply.value) : refuse(reply.error);
+});
+
+export const keepAccount = createServerFn({ method: "POST" }).handler(async () => {
+    const reply = await callPlatform("deletion.request.cancel", {});
+    return reply.ok ? done(null) : refuse(reply.error);
+});
+
+export const askAppealDeletion = createServerFn({ method: "POST" }).handler(async () => {
+    const reply = await callPlatform("appeals.deletion.request", {});
+    return reply.ok ? done(reply.value) : refuse(reply.error);
+});
+
+export const keepAppealAccount = createServerFn({ method: "POST" }).handler(async () => {
+    const reply = await callPlatform("appeals.deletion.cancel", {});
+    return reply.ok ? done(null) : refuse(reply.error);
 });

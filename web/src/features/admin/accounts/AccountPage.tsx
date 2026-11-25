@@ -123,6 +123,49 @@ function GiveRole({
     );
 }
 
+function DeletionPanel({ deletion }: { readonly deletion: NonNullable<Account["deletion"]> }) {
+    if (deletion.state === "pending") {
+        return (
+            <Section caption={ACCOUNTS_COPY.deletion}>
+                <Pairs
+                    items={[
+                        {
+                            label: ACCOUNTS_COPY.deletionAsked,
+                            value: <Time at={deletion.requestedAt} />,
+                        },
+                        { label: ACCOUNTS_COPY.deletionDue, value: <Time at={deletion.dueAt} /> },
+                    ]}
+                />
+            </Section>
+        );
+    }
+    return (
+        <Section caption={ACCOUNTS_COPY.deletion}>
+            <Stack gap={3}>
+                <Pairs
+                    items={[
+                        {
+                            label: ACCOUNTS_COPY.deletedAt,
+                            value: <Time at={deletion.completedAt} />,
+                        },
+                        {
+                            label: ACCOUNTS_COPY.suspendedWhenDeleted,
+                            value: deletion.suspended ? ACCOUNTS_COPY.yes : ACCOUNTS_COPY.no,
+                        },
+                        {
+                            label: ACCOUNTS_COPY.email,
+                            value: deletion.addressHashKept
+                                ? ACCOUNTS_COPY.addressHashKept
+                                : ACCOUNTS_COPY.gone,
+                        },
+                    ]}
+                />
+                <p>{ACCOUNTS_COPY.remains}</p>
+            </Stack>
+        </Section>
+    );
+}
+
 export function AccountPage() {
     const router = useRouter();
     const staff = useStaffAction();
@@ -131,7 +174,8 @@ export function AccountPage() {
     const { session } = useRouteContext({ from: "__root__" });
     const viewer = memberOf(session);
     const subject = viewer === null ? null : subjectOf(viewer);
-    const name = account.username ?? account.email;
+    const name = account.username ?? account.email ?? account.accountId;
+    const deleted = account.status === "deleted";
 
     // What the viewer may do to this account: never to themselves, never to root, only below
     // their own rank (can() decides, as platform will again).
@@ -269,11 +313,11 @@ export function AccountPage() {
                 shown={(token) => <SetupLink token={token} />}
             />
         ) : null,
-    ].filter((action) => action !== null);
+    ].filter((action) => action !== null && !deleted);
 
     return (
         <Page
-            title={account.username ?? account.email}
+            title={name}
             width="narrow"
             trail={<Link to="/admin/accounts">{ACCOUNTS_COPY.title}</Link>}
         >
@@ -284,7 +328,7 @@ export function AccountPage() {
                             label: ACCOUNTS_COPY.username,
                             value: account.username ?? ADMIN_COPY.pending,
                         },
-                        { label: ACCOUNTS_COPY.email, value: account.email },
+                        { label: ACCOUNTS_COPY.email, value: account.email ?? ACCOUNTS_COPY.gone },
                         { label: ACCOUNTS_COPY.id, value: <Ident value={account.accountId} /> },
                         {
                             label: ACCOUNTS_COPY.status,
@@ -304,6 +348,7 @@ export function AccountPage() {
                     ]}
                 />
             </Section>
+            {account.deletion == null ? null : <DeletionPanel deletion={account.deletion} />}
             <Section caption={ACCOUNTS_COPY.heldRoles}>
                 {account.heldRoles.length === 0 ? (
                     <Empty>{ACCOUNTS_COPY.noRoles}</Empty>

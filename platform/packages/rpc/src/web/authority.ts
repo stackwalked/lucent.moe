@@ -34,7 +34,9 @@ export type AccountStatus = z.output<typeof AccountStatus>;
 
 const AccountSummary = z.object({
     accountId: AccountId,
-    email: z.string(),
+    // Null once the account is deleted (status "deleted"). No tombstone exists before web reads
+    // this: a deletion completes seven days after a request only this web can make.
+    email: z.string().nullable(),
     username: z.string().nullable(),
     status: AccountStatus,
     isRoot: z.boolean(),
@@ -110,6 +112,25 @@ export const authorityContract = defineContract({
             devices: z.array(Device).readonly(),
             limit: z.number().int().positive(),
             replaceableFrom: DeviceWindow,
+            // Optional for one deploy. Pending: the member asked and may still keep the account.
+            // Completed: what is left is a tombstone; `suspended` is its standing when it went,
+            // and only a suspended one keeps a keyed hash of its address.
+            deletion: z
+                .discriminatedUnion("state", [
+                    z.object({
+                        state: z.literal("pending"),
+                        requestedAt: EpochMs,
+                        dueAt: EpochMs,
+                    }),
+                    z.object({
+                        state: z.literal("completed"),
+                        completedAt: EpochMs,
+                        suspended: z.boolean(),
+                        addressHashKept: z.boolean(),
+                    }),
+                ])
+                .nullable()
+                .optional(),
         }),
         error: ReadRefusal,
     },

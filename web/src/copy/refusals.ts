@@ -64,6 +64,7 @@ export const REFUSALS: Readonly<Record<RefusalCode, string>> = {
     TOTP_NOT_PENDING: "start adding the app again.",
     TOTP_CODE_INVALID: SHARED_COPY.wrongCode,
     NO_PASSKEY: SHARED_COPY.needsPasskey,
+    STAFF_CANNOT_DELETE: "staff accounts can't be deleted. ask staff to remove your roles first.",
     EMAIL_TAKEN: "email already has an account.",
     INVALID_RANK: "rank must be below yours.",
     ROLE_NAME_TAKEN: "role name taken",

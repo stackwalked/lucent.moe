@@ -237,6 +237,12 @@ const inputs: SinglePurpose = {
     "privacy.blocks.set": { username: "someone", blocked: true },
     "privacy.visibility.set": { visibility: "private" },
     "privacy.export.read": {},
+    "deletion.request.read": {},
+    "deletion.request.create": {},
+    "deletion.request.cancel": {},
+    "appeals.deletion.read": {},
+    "appeals.deletion.request": {},
+    "appeals.deletion.cancel": {},
     "moderation.reports.create": {
         kind: "comment",
         targetId: "00000000-0000-4000-8000-000000000001",

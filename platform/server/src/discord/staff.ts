@@ -95,6 +95,9 @@ export async function readWho(
             ? err({ code: "NOT_FOUND" as const })
             : err(failure);
     }
+    // A deleted account is nobody to ask about on Discord; the site's account page shows it.
+    const status = detail.value.status;
+    if (status === "deleted") return err({ code: "NOT_FOUND" as const });
     const more = await readAsStaff(
         db,
         { caller: caller.value, actions: ["accounts:read"] },
@@ -138,7 +141,7 @@ export async function readWho(
     return ok({
         accountId,
         username: account.username,
-        status: account.status,
+        status,
         roles: account.roles,
         licences: more.value.licences.map((row) => ({
             product: params.catalog.get(row.product_id)?.name ?? row.product_id,

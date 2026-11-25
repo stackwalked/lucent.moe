@@ -13,6 +13,7 @@ import { memberOf } from "../../viewer.ts";
 import { RefusalNote } from "../auth/RefusalNote.tsx";
 import styles from "../comments/TextArea.module.css";
 import { PRIVACY_COPY } from "./copy.ts";
+import { DeletionSection } from "./DeletionSection.tsx";
 import { blockAccount, fetchExport, saveVisibility } from "./server.ts";
 import { PRIVACY_TITLE } from "./title.ts";
 
@@ -214,6 +215,7 @@ export function PrivacyPage() {
                             </div>
                         </Stack>
                     </Section>
+                    <DeletionSection status={outcome.value.deletion} purpose="member" />
                 </Stack>
             ) : null}
         </Page>

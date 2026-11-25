@@ -6,7 +6,11 @@ import { callPlatform, readPlatform } from "../../server/platform.ts";
 
 export const fetchAppeal = createServerFn({ method: "GET" }).handler(async () => {
     const reply = await readPlatform("appeals.read", {});
-    return reply.ok ? done(reply.value) : refuse(reply.error);
+    if (!reply.ok) return refuse(reply.error);
+    // A suspended account may delete itself; the privacy page's section is shown here.
+    const deletion = await readPlatform("appeals.deletion.read", {});
+    if (!deletion.ok) return refuse(deletion.error);
+    return done({ ...reply.value, deletion: deletion.value });
 });
 
 export const sendAppeal = createServerFn({ method: "POST" })

@@ -99,7 +99,9 @@ async function readAs<T>(
     });
 }
 
+// A tombstone reads as deleted first; whether it was suspended is on the detail's `deletion`.
 const statusSql = sql`case
+        when a.deleted_at is not null then 'deleted'
         when a.status = 'suspended' then 'suspended'
         when a.is_locked then 'locked'
         when not (exists (select 1 from passkey p where p.account_id = a.id)
@@ -123,7 +125,7 @@ function heldRolesSql(txNow: EpochMs): SqlFragment {
 
 const AccountRowSchema = z.object({
     id: AccountId,
-    email: z.string(),
+    email: z.string().nullable(),
     username: z.string().nullable(),
     status: AccountStatus,
     is_root: z.boolean(),
@@ -134,7 +136,8 @@ const AccountRowSchema = z.object({
 
 export type AccountSummary = {
     readonly accountId: AccountId;
-    readonly email: string;
+    // Null for a deleted account.
+    readonly email: string | null;
     readonly username: string | null;
     readonly status: AccountStatus;
     readonly isRoot: boolean;
@@ -297,7 +300,41 @@ export type AccountDetail = AccountSummary & {
     // Null when the reader can't read audit.
     readonly recentAudit: readonly AuditEntry[] | null;
     readonly entitlements: readonly IssuedEntitlement[];
+    readonly deletion: AccountDeletion | null;
 } & DeviceList;
+
+export type AccountDeletion =
+    | { readonly state: "pending"; readonly requestedAt: EpochMs; readonly dueAt: EpochMs }
+    | {
+          readonly state: "completed";
+          readonly completedAt: EpochMs;
+          readonly suspended: boolean;
+          readonly addressHashKept: boolean;
+      };
+
+const DeletionRowSchema = z.object({
+    requested_at: EpochMs.nullable(),
+    due_at: EpochMs.nullable(),
+    deleted_at: EpochMs.nullable(),
+    suspended: z.boolean(),
+    hash_kept: z.boolean(),
+});
+
+function toDeletion(row: z.output<typeof DeletionRowSchema> | null): AccountDeletion | null {
+    if (row === null) return null;
+    if (row.deleted_at !== null) {
+        return {
+            state: "completed",
+            completedAt: row.deleted_at,
+            suspended: row.suspended,
+            addressHashKept: row.hash_kept,
+        };
+    }
+    if (row.requested_at !== null && row.due_at !== null) {
+        return { state: "pending", requestedAt: row.requested_at, dueAt: row.due_at };
+    }
+    return null;
+}
 
 export type IssuedEntitlement = {
     readonly entitlementId: EntitlementId;
@@ -432,7 +469,17 @@ export async function readAccount(
         if (!entitlements.ok) return entitlements;
         const devices = await readAccountDevices(q, { accountId: params.accountId, txNow });
         if (!devices.ok) return devices;
+        const deletion = await queryOne(
+            q,
+            DeletionRowSchema,
+            sql`select deletion_requested_at as requested_at, deletion_due_at as due_at,
+                       deleted_at, status = 'suspended' as suspended,
+                       email_hash is not null as hash_kept
+                from account where id = ${params.accountId}`,
+        );
+        if (!deletion.ok) return deletion;
         return ok({
+            deletion: toDeletion(deletion.value),
             ...toAccountSummary(row.value),
             signIn: signIn.value ?? { passkeys: 0, password: false, totp: false },
             heldRoles: held.value.map((role) => ({
