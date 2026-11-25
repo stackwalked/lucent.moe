@@ -133,8 +133,8 @@ Beside phases 2 and 3; nothing native waits on it except cutover.
 - Slice 5 (profiles, guides, comments, shouts, the inbox, reports and removal, posting
   restrictions apart from the licence, blocking, the data export, search, a presence stream,
   avatars, self-service account deletion landed): presence shown in web.
-- The public record: product status, known issues, the changelog, recovery time per game update,
-  refusal-code pages.
+- The public record (status, known issues, the changelog and recovery time per game update
+  landed): refusal-code pages.
 - Member docs.
 
 Gate: every surface of the old service, panel and bot is here or under "Cut".
