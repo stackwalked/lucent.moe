@@ -6,6 +6,7 @@ import { authorityHandlers } from "./web-authority.ts";
 import { catalogHandlers } from "./web-catalog.ts";
 import { cloudHandlers } from "./web-cloud.ts";
 import { commentsHandlers } from "./web-comments.ts";
+import { crashesHandlers } from "./web-crashes.ts";
 import { devicesHandlers } from "./web-devices.ts";
 import { discordHandlers } from "./web-discord.ts";
 import { downloadHandlers } from "./web-download.ts";
@@ -52,6 +53,7 @@ export const webProcedures = implement<WebRpcContext, WebContract>(webContract, 
     ...searchHandlers,
     ...overridesHandlers,
     ...reviewHandlers,
+    ...crashesHandlers,
     ...updatesHandlers,
     ...ticketsHandlers,
     ...appealsHandlers,

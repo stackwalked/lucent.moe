@@ -6,6 +6,7 @@ import { authorityContract, AccountStatus as Status } from "./web/authority.ts";
 import { catalogContract } from "./web/catalog.ts";
 import { cloudContract } from "./web/cloud.ts";
 import { commentsContract } from "./web/comments.ts";
+import { crashesContract } from "./web/crashes.ts";
 import { devicesContract } from "./web/devices.ts";
 import { discordContract } from "./web/discord.ts";
 import { downloadContract } from "./web/download.ts";
@@ -70,6 +71,7 @@ function composeWebContract() {
         ...searchContract,
         ...overridesContract,
         ...reviewContract,
+        ...crashesContract,
         ...updatesContract,
         ...ticketsContract,
         ...appealsContract,

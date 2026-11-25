@@ -1,11 +1,14 @@
 import { expect, test } from "bun:test";
 import { invariant } from "@lucent/core/contain";
 import { createSeededRng } from "@lucent/core/rng";
-import { newOperationId, toHex } from "@lucent/core/scalars";
+import { newOperationId, ProductId, toHex } from "@lucent/core/scalars";
 import type { ReportEvent } from "@lucent/wire/reports";
 import { z } from "zod";
 import { type Db, execute, queryAll, sql } from "../src/db/pool.ts";
+import { listCrashSummaries } from "../src/runtime/crashes.ts";
 import { MAX_REPORTS_PER_SESSION } from "../src/runtime/reports.rules.ts";
+import { seedRootOnce } from "./auth-fixtures.ts";
+import { seedRole, seedStaff, steppedUp } from "./authority-fixtures.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 import {
     createNativeHarness,
@@ -257,5 +260,131 @@ test("a trap in the module's own image becomes a risk signal on its session, and
         expect(signals.value.map((row) => [row.kind, toHex(row.session_id)])).toEqual([
             ["module_trap", toHex(at.module.session())],
         ]);
+    });
+});
+
+test("a reported crash appears on the staff crash list under its release, grouped by module and RVA, newest first", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ nativeDb }) => {
+        const harness = await createNativeHarness(nativeDb, createSeededRng(9_807));
+        const at = await runModule(harness, "crash-list@lucent.test");
+        expect((await post(at, at.module.reports(BATCH))).status).toBe(200);
+        const again: ReportEvent = {
+            kind: "crash",
+            time: 9_000,
+            exceptionCode: 0xc000_001d,
+            moduleHash: 0n,
+            rva: 0x1a2b0,
+            frames: [0x1a2b0, 0x1c004],
+        };
+        expect((await post(at, at.module.reports([again]))).status).toBe(200);
+        const caller = await steppedUp(nativeDb, await seedRootOnce(nativeDb, harness.rng));
+
+        const listed = await listCrashSummaries(nativeDb, {
+            caller,
+            productId: null,
+            releaseId: toHex(at.releases.module.id),
+            cursor: null,
+        });
+        invariant(listed.ok, `listing crashes failed: ${JSON.stringify(listed)}`);
+        expect(listed.value.nextCursor).toBeNull();
+        expect(
+            listed.value.items.map((item) => ({
+                product: String(item.productId),
+                release: item.releaseId,
+                channel: String(item.channel),
+                seal: item.sealNumber,
+                module: item.moduleHash,
+                rva: item.rva,
+                crashes: item.crashes,
+                code: item.exceptionCode,
+                frames: item.frames,
+            })),
+        ).toEqual([
+            {
+                product: "cs2",
+                release: toHex(at.releases.module.id),
+                channel: "alpha",
+                seal: "1",
+                module: "0000000000000000",
+                rva: 0x1a2b0,
+                crashes: 2,
+                code: 0xc000_001d,
+                frames: [0x1a2b0, 0x1c004],
+            },
+            {
+                product: "cs2",
+                release: toHex(at.releases.module.id),
+                channel: "alpha",
+                seal: "1",
+                module: "8000000000000001",
+                rva: 0x400,
+                crashes: 1,
+                code: 0xc000_0409,
+                frames: [],
+            },
+        ]);
+        const elsewhere = await listCrashSummaries(nativeDb, {
+            caller,
+            productId: ProductId.parse("other"),
+            releaseId: null,
+            cursor: null,
+        });
+        expect(elsewhere.ok && elsewhere.value.items).toEqual([]);
+    });
+});
+
+test("the crash list pages by its newest crash, refuses a cursor it didn't hand out, and needs the review action", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ nativeDb }) => {
+        const rng = createSeededRng(9_808);
+        const harness = await createNativeHarness(nativeDb, rng);
+        const releases = await publishBoth(nativeDb, rng);
+        const seeded = await execute(
+            nativeDb,
+            sql`insert into module_report
+                    (product_id, release_id, received_at, session_ms, kind, exception_code,
+                     module_hash, rva, frames)
+                select 'cs2', ${releases.module.id}, now() - make_interval(secs => n), 0, 'crash',
+                       3221225477, 0, n, '{}'
+                from generate_series(1, 51) as n`,
+        );
+        invariant(seeded.ok, "seeding crashes failed");
+        const caller = await steppedUp(nativeDb, await seedRootOnce(nativeDb, harness.rng));
+        const page = (cursor: string | null) =>
+            listCrashSummaries(nativeDb, { caller, productId: null, releaseId: null, cursor });
+
+        const first = await page(null);
+        invariant(first.ok && first.value.nextCursor !== null, "a first page with more after it");
+        expect(first.value.items.map((item) => item.rva)).toEqual(
+            Array.from({ length: 50 }, (_, index) => index + 1),
+        );
+        const second = await page(first.value.nextCursor);
+        expect(second.ok && second.value).toEqual({
+            items: [expect.objectContaining({ rva: 51 })],
+            nextCursor: null,
+        });
+        expect(await page("bm90LWEtY3Vyc29y")).toEqual({
+            ok: false,
+            error: { code: "INVALID_CURSOR" },
+        });
+
+        const readerRole = await seedRole(nativeDb, {
+            id: "role_reader",
+            rank: 10,
+            permissions: ["accounts:read"],
+        });
+        const reader = await seedStaff(nativeDb, rng, {
+            email: "reader@lucent.test",
+            roleId: readerRole,
+        });
+        expect(
+            await listCrashSummaries(nativeDb, {
+                caller: await steppedUp(nativeDb, reader),
+                productId: null,
+                releaseId: null,
+                cursor: null,
+            }),
+        ).toEqual({ ok: false, error: { code: "FORBIDDEN" } });
     });
 });

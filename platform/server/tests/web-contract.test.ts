@@ -205,6 +205,7 @@ const inputs: SinglePurpose = {
     },
     "admin.review.list": { state: "open" },
     "admin.review.decide": { itemId: "1", outcome: "no_action", note: null },
+    "admin.crashes.summaries.list": { productId: null, releaseId: null, cursor: null },
     "admin.updates.list": {},
     "admin.system.status.read": {},
     "admin.system.usage.read": { endingWith: null },
