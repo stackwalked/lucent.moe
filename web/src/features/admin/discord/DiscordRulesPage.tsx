@@ -24,7 +24,7 @@ type Condition = RoleCondition;
 type Named = { readonly id: string; readonly name: string };
 
 const SNOWFLAKE = "[1-9][0-9]{16,19}";
-const FEEDS = ["status", "resources", "releases"] as const;
+const FEEDS = ["status", "resources", "releases", "tickets", "review"] as const;
 type Feed = (typeof FEEDS)[number];
 
 function feedLabel(feed: Feed): string {

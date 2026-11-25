@@ -21,6 +21,8 @@ export const DISCORD_RULES_COPY = {
     status: "product status changes",
     resources: "new resources",
     releases: "releases",
+    tickets: "open tickets (staff channels only)",
+    review: "open review items (staff channels only)",
     add: "add",
     addRole: "add a role rule",
     addChannel: "add a staff channel",
