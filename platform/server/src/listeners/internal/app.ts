@@ -1,5 +1,6 @@
 import type { ProductCatalog } from "@lucent/catalog/catalog";
 import { err, ok } from "@lucent/core/result";
+import { DISCORD_RPC_PATH } from "@lucent/rpc/discord/contract";
 import { mountInternalRpc } from "@lucent/rpc/mount";
 import type { Hono } from "hono";
 import type { AuthDeps } from "../../auth/deps.ts";
@@ -73,4 +74,20 @@ export function createInternalWebApp(deps: {
         logger: deps.logger,
     });
     return app;
+}
+
+type Fetch = (req: Request) => Response | Promise<Response>;
+
+// One listener, one mount per peer. Each mount checks its own key on every path it is given, so a
+// request reaches the discord mount only on the discord path and web's otherwise.
+export function routeInternal(params: {
+    readonly web: Fetch;
+    readonly discord: Fetch | null;
+}): Fetch {
+    return (req) => {
+        if (params.discord !== null && new URL(req.url).pathname === DISCORD_RPC_PATH) {
+            return params.discord(req);
+        }
+        return params.web(req);
+    };
 }

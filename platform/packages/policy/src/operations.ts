@@ -37,6 +37,10 @@ export const AUDIT_OPERATIONS = [
     "resource.publish",
     "resource.update",
     "resource.delete",
+    "discord.link",
+    "discord.unlink",
+    "discord.rule_add",
+    "discord.rule_remove",
 ] as const;
 
 export const AuditOperation = z.enum(AUDIT_OPERATIONS);

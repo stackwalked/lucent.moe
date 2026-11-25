@@ -21,7 +21,8 @@ import { verifySchemaCurrent } from "./db/migrate.ts";
 import { openPool } from "./db/pool.ts";
 import { retentionJob } from "./jobs/retention.ts";
 import { type Every, startJobs } from "./jobs/runner.ts";
-import { createInternalWebApp } from "./listeners/internal/app.ts";
+import { createInternalWebApp, routeInternal } from "./listeners/internal/app.ts";
+import { createInternalDiscordApp } from "./listeners/internal/discord.ts";
 import { createNativeApp } from "./listeners/native/app.ts";
 import { refusalResponse } from "./listeners/native/http.ts";
 import { restrictionExpiryJob } from "./moderation/restrictions.ts";
@@ -204,7 +205,7 @@ export async function startServer(params: {
         });
     }
     const events = createEventHub();
-    serve = createInternalWebApp({
+    const web = createInternalWebApp({
         events,
         cloudLimits,
         auth,
@@ -213,7 +214,19 @@ export async function startServer(params: {
         webInternalKey: config.webInternalKey,
         artifactDir: config.native?.artifactDir ?? null,
         logger,
-    }).fetch;
+    });
+    const discord =
+        config.discordInternalKey === undefined
+            ? null
+            : createInternalDiscordApp({
+                  db,
+                  catalog: catalog.value,
+                  siteOrigin: config.relyingParty.origin,
+                  epochGuard,
+                  discordInternalKey: config.discordInternalKey,
+                  logger,
+              });
+    serve = routeInternal({ web: web.fetch, discord: discord?.fetch ?? null });
     if (config.native !== null && nativeDb !== null) {
         serveNative = createNativeApp({
             db: nativeDb,

@@ -41,6 +41,18 @@ function env(overrides: Partial<Environment>): Environment {
     };
 }
 
+test("the discord peer key is optional, strong, and never the web key", () => {
+    const off = readServerConfig(env({}));
+    expect(off.ok && off.value.discordInternalKey).toBeUndefined();
+    const on = readServerConfig(env({ LUCENT_DISCORD_INTERNAL_KEY: "d".repeat(43) }));
+    expect(on.ok && on.value.discordInternalKey).toBe("d".repeat(43));
+    for (const key of ["short", KEY]) {
+        const refused = readServerConfig(env({ LUCENT_DISCORD_INTERNAL_KEY: key }));
+        expect(refused.ok).toBe(false);
+        expect(JSON.stringify(refused)).not.toContain(key);
+    }
+});
+
 test("the internal listener accepts loopback and unix sockets", () => {
     for (const [raw, expected] of [
         ["127.0.0.1:4712", { kind: "loopback", hostname: "127.0.0.1", port: 4712 }],

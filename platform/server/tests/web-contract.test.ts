@@ -203,6 +203,14 @@ const inputs: SinglePurpose = {
     "admin.updates.list": {},
     "admin.system.status.read": {},
     "admin.system.usage.read": { endingWith: null },
+    "discord.link.read": {},
+    "discord.link.start": {},
+    "discord.link.remove": {},
+    "admin.discord.rules.list": {},
+    "admin.discord.rules.add": {
+        fields: { kind: "staff_channel", channelId: "100000000000000001" },
+    },
+    "admin.discord.rules.remove": { ruleId: "00000000-0000-4000-8000-000000000001" },
     "admin.audit.list": {
         filter: { actorId: null, targetAccountId: null, operation: null, before: null },
         cursor: null,

@@ -7,6 +7,7 @@ import { catalogContract } from "./web/catalog.ts";
 import { cloudContract } from "./web/cloud.ts";
 import { commentsContract } from "./web/comments.ts";
 import { devicesContract } from "./web/devices.ts";
+import { discordContract } from "./web/discord.ts";
 import { downloadContract } from "./web/download.ts";
 import { factsContract } from "./web/facts.ts";
 import { guidesContract } from "./web/guides.ts";
@@ -74,6 +75,7 @@ function composeWebContract() {
         ...appealsContract,
         ...resourcesContract,
         ...systemContract,
+        ...discordContract,
     });
 }
 

@@ -16,6 +16,8 @@ export type ServerConfig = {
     readonly databaseUrl: string;
     readonly internalListen: ListenAddress;
     readonly webInternalKey: string;
+    // The Discord connector's peer key; absent when no connector calls this server.
+    readonly discordInternalKey?: string;
     readonly productsDir: string;
     readonly totpKeys: readonly TotpKeyMaterial[];
     readonly relyingParty: RelyingParty;
@@ -72,6 +74,7 @@ export type Environment = {
     readonly LUCENT_DATABASE_URL: string | undefined;
     readonly LUCENT_INTERNAL_LISTEN: string | undefined;
     readonly LUCENT_WEB_INTERNAL_KEY: string | undefined;
+    readonly LUCENT_DISCORD_INTERNAL_KEY?: string | undefined;
     readonly LUCENT_PRODUCTS_DIR: string | undefined;
     readonly LUCENT_TOTP_KEYS: string | undefined;
     readonly LUCENT_WEBAUTHN_RP_ID: string | undefined;
@@ -228,6 +231,16 @@ export function readServerConfig(env: Environment): Result<ServerConfig, ConfigE
             `LUCENT_WEB_INTERNAL_KEY must be at least ${MIN_PEER_KEY_LENGTH} visible ASCII characters`,
         );
     }
+    const discordInternalKey = env.LUCENT_DISCORD_INTERNAL_KEY ?? "";
+    if (discordInternalKey !== "" && !isStrongPeerKey(discordInternalKey)) {
+        problems.push(
+            `LUCENT_DISCORD_INTERNAL_KEY must be at least ${MIN_PEER_KEY_LENGTH} visible ASCII characters`,
+        );
+    }
+    // One key for both would let the connector call web's procedures.
+    if (discordInternalKey !== "" && discordInternalKey === webInternalKey) {
+        problems.push("LUCENT_DISCORD_INTERNAL_KEY must differ from LUCENT_WEB_INTERNAL_KEY");
+    }
     const productsDir = env.LUCENT_PRODUCTS_DIR ?? "";
     if (productsDir.length === 0) {
         problems.push("LUCENT_PRODUCTS_DIR must name the products/ directory");
@@ -285,6 +298,7 @@ export function readServerConfig(env: Environment): Result<ServerConfig, ConfigE
         databaseUrl,
         internalListen,
         webInternalKey,
+        ...(discordInternalKey === "" ? {} : { discordInternalKey }),
         productsDir,
         totpKeys,
         relyingParty,
@@ -338,6 +352,7 @@ export function processEnvironment(): Environment {
         LUCENT_DATABASE_URL,
         LUCENT_INTERNAL_LISTEN,
         LUCENT_WEB_INTERNAL_KEY,
+        LUCENT_DISCORD_INTERNAL_KEY,
         LUCENT_PRODUCTS_DIR,
         LUCENT_TOTP_KEYS,
         LUCENT_WEBAUTHN_RP_ID,
@@ -359,6 +374,7 @@ export function processEnvironment(): Environment {
         LUCENT_DATABASE_URL,
         LUCENT_INTERNAL_LISTEN,
         LUCENT_WEB_INTERNAL_KEY,
+        LUCENT_DISCORD_INTERNAL_KEY,
         LUCENT_PRODUCTS_DIR,
         LUCENT_TOTP_KEYS,
         LUCENT_WEBAUTHN_RP_ID,

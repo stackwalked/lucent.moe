@@ -14,6 +14,7 @@ export const ADMIN_COPY = {
     audit: "audit",
     system: "system",
     usage: "usage",
+    discord: "discord",
     pending: "—",
     needsPasskey: "staff actions need a passkey. add one in security.",
     firstPage: "first page",
@@ -56,6 +57,10 @@ export const OPERATION_LABELS: Readonly<Record<AuditOperation, string>> = {
     "resource.publish": "resource published",
     "resource.update": "resource edited",
     "resource.delete": "resource removed",
+    "discord.link": "discord linked",
+    "discord.unlink": "discord unlinked",
+    "discord.rule_add": "discord rule added",
+    "discord.rule_remove": "discord rule removed",
 };
 
 export function operationLabel(operation: string): string {

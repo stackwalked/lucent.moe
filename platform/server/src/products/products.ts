@@ -60,6 +60,16 @@ async function readGameBuilds(
     );
 }
 
+// Whether a start on this release with the game's builds would pass core coverage now.
+export async function readReleaseSupported(
+    q: Queryable,
+    params: { readonly productId: ProductId; readonly releaseId: Uint8Array },
+): Promise<Result<boolean, DbFailure>> {
+    const builds = await readGameBuilds(q, params);
+    if (!builds.ok) return builds;
+    return await coversCoreFacts(q, params.releaseId, builds.value);
+}
+
 export function listPublicProducts(catalog: ProductCatalog): readonly ProductDefinition[] {
     return [...catalog.values()].filter((p) => decideProductLifecycle(p.state).value.listed);
 }
@@ -129,12 +139,10 @@ export async function listMemberProducts(
                 }
                 let supported = true;
                 if (product.kind === "module") {
-                    const builds = await readGameBuilds(tx, {
+                    const covered = await readReleaseSupported(tx, {
                         productId: product.id,
                         releaseId: current.release_id,
                     });
-                    if (!builds.ok) return builds;
-                    const covered = await coversCoreFacts(tx, current.release_id, builds.value);
                     if (!covered.ok) return covered;
                     supported = covered.value;
                 }

@@ -5,6 +5,7 @@ export type LogOrigin =
     | "boot"
     | "epoch-guard"
     | "internal-web"
+    | "internal-discord"
     | "native"
     | "jobs"
     | "breach-check";
