@@ -34,12 +34,17 @@ healthy() {
 }
 
 # The Discord connector runs only where a bot exists; without a token it would restart forever.
-# Read the value as Compose would, minus its quotes, rather than sourcing the env file.
-discord_token=$(sed -n 's/^LUCENT_DISCORD_BOT_TOKEN=//p' "$envfile" | tail -n 1)
-discord_token=${discord_token//[\"\']/}
+# Read the value as Compose would rather than sourcing the env file: the last assignment wins,
+# `export` and leading space are allowed, and a carriage return, surrounding space, quotes and a
+# trailing ` # comment` are not part of it. Only whether it is empty matters here.
+discord_line=$(grep -E '^[[:space:]]*(export[[:space:]]+)?LUCENT_DISCORD_BOT_TOKEN=' "$envfile" | tail -n 1 || true)
+discord_token=${discord_line#*=}
+discord_token=${discord_token%$'\r'}
+discord_token=${discord_token%%[[:space:]]#*}
+discord_token=${discord_token//[[:space:]\"\']/}
 discord=()
 services=(platform-server web)
-if [[ -n ${discord_token// /} ]]; then
+if [[ -n $discord_token ]]; then
     discord=(--profile discord)
     services+=(connector-discord)
 fi
@@ -53,10 +58,7 @@ compose up -d --no-recreate --wait --wait-timeout 120 postgres
 compose run --rm --no-deps -T platform-server bun src/ops.ts migrate
 healthy platform-server
 healthy web
-if (( ${#discord[@]} )); then
-    compose "${discord[@]}" up -d --no-deps --wait --wait-timeout 120 connector-discord ||
-        die "deploy failed: connector-discord did not become healthy within 120s; nothing rolls back (docker compose --env-file $envfile -f $infra/compose.yml --profile discord logs connector-discord)"
-fi
+
 
 # The config is bind-mounted, so Compose doesn't hash its contents; an image or
 # compose.yml change recreates caddy by itself. Recreating drops live connections
@@ -71,3 +73,13 @@ else
 fi
 printf '%s\n' "$config_digest" > "$stamp.tmp"
 mv -- "$stamp.tmp" "$stamp"
+
+# Last, so a bot that won't start (a wrong token, a missing guild id) never holds back the site:
+# everything above is already serving when this fails. With the token gone, a connector left
+# from an earlier deploy is stopped and removed rather than left running on its old settings.
+if (( ${#discord[@]} )); then
+    compose "${discord[@]}" up -d --no-deps --wait --wait-timeout 120 connector-discord ||
+        die "the site is deployed, but connector-discord did not become healthy within 120s (docker compose --env-file $envfile -f $infra/compose.yml --profile discord logs connector-discord)"
+else
+    compose --profile discord rm --stop --force connector-discord
+fi

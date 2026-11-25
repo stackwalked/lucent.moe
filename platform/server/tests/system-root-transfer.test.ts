@@ -149,6 +149,30 @@ describe("ops transfer-superadmin", () => {
         });
     });
 
+    test("a transfer that waited while the target's last passkey was removed is refused", async () => {
+        const cluster = await sharedTestCluster();
+        await cluster.withTestDb(async ({ nativeDb }) => {
+            const rng = createSeededRng(7306);
+            const root = await seedRoot(nativeDb, rng);
+            const heir = await seedNamed(nativeDb, rng, "heir");
+            // As a credential writer does: the account lock, then the delete, not yet committed.
+            const holder = await checkoutClient(nativeDb);
+            invariant(holder.ok, "a second connection");
+            await holder.value.begin();
+            await execute(
+                holder.value.tx,
+                sql`select 1 from account where id = ${heir} for update`,
+            );
+            await execute(holder.value.tx, sql`delete from passkey where account_id = ${heir}`);
+            const racing = transferRoot({ db: nativeDb, username: "heir" });
+            expect(await waitForLockWaiters(nativeDb, 1)).toBe(true);
+            await holder.value.commit();
+            holder.value.release();
+            expect(await racing).toEqual(err({ code: "TARGET_NO_PASSKEY" }));
+            expect(await roots(nativeDb)).toEqual([root]);
+        });
+    });
+
     test("the old root's sessions end with the transfer but its account stays", async () => {
         const cluster = await sharedTestCluster();
         await cluster.withTestDb(async ({ nativeDb }) => {

@@ -47,14 +47,24 @@ export async function transferRoot(params: {
     const { username } = parsed.value;
 
     return await withTx(params.db, async (tx, txNow) => {
+        const locked = await queryAll(
+            tx,
+            z.object({ id: AccountId }),
+            sql`select id from account where is_root or username = ${username}
+                order by id for update`,
+        );
+        if (!locked.ok) return locked;
+        // Read in a statement of its own, after the locks: a statement that waited for a row
+        // lock still sees other tables as of before the wait, and would count a passkey whose
+        // removal (under that same account lock) committed meanwhile.
         const rows = await queryAll(
             tx,
             PartyRow,
             sql`select id, username, status, is_locked, is_root,
                        exists (select 1 from passkey where account_id = account.id) as has_passkey
                 from account
-                where is_root or username = ${username}
-                order by id for update`,
+                where id = any(${locked.value.map((row) => row.id)}::text[])
+                order by id`,
         );
         if (!rows.ok) return rows;
         const plan = decideRootTransfer({

@@ -23,6 +23,11 @@ const COMBINATIONS: readonly { readonly kinds: readonly SignalKind[]; readonly w
 
 const SESSION_CAP = 4;
 
+// A kind counted fewer times than that. Every new country is an occurrence of its own, and a
+// member hopping VPN exits collects several: counted once, any number of them alone stays where
+// one does, under the review threshold.
+const COUNTED_CAP: Readonly<Partial<Record<SignalKind, number>>> = { new_country: 1 };
+
 // Urgency counts the weighted sessions of the last day, each a quarter of the scale.
 const URGENT_WINDOW_MS = 24 * 60 * 60 * 1_000;
 const URGENCY_PER_SESSION = 25;
@@ -75,7 +80,7 @@ export function decideRiskScore(
     let clean = 1;
     const contributions: Contribution[] = [];
     for (const [kind, sessions] of [...sessionsOf].sort(([a], [b]) => a.localeCompare(b))) {
-        const counted = Math.min(sessions.size, SESSION_CAP);
+        const counted = Math.min(sessions.size, COUNTED_CAP[kind] ?? SESSION_CAP);
         clean *= (1 - WEIGHTS[kind]) ** counted;
         contributions.push({
             kind,

@@ -28,6 +28,12 @@ test.each([
     ["nothing", [], 0, 0],
     ["a software key alone, a mark only", [softwareKey("a")], 0, 0],
     ["a new country alone, under the threshold", [newCountry(null)], 15, 25],
+    [
+        "new countries alone, however many, where one is",
+        [newCountry(null), newCountry(null), newCountry(null), newCountry(null)],
+        15,
+        100,
+    ],
     ["a new country beside a silent session, over it", [newCountry(null), silent("a")], 36, 50],
     ["one silent session", [silent("a")], 25, 25],
     ["one session silent many times", [silent("a"), silent("a"), silent("a")], 25, 25],
