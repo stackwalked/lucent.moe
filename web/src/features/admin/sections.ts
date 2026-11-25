@@ -13,6 +13,7 @@ export type AdminSection =
     | "moderation"
     | "tickets"
     | "resources"
+    | "record"
     | "audit"
     | "system"
     | "usage"
@@ -32,6 +33,7 @@ export const SECTION_PATHS = [
     ["moderation", "/admin/moderation"],
     ["tickets", "/admin/tickets"],
     ["resources", "/admin/resources"],
+    ["record", "/admin/record"],
     ["audit", "/admin/audit"],
     ["system", "/admin/system"],
     ["usage", "/admin/usage"],
@@ -55,6 +57,7 @@ export function adminSections(viewer: Viewer): Readonly<Record<AdminSection, boo
         moderation: viewerCan(viewer, "moderation:remove"),
         tickets: viewerCan(viewer, "tickets:reply"),
         resources: viewerCan(viewer, "releases:promote"),
+        record: viewerCan(viewer, "releases:promote"),
         audit: viewerCan(viewer, "audit:read"),
         system: viewerCan(viewer, "audit:read"),
         usage: viewerCan(viewer, "audit:read"),

@@ -9,6 +9,7 @@ export const ADMIN_COPY = {
     moderation: "moderation",
     tickets: "tickets",
     resources: "resources",
+    record: "public record",
     overrides: "kill switches",
     updates: "update days",
     review: "review",

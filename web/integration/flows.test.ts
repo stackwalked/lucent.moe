@@ -625,4 +625,50 @@ describe("web against a real platform", () => {
         expect(refusedCode(await importLink())).toBe("NOT_FOUND");
         expect(web.output()).not.toContain(link.token);
     });
+
+    // Last: it stops platform.
+    test("the public record pages answer from web's snapshot while platform is down, and say status is unavailable when web never had one", async () => {
+        const text = async (path: string, from = browser()) => {
+            const page = await from.get(path);
+            expect(page.status).toBe(200);
+            return (await page.text()).toLowerCase();
+        };
+        const status = await text("/status");
+        expect(status).toContain('<meta name="robots" content="noindex"');
+        expect(status).toContain("lucent loader");
+        expect(status).not.toContain("counter-strike 2");
+        expect(await text("/changelog")).toContain('<meta name="robots" content="noindex"');
+
+        await platform.stop();
+        for (const path of ["/status", "/changelog"]) {
+            const shown = await text(path);
+            expect(shown).toContain("reach the server. this is how things stood at");
+            expect(shown).toContain("<time");
+        }
+        expect(await text("/status")).toContain("lucent loader");
+
+        const port = allocateEphemeralPort();
+        const fresh = spawnServer({
+            command: [process.execPath, "src/main.ts"],
+            cwd: WEB_DIR,
+            env: {
+                LUCENT_WEB_LISTEN: `127.0.0.1:${port}`,
+                LUCENT_PUBLIC_ORIGIN: `http://localhost:${port}`,
+                LUCENT_PLATFORM_INTERNAL_URL: platform.internalUrl,
+                LUCENT_WEB_INTERNAL_KEY: platform.peerKey,
+            },
+        });
+        await fresh.waitFor(/"msg":"listening"/);
+        const restarted = createTestBrowser({
+            socket: `http://127.0.0.1:${port}`,
+            origin: `http://localhost:${port}`,
+        });
+        const unavailable = await Promise.all(
+            ["/status", "/changelog"].map((path) => text(path, restarted)),
+        );
+        await fresh.stop();
+        for (const shown of unavailable) {
+            expect(shown).toContain("status is unavailable until the server is back.");
+        }
+    }, 30_000);
 });
