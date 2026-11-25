@@ -39,6 +39,7 @@ import { answerCloud, StoredWrite } from "./cloud.ts";
 import {
     assembleData,
     type DataTooLarge,
+    dataFormatOf,
     FIRST_DATA_ANSWERS,
     FIRST_DATA_SEQUENCE,
     INITIAL_DATA_REVISION,
@@ -252,6 +253,7 @@ async function assembleFirstData(
         answers: FIRST_DATA_ANSWERS,
         dataRevision: params.dataRevision,
         delivery: delivery.value,
+        format: dataFormatOf(params.releaseId),
     });
 }
 
@@ -848,6 +850,7 @@ export async function serveData(
             answers: frame.header.sequence,
             dataRevision: session.data_revision,
             delivery: delivery.value,
+            format: dataFormatOf(session.release_id),
         });
         if (!answer.ok) return answer;
         if (replayed !== null) return ok({ session, answer: answer.value, sequence: replayed });

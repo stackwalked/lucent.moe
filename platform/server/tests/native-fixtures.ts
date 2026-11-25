@@ -29,7 +29,13 @@ import {
     CONTAINER_CHUNK_SIZE,
     toChunkAssociatedData,
 } from "@lucent/wire/container-stream";
-import { type DataResponse, parseDataResponse, toDataRequestBytes } from "@lucent/wire/data";
+import {
+    type DataResponse,
+    type DataResponseV3,
+    parseDataResponse,
+    parseDataResponseV3,
+    toDataRequestBytes,
+} from "@lucent/wire/data";
 import { parseEnrollmentStatus, toEnrollmentRequestBytes } from "@lucent/wire/enrollment";
 import { openFrame, parseFrame, sealFrame, toFrameBytes } from "@lucent/wire/frame";
 import {
@@ -41,6 +47,7 @@ import {
     toLeaseSignedBytes,
 } from "@lucent/wire/lease";
 import { parseLeaseResponse, toLeaseRequestBytes } from "@lucent/wire/lease-exchange";
+import { type Overrides, parseOverrides, toOverridesSignedBytes } from "@lucent/wire/overrides";
 import { parseRefusal, type RefusalCode } from "@lucent/wire/refusal";
 import { toReleaseSealBytes } from "@lucent/wire/release-seal";
 import {
@@ -583,6 +590,14 @@ export type TestModule = {
         params?: { readonly sequence?: bigint },
     ) => Uint8Array;
     readonly acceptData: (reply: Uint8Array) => DataResponse;
+    // A data response v3 frame: the response, and what became of its override document. The
+    // module takes a document only when the override key signed it for its own release at a
+    // revision at or above the highest it has taken; otherwise it keeps the one it holds.
+    readonly acceptDataV3: (frame: Uint8Array) => Promise<{
+        readonly response: DataResponseV3;
+        readonly overrides: OverridesTaken;
+    }>;
+    readonly overrides: () => Overrides | null;
     // A cloud_request frame, sealed under the data keys on the data route's sequences, as
     // dataRequest is.
     readonly cloudRequest: (
@@ -594,8 +609,24 @@ export type TestModule = {
     readonly held: () => Lease;
 };
 
-export function createTestModule(rng: SeededRng, leaseKey: Uint8Array): TestModule {
+export type OverridesTaken =
+    | "none"
+    | "taken"
+    | "malformed"
+    | "unsigned"
+    | "other_release"
+    | "older_revision";
+
+// The override key's public half as a module build would carry it; a test module without one
+// takes no document.
+export function createTestModule(
+    rng: SeededRng,
+    leaseKey: Uint8Array,
+    overrideKey: Uint8Array | null = null,
+): TestModule {
     const seed = rng.fillBytes(new Uint8Array(32));
+    let release: Uint8Array = new Uint8Array(0);
+    let overrides: Overrides | null = null;
     let moduleKey: Uint8Array = new Uint8Array(0);
     let nonce: Uint8Array = new Uint8Array(0);
     let keys: SessionKeys | null = null;
@@ -644,14 +675,30 @@ export function createTestModule(rng: SeededRng, leaseKey: Uint8Array): TestModu
         return parsed.value;
     };
 
+    const takeOverrides = async (document: Uint8Array | null): Promise<OverridesTaken> => {
+        if (document === null) return "none";
+        const parsed = parseOverrides(document);
+        if (!parsed.ok) return "malformed";
+        const { signature, ...fields } = parsed.value;
+        const signed =
+            overrideKey !== null &&
+            (await isStrictlySignedBy(overrideKey, toOverridesSignedBytes(fields), signature));
+        if (!signed) return "unsigned";
+        if (toHex(fields.release) !== toHex(release)) return "other_release";
+        if (overrides !== null && fields.revision < overrides.revision) return "older_revision";
+        overrides = parsed.value;
+        return "taken";
+    };
+
     return {
-        hello: async (release) => {
+        hello: async (helloRelease) => {
+            release = helloRelease;
             moduleKey = await exchangePublicKey(seed);
             nonce = rng.fillBytes(new Uint8Array(16));
             return toSessionHelloBytes({
                 moduleKey,
                 nonce,
-                release,
+                release: helloRelease,
                 boot: {
                     bootInfoVersion: 3,
                     imageKind: "mapped",
@@ -720,6 +767,19 @@ export function createTestModule(rng: SeededRng, leaseKey: Uint8Array): TestModu
             invariant(frame.ok, "the data reply is a frame");
             return openData(frame.value);
         },
+        acceptDataV3: async (reply) => {
+            const frame = parseFrame(reply);
+            invariant(frame.ok && keys !== null, "the data reply is a frame of an open session");
+            const plain = openFrame(keys.data.serverToModule, frame.value);
+            invariant(plain.ok, "the data frame opens under the data route's key");
+            const parsed = parseDataResponseV3(plain.value);
+            invariant(parsed.ok, "the data response v3 parses");
+            return {
+                response: parsed.value,
+                overrides: await takeOverrides(parsed.value.overrides),
+            };
+        },
+        overrides: () => overrides,
         cloudRequest: (request, params) => sealData(toCloudRequestBytes(request), params?.sequence),
         acceptCloud: (reply) => {
             const frame = parseFrame(reply);
