@@ -1,7 +1,10 @@
-import { ChannelId, EpochMs } from "@lucent/core/scalars";
+import { ProductState } from "@lucent/catalog/product";
+import { ChannelId, EpochMs, ProductId } from "@lucent/core/scalars";
 import { z } from "zod";
 import { defineContract } from "../contract.ts";
-import { refusal, SealNumber, Unavailable } from "../web/shared.ts";
+import { RestrictionKind } from "../web/community.ts";
+import { Features, refusal, SealNumber, Unavailable } from "../web/shared.ts";
+import { MessageBody, TicketId, TicketSubject } from "../web/tickets.ts";
 import { FeedKind, RuleId, Snowflake } from "./rules.ts";
 
 // What the Discord connector may ask platform, on its own path and peer key: a call with its key
@@ -49,6 +52,35 @@ const Post = z.discriminatedUnion("kind", [
         promotedAt: EpochMs,
     }),
 ]);
+
+// How the linked account stands. "unlinked" is also the answer for a Discord user nobody linked:
+// it says nothing about whether any account exists. Suspended and locked accounts get no detail.
+const Unlinked = z.object({ standing: z.literal("unlinked") });
+const Inactive = z.object({ standing: z.enum(["suspended", "locked"]) });
+
+// One product as products.list shows it to the account.
+const MemberProduct = z.object({
+    productId: ProductId,
+    name: z.string(),
+    state: ProductState,
+    features: Features,
+    channels: z
+        .array(
+            z.object({
+                channel: ChannelId,
+                release: z.object({ promotedAt: EpochMs, supported: z.boolean() }).nullable(),
+            }),
+        )
+        .readonly(),
+});
+
+const PublicStatus = z.object({
+    product: z.string(),
+    state: z.enum(["announced", "live"]),
+    supported: z.boolean().nullable(),
+});
+
+export const DmOutcome = z.enum(["sent", "refused", "failed"]);
 
 export const discordContract = defineContract({
     // The site's origin for link buttons, and what the rules say: the Discord roles they manage
@@ -131,6 +163,109 @@ export const discordContract = defineContract({
                 )
                 .readonly(),
         }),
+        error: Failure,
+    },
+    // `/me`: what the site shows the linked account, in one answer: its products and channels as
+    // products.list has them, its devices against its limit, the soonest end among its running
+    // entitlements, and its posting restrictions as the privacy page lists them.
+    "me.read": {
+        session: "none",
+        effect: "read",
+        input: z.strictObject({ userId: Snowflake }),
+        output: z.discriminatedUnion("standing", [
+            Unlinked,
+            Inactive,
+            z.object({
+                standing: z.literal("active"),
+                products: z.array(MemberProduct).readonly(),
+                devices: z.object({ count: z.number().int(), limit: z.number().int() }),
+                nextExpiry: EpochMs.nullable(),
+                restrictions: z
+                    .array(
+                        z.object({
+                            kind: RestrictionKind,
+                            product: z.string().nullable(),
+                            endsAt: EpochMs.nullable(),
+                        }),
+                    )
+                    .readonly(),
+            }),
+        ]),
+        error: Failure,
+    },
+    // `/status`: each product the public home lists, as the status feed says it.
+    "status.read": {
+        session: "none",
+        effect: "read",
+        input: z.strictObject({}),
+        output: z.object({ products: z.array(PublicStatus).readonly() }),
+        error: Failure,
+    },
+    // What /ticket's form offers the linked account: the products listed for it.
+    "tickets.products": {
+        session: "none",
+        effect: "read",
+        input: z.strictObject({ userId: Snowflake }),
+        output: z.discriminatedUnion("standing", [
+            Unlinked,
+            Inactive,
+            z.object({
+                standing: z.literal("active"),
+                products: z.array(z.object({ id: ProductId, name: z.string() })).readonly(),
+            }),
+        ]),
+        error: Failure,
+    },
+    // `/ticket`'s form: a help ticket for the linked account, through the site's own writer and
+    // limits. `url` is its page on the site.
+    "tickets.open": {
+        session: "none",
+        effect: "write",
+        input: z.strictObject({
+            userId: Snowflake,
+            productId: ProductId.nullable(),
+            subject: TicketSubject,
+            body: MessageBody,
+        }),
+        output: z.object({ ticketId: TicketId, url: z.url() }),
+        error: z.discriminatedUnion("code", [
+            Unavailable,
+            refusal("NOT_LINKED"),
+            refusal("ACCOUNT_UNAVAILABLE"),
+            refusal("UNKNOWN_PRODUCT"),
+            refusal("TICKET_LIMIT"),
+        ]),
+    },
+    // Notices due as DMs, oldest first. Each says what kind of notice arrived (and for which
+    // product), never its content, and links to the inbox.
+    "dms.read": {
+        session: "none",
+        effect: "read",
+        input: z.strictObject({}),
+        output: z.object({
+            dms: z
+                .array(
+                    z.object({
+                        id: z.string().regex(/^[1-9][0-9]{0,18}$/),
+                        userId: Snowflake,
+                        notice: z.discriminatedUnion("kind", [
+                            z.object({ kind: z.literal("security") }),
+                            z.object({ kind: z.literal("product_status"), product: z.string() }),
+                        ]),
+                        url: z.url(),
+                    }),
+                )
+                .readonly(),
+        }),
+        error: Failure,
+    },
+    // How a DM went: sent, refused by Discord (DMs closed, the bot blocked: not tried again), or
+    // failed some other way (tried again a few times, then dropped).
+    "dms.settled": {
+        session: "none",
+        effect: "write",
+        input: z.strictObject({ id: z.string().regex(/^[1-9][0-9]{0,18}$/), outcome: DmOutcome }),
+        output: Done,
         error: Failure,
     },
     // A post went out as `messageId`. A rule removed meanwhile records nothing.

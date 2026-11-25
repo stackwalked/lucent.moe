@@ -3,13 +3,27 @@ import type { ProductCatalog } from "@lucent/catalog/catalog";
 import { decideProductLifecycle } from "@lucent/catalog/lifecycle.rules";
 import type { ProductDefinition } from "@lucent/catalog/product";
 import { ok, type Result } from "@lucent/core/result";
-import { type BearerToken, ChannelId, EpochMs, ProductId } from "@lucent/core/scalars";
+import {
+    type AccountId,
+    type BearerToken,
+    ChannelId,
+    EpochMs,
+    ProductId,
+} from "@lucent/core/scalars";
 import type { Caller } from "@lucent/policy/policy";
 import { z } from "zod";
 import { readSession, type SessionInvalid } from "../auth/sessions.ts";
 import type { FeatureSelection } from "../authority/entitlements.ts";
 import { readAsStaff } from "../authority/staff.ts";
-import { type Db, type DbFailure, type Queryable, queryAll, queryOne, sql } from "../db/pool.ts";
+import {
+    type Db,
+    type DbFailure,
+    type Queryable,
+    queryAll,
+    queryOne,
+    sql,
+    type Tx,
+} from "../db/pool.ts";
 import { withTx } from "../db/tx.ts";
 import { coversCoreFacts, StartModules } from "../runtime/starts.ts";
 import { readMemberProduct } from "./visibility.ts";
@@ -104,59 +118,71 @@ export async function listMemberProducts(
             purposes: ["member"],
         });
         if (!session.ok) return session;
-        const promoted = await queryAll(
-            tx,
-            z.object({
-                product_id: ProductId,
-                channel: ChannelId,
-                promoted_at: EpochMs,
-                release_id: z.instanceof(Uint8Array),
-            }),
-            sql`select c.product_id, c.channel, c.promoted_at, s.release_id
+        return await readMemberProducts(tx, {
+            catalog: params.catalog,
+            accountId: session.value.accountId,
+        });
+    });
+}
+
+// What products.list shows the account, for whoever asks on its behalf (the Discord connector's
+// /me answers from here, so it says what the site says).
+export async function readMemberProducts(
+    tx: Tx,
+    params: { readonly catalog: ProductCatalog; readonly accountId: AccountId },
+): Promise<Result<readonly MemberProduct[], DbFailure>> {
+    const promoted = await queryAll(
+        tx,
+        z.object({
+            product_id: ProductId,
+            channel: ChannelId,
+            promoted_at: EpochMs,
+            release_id: z.instanceof(Uint8Array),
+        }),
+        sql`select c.product_id, c.channel, c.promoted_at, s.release_id
                 from current_release c
                 join release_seal s on s.product_id = c.product_id and s.channel = c.channel
                                    and s.number = c.number`,
-        );
-        if (!promoted.ok) return promoted;
+    );
+    if (!promoted.ok) return promoted;
 
-        const products: MemberProduct[] = [];
-        for (const product of params.catalog.values()) {
-            const memberProduct = await readMemberProduct(tx, {
-                accountId: session.value.accountId,
-                product,
-            });
-            if (!memberProduct.ok) return memberProduct;
-            const { access, lifecycle } = memberProduct.value;
-            if (!lifecycle.listed) continue;
-            const channels: MemberProduct["channels"][number][] = [];
-            for (const channel of lifecycle.startRefusal === null ? access.channels : []) {
-                const current = promoted.value.find(
-                    (row) => row.product_id === product.id && row.channel === channel,
-                );
-                if (current === undefined) {
-                    channels.push({ channel, release: null });
-                    continue;
-                }
-                let supported = true;
-                if (product.kind === "module") {
-                    const covered = await readReleaseSupported(tx, {
-                        productId: product.id,
-                        releaseId: current.release_id,
-                    });
-                    if (!covered.ok) return covered;
-                    supported = covered.value;
-                }
-                channels.push({ channel, release: { promotedAt: current.promoted_at, supported } });
+    const products: MemberProduct[] = [];
+    for (const product of params.catalog.values()) {
+        const memberProduct = await readMemberProduct(tx, {
+            accountId: params.accountId,
+            product,
+        });
+        if (!memberProduct.ok) return memberProduct;
+        const { access, lifecycle } = memberProduct.value;
+        if (!lifecycle.listed) continue;
+        const channels: MemberProduct["channels"][number][] = [];
+        for (const channel of lifecycle.startRefusal === null ? access.channels : []) {
+            const current = promoted.value.find(
+                (row) => row.product_id === product.id && row.channel === channel,
+            );
+            if (current === undefined) {
+                channels.push({ channel, release: null });
+                continue;
             }
-            products.push({
-                productId: product.id,
-                name: product.name,
-                kind: product.kind,
-                state: product.state,
-                features: lifecycle.startRefusal === null ? access.features : [],
-                channels,
-            });
+            let supported = true;
+            if (product.kind === "module") {
+                const covered = await readReleaseSupported(tx, {
+                    productId: product.id,
+                    releaseId: current.release_id,
+                });
+                if (!covered.ok) return covered;
+                supported = covered.value;
+            }
+            channels.push({ channel, release: { promotedAt: current.promoted_at, supported } });
         }
-        return ok(products);
-    });
+        products.push({
+            productId: product.id,
+            name: product.name,
+            kind: product.kind,
+            state: product.state,
+            features: lifecycle.startRefusal === null ? access.features : [],
+            channels,
+        });
+    }
+    return ok(products);
 }

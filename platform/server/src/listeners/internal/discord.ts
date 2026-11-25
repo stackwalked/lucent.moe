@@ -10,8 +10,15 @@ import type { Hono } from "hono";
 import type { Logger } from "../../core/log.ts";
 import type { EpochGuard } from "../../db/epoch-guard.ts";
 import type { Db } from "../../db/pool.ts";
+import { readDueDms, settleDm } from "../../discord/dms.ts";
 import { readPendingPosts, recordPost } from "../../discord/feeds.ts";
 import { redeemLinkCode, removeDiscordLinkByUser } from "../../discord/links.ts";
+import {
+    openTicketFromDiscord,
+    readMe,
+    readStatus,
+    readTicketProducts,
+} from "../../discord/member.ts";
 import { listRules } from "../../discord/rules.ts";
 import { readChanges, resolveMembers } from "../../discord/sync.ts";
 import { done, mapOk, served } from "./web-shared.ts";
@@ -49,6 +56,22 @@ export const discordProcedures = implement<DiscordRpcContext, DiscordContract>(d
             await readPendingPosts(ctx.db, { catalog: ctx.catalog, siteOrigin: ctx.siteOrigin }),
         ),
     "feeds.posted": async (ctx, input) => served(done(await recordPost(ctx.db, input))),
+    "me.read": async (ctx, input) =>
+        served(await readMe(ctx.db, { catalog: ctx.catalog, userId: input.userId })),
+    "status.read": async (ctx) => served(await readStatus(ctx.db, ctx.catalog)),
+    "tickets.products": async (ctx, input) =>
+        served(await readTicketProducts(ctx.db, { catalog: ctx.catalog, userId: input.userId })),
+    "tickets.open": async (ctx, input) =>
+        served(
+            await openTicketFromDiscord(ctx.db, {
+                ...input,
+                catalog: ctx.catalog,
+                siteOrigin: ctx.siteOrigin,
+            }),
+        ),
+    "dms.read": async (ctx) =>
+        served(await readDueDms(ctx.db, { catalog: ctx.catalog, siteOrigin: ctx.siteOrigin })),
+    "dms.settled": async (ctx, input) => served(done(await settleDm(ctx.db, input))),
 });
 
 // Its own mount, path and peer key: the connector's key opens nothing on web's path, and nothing

@@ -190,48 +190,62 @@ export function openMemberTicket(
         readonly body: string;
     },
 ) {
-    return withMember(db, token, async (tx, accountId) => {
-        if (params.productId !== null) {
-            const listed = await isListedForMember(
-                tx,
-                { accountId, catalog: params.catalog },
-                params.productId,
-            );
-            if (!listed.ok) return listed;
-            if (!listed.value) return err({ code: "UNKNOWN_PRODUCT" as const });
-        }
-        const counts = await queryOne(
+    return withMember(db, token, (tx, accountId) => openTicketFor(tx, { ...params, accountId }));
+}
+
+// The one way a help ticket is opened, from the site or from Discord's /ticket: the product must
+// be listed for the account, and the same limits hold. The caller has locked the account.
+export async function openTicketFor(
+    tx: Tx,
+    params: {
+        readonly accountId: AccountId;
+        readonly catalog: ProductCatalog;
+        readonly productId: ProductId | null;
+        readonly subject: string;
+        readonly body: string;
+    },
+) {
+    const { accountId } = params;
+    if (params.productId !== null) {
+        const listed = await isListedForMember(
             tx,
-            z.object({ unclosed: z.coerce.number().int(), today: z.coerce.number().int() }),
-            sql`select count(*) filter (where state <> 'closed') as unclosed,
+            { accountId, catalog: params.catalog },
+            params.productId,
+        );
+        if (!listed.ok) return listed;
+        if (!listed.value) return err({ code: "UNKNOWN_PRODUCT" as const });
+    }
+    const counts = await queryOne(
+        tx,
+        z.object({ unclosed: z.coerce.number().int(), today: z.coerce.number().int() }),
+        sql`select count(*) filter (where state <> 'closed') as unclosed,
                        count(*) filter (where opened_at > now() - interval '1 day') as today
                 from ticket where account_id = ${accountId} and kind = 'help'`,
-        );
-        if (!counts.ok) return counts;
-        const allowed = decideOpenTicket({
-            unclosed: counts.value?.unclosed ?? 0,
-            openedToday: counts.value?.today ?? 0,
-        });
-        if (!allowed.ok) return allowed;
-        const created = await queryOne(
-            tx,
-            z.object({ id: z.string(), now: EpochMs }),
-            sql`insert into ticket
+    );
+    if (!counts.ok) return counts;
+    const allowed = decideOpenTicket({
+        unclosed: counts.value?.unclosed ?? 0,
+        openedToday: counts.value?.today ?? 0,
+    });
+    if (!allowed.ok) return allowed;
+    const created = await queryOne(
+        tx,
+        z.object({ id: z.string(), now: EpochMs }),
+        sql`insert into ticket
                     (account_id, kind, product_id, subject, state, opened_at, last_activity_at)
                 values (${accountId}, 'help', ${params.productId}, ${params.subject}, 'open',
                         now(), now())
                 returning id::text as id, opened_at as now`,
-        );
-        if (!created.ok) return created;
-        invariant(created.value !== null, "an insert returns its row");
-        const written = await execute(
-            tx,
-            sql`insert into ticket_message (ticket_id, author_id, from_staff, body, created_at)
+    );
+    if (!created.ok) return created;
+    invariant(created.value !== null, "an insert returns its row");
+    const written = await execute(
+        tx,
+        sql`insert into ticket_message (ticket_id, author_id, from_staff, body, created_at)
                 values (${created.value.id}::uuid, ${accountId}, false, ${params.body}, now())`,
-        );
-        if (!written.ok) return written;
-        return ok({ ticketId: created.value.id });
-    });
+    );
+    if (!written.ok) return written;
+    return ok({ ticketId: created.value.id });
 }
 
 // What the member sees of a message: theirs or staff's, never which staff account wrote it.

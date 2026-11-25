@@ -109,6 +109,13 @@ async function readStatuses(
     return ok(statuses);
 }
 
+// What the public home says of each product it lists: for /status, and the status feed.
+export async function readPublicStatuses(tx: Tx, catalog: ProductCatalog) {
+    const current = await readCurrentReleases(tx);
+    if (!current.ok) return current;
+    return await readStatuses(tx, catalog, current.value);
+}
+
 const PostedRowSchema = z.object({ subject: z.string(), state: z.string() });
 
 export async function readPendingPosts(
