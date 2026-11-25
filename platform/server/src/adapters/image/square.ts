@@ -11,6 +11,35 @@ export type Rgba = {
 
 type Tap = { readonly index: number; readonly weight: number };
 
+// The pixels turned upright from an Exif orientation (1 to 8, as TIFF 6.0 defines the tag): for
+// each displayed pixel, the stored pixel it shows. 5 to 8 swap width and height.
+export function orient(image: Rgba, orientation: number): Rgba {
+    const { width: w, height: h } = image;
+    const source: Readonly<Record<number, (x: number, y: number) => readonly [number, number]>> = {
+        2: (x, y) => [w - 1 - x, y],
+        3: (x, y) => [w - 1 - x, h - 1 - y],
+        4: (x, y) => [x, h - 1 - y],
+        5: (x, y) => [y, x],
+        6: (x, y) => [y, h - 1 - x],
+        7: (x, y) => [w - 1 - y, h - 1 - x],
+        8: (x, y) => [w - 1 - y, x],
+    };
+    const from = source[orientation];
+    if (from === undefined) return image;
+    const swapped = orientation >= 5;
+    const width = swapped ? h : w;
+    const height = swapped ? w : h;
+    const data = new Uint8ClampedArray(width * height * 4);
+    for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+            const [sx, sy] = from(x, y);
+            const at = (sy * w + sx) * 4;
+            data.set(image.data.subarray(at, at + 4), (y * width + x) * 4);
+        }
+    }
+    return { width, height, data };
+}
+
 // For each output index, the source indices under it and how much of each, summing to one.
 function taps(sourceLength: number, outputLength: number): readonly (readonly Tap[])[] {
     const scale = sourceLength / outputLength;

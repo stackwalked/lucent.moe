@@ -12,13 +12,20 @@ export const AVATAR_MAX_SIDE = 4096;
 export const AVATAR_SIDES = [256, 64] as const;
 
 // A refusal's byte is its place in this list plus one.
-const CHILD_REFUSALS = ["TOO_LARGE", "NOT_AN_IMAGE", "UNDECODABLE"] as const;
+// CODEC_FAILED is the child's own fault (a codec that would not load, instantiate or encode good
+// pixels), not the upload's; the child says why on stderr.
+const CHILD_REFUSALS = ["TOO_LARGE", "NOT_AN_IMAGE", "UNDECODABLE", "CODEC_FAILED"] as const;
 
 export type ChildRefusal = (typeof CHILD_REFUSALS)[number];
 
 export type ChildAnswer =
     | { readonly ok: true; readonly large: Uint8Array; readonly small: Uint8Array }
-    | { readonly ok: false; readonly refusal: ChildRefusal };
+    | {
+          readonly ok: false;
+          readonly refusal: ChildRefusal;
+          // Why, for the child's stderr; never part of the frame.
+          readonly detail?: string;
+      };
 
 function u32le(value: number): number[] {
     return [value & 0xff, (value >>> 8) & 0xff, (value >>> 16) & 0xff, (value >>> 24) & 0xff];

@@ -2,7 +2,7 @@ import decodeJpeg, { init as initJpeg } from "@jsquash/jpeg/decode.js";
 import decodePng, { init as initPng } from "@jsquash/png/decode.js";
 import decodeWebp, { init as initWebpDecode } from "@jsquash/webp/decode.js";
 import encodeWebp, { init as initWebpEncode } from "@jsquash/webp/encode.js";
-import { tryAsync } from "@lucent/core/contain";
+import { describeUnknownError, tryAsync, trySync } from "@lucent/core/contain";
 import { err, ok, type Result } from "@lucent/core/result";
 import {
     AVATAR_MAX_BYTES,
@@ -11,9 +11,15 @@ import {
     type ChildAnswer,
     toChildFrame,
 } from "./frame.ts";
-import { firstWebpFrame, readDimensions } from "./header.ts";
+import {
+    firstWebpFrame,
+    type Orientation,
+    readDimensions,
+    readJpegOrientation,
+    webpBitstreamDimensions,
+} from "./header.ts";
 import { type ImageFormat, sniffImage } from "./sniff.ts";
-import { type Rgba, toSquare } from "./square.ts";
+import { orient, type Rgba, toSquare } from "./square.ts";
 import { capWasmMemory } from "./wasm-memory.ts";
 
 // The decoder child's work, from the upload's bytes to its answer frame. Runs only in the child
@@ -33,38 +39,115 @@ export const WASM_FILES = {
     encoder: "@jsquash/webp/codec/enc/webp_enc_simd.wasm",
 } as const;
 
-async function cappedModule(file: string): Promise<WebAssembly.Module> {
-    const bytes = await Bun.file(Bun.fileURLToPath(import.meta.resolve(file))).bytes();
-    const capped = capWasmMemory(bytes, WASM_MEMORY_MAX_BYTES);
-    if (!capped.ok) return Promise.reject(new Error(`${file}: ${capped.error.detail}`));
-    return new WebAssembly.Module(capped.value);
+export type WasmFiles = { readonly [K in keyof typeof WASM_FILES]: string };
+
+// A codec that would not load: the server's fault, said on stderr, never the member's.
+type CodecFailure = string;
+
+async function cappedModule(file: string): Promise<Result<WebAssembly.Module, CodecFailure>> {
+    const bytes = await tryAsync(
+        () => Bun.file(Bun.fileURLToPath(import.meta.resolve(file))).bytes(),
+        (cause) => `${file}: ${describeUnknownError(cause)}`,
+    );
+    if (!bytes.ok) return bytes;
+    const capped = capWasmMemory(bytes.value, WASM_MEMORY_MAX_BYTES);
+    if (!capped.ok) return err(`${file}: ${capped.error.detail}`);
+    return trySync(
+        () => new WebAssembly.Module(capped.value),
+        (cause) => `${file}: ${describeUnknownError(cause)}`,
+    );
 }
 
 type WasmImports = ConstructorParameters<typeof WebAssembly.Instance>[1];
 
-// Emscripten's hook for bringing your own instance: ours is built from the capped module.
-export function instantiateFrom(module: WebAssembly.Module) {
+function memoryOf(exports: object): WebAssembly.Memory | null {
+    return Object.values(exports).find((value) => value instanceof WebAssembly.Memory) ?? null;
+}
+
+// Emscripten's hook for bringing your own instance, built from the capped module. Emscripten
+// instantiates on its own schedule and turns a failure into a rejected decode, so the hook also
+// records whether an instance ever came to be (a decode that failed without one is the codec's
+// fault, not the upload's) and which memory it runs on (what a test checks the cap against).
+export function createInstantiation(module: WebAssembly.Module) {
+    let memory: WebAssembly.Memory | null = null;
+    let instantiated = false;
     return {
-        instantiateWasm: (imports: WasmImports, done: (instance: WebAssembly.Instance) => void) => {
-            const instance = new WebAssembly.Instance(module, imports);
-            done(instance);
-            return instance.exports;
+        options: {
+            instantiateWasm: (
+                imports: WasmImports,
+                done: (instance: WebAssembly.Instance) => void,
+            ) => {
+                const instance = new WebAssembly.Instance(module, imports);
+                instantiated = true;
+                memory = memoryOf(instance.exports);
+                done(instance);
+                return instance.exports;
+            },
         },
+        memory: () => memory,
+        instantiated: () => instantiated,
     };
 }
 
-async function decoderFor(format: ImageFormat): Promise<(bytes: Uint8Array) => Promise<unknown>> {
-    const module = await cappedModule(WASM_FILES[format]);
+export type OpenCodec<Run> = {
+    readonly run: Run;
+    readonly memory: () => WebAssembly.Memory | null;
+    readonly instantiated: () => boolean;
+};
+
+// The decoder for one format, instantiated from its capped module.
+export async function openDecoder(
+    format: ImageFormat,
+    files: WasmFiles = WASM_FILES,
+): Promise<Result<OpenCodec<(bytes: Uint8Array) => Promise<unknown>>, CodecFailure>> {
+    const module = await cappedModule(files[format]);
+    if (!module.ok) return module;
+    const failed = (cause: unknown) => `${files[format]}: ${describeUnknownError(cause)}`;
     if (format === "png") {
-        await initPng(module);
-        return (bytes) => decodePng(bytes.slice().buffer);
+        // wasm-bindgen instantiates inside init, so a broken module fails here.
+        const png = await tryAsync(() => initPng(module.value), failed);
+        if (!png.ok) return png;
+        const memory = png.value.memory;
+        return ok({
+            run: (bytes) => decodePng(bytes.slice().buffer),
+            memory: () => memory,
+            instantiated: () => true,
+        });
     }
-    if (format === "jpeg") {
-        await initJpeg(instantiateFrom(module));
-        return (bytes) => decodeJpeg(bytes.slice().buffer);
-    }
-    await initWebpDecode(instantiateFrom(module));
-    return (bytes) => decodeWebp(bytes.slice().buffer);
+    const instantiation = createInstantiation(module.value);
+    const opened = await tryAsync(async () => {
+        if (format === "jpeg") {
+            await initJpeg(instantiation.options);
+            return (bytes: Uint8Array) => decodeJpeg(bytes.slice().buffer);
+        }
+        await initWebpDecode(instantiation.options);
+        return (bytes: Uint8Array) => decodeWebp(bytes.slice().buffer);
+    }, failed);
+    if (!opened.ok) return opened;
+    return ok({
+        run: opened.value,
+        memory: instantiation.memory,
+        instantiated: instantiation.instantiated,
+    });
+}
+
+// The WebP encoder, whose init waits for its instance, so a broken module fails here.
+export async function openEncoder(
+    files: WasmFiles = WASM_FILES,
+): Promise<Result<OpenCodec<(image: Rgba) => Promise<ArrayBuffer>>, CodecFailure>> {
+    const module = await cappedModule(files.encoder);
+    if (!module.ok) return module;
+    const instantiation = createInstantiation(module.value);
+    const opened = await tryAsync(
+        () => initWebpEncode(instantiation.options),
+        (cause) => `${files.encoder}: ${describeUnknownError(cause)}`,
+    );
+    if (!opened.ok) return opened;
+    return ok({
+        run: (image: Rgba) => encodeWebp(image, { quality: WEBP_QUALITY }),
+        memory: instantiation.memory,
+        instantiated: instantiation.instantiated,
+    });
 }
 
 // What came back from a codec, held to the size its header declared (or less, for the first
@@ -81,16 +164,14 @@ function asRgba(value: unknown, limit: { readonly width: number; readonly height
     return image;
 }
 
-async function encode(image: Rgba): Promise<Result<Uint8Array, "UNDECODABLE">> {
-    const encoded = await tryAsync(
-        () => encodeWebp(image, { quality: WEBP_QUALITY }),
-        () => null,
-    );
-    if (!encoded.ok) return err("UNDECODABLE");
-    return ok(new Uint8Array(encoded.value));
+function codecFailed(detail: string): ChildAnswer {
+    return { ok: false, refusal: "CODEC_FAILED", detail };
 }
 
-export async function transcodeUpload(bytes: Uint8Array): Promise<ChildAnswer> {
+export async function transcodeUpload(
+    bytes: Uint8Array,
+    files: WasmFiles = WASM_FILES,
+): Promise<ChildAnswer> {
     if (bytes.length > AVATAR_MAX_BYTES) return { ok: false, refusal: "TOO_LARGE" };
     const format = sniffImage(bytes);
     if (format === null) return { ok: false, refusal: "NOT_AN_IMAGE" };
@@ -102,29 +183,50 @@ export async function transcodeUpload(bytes: Uint8Array): Promise<ChildAnswer> {
     }
     const still = format === "webp" ? firstWebpFrame(bytes) : ok(bytes);
     if (!still.ok) return { ok: false, refusal: "UNDECODABLE" };
+    // What the WebP decoder will actually allocate for: the bitstream's own size, which an
+    // animation frame (or a lying VP8X) may set apart from the canvas checked above.
+    if (format === "webp") {
+        const frame = webpBitstreamDimensions(still.value);
+        if (!frame.ok) return { ok: false, refusal: "UNDECODABLE" };
+        if (frame.value.width > width || frame.value.height > height) {
+            return { ok: false, refusal: "TOO_LARGE" };
+        }
+    }
+    const orientation: Orientation = format === "jpeg" ? readJpegOrientation(bytes) : 1;
 
+    const decoder = await openDecoder(format, files);
+    if (!decoder.ok) return codecFailed(decoder.error);
     const decoded = await tryAsync(
-        async () => (await decoderFor(format))(still.value),
-        () => null,
+        () => decoder.value.run(still.value),
+        (cause) => describeUnknownError(cause),
     );
+    if (!decoded.ok && !decoder.value.instantiated()) {
+        return codecFailed(`${files[format]}: not instantiated: ${decoded.error}`);
+    }
     const image = decoded.ok ? asRgba(decoded.value, declared.value) : null;
     if (image === null) return { ok: false, refusal: "UNDECODABLE" };
 
-    const encoder = await tryAsync(
-        async () => initWebpEncode(instantiateFrom(await cappedModule(WASM_FILES.encoder))),
-        () => null,
-    );
-    if (!encoder.ok) return { ok: false, refusal: "UNDECODABLE" };
+    const encoder = await openEncoder(files);
+    if (!encoder.ok) return codecFailed(encoder.error);
     const [largeSide, smallSide] = AVATAR_SIDES;
-    const largeSquare = toSquare(image, largeSide);
+    const largeSquare = toSquare(orient(image, orientation), largeSide);
+    const encode = (square: Rgba) =>
+        tryAsync(
+            async () => new Uint8Array(await encoder.value.run(square)),
+            (cause) => `encoding: ${describeUnknownError(cause)}`,
+        );
     const large = await encode(largeSquare);
+    if (!large.ok) return codecFailed(large.error);
     const small = await encode(toSquare(largeSquare, smallSide));
-    if (!large.ok || !small.ok) return { ok: false, refusal: "UNDECODABLE" };
+    if (!small.ok) return codecFailed(small.error);
     return { ok: true, large: large.value, small: small.value };
 }
 
-export async function runAvatarChild(): Promise<void> {
+export async function runAvatarChild(files: WasmFiles = WASM_FILES): Promise<void> {
     const input = await Bun.stdin.bytes();
-    const answer = await transcodeUpload(input);
+    const answer = await transcodeUpload(input, files);
+    if (!answer.ok && answer.detail !== undefined) {
+        await Bun.write(Bun.stderr, `${answer.detail}\n`);
+    }
     await Bun.write(Bun.stdout, toChildFrame(answer));
 }

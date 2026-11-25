@@ -124,6 +124,75 @@ function webpDimensions(b: Uint8Array): Result<Dimensions, HeaderFailure> {
     return sized(u24le(b, first.start + 4) + 1, u24le(b, first.start + 7) + 1);
 }
 
+// The size the bitstream itself declares in a still WebP (what firstWebpFrame makes, or an upload
+// that was never animated): its top-level VP8 or VP8L chunk, whatever a VP8X before it claims.
+// libwebp decodes to this size, so it is the one bounded before decoding.
+export function webpBitstreamDimensions(b: Uint8Array): Result<Dimensions, HeaderFailure> {
+    const found = riffChunks(b);
+    if (!found.ok) return found;
+    const bitstream = found.value.find((chunk) => chunk.id === "VP8 " || chunk.id === "VP8L");
+    if (bitstream === undefined) return err("UNDECODABLE");
+    return bitstreamDimensions(b, bitstream);
+}
+
+const ORIENTATIONS = [1, 2, 3, 4, 5, 6, 7, 8] as const;
+export type Orientation = (typeof ORIENTATIONS)[number];
+
+// Searched at most this far: an Exif APP1 sits right after SOI in every camera's file.
+const ORIENTATION_MAX_SEGMENTS = 32;
+const ORIENTATION_MAX_ENTRIES = 256;
+const ORIENTATION_TAG = 0x0112;
+const TIFF_SHORT = 3;
+
+// IFD0's Orientation in a TIFF header (TIFF 6.0 section 2, Exif 2.32 4.6.4 A): 1 to 8, else 1.
+function tiffOrientation(t: Uint8Array): Orientation {
+    if (t.length < 8) return 1;
+    const little = t[0] === 0x49 && t[1] === 0x49;
+    const big = t[0] === 0x4d && t[1] === 0x4d;
+    if (!little && !big) return 1;
+    const u16 = (at: number) => (little ? u16le(t, at) : u16be(t, at));
+    const u32 = (at: number) => (little ? u32le(t, at) : u32be(t, at));
+    if (u16(2) !== 42) return 1;
+    const ifd = u32(4);
+    if (ifd + 2 > t.length) return 1;
+    const count = Math.min(u16(ifd), ORIENTATION_MAX_ENTRIES);
+    for (let i = 0; i < count; i++) {
+        const entry = ifd + 2 + i * 12;
+        if (entry + 12 > t.length) return 1;
+        if (u16(entry) !== ORIENTATION_TAG) continue;
+        if (u16(entry + 2) !== TIFF_SHORT || u32(entry + 4) !== 1) return 1;
+        const value = u16(entry + 8);
+        return ORIENTATIONS.find((o) => o === value) ?? 1;
+    }
+    return 1;
+}
+
+// How a JPEG asks to be turned for display, from the Orientation tag of its Exif APP1 segment.
+// Only ever turns the picture: missing, malformed or out-of-range Exif is 1 (as stored), never a
+// refusal. The tag is read here and applied to the pixels; the Exif itself is never kept.
+export function readJpegOrientation(b: Uint8Array): Orientation {
+    let at = 2;
+    for (let seen = 0; seen < ORIENTATION_MAX_SEGMENTS && at + 4 <= b.length; seen++) {
+        if (b[at] !== 0xff) return 1;
+        const marker = b[at + 1] ?? 0;
+        if (marker === 0xd9 || marker === 0xda || isStartOfFrame(marker)) return 1;
+        const length = u16be(b, at + 2);
+        if (length < 2) return 1;
+        const start = at + 4;
+        const end = Math.min(at + 2 + length, b.length);
+        if (
+            marker === 0xe1 &&
+            fourcc(b, start) === "Exif" &&
+            b[start + 4] === 0 &&
+            b[start + 5] === 0
+        ) {
+            return tiffOrientation(b.subarray(start + 6, end));
+        }
+        at += 2 + length;
+    }
+    return 1;
+}
+
 export function readDimensions(
     format: ImageFormat,
     bytes: Uint8Array,

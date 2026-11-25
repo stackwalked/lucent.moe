@@ -1,27 +1,24 @@
 import { beforeAll, describe, expect, test } from "bun:test";
-import decodeWebp, { init as initWebpDecode } from "@jsquash/webp/decode.js";
 import { invariant } from "@lucent/core/contain";
-import { transcodeAvatar } from "../src/adapters/image/image.ts";
+import { createDecoderSlots, transcodeAvatar } from "../src/adapters/image/image.ts";
 import {
-    instantiateFrom,
-    WASM_FILES,
+    openDecoder,
+    openEncoder,
     WASM_MEMORY_MAX_BYTES,
 } from "../src/adapters/image/transcode.ts";
 import { capWasmMemory } from "../src/adapters/image/wasm-memory.ts";
 
 // Fixtures in tests/fixtures/image were written once with the pinned codecs' own encoders, then
 // edited by hand: metadata chunks spliced in (each holding a LUCENT-SECRET marker), a header's
-// dimensions patched (too-wide.jpg, bomb.png), a tail cut off (truncated.png).
+// dimensions patched (too-wide.jpg, bomb.png, frame-too-large.webp), a tail cut off
+// (truncated.png), an Exif Orientation of 6 spliced into orientation-6.jpg.
 
 const FIXTURES = new URL("./fixtures/image/", import.meta.url);
+const NEVER_ANSWERS = Bun.fileURLToPath(new URL("never-answers.ts", FIXTURES));
 const PAGE = 64 * 1024;
 
 function fixture(name: string): Promise<Uint8Array> {
     return Bun.file(Bun.fileURLToPath(new URL(name, FIXTURES))).bytes();
-}
-
-function wasmBytes(file: string): Promise<Uint8Array> {
-    return Bun.file(Bun.fileURLToPath(import.meta.resolve(file))).bytes();
 }
 
 function contains(haystack: Uint8Array, needle: string): boolean {
@@ -40,15 +37,32 @@ function chunkIds(webp: Uint8Array): string[] {
     return ids;
 }
 
+// Outputs are read back with the child's own (capped) WebP decoder, in this process.
+let decodeWebp: (bytes: Uint8Array) => Promise<unknown> = () => Promise.resolve(null);
+
 async function decoded(webp: Uint8Array) {
-    const image = await decodeWebp(webp.slice().buffer);
+    const image = await decodeWebp(webp);
+    invariant(typeof image === "object" && image !== null, "decoded");
+    invariant("width" in image && "height" in image && "data" in image, "image data");
     const { width, height, data } = image;
+    invariant(typeof width === "number" && typeof height === "number", "sized");
     invariant(data instanceof Uint8ClampedArray, "rgba");
     return { width, height, data };
 }
 
+function pixel(
+    image: { readonly width: number; readonly data: Uint8ClampedArray },
+    x: number,
+    y: number,
+) {
+    const at = (y * image.width + x) * 4;
+    return [...image.data.subarray(at, at + 3)];
+}
+
 beforeAll(async () => {
-    await initWebpDecode(instantiateFrom(new WebAssembly.Module(await wasmBytes(WASM_FILES.webp))));
+    const webp = await openDecoder("webp");
+    invariant(webp.ok, "the WebP decoder opens");
+    decodeWebp = webp.value.run;
 });
 
 describe("an avatar upload", () => {
@@ -131,7 +145,7 @@ describe("an avatar upload", () => {
     test("whose decoder never answers is killed at the deadline", async () => {
         const startedAt = performance.now();
         const result = await transcodeAvatar(await fixture("metadata.png"), {
-            entry: Bun.fileURLToPath(new URL("never-answers.ts", FIXTURES)),
+            entry: NEVER_ANSWERS,
             deadlineMs: 1_000,
         });
         const elapsed = performance.now() - startedAt;
@@ -139,29 +153,103 @@ describe("an avatar upload", () => {
         expect(elapsed).toBeGreaterThanOrEqual(1_000);
         expect(elapsed).toBeLessThan(3_000);
     });
+
+    test("whose animation frame claims more than its canvas is refused before decoding", async () => {
+        expect(await transcodeAvatar(await fixture("frame-too-large.webp"))).toEqual({
+            ok: false,
+            error: { code: "IMAGE_TOO_LARGE" },
+        });
+    });
+
+    // Stored 64 x 32 with red at the top left; turned clockwise it shows red at the top right.
+    test("a JPEG is turned upright by its Exif orientation before it is cropped", async () => {
+        const result = await transcodeAvatar(await fixture("orientation-6.jpg"));
+        invariant(result.ok, `transcoded: ${JSON.stringify(result)}`);
+        const image = await decoded(result.value.small);
+        const [r, , b] = pixel(image, 56, 4);
+        expect(r).toBeGreaterThan(200);
+        expect(b).toBeLessThan(60);
+        const [r2, , b2] = pixel(image, 8, 4);
+        expect(r2).toBeLessThan(60);
+        expect(b2).toBeGreaterThan(200);
+        expect(contains(result.value.large, "Exif")).toBe(false);
+    });
+
+    test("whose codec won't load is the server's failure, with what the child said", async () => {
+        const result = await transcodeAvatar(await fixture("metadata.png"), {
+            entry: Bun.fileURLToPath(new URL("broken-codec-child.ts", FIXTURES)),
+        });
+        invariant(!result.ok && result.error.code === "IMAGE_CODEC_FAILED", JSON.stringify(result));
+        expect(result.error.detail).toContain("not wasm");
+    });
+});
+
+describe("the decoder slots", () => {
+    test("a third upload waits for a slot, so no more than two children ever run", async () => {
+        const slots = createDecoderSlots({ limit: 2, waitMs: 2_000 });
+        const png = await fixture("metadata.png");
+        const startedAt = performance.now();
+        const finished = await Promise.all(
+            [0, 1, 2].map(async () => {
+                const result = await transcodeAvatar(png, {
+                    entry: NEVER_ANSWERS,
+                    deadlineMs: 700,
+                    slots,
+                });
+                return { result, at: performance.now() - startedAt };
+            }),
+        );
+        expect(finished.map((f) => f.result)).toEqual(
+            [0, 1, 2].map(() => ({ ok: false, error: { code: "IMAGE_TIMED_OUT" } })),
+        );
+        const [first, second, third] = finished.map((f) => f.at).sort((a, b) => a - b);
+        invariant(first !== undefined && second !== undefined && third !== undefined, "three");
+        // Two ran side by side; the third began only once one of them was killed.
+        expect(second).toBeLessThan(first + 500);
+        expect(third).toBeGreaterThanOrEqual(first + 650);
+    }, 10_000);
+
+    test("a caller still waiting when the wait ends is refused without a child", async () => {
+        const slots = createDecoderSlots({ limit: 2, waitMs: 200 });
+        const png = await fixture("metadata.png");
+        const holding = [0, 1].map(() =>
+            transcodeAvatar(png, { entry: NEVER_ANSWERS, deadlineMs: 1_500, slots }),
+        );
+        const startedAt = performance.now();
+        // A child here would fail to start its missing script and answer otherwise.
+        const refused = await transcodeAvatar(png, { entry: "no-such-child.ts", slots });
+        expect(refused).toEqual({ ok: false, error: { code: "IMAGE_BUSY" } });
+        expect(performance.now() - startedAt).toBeLessThan(1_000);
+        await Promise.all(holding);
+    }, 10_000);
 });
 
 describe("the codecs' WebAssembly", () => {
-    test.each(Object.values(WASM_FILES))(
-        "%s cannot grow its memory past 640 MiB once capped",
-        async (file) => {
-            const capped = capWasmMemory(await wasmBytes(file), WASM_MEMORY_MAX_BYTES);
-            invariant(capped.ok, `capped: ${JSON.stringify(capped)}`);
-            const module = new WebAssembly.Module(capped.value);
-            const imports: Record<string, Record<string, () => number>> = {};
-            for (const entry of WebAssembly.Module.imports(module)) {
-                invariant(entry.kind === "function", `only functions are imported: ${entry.name}`);
-                imports[entry.module] = { ...imports[entry.module], [entry.name]: () => 0 };
-            }
-            const instance = new WebAssembly.Instance(module, imports);
-            const memory = Object.values(instance.exports).find(
-                (value) => value instanceof WebAssembly.Memory,
-            );
-            invariant(memory instanceof WebAssembly.Memory, "the module exports its memory");
-            const pages = memory.buffer.byteLength / PAGE;
-            expect(() => memory.grow(WASM_MEMORY_MAX_BYTES / PAGE - pages + 1)).toThrow();
-        },
-    );
+    // The memory each codec actually runs on, opened the way the child opens it: growing it past
+    // the cap fails, which an uncapped build (2 GiB, or none for PNG) would allow.
+    test.each([
+        ["jpeg", "metadata.jpg"],
+        ["png", "metadata.png"],
+        ["webp", "metadata.webp"],
+    ] as const)("the %s decoder runs on memory capped at 640 MiB", async (format, name) => {
+        const decoder = await openDecoder(format);
+        invariant(decoder.ok, `opened: ${JSON.stringify(decoder)}`);
+        await decoder.value.run(await fixture(name));
+        const memory = decoder.value.memory();
+        invariant(memory !== null, "the codec's instance has a memory");
+        const pages = memory.buffer.byteLength / PAGE;
+        expect(() => memory.grow(WASM_MEMORY_MAX_BYTES / PAGE - pages + 1)).toThrow();
+    });
+
+    test("the WebP encoder runs on memory capped at 640 MiB", async () => {
+        const encoder = await openEncoder();
+        invariant(encoder.ok, `opened: ${JSON.stringify(encoder)}`);
+        await encoder.value.run({ width: 1, height: 1, data: new Uint8ClampedArray(4) });
+        const memory = encoder.value.memory();
+        invariant(memory !== null, "the codec's instance has a memory");
+        const pages = memory.buffer.byteLength / PAGE;
+        expect(() => memory.grow(WASM_MEMORY_MAX_BYTES / PAGE - pages + 1)).toThrow();
+    });
 
     test("a module that imports its memory is refused rather than run uncapped", () => {
         // (module (import "env" "memory" (memory 1)))
