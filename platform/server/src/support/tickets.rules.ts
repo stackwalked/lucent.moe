@@ -90,10 +90,14 @@ export function decideTicket(params: {
 // Enough tickets waiting at once that one more is noise for whoever answers them.
 export const UNCLOSED_TICKETS_PER_ACCOUNT = 10;
 
+// Opening and closing in a loop would otherwise never meet the limit above.
+export const TICKETS_PER_DAY = 20;
+
 export function decideOpenTicket(params: {
     readonly unclosed: number;
+    readonly openedToday: number;
 }): Result<void, { readonly code: "TICKET_LIMIT" }> {
-    return params.unclosed >= UNCLOSED_TICKETS_PER_ACCOUNT
+    return params.unclosed >= UNCLOSED_TICKETS_PER_ACCOUNT || params.openedToday >= TICKETS_PER_DAY
         ? err({ code: "TICKET_LIMIT" })
         : ok(undefined);
 }

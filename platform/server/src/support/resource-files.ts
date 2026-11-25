@@ -8,6 +8,9 @@ import type { CryptoRng } from "@lucent/core/rng";
 // publish-loader names the loader's. An upload streams to a temporary name while it is hashed
 // and counted, and takes its digest's name only once whole: a file under a digest is always
 // complete, and the same bytes uploaded twice are one file.
+//
+// Loader and module builds sit in the same directory under their digests. What makes a digest
+// a resource is its resource_upload row, never the file being there.
 
 export const RESOURCE_MAX_BYTES = 64 * 1024 * 1024;
 
@@ -25,17 +28,15 @@ export async function storeResourceFile(params: {
     readonly body: ReadableStream<Uint8Array>;
     readonly rng: CryptoRng;
 }): Promise<Result<StoredFile, StoreRefusal>> {
-    const temporary = join(
-        params.artifactDir,
-        `.upload-${params.rng.fillBytes(new Uint8Array(16)).toHex()}`,
-    );
+    const dir = params.artifactDir;
+    const temporary = join(dir, `.upload-${params.rng.fillBytes(new Uint8Array(16)).toHex()}`);
     const failed = (cause: unknown): StoreRefusal => ({
         code: "STORAGE_FAILED",
         detail: describeUnknownError(cause),
     });
     const reader = params.body.getReader();
-    const written = await tryAsync(async () => {
-        const sink = Bun.file(temporary).writer();
+    const sink = Bun.file(temporary).writer();
+    const streamed = await tryAsync(async () => {
         const hasher = new Bun.CryptoHasher("blake2b256");
         let size = 0;
         for (;;) {
@@ -44,25 +45,25 @@ export async function storeResourceFile(params: {
             size += step.value.byteLength;
             if (size > RESOURCE_MAX_BYTES) {
                 await reader.cancel();
-                await sink.end();
                 return null;
             }
             hasher.update(step.value);
             sink.write(step.value);
         }
-        await sink.end();
         return { digest: hasher.digest("hex"), size };
     }, failed);
+    // The sink is closed however the stream ended, so a broken upload holds no handle.
+    const closed = await tryAsync(async () => {
+        await sink.end();
+    }, failed);
+    const written = streamed.ok && !closed.ok ? closed : streamed;
     const kept = written.ok ? written.value : null;
     if (kept === null || kept.size === 0) {
         await ignoreErrors(() => rm(temporary, { force: true }));
         if (!written.ok) return written;
         return err(kept === null ? { code: "PAYLOAD_TOO_LARGE" } : { code: "EMPTY_FILE" });
     }
-    const named = await tryAsync(
-        () => rename(temporary, join(params.artifactDir, kept.digest)),
-        failed,
-    );
+    const named = await tryAsync(() => rename(temporary, join(dir, kept.digest)), failed);
     if (!named.ok) {
         await ignoreErrors(() => rm(temporary, { force: true }));
         return named;

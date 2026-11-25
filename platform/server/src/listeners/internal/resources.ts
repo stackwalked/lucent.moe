@@ -14,7 +14,11 @@ import {
     RESOURCE_MAX_BYTES,
     storeResourceFile,
 } from "../../support/resource-files.ts";
-import { authorizeResourceUpload, readMemberResource } from "../../support/resources.ts";
+import {
+    authorizeResourceUpload,
+    readMemberResource,
+    recordResourceUpload,
+} from "../../support/resources.ts";
 
 type Status = 400 | 401 | 403 | 404 | 413 | 503;
 
@@ -106,6 +110,11 @@ export function mountResourceFiles(
             });
             return refusal({ code: "SERVICE_UNAVAILABLE" }, 503);
         }
+        const recorded = await recordResourceUpload(deps.auth.db, {
+            caller: caller.value,
+            ...stored.value,
+        });
+        if (!recorded.ok) return refusal({ code: "SERVICE_UNAVAILABLE" }, 503);
         return reply(ok(stored.value), 200);
     });
 

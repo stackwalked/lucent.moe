@@ -8,6 +8,7 @@ import {
     decideOpenTicket,
     decideTicket,
     MESSAGES_PER_TICKET,
+    TICKETS_PER_DAY,
     type TicketEvent,
     type TicketState,
     UNCLOSED_TICKETS_PER_ACCOUNT,
@@ -101,10 +102,19 @@ describe("decideTicket", () => {
 
 describe("decideOpenTicket", () => {
     test("a member opens tickets until too many are unclosed", () => {
-        expect(decideOpenTicket({ unclosed: UNCLOSED_TICKETS_PER_ACCOUNT - 1 })).toEqual(
+        expect(
+            decideOpenTicket({ unclosed: UNCLOSED_TICKETS_PER_ACCOUNT - 1, openedToday: 0 }),
+        ).toEqual(ok(undefined));
+        expect(
+            decideOpenTicket({ unclosed: UNCLOSED_TICKETS_PER_ACCOUNT, openedToday: 0 }),
+        ).toEqual(err({ code: "TICKET_LIMIT" }));
+    });
+
+    test("opening and closing in a loop meets the daily limit", () => {
+        expect(decideOpenTicket({ unclosed: 0, openedToday: TICKETS_PER_DAY - 1 })).toEqual(
             ok(undefined),
         );
-        expect(decideOpenTicket({ unclosed: UNCLOSED_TICKETS_PER_ACCOUNT })).toEqual(
+        expect(decideOpenTicket({ unclosed: 0, openedToday: TICKETS_PER_DAY })).toEqual(
             err({ code: "TICKET_LIMIT" }),
         );
     });

@@ -135,6 +135,23 @@ test("a resource uploads, lists for members entitled to its product and no one e
         // Only the whole file is left, under its digest.
         expect(await readdir(dir)).toEqual([digest]);
 
+        // A build published beside the resources is not a file staff can hand to members.
+        const build = "c".repeat(64);
+        await Bun.write(join(dir, build), new Uint8Array(8));
+        expect(
+            await client.call(
+                "admin.resources.publish",
+                {
+                    digest: build,
+                    productId: null,
+                    title: "loader",
+                    description: "",
+                    fileName: "loader.exe",
+                },
+                { session: staff.token },
+            ),
+        ).toEqual(err({ code: "NOT_FOUND" }));
+
         const published = await client.call(
             "admin.resources.publish",
             {

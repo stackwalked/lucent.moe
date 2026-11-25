@@ -295,7 +295,7 @@ function answer(outcome: Outcome<{ readonly digest: string; readonly size: numbe
 export async function uploadResource(request: Request): Promise<Response> {
     const web = currentRequest();
     const session = readSessionToken();
-    if (session === null) return answer(refuse({ code: "SESSION_INVALID" }));
+    if (session === null) return new Response(null, { status: 404 });
     const length = Number(request.headers.get("content-length") ?? "");
     if (!Number.isSafeInteger(length) || length <= 0 || request.body === null) {
         return answer(refuse({ code: "INVALID_REQUEST" }));
@@ -339,6 +339,9 @@ export async function uploadResource(request: Request): Promise<Response> {
         }
     }
     const code = "error" in body ? codeOf(body.error) : null;
+    // This route sits outside the admin layout, which answers a plain 404 to whoever is not
+    // staff so that nothing confirms an admin area; it answers the same.
+    if (code === "FORBIDDEN") return new Response(null, { status: 404 });
     if (code === "SESSION_INVALID") clearSessionToken();
     return answer(refuse({ code: isUploadRefusal(code) ? code : "SERVICE_UNAVAILABLE" }));
 }

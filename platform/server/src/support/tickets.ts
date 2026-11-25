@@ -50,13 +50,21 @@ const GatheredRow = z.object({
 });
 
 // The ticket row locked for a writer, after the writer's own account (canonical order).
+// The messages are counted in a statement of their own: counted with the lock, they would be
+// seen as of before the wait for it, and two writers could both pass the cap.
 export async function lockTicket(tx: Tx, ticketId: string) {
+    const locked = await queryOne(
+        tx,
+        z.object({ id: z.string() }),
+        sql`select id::text as id from ticket where id = ${ticketId}::uuid for update`,
+    );
+    if (!locked.ok || locked.value === null) return locked.ok ? ok(null) : locked;
     return await queryOne(
         tx,
         GatheredRow,
         sql`select t.account_id, t.state, t.kind,
                    (select count(*) from ticket_message m where m.ticket_id = t.id) as messages
-            from ticket t where t.id = ${ticketId}::uuid for update`,
+            from ticket t where t.id = ${ticketId}::uuid`,
     );
 }
 
@@ -192,14 +200,18 @@ export function openMemberTicket(
             if (!listed.ok) return listed;
             if (!listed.value) return err({ code: "UNKNOWN_PRODUCT" as const });
         }
-        const unclosed = await queryOne(
+        const counts = await queryOne(
             tx,
-            z.object({ count: z.coerce.number().int() }),
-            sql`select count(*) as count from ticket
-                where account_id = ${accountId} and kind = 'help' and state <> 'closed'`,
+            z.object({ unclosed: z.coerce.number().int(), today: z.coerce.number().int() }),
+            sql`select count(*) filter (where state <> 'closed') as unclosed,
+                       count(*) filter (where opened_at > now() - interval '1 day') as today
+                from ticket where account_id = ${accountId} and kind = 'help'`,
         );
-        if (!unclosed.ok) return unclosed;
-        const allowed = decideOpenTicket({ unclosed: unclosed.value?.count ?? 0 });
+        if (!counts.ok) return counts;
+        const allowed = decideOpenTicket({
+            unclosed: counts.value?.unclosed ?? 0,
+            openedToday: counts.value?.today ?? 0,
+        });
         if (!allowed.ok) return allowed;
         const created = await queryOne(
             tx,
@@ -292,6 +304,19 @@ function actAsMember(
             return ok(undefined);
         }
         if (!plan.value.changed) return ok(undefined);
+        if (plan.value.reopened) {
+            // Consent was given for the conversation that closed; a reopened ticket asks again.
+            const lapsed = await execute(
+                tx,
+                sql`insert into ticket_consent (ticket_id, account_id, scope, granted, at)
+                    select ${params.ticketId}::uuid, ${accountId}, 'config', false,
+                           ${toTimestamptz(txNow.value)}::timestamptz
+                    where (select granted from ticket_consent
+                           where ticket_id = ${params.ticketId}::uuid and scope = 'config'
+                           order by id desc limit 1)`,
+            );
+            if (!lapsed.ok) return lapsed;
+        }
         return await applyTicketEvent(tx, {
             ticketId: params.ticketId,
             authorId: accountId,
@@ -374,16 +399,18 @@ export function listStaffTickets(
 ) {
     const oldestFirst = params.state === "open";
     return readAsStaff(db, { caller: params.caller, actions: [TICKET_ACTION] }, async (q) => {
+        // The cursor ticket is found whatever its state is now: staff answering the last ticket
+        // of a page must not end the list.
         const after =
             params.cursor === null
                 ? sql``
                 : oldestFirst
                   ? sql`and (t.last_activity_at, t.id) > (
                         select c.last_activity_at, c.id from ticket c
-                        where c.id = ${params.cursor}::uuid and c.state = ${params.state})`
+                        where c.id = ${params.cursor}::uuid)`
                   : sql`and (t.last_activity_at, t.id) < (
                         select c.last_activity_at, c.id from ticket c
-                        where c.id = ${params.cursor}::uuid and c.state = ${params.state})`;
+                        where c.id = ${params.cursor}::uuid)`;
         const rows = await queryAll(
             q,
             StaffSummary,

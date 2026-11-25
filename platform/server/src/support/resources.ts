@@ -7,7 +7,7 @@ import { z } from "zod";
 import { readEffectiveProductAccess } from "../authority/entitlements.ts";
 import { type Forbidden, lockAuthorized, readAsStaff } from "../authority/staff.ts";
 import { appendAudit } from "../db/audit.ts";
-import { type Db, type DbFailure, queryAll, queryOne, sql, type Tx } from "../db/pool.ts";
+import { type Db, type DbFailure, execute, queryAll, queryOne, sql, type Tx } from "../db/pool.ts";
 import { withTx } from "../db/tx.ts";
 import { withMember } from "../notify/account.ts";
 import { findResourceFile } from "./resource-files.ts";
@@ -71,7 +71,8 @@ export function listMemberResources(
         const rows = await queryAll(
             tx,
             ResourceRow,
-            sql`select ${COLUMNS} from resource r order by r.published_at desc, r.id desc`,
+            sql`select ${COLUMNS} from resource r order by r.published_at desc, r.id desc
+                limit ${STAFF_LIMIT}`,
         );
         if (!rows.ok) return rows;
         const visible = await visibleTo(
@@ -143,6 +144,20 @@ export function authorizeResourceUpload(db: Db, params: { readonly caller: Calle
     );
 }
 
+// Marks a stored file as one staff uploaded: only such a digest can be published. The same
+// bytes uploaded again are the same file and keep their first record.
+export function recordResourceUpload(
+    db: Db,
+    params: { readonly caller: Caller; readonly digest: string; readonly size: number },
+) {
+    return execute(
+        db,
+        sql`insert into resource_upload (digest, size, uploaded_by, uploaded_at)
+            values (${params.digest}, ${params.size}, ${params.caller.accountId}, now())
+            on conflict (digest) do nothing`,
+    );
+}
+
 export type ResourceFields = {
     readonly productId: ProductId | null;
     readonly title: string;
@@ -188,6 +203,14 @@ export async function publishResource(
         if (!authorized.ok) return authorized;
         // Asked after authorizing, so who may not publish learns nothing of what is stored.
         if (size === null) return err({ code: "NOT_FOUND" as const });
+        // The file being there is not enough: builds are stored beside resources.
+        const uploaded = await queryOne(
+            tx,
+            z.object({ digest: z.string() }),
+            sql`select digest from resource_upload where digest = ${params.digest}`,
+        );
+        if (!uploaded.ok) return uploaded;
+        if (uploaded.value === null) return err({ code: "NOT_FOUND" as const });
         const { fields } = params;
         const inserted = await queryOne(
             tx,
