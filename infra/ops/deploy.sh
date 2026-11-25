@@ -33,7 +33,18 @@ healthy() {
         die "deploy failed: $service did not become healthy within 120s; nothing rolls back (docker compose --env-file $envfile -f $infra/compose.yml logs $service)"
 }
 
-compose build platform-server web
+# The Discord connector runs only where a bot exists; without a token it would restart forever.
+# Read the value as Compose would, minus its quotes, rather than sourcing the env file.
+discord_token=$(sed -n 's/^LUCENT_DISCORD_BOT_TOKEN=//p' "$envfile" | tail -n 1)
+discord_token=${discord_token//[\"\']/}
+discord=()
+services=(platform-server web)
+if [[ -n ${discord_token// /} ]]; then
+    discord=(--profile discord)
+    services+=(connector-discord)
+fi
+
+compose "${discord[@]}" build "${services[@]}"
 # --no-recreate: a deploy never restarts the database, so edits to the postgres
 # service in compose.yml (image, command, environment) do NOT take effect here.
 # To apply one deliberately, accepting a database restart and a platform outage:
@@ -42,6 +53,10 @@ compose up -d --no-recreate --wait --wait-timeout 120 postgres
 compose run --rm --no-deps -T platform-server bun src/ops.ts migrate
 healthy platform-server
 healthy web
+if (( ${#discord[@]} )); then
+    compose "${discord[@]}" up -d --no-deps --wait --wait-timeout 120 connector-discord ||
+        die "deploy failed: connector-discord did not become healthy within 120s; nothing rolls back (docker compose --env-file $envfile -f $infra/compose.yml --profile discord logs connector-discord)"
+fi
 
 # The config is bind-mounted, so Compose doesn't hash its contents; an image or
 # compose.yml change recreates caddy by itself. Recreating drops live connections

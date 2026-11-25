@@ -156,10 +156,13 @@ services:
 
   # Outbound only: the gateway connection it opens and Discord's REST API, and platform's
   # internal socket. No listener, so the health check reads the file each successful tick touches.
-  # Blank variables keep `compose` usable before the bot exists; the connector refuses to start
-  # without them.
+  # Behind the discord profile because it refuses to start without its bot token and guild, and
+  # `restart: unless-stopped` would loop it forever on a host that has no bot. A plain
+  # `compose up` never starts it; deploy.sh enables the profile only when the env file holds a
+  # LUCENT_DISCORD_BOT_TOKEN. The variables stay blank-defaulted so `compose config` still parses.
   connector-discord:
     <<: *service
+    profiles: [discord]
     build:
       <<: *build
       target: connector-discord
