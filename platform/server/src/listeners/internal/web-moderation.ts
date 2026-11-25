@@ -16,7 +16,7 @@ export const moderationHandlers = {
     "admin.moderation.reports.resolve": (ctx, input, call) =>
         asStaff(ctx, call, async (caller) => {
             const resolved = await resolveReport({ db: ctx.auth.db, caller, ...input });
-            // The line `ops replay-removals` reads, written once the removal has committed.
+            // The record that a removal happened, written once it has committed.
             if (resolved.ok && resolved.value.removed !== null) {
                 ctx.logger.write("info", "removed", {
                     origin: "internal-web",

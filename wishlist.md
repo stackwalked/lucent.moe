@@ -129,7 +129,6 @@ Beside phases 2 and 3; nothing native waits on it except cutover.
   enforced): the signed override document and its delivery on `/data`, the reports route and the
   signals from it, the renewal's integrity bits and checked challenge answers. Each waits on a
   format the human decides; a review action of its own in place of `accounts:suspend`.
-- `ops replay-removals` (what a `removed` line holds and who writes it waits on the human).
 - Slice 4 (account-held items with history, share links, the member pages, tickets and appeals,
   the new-country review rule with DB-IP geo and resources, items served to and written by a
   session over `/data` landed): crash reports, the waitlist.
@@ -727,7 +726,7 @@ live in `wishlist/protection.md`.
     `/v1` channels, releases, fact-set storage and session bundle assembly, integrity and risk
     scoring, cloud sync, community and support state, `connectors/discord`, and a narrow offline
     operator entry point (`bootstrap-superadmin`, `transfer-superadmin`, `publish-release`,
-    `publish-loader`, `publish-fact-set`, `replay-removals`). Zero HTML, CSS or UI copy.
+    `publish-loader`, `publish-fact-set`). Zero HTML, CSS or UI copy.
   - `web/`: every browser HTML surface under one design system (public door, waitlist, all auth
     and handoff flows, member area, admin area including promotion of staged releases and fact
     revisions and override kill switches). Replaces the old service's handwritten `pages.ts` and
@@ -983,8 +982,8 @@ live in `wishlist/protection.md`.
 
   - Unref'd periodic jobs (`1m` challenges/nonces/receipts/refusals; `10m` retention, risk scoring,
     `.mmdb` reload, 7d idle ticket auto-close) with explicit 30d / 90d / 365d / forever retention
-    tiers; closed-field JSONL logger with fail-closed `loggablePath` allowlist, `removed` lines for
-    `ops replay-removals`, and `SIGTERM` health-first graceful drain.
+    tiers; closed-field JSONL logger with fail-closed `loggablePath` allowlist, `removed` lines, and
+    `SIGTERM` health-first graceful drain.
 - Testing and local dev stack:
   - `bun test` (`tests/<unit>.test.ts`), behavior-sentence names, zero coverage targets, zero
     snapshots, `mock.module` banned by `ast-grep`. Tests cover where failure is silent, expensive or
