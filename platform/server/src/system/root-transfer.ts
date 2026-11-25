@@ -2,6 +2,7 @@ import { invariant } from "@lucent/core/contain";
 import { ok, type Result } from "@lucent/core/result";
 import { AccountId } from "@lucent/core/scalars";
 import { z } from "zod";
+import { revokeAccess } from "../auth/revoke-access.ts";
 import { parseUsername, type UsernameInvalid } from "../authority/usernames.ts";
 import { appendAudit } from "../db/audit.ts";
 import { type Db, type DbFailure, execute, queryAll, sql } from "../db/pool.ts";
@@ -20,15 +21,20 @@ const PartyRow = z.object({
     status: z.enum(["active", "suspended"]),
     is_locked: z.boolean(),
     is_root: z.boolean(),
+    has_passkey: z.boolean(),
 });
 
 function toParty(row: z.output<typeof PartyRow> | undefined) {
-    return row === undefined ? null : { id: row.id, status: row.status, isLocked: row.is_locked };
+    return row === undefined
+        ? null
+        : { id: row.id, status: row.status, isLocked: row.is_locked, hasPasskey: row.has_passkey };
 }
 
 // Root to the account holding `username`, from whoever holds it now. Run from ops: database
 // access stands in for the old root's consent, which no caller can give (nothing targets root).
-// The old root keeps its account, sessions and credentials, as a member with no roles.
+// The old root keeps its account and credentials, as a member with no roles who can sign in
+// again, but its sessions and other ongoing access end in the same transaction (revokeAccess):
+// a transfer may be made precisely because the old root is compromised.
 //
 // Both rows are locked in id order. A transfer racing this one changes the root row under the
 // lock, so the loser no longer finds a root and refuses with NO_ROOT; rerunning it is safe.
@@ -44,7 +50,9 @@ export async function transferRoot(params: {
         const rows = await queryAll(
             tx,
             PartyRow,
-            sql`select id, username, status, is_locked, is_root from account
+            sql`select id, username, status, is_locked, is_root,
+                       exists (select 1 from passkey where account_id = account.id) as has_passkey
+                from account
                 where is_root or username = ${username}
                 order by id for update`,
         );
@@ -80,6 +88,9 @@ export async function transferRoot(params: {
             sql`select set_config('lucent.root_transfer', '', true)`,
         );
         if (!restored.ok) return restored;
+
+        const revoked = await revokeAccess(tx, from);
+        if (!revoked.ok) return revoked;
 
         const audited = await appendAudit(tx, {
             actorId: ACTOR,

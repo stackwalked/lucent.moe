@@ -8,6 +8,7 @@ import { ACTIONS } from "@lucent/policy/action-list";
 import { can } from "@lucent/policy/policy";
 import { runToEnd } from "@lucent/testing/process";
 import { z } from "zod";
+import { lockSession, mintSession } from "../src/auth/sessions.ts";
 import { readStanding } from "../src/authority/standing.ts";
 import { checkoutClient, type Db, execute, openPool, queryAll, sql } from "../src/db/pool.ts";
 import { withTx } from "../src/db/tx.ts";
@@ -17,12 +18,29 @@ import { sharedTestCluster } from "./harness/pg-test.ts";
 
 const ROOT_PERMANENT = { code: "CHECK_VIOLATION", constraint: "account_root_permanent" } as const;
 
-async function seedNamed(db: Db, rng: SeededRng, username: string): Promise<AccountId> {
+async function seedNamed(
+    db: Db,
+    rng: SeededRng,
+    username: string,
+    options: { readonly passkey?: boolean } = {},
+): Promise<AccountId> {
     const id = await seedAccount(db, rng, `${username}@lucent.test`);
     expect(
         await execute(db, sql`update account set username = ${username} where id = ${id}`),
     ).toEqual(ok(1));
+    if (options.passkey !== false) await givePasskey(db, id);
     return id;
+}
+
+// The only credential step-up accepts; the key bytes are never verified here.
+async function givePasskey(db: Db, accountId: AccountId): Promise<void> {
+    expect(
+        await execute(
+            db,
+            sql`insert into passkey (id, account_id, public_key, sign_count, backed_up, label, created_at)
+                values (convert_to(${accountId}, 'UTF8'), ${accountId}, decode('00', 'hex'), 0, false, 'test key', now())`,
+        ),
+    ).toEqual(ok(1));
 }
 
 async function roots(db: Db): Promise<readonly string[]> {
@@ -105,6 +123,7 @@ describe("ops transfer-superadmin", () => {
             const root = await seedRoot(nativeDb, rng);
             const suspended = await seedNamed(nativeDb, rng, "suspended");
             const locked = await seedNamed(nativeDb, rng, "locked");
+            await seedNamed(nativeDb, rng, "keyless", { passkey: false });
             await execute(
                 nativeDb,
                 sql`update account set status = 'suspended' where id = ${suspended}`,
@@ -123,7 +142,41 @@ describe("ops transfer-superadmin", () => {
             expect(await transferRoot({ db: nativeDb, username: "locked" })).toEqual(
                 err({ code: "TARGET_LOCKED" }),
             );
+            expect(await transferRoot({ db: nativeDb, username: "keyless" })).toEqual(
+                err({ code: "TARGET_NO_PASSKEY" }),
+            );
             expect(await roots(nativeDb)).toEqual([root]);
+        });
+    });
+
+    test("the old root's sessions end with the transfer but its account stays", async () => {
+        const cluster = await sharedTestCluster();
+        await cluster.withTestDb(async ({ nativeDb }) => {
+            const rng = createSeededRng(1206);
+            const oldRoot = await seedRoot(nativeDb, rng);
+            await seedNamed(nativeDb, rng, "heir");
+            const minted = await withTx(nativeDb, (tx, txNow) =>
+                mintSession(tx, {
+                    rng,
+                    accountId: oldRoot,
+                    purpose: "member",
+                    txNow,
+                    client: null,
+                }),
+            );
+            invariant(minted.ok, "minting the old root a session");
+            const { token } = minted.value;
+            const resolves = () =>
+                withTx(nativeDb, (tx, txNow) =>
+                    lockSession(tx, { token, txNow, purposes: ["member"] }),
+                );
+            expect((await resolves()).ok).toBe(true);
+
+            expect((await transferRoot({ db: nativeDb, username: "heir" })).ok).toBe(true);
+
+            expect(await resolves()).toEqual(err({ code: "SESSION_INVALID" }));
+            const standing = await readStanding(nativeDb, oldRoot, await dbNow(nativeDb));
+            expect(standing.ok && standing.value !== null && !standing.value.isRoot).toBe(true);
         });
     });
 
