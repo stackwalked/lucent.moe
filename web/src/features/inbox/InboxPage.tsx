@@ -46,10 +46,23 @@ export function InboxPage() {
                             {
                                 key: "kind",
                                 header: INBOX_COPY.notification,
-                                cell: (item) =>
-                                    item.kind === "security"
-                                        ? INBOX_COPY.security
-                                        : INBOX_COPY.product(item.productId),
+                                cell: (item) => {
+                                    switch (item.kind) {
+                                        case "security":
+                                            return INBOX_COPY.security;
+                                        case "product_status":
+                                            return INBOX_COPY.product(item.productId);
+                                        case "ticket_reply":
+                                            return (
+                                                <Link
+                                                    to="/tickets/$ticketId"
+                                                    params={{ ticketId: item.ticketId }}
+                                                >
+                                                    {INBOX_COPY.ticketReply}
+                                                </Link>
+                                            );
+                                    }
+                                },
                             },
                             {
                                 key: "status",

@@ -11,7 +11,7 @@ import {
     type MemberCatalog,
 } from "../products/visibility.ts";
 import { withMember, written } from "./account.ts";
-import { notificationMail } from "./copy.ts";
+import { notificationMail, ticketReplyMail } from "./copy.ts";
 import { decideDeliveries } from "./deliveries.rules.ts";
 import { findPreferences } from "./preferences.ts";
 
@@ -19,12 +19,18 @@ type Notification =
     | Extract<Notice, { kind: "security" }>
     | (Extract<Notice, { kind: "product_status" }> & {
           readonly catalog: ProductCatalog;
-      });
+      })
+    // `origin` is the site's, for the mail's link to the ticket.
+    | (Extract<Notice, { kind: "ticket_reply" }> & { readonly origin: string });
 
-const NO_PREFERENCES = { productStatus: null, securityDiscord: false } as const;
+const NO_PREFERENCES = {
+    productStatus: null,
+    ticketReply: null,
+    securityDiscord: false,
+} as const;
 
 async function planDelivery(tx: Tx, recipient: AccountId, notice: Notification) {
-    if (notice.kind === "security") {
+    if (notice.kind === "security" || notice.kind === "ticket_reply") {
         const preferences = await findPreferences(tx, recipient);
         if (!preferences.ok) return preferences;
         return decideDeliveries(notice, preferences.value, []);
@@ -74,7 +80,10 @@ export async function recordNotification(
     if (!planned.ok) return planned;
     const plan = ok({ ...planned.value, mail: planned.value.mail && params.mail });
     if (plan.value.mail) {
-        const mail = notificationMail(notice);
+        const mail =
+            notice.kind === "ticket_reply"
+                ? ticketReplyMail(`${notice.origin}/tickets/${notice.ticketId}`)
+                : notificationMail(notice);
         const queued = await execute(
             tx,
             sql`insert into mail_outbox (recipient, subject, body)
@@ -95,8 +104,9 @@ export async function recordNotification(
     if (plan.value.inbox) {
         const inserted = await execute(
             tx,
-            sql`insert into inbox_entry (account_id, kind, product_id)
-            values (${recipient}, ${notice.kind}, ${notice.productId})`,
+            sql`insert into inbox_entry (account_id, kind, product_id, ticket_id)
+            values (${recipient}, ${notice.kind}, ${notice.productId},
+                    ${notice.kind === "ticket_reply" ? notice.ticketId : null}::uuid)`,
         );
         if (!inserted.ok) return inserted;
     }
@@ -141,7 +151,8 @@ export function listInbox(
         const rows = await queryAll(
             tx,
             InboxEntry,
-            sql`select id, kind, product_id as "productId", created_at as "createdAt", is_read as "isRead"
+            sql`select id, kind, product_id as "productId", ticket_id as "ticketId",
+                       created_at as "createdAt", is_read as "isRead"
                 from inbox_entry where ${scope.value} ${after}
                 order by created_at desc, id desc limit ${PAGE_SIZE + 1}`,
         );

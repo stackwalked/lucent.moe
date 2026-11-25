@@ -114,6 +114,7 @@ test("a notification rolls back with its writer and follows only the recipient's
             ok({
                 security: { inbox: true, mail: true, discord: false },
                 product_status: { inbox: false, mail: true, discord: false },
+                ticket_reply: { inbox: true, mail: true, discord: false },
                 subscriptions: [],
             }),
         );
@@ -132,6 +133,7 @@ test("a notification rolls back with its writer and follows only the recipient's
             ok({
                 security: { inbox: true, mail: true, discord: false },
                 product_status: { inbox: false, mail: true, discord: true },
+                ticket_reply: { inbox: true, mail: true, discord: false },
                 subscriptions: [],
             }),
         );

@@ -13,10 +13,17 @@ const inbox = { inbox: true, mail: false, discord: false };
 const mail = { inbox: false, mail: true, discord: false };
 const discord = { inbox: false, mail: false, discord: true };
 
-const chosen = (productStatus: typeof all | null, securityDiscord = false) => ({
-    productStatus,
-    securityDiscord,
-});
+const reply: Notice = {
+    kind: "ticket_reply",
+    productId: null,
+    ticketId: "00000000-0000-4000-8000-000000000001",
+};
+
+const chosen = (
+    productStatus: typeof all | null,
+    securityDiscord = false,
+    ticketReply: typeof all | null = null,
+) => ({ productStatus, ticketReply, securityDiscord });
 
 test.each([
     ["security ignores opt-outs", security, chosen(neither), [], both],
@@ -44,6 +51,12 @@ test.each([
         [productId],
         inbox,
     ],
+    ["a ticket reply defaults to inbox and mail", reply, chosen(null), [], both],
+    ["a ticket reply needs no follow", reply, chosen(neither), [], both],
+    ["a ticket reply respects an inbox-only choice", reply, chosen(null, false, inbox), [], inbox],
+    ["a ticket reply respects a mail-only choice", reply, chosen(null, false, mail), [], mail],
+    ["a ticket reply respects every opt-out", reply, chosen(all, true, neither), [], neither],
+    ["a ticket reply never goes to discord", reply, chosen(all, true, all), [], both],
 ] as const)("%s", (_name, notice, preferences, subscriptions, expected) => {
     expect(decideDeliveries(notice, preferences, subscriptions)).toEqual({
         ok: true,

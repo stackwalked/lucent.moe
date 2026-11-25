@@ -2,9 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { invariant } from "@lucent/core/contain";
 import { err, ok } from "@lucent/core/result";
 import { createSeededRng, type SeededRng } from "@lucent/core/rng";
-import { ProductId } from "@lucent/core/scalars";
+import { type BearerToken, ProductId } from "@lucent/core/scalars";
 import { z } from "zod";
-import { type Db, execute, sql } from "../src/db/pool.ts";
+import { type Db, execute, queryAll, sql } from "../src/db/pool.ts";
+import { listInbox } from "../src/notify/inbox.ts";
+import { setPreference } from "../src/notify/preferences.ts";
 import {
     closeIdleTickets,
     closeMemberTicket,
@@ -31,6 +33,8 @@ async function supportStaff(db: Db, rng: SeededRng, email: string) {
     await grantRole(db, { accountId: staff.id, roleId });
     return { ...staff, caller: await steppedUp(db, staff.id) };
 }
+
+const SITE = { origin: "https://lucent.test", mail: true };
 
 async function stateOf(db: Db, ticketId: string) {
     return await scalar(
@@ -62,6 +66,7 @@ describe("tickets", () => {
                     caller: staff.caller,
                     ticketId,
                     body: "try again",
+                    site: SITE,
                 }),
             ).toEqual(ok(undefined));
             expect(await stateOf(browserDb, ticketId)).toBe("answered");
@@ -71,7 +76,12 @@ describe("tickets", () => {
             );
             expect(await stateOf(browserDb, ticketId)).toBe("closed");
             expect(
-                await replyToTicket(browserDb, { caller: staff.caller, ticketId, body: "late" }),
+                await replyToTicket(browserDb, {
+                    caller: staff.caller,
+                    ticketId,
+                    body: "late",
+                    site: SITE,
+                }),
             ).toEqual(err({ code: "TICKET_CLOSED" }));
 
             expect(
@@ -179,6 +189,7 @@ describe("tickets", () => {
                         caller: staff.caller,
                         ticketId,
                         body: "answer",
+                        site: SITE,
                     });
                     invariant(replied.ok, "answered");
                 }
@@ -248,6 +259,168 @@ describe("tickets", () => {
                     where ticket_id = ${ticketId}::uuid and account_id = ${alice.id}`,
             );
             expect(history).toEqual([true, false, true]);
+        });
+    });
+});
+
+describe("a staff reply tells the member", () => {
+    const REPLY = "restart the loader as administrator";
+    const SUBJECT = "the loader won't start";
+
+    async function ticketOf(db: Db, token: BearerToken) {
+        const opened = await openMemberTicket(db, token, {
+            catalog: catalog(),
+            productId: null,
+            subject: SUBJECT,
+            body: "it closes at once",
+        });
+        invariant(opened.ok, `opening failed: ${JSON.stringify(opened)}`);
+        return opened.value.ticketId;
+    }
+
+    async function count(db: Db, statement: ReturnType<typeof sql>) {
+        return await scalar(db, z.coerce.number(), statement);
+    }
+
+    test("one inbox entry and one mail go to the ticket's owner, linking the ticket and saying nothing of it", async () => {
+        const cluster = await sharedTestCluster();
+        await cluster.withTestDb(async ({ browserDb }) => {
+            const rng = createSeededRng(821);
+            const alice = await member(browserDb, rng, "alice@lucent.test");
+            const bob = await member(browserDb, rng, "bob@lucent.test");
+            const staff = await supportStaff(browserDb, rng, "staff@lucent.test");
+            const ticketId = await ticketOf(browserDb, alice.token);
+
+            const replied = await replyToTicket(browserDb, {
+                caller: staff.caller,
+                ticketId,
+                body: REPLY,
+                site: SITE,
+            });
+            expect(replied).toEqual(ok(undefined));
+
+            const entries = await queryAll(
+                browserDb,
+                z.object({ account_id: z.string(), kind: z.string(), ticket_id: z.string() }),
+                sql`select account_id, kind, ticket_id::text as ticket_id from inbox_entry`,
+            );
+            expect(entries).toEqual(
+                ok([{ account_id: alice.id, kind: "ticket_reply", ticket_id: ticketId }]),
+            );
+            const mails = await queryAll(
+                browserDb,
+                z.object({ recipient: z.string(), subject: z.string(), body: z.string() }),
+                sql`select recipient, subject, body from mail_outbox`,
+            );
+            invariant(mails.ok, "mail rows");
+            expect(mails.value.map((mail) => mail.recipient)).toEqual(["alice@lucent.test"]);
+            const [mail] = mails.value;
+            invariant(mail !== undefined, "one mail");
+            expect(mail.body).toContain(`https://lucent.test/tickets/${ticketId}`);
+            for (const text of [mail.subject, mail.body]) {
+                expect(text).not.toContain(REPLY);
+                expect(text).not.toContain(SUBJECT);
+            }
+
+            const listed = await listInbox(browserDb, alice.token, {
+                cursor: null,
+                catalog: catalog(),
+            });
+            invariant(listed.ok, "alice's inbox");
+            expect(listed.value.items).toMatchObject([
+                { kind: "ticket_reply", productId: null, ticketId, isRead: false },
+            ]);
+            const bobs = await listInbox(browserDb, bob.token, {
+                cursor: null,
+                catalog: catalog(),
+            });
+            expect(bobs).toEqual(ok({ items: [], nextCursor: null }));
+        });
+    });
+
+    test.each([
+        ["inbox off", { inbox: false, mail: true }, { entries: 0, mails: 1 }],
+        ["mail off", { inbox: true, mail: false }, { entries: 1, mails: 0 }],
+        ["both off", { inbox: false, mail: false }, { entries: 0, mails: 0 }],
+    ] as const)("a member with %s gets only what they kept", async (_name, choice, expected) => {
+        const cluster = await sharedTestCluster();
+        await cluster.withTestDb(async ({ browserDb }) => {
+            const rng = createSeededRng(822);
+            const alice = await member(browserDb, rng, "alice@lucent.test");
+            const staff = await supportStaff(browserDb, rng, "staff@lucent.test");
+            expect(
+                await setPreference(browserDb, alice.token, { kind: "ticket_reply", ...choice }),
+            ).toEqual(ok(undefined));
+            const ticketId = await ticketOf(browserDb, alice.token);
+            const replied = await replyToTicket(browserDb, {
+                caller: staff.caller,
+                ticketId,
+                body: REPLY,
+                site: SITE,
+            });
+            expect(replied).toEqual(ok(undefined));
+            expect(await count(browserDb, sql`select count(*) as value from inbox_entry`)).toBe(
+                expected.entries,
+            );
+            expect(await count(browserDb, sql`select count(*) as value from mail_outbox`)).toBe(
+                expected.mails,
+            );
+        });
+    });
+
+    test("without a mail provider the reply queues no mail", async () => {
+        const cluster = await sharedTestCluster();
+        await cluster.withTestDb(async ({ browserDb }) => {
+            const rng = createSeededRng(823);
+            const alice = await member(browserDb, rng, "alice@lucent.test");
+            const staff = await supportStaff(browserDb, rng, "staff@lucent.test");
+            const ticketId = await ticketOf(browserDb, alice.token);
+            const replied = await replyToTicket(browserDb, {
+                caller: staff.caller,
+                ticketId,
+                body: REPLY,
+                site: { ...SITE, mail: false },
+            });
+            expect(replied).toEqual(ok(undefined));
+            expect(await count(browserDb, sql`select count(*) as value from inbox_entry`)).toBe(1);
+            expect(await count(browserDb, sql`select count(*) as value from mail_outbox`)).toBe(0);
+        });
+    });
+
+    test("a reply that does not commit leaves no message, entry or mail", async () => {
+        const cluster = await sharedTestCluster();
+        await cluster.withTestDb(async ({ browserDb }) => {
+            const rng = createSeededRng(824);
+            const alice = await member(browserDb, rng, "alice@lucent.test");
+            const staff = await supportStaff(browserDb, rng, "staff@lucent.test");
+            const ticketId = await ticketOf(browserDb, alice.token);
+            // The audit row is the reply's last write: failing it undoes everything before it.
+            await execute(
+                browserDb,
+                sql`create function refuse_audit() returns trigger language plpgsql
+                    as $$ begin raise exception 'audit refused'; end $$`,
+            );
+            await execute(
+                browserDb,
+                sql`create trigger refuse_audit before insert on audit
+                    for each row execute function refuse_audit()`,
+            );
+            const replied = await replyToTicket(browserDb, {
+                caller: staff.caller,
+                ticketId,
+                body: REPLY,
+                site: SITE,
+            });
+            expect(replied.ok).toBe(false);
+            expect(await stateOf(browserDb, ticketId)).toBe("open");
+            expect(
+                await count(
+                    browserDb,
+                    sql`select count(*) as value from ticket_message where from_staff`,
+                ),
+            ).toBe(0);
+            expect(await count(browserDb, sql`select count(*) as value from inbox_entry`)).toBe(0);
+            expect(await count(browserDb, sql`select count(*) as value from mail_outbox`)).toBe(0);
         });
     });
 });

@@ -29,6 +29,13 @@ export function PreferencesPage() {
         setRefused(reply.ok ? null : reply.refused);
         if (reply.ok) await router.invalidate();
     };
+    const saveTicketReply = async (data: FormData) => {
+        const reply = await savePreference({
+            data: { kind: "ticket_reply", inbox: data.has("inbox"), mail: data.has("mail") },
+        });
+        setRefused(reply.ok ? null : reply.refused);
+        if (reply.ok) await router.invalidate();
+    };
     const saveSecurity = async (data: FormData) => {
         const reply = await savePreference({
             data: { kind: "security", discord: data.has("discord") },
@@ -84,6 +91,26 @@ export function PreferencesPage() {
                                     name="discord"
                                     label={PREFERENCES_COPY.discord}
                                     defaultChecked={outcome.value.discord}
+                                />
+                                <Button type="submit">{PREFERENCES_COPY.save}</Button>
+                            </Stack>
+                        </form>
+                    </Section>
+                    <Section caption={PREFERENCES_COPY.ticketReply}>
+                        <form
+                            action={saveTicketReply}
+                            key={`${outcome.value.ticketReply.inbox}/${outcome.value.ticketReply.mail}`}
+                        >
+                            <Stack gap={2}>
+                                <Check
+                                    name="inbox"
+                                    label={PREFERENCES_COPY.inbox}
+                                    defaultChecked={outcome.value.ticketReply.inbox}
+                                />
+                                <Check
+                                    name="mail"
+                                    label={PREFERENCES_COPY.mail}
+                                    defaultChecked={outcome.value.ticketReply.mail}
                                 />
                                 <Button type="submit">{PREFERENCES_COPY.save}</Button>
                             </Stack>

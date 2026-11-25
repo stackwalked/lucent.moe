@@ -7,8 +7,16 @@ export function passwordResetMail(link: string) {
     };
 }
 
+// Says that support replied and where to read it; the reply and the subject stay on the site.
+export function ticketReplyMail(link: string) {
+    return {
+        subject: "support replied to your ticket",
+        body: `support replied to a ticket you opened. sign in to read it:\n\n${link}`,
+    };
+}
+
 // The mail can arrive after access changes, so it must not name a now-hidden product.
-export function notificationMail(notice: Notice) {
+export function notificationMail(notice: Exclude<Notice, { kind: "ticket_reply" }>) {
     if (notice.kind === "security") {
         return {
             subject: "account security notice",

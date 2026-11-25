@@ -12,6 +12,10 @@ export const fetchPreferences = createServerFn({ method: "GET" }).handler(async 
     if (!discord.ok) return refuse(discord.error);
     return done({
         ...preferences.value.product_status,
+        ticketReply: {
+            inbox: preferences.value.ticket_reply.inbox,
+            mail: preferences.value.ticket_reply.mail,
+        },
         securityDiscord: preferences.value.security.discord,
         discordLinked: discord.value.linkedAt !== null,
         products: listed.value.products.map(({ productId, name }) => ({

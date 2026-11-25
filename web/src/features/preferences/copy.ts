@@ -3,6 +3,7 @@ export const PREFERENCES_COPY = {
     security: "account security",
     required: "you can’t turn off inbox or email for security notices.",
     status: "product support changes",
+    ticketReply: "support replies to your tickets",
     inbox: "inbox",
     mail: "email",
     discord: "discord message",

@@ -18,6 +18,7 @@ export const SetPreference = z.discriminatedUnion("kind", [
         discord: z.boolean().optional(),
     }),
     z.strictObject({ kind: z.literal("security"), discord: z.boolean() }),
+    z.strictObject({ kind: z.literal("ticket_reply"), inbox: z.boolean(), mail: z.boolean() }),
 ]);
 export const SetSubscription = z.strictObject({ productId: ProductId, following: z.boolean() });
 
@@ -29,6 +30,8 @@ export const preferencesContract = defineContract({
         output: z.object({
             security: Channels,
             product_status: Channels,
+            // Its `discord` is always false: a staff reply has no DM.
+            ticket_reply: Channels,
             subscriptions: z.array(ProductId).readonly(),
         }),
         error: MemberRefusal,

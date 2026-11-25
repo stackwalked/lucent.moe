@@ -6,7 +6,12 @@ import { z } from "zod";
 import { type Db, type DbFailure, execute, queryAll, sql, type Tx } from "../db/pool.ts";
 import { filterListedProducts } from "../products/visibility.ts";
 import { withMember, written } from "./account.ts";
-import { PRODUCT_DEFAULTS, SECURITY_CHANNELS, type StoredPreferences } from "./deliveries.rules.ts";
+import {
+    PRODUCT_DEFAULTS,
+    SECURITY_CHANNELS,
+    type StoredPreferences,
+    TICKET_REPLY_DEFAULTS,
+} from "./deliveries.rules.ts";
 
 export async function findPreferences(
     tx: Tx,
@@ -14,17 +19,20 @@ export async function findPreferences(
 ): Promise<Result<StoredPreferences, DbFailure>> {
     const rows = await queryAll(
         tx,
-        Channels.extend({ kind: z.enum(["product_status", "security"]) }),
+        Channels.extend({ kind: z.enum(["product_status", "security", "ticket_reply"]) }),
         sql`select kind, inbox, mail, discord from notification_preference
             where account_id = ${accountId}`,
     );
     if (!rows.ok) return rows;
-    const product = rows.value.find((row) => row.kind === "product_status");
+    const channelsOf = (kind: "product_status" | "ticket_reply") => {
+        const row = rows.value.find((r) => r.kind === kind);
+        return row === undefined
+            ? null
+            : { inbox: row.inbox, mail: row.mail, discord: row.discord };
+    };
     return ok({
-        productStatus:
-            product === undefined
-                ? null
-                : { inbox: product.inbox, mail: product.mail, discord: product.discord },
+        productStatus: channelsOf("product_status"),
+        ticketReply: channelsOf("ticket_reply"),
         securityDiscord: rows.value.some((row) => row.kind === "security" && row.discord),
     });
 }
@@ -48,15 +56,24 @@ export function listPreferences(db: Db, token: BearerToken, catalog: ProductCata
         return ok({
             security: { ...SECURITY_CHANNELS, discord: stored.value.securityDiscord },
             product_status: stored.value.productStatus ?? PRODUCT_DEFAULTS,
+            ticket_reply: {
+                ...(stored.value.ticketReply ?? TICKET_REPLY_DEFAULTS),
+                discord: false,
+            },
             subscriptions: listed.value,
         });
     });
 }
 
-// A security row keeps inbox and mail on: only its Discord choice is the member's.
+// A security row keeps inbox and mail on: only its Discord choice is the member's. A ticket
+// reply row has no Discord channel: it stores false.
 export function setPreference(db: Db, token: BearerToken, choice: z.output<typeof SetPreference>) {
     const channels =
-        choice.kind === "security" ? { ...SECURITY_CHANNELS, discord: choice.discord } : choice;
+        choice.kind === "security"
+            ? { ...SECURITY_CHANNELS, discord: choice.discord }
+            : choice.kind === "ticket_reply"
+              ? { inbox: choice.inbox, mail: choice.mail, discord: false }
+              : choice;
     return withMember(db, token, async (tx, id) =>
         written(
             await execute(

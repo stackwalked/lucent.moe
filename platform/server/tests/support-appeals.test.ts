@@ -3,8 +3,10 @@ import { invariant } from "@lucent/core/contain";
 import { err, ok } from "@lucent/core/result";
 import { createSeededRng } from "@lucent/core/rng";
 import { newOperationId } from "@lucent/core/scalars";
+import { z } from "zod";
 import { signInWithPassword, signInWithTotp } from "../src/auth/sign-in.ts";
 import { reinstateAccount, suspendAccount } from "../src/authority/writers.ts";
+import { sql } from "../src/db/pool.ts";
 import { readAppeal, writeAppeal } from "../src/support/appeals.ts";
 import { listMemberResources } from "../src/support/resources.ts";
 import {
@@ -14,7 +16,7 @@ import {
     replyToTicket,
 } from "../src/support/tickets.ts";
 import { codeAt, MEMBER_PASSWORD, newMember, seedRootOnce } from "./auth-fixtures.ts";
-import { catalog, steppedUp } from "./authority-fixtures.ts";
+import { catalog, scalar, steppedUp } from "./authority-fixtures.ts";
 import { createTestAuthDeps } from "./harness/auth.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 
@@ -71,8 +73,22 @@ test("a suspended account signs in fully, files an appeal staff answer, and reac
         const seen = await readStaffTicket(browserDb, { caller: root, ticketId: filed.id });
         expect(seen.ok && seen.value.suspension?.reason).toBe("sold access to others");
         expect(
-            await replyToTicket(browserDb, { caller: root, ticketId: filed.id, body: "noted" }),
+            await replyToTicket(browserDb, {
+                caller: root,
+                ticketId: filed.id,
+                body: "noted",
+                site: { origin: "https://lucent.test", mail: true },
+            }),
         ).toEqual(ok(undefined));
+        // An appeal's account reaches only /appeal: the reply tells it nothing by inbox or mail.
+        expect(
+            await scalar(
+                browserDb,
+                z.coerce.number(),
+                sql`select (select count(*) from inbox_entry where kind = 'ticket_reply')
+                  + (select count(*) from mail_outbox where subject = 'support replied to your ticket') as value`,
+            ),
+        ).toBe(0);
         const answered = await readAppeal(browserDb, appealToken);
         invariant(answered.ok && answered.value.appeal !== null, "the appeal is there");
         expect(answered.value.appeal.state).toBe("answered");

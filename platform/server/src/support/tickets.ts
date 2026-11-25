@@ -2,9 +2,10 @@ import type { ProductCatalog } from "@lucent/catalog/catalog";
 import { invariant } from "@lucent/core/contain";
 import { err, ok, type Result } from "@lucent/core/result";
 import { AccountId, type BearerToken, EpochMs, ProductId } from "@lucent/core/scalars";
-import type { AuthzRefusal, Caller } from "@lucent/policy/policy";
+import { type AuthzRefusal, authorize, type Caller } from "@lucent/policy/policy";
 import { z } from "zod";
-import { lockAuthorized, readAsStaff } from "../authority/staff.ts";
+import { readAsStaff } from "../authority/staff.ts";
+import { lockCallerWith } from "../authority/standing.ts";
 import { type NotFound, PAGE_SIZE, pageOf } from "../community/page.ts";
 import { appendAudit } from "../db/audit.ts";
 import {
@@ -21,6 +22,7 @@ import {
 import { withTx } from "../db/tx.ts";
 import type { Job } from "../jobs/runner.ts";
 import { withMember } from "../notify/account.ts";
+import { recordNotification } from "../notify/inbox.ts";
 import { isListedForMember } from "../products/visibility.ts";
 import { findSuspension } from "./suspension.ts";
 import {
@@ -479,6 +481,10 @@ export function readStaffTicket(
 
 export type StaffTicketRefusal = AuthzRefusal | TicketRefusal;
 
+// What a reply needs to tell the member: the site's origin for the mail's link, and whether a
+// mail provider exists (without one nothing would drain the outbox).
+export type ReplySite = { readonly origin: string; readonly mail: boolean };
+
 function actAsStaff(
     db: Db,
     params: {
@@ -486,17 +492,38 @@ function actAsStaff(
         readonly ticketId: string;
         readonly event: "staff_replied" | "staff_closed";
         readonly body: string | null;
+        readonly site: ReplySite | null;
     },
 ): Promise<Result<void, StaffTicketRefusal | DbFailure>> {
     return withTx(db, async (tx, txNow) => {
-        const authorized = await lockAuthorized(tx, {
+        // Lock order (platform/AGENTS.md): accounts by id (staff caller and ticket owner
+        // together), then the ticket, then the append-only notice and audit rows. The owner is
+        // known only from the ticket, which never changes hands, so it is read before any lock
+        // and checked again once the ticket is locked.
+        const owner = await queryOne(
+            tx,
+            z.object({ account_id: AccountId }),
+            sql`select account_id from ticket where id = ${params.ticketId}::uuid`,
+        );
+        if (!owner.ok) return owner;
+        const locked = await lockCallerWith(tx, {
             caller: params.caller,
-            action: TICKET_ACTION,
+            targets: owner.value === null ? [] : [owner.value.account_id],
             txNow,
+        });
+        if (!locked.ok) return locked;
+        const authorized = authorize({
+            txNow,
+            subject: locked.value.subject,
+            action: TICKET_ACTION,
         });
         if (!authorized.ok) return authorized;
         const ticket = await lockTicket(tx, params.ticketId);
         if (!ticket.ok) return ticket;
+        invariant(
+            ticket.value?.account_id === owner.value?.account_id,
+            "a ticket's account never changes",
+        );
         const plan = decideTicket({
             ticket:
                 ticket.value === null
@@ -521,6 +548,21 @@ function actAsStaff(
             txNow,
         });
         if (!applied.ok) return applied;
+        // An appeal's account is suspended and reaches only /appeal: no inbox entry or mail.
+        if (params.event === "staff_replied" && ticket.value.kind === "help") {
+            invariant(params.site !== null, "a reply knows the site it tells the member about");
+            const notified = await recordNotification(tx, {
+                recipient: ticket.value.account_id,
+                notice: {
+                    kind: "ticket_reply",
+                    productId: null,
+                    ticketId: params.ticketId,
+                    origin: params.site.origin,
+                },
+                mail: params.site.mail,
+            });
+            if (!notified.ok) return notified;
+        }
         return await appendAudit(tx, {
             actorId: params.caller.accountId,
             client: params.caller.client,
@@ -537,7 +579,12 @@ function actAsStaff(
 
 export function replyToTicket(
     db: Db,
-    params: { readonly caller: Caller; readonly ticketId: string; readonly body: string },
+    params: {
+        readonly caller: Caller;
+        readonly ticketId: string;
+        readonly body: string;
+        readonly site: ReplySite;
+    },
 ) {
     return actAsStaff(db, { ...params, event: "staff_replied" });
 }
@@ -546,7 +593,7 @@ export function closeStaffTicket(
     db: Db,
     params: { readonly caller: Caller; readonly ticketId: string },
 ) {
-    return actAsStaff(db, { ...params, event: "staff_closed", body: null });
+    return actAsStaff(db, { ...params, event: "staff_closed", body: null, site: null });
 }
 
 // --- the idle job ---

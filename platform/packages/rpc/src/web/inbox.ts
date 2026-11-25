@@ -2,6 +2,7 @@ import { EpochMs, ProductId } from "@lucent/core/scalars";
 import { z } from "zod";
 import { defineContract } from "../contract.ts";
 import { Done, pageOf, refusal, Unavailable } from "./shared.ts";
+import { TicketId } from "./tickets.ts";
 
 export const MemberRefusal = z.discriminatedUnion("code", [
     Unavailable,
@@ -10,12 +11,22 @@ export const MemberRefusal = z.discriminatedUnion("code", [
 export const InboxId = z.uuid();
 const security = z.object({ kind: z.literal("security"), productId: z.null() });
 const productStatus = z.object({ kind: z.literal("product_status"), productId: ProductId });
-export type Notice = z.output<typeof security> | z.output<typeof productStatus>;
+// Staff answered the member's help ticket. The entry names the ticket, never what was said.
+const ticketReply = z.object({
+    kind: z.literal("ticket_reply"),
+    productId: z.null(),
+    ticketId: TicketId,
+});
+export type Notice =
+    | z.output<typeof security>
+    | z.output<typeof productStatus>
+    | z.output<typeof ticketReply>;
 
 const entry = { id: InboxId, createdAt: EpochMs, isRead: z.boolean() };
 export const InboxEntry = z.discriminatedUnion("kind", [
     security.extend(entry),
     productStatus.extend(entry),
+    ticketReply.extend(entry),
 ]);
 export const inboxContract = defineContract({
     "inbox.entries.list": {
