@@ -22,6 +22,7 @@ export const AUDIT_OPERATIONS = [
     "role.assign",
     "role.unassign",
     "entitlement.issue",
+    "invite.allowance_set",
     "release.promote",
     "fact_set.promote",
     "fact_override.set",

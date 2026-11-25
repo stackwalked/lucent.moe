@@ -43,6 +43,7 @@ export const OPERATION_LABELS: Readonly<Record<AuditOperation, string>> = {
     "role.assign": "role given",
     "role.unassign": "role taken away",
     "entitlement.issue": "entitlement issued",
+    "invite.allowance_set": "invite allowance changed",
     "release.promote": "release promoted",
     "fact_set.promote": "fact set promoted",
     "fact_override.set": "kill switch turned off",

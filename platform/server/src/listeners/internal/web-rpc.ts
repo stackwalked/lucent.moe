@@ -1,5 +1,6 @@
 import { implement } from "@lucent/rpc/mount";
 import { type WebContract, webContract } from "@lucent/rpc/web";
+import { admissionHandlers } from "./web-admission.ts";
 import { auditHandlers } from "./web-audit.ts";
 import { authHandlers } from "./web-auth.ts";
 import { authorityHandlers } from "./web-authority.ts";
@@ -60,4 +61,5 @@ export const webProcedures = implement<WebRpcContext, WebContract>(webContract, 
     ...resourcesHandlers,
     ...systemHandlers,
     ...discordHandlers,
+    ...admissionHandlers,
 });

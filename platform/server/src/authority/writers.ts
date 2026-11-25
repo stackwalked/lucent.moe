@@ -18,7 +18,15 @@ import { type AuthzRefusal, authorize, type Caller } from "@lucent/policy/policy
 import { z } from "zod";
 import { clearCredentials, issueSetupToken } from "../auth/setup.ts";
 import { appendAudit } from "../db/audit.ts";
-import { type Db, type DbFailure, execute, queryOne, sql, toTimestamptz } from "../db/pool.ts";
+import {
+    type Db,
+    type DbFailure,
+    execute,
+    queryOne,
+    sql,
+    type Tx,
+    toTimestamptz,
+} from "../db/pool.ts";
 import { type ReceiptRefusal, readReplay, recordReceipt, toOperationKey } from "../db/receipt.ts";
 import { withTx } from "../db/tx.ts";
 import type { FeatureSelection } from "./entitlements.ts";
@@ -138,10 +146,48 @@ export async function bootstrapRootAccount(params: {
     });
 }
 
+// Every account but root's starts here, whoever vouched for it (staff, an invite, an approved
+// application): an email and nothing else, plus a setup link whose holder chooses the username
+// and credentials. The caller audits it, saying how it came about. An address already in use is
+// EMAIL_TAKEN, and the transaction is then unusable: the caller returns.
+export async function insertAccount(
+    tx: Tx,
+    params: {
+        readonly rng: CryptoRng;
+        readonly email: string;
+        readonly issuedBy: string;
+        readonly txNow: EpochMs;
+    },
+): Promise<
+    Result<
+        { readonly accountId: AccountId; readonly setupToken: BearerToken },
+        DbFailure | Refusal<"EMAIL_TAKEN">
+    >
+> {
+    const accountId = newAccountId(params.rng);
+    const inserted = await execute(
+        tx,
+        sql`insert into account (id, email, created_at)
+            values (${accountId}, ${params.email.trim().toLowerCase()},
+                    ${toTimestamptz(params.txNow)}::timestamptz)`,
+    );
+    if (!inserted.ok) {
+        if (inserted.error.code === "UNIQUE_VIOLATION") return err({ code: "EMAIL_TAKEN" });
+        return inserted;
+    }
+    const setupToken = await issueSetupToken(tx, {
+        rng: params.rng,
+        accountId,
+        issuedBy: params.issuedBy,
+        txNow: params.txNow,
+    });
+    if (!setupToken.ok) return setupToken;
+    return ok({ accountId, setupToken: setupToken.value });
+}
+
 const CreateAccountReceiptSchema = z.object({ accountId: AccountId });
 
-// The new account has an email and nothing else: whoever holds the setup link chooses its
-// username and credentials. A replay returns the account but no link (receipts never hold a
+// Staff typing an address. A replay returns the account but no link (receipts never hold a
 // secret); `recoverAccount` issues a fresh one.
 export async function createAccount(params: {
     readonly db: Db;
@@ -167,8 +213,6 @@ export async function createAccount(params: {
         operationId: params.operationId,
         payload: { email },
     });
-    const accountId = newAccountId(params.rng);
-
     return await withTx(params.db, async (tx, txNow) => {
         const locked = await lockCallerWith(tx, { caller: params.caller, targets: [], txNow });
         if (!locked.ok) return locked;
@@ -185,22 +229,14 @@ export async function createAccount(params: {
             return ok({ accountId: replay.value.result.accountId, replayed: true as const });
         }
 
-        const inserted = await execute(
-            tx,
-            sql`insert into account (id, email, created_at)
-                values (${accountId}, ${email}, ${toTimestamptz(txNow)}::timestamptz)`,
-        );
-        if (!inserted.ok) {
-            if (inserted.error.code === "UNIQUE_VIOLATION") return err({ code: "EMAIL_TAKEN" });
-            return inserted;
-        }
-        const setupToken = await issueSetupToken(tx, {
+        const created = await insertAccount(tx, {
             rng: params.rng,
-            accountId,
+            email,
             issuedBy: params.caller.accountId,
             txNow,
         });
-        if (!setupToken.ok) return setupToken;
+        if (!created.ok) return created;
+        const { accountId, setupToken } = created.value;
         const audited = await appendAudit(tx, {
             actorId: params.caller.accountId,
             client: params.caller.client,
@@ -211,7 +247,7 @@ export async function createAccount(params: {
         if (!audited.ok) return audited;
         const recorded = await recordReceipt(tx, op, { accountId });
         if (!recorded.ok) return recorded;
-        return ok({ accountId, setupToken: setupToken.value, replayed: false as const });
+        return ok({ accountId, setupToken, replayed: false as const });
     });
 }
 

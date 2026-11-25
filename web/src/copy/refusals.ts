@@ -89,6 +89,12 @@ export const REFUSALS: Readonly<Record<RefusalCode, string>> = {
     NOT_AN_IMAGE: "that isn't a picture we take. use a jpeg, png or webp.",
     IMAGE_UNDECODABLE: "that picture couldn't be read. try another.",
     IMAGE_TIMED_OUT: "that picture took too long to read. try a smaller one.",
+    NO_ALLOWANCE: "you have no invites left. staff decide how many you get.",
+    INVITE_USED: "this invite was already used.",
+    INVITE_INVALID:
+        "this invite has expired, was used or was revoked. ask whoever sent it for a new one.",
+    MAIL_DISABLED: "invites can't be redeemed right now. try again later.",
+    BELOW_SPENT: "that's fewer than this account has already used.",
 };
 // The text for one refusal, a form's own wording first where it has one.
 export function refusalText(

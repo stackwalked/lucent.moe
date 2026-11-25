@@ -7,6 +7,14 @@ export function passwordResetMail(link: string) {
     };
 }
 
+// For an account made from an invite or an application; staff hand over the links they make.
+export function setupLinkMail(link: string) {
+    return {
+        subject: "set up your lucent account",
+        body: `an account was made for this address. use this link within 3 days to choose a username and how you sign in:\n\n${link}\n\nif you did not ask for an account, ignore this email.`,
+    };
+}
+
 // Says that support replied and where to read it; the reply and the subject stay on the site.
 export function ticketReplyMail(link: string) {
     return {
