@@ -66,7 +66,6 @@ export function AccountInvites({
                             <TextField
                                 name="granted"
                                 label={INVITE_TREE_COPY.granted}
-                                hint={INVITE_TREE_COPY.changeBody}
                                 inputMode="numeric"
                                 pattern="[0-9]{1,4}"
                                 required

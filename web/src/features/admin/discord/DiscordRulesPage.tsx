@@ -183,7 +183,6 @@ export function DiscordRulesPage() {
             <Stack gap={6}>
                 <Section caption={C.roles}>
                     <Stack gap={3}>
-                        <p>{C.rolesHint}</p>
                         {roleRules.length === 0 ? (
                             <Empty>{C.noRoles}</Empty>
                         ) : (
@@ -235,7 +234,6 @@ export function DiscordRulesPage() {
                 </Section>
                 <Section caption={C.staffChannels}>
                     <Stack gap={3}>
-                        <p>{C.staffHint}</p>
                         {staffRules.length === 0 ? (
                             <Empty>{C.noChannels}</Empty>
                         ) : (
@@ -268,7 +266,6 @@ export function DiscordRulesPage() {
                 </Section>
                 <Section caption={C.feeds}>
                     <Stack gap={3}>
-                        <p>{C.feedsHint}</p>
                         {feedRules.length === 0 ? (
                             <Empty>{C.noFeeds}</Empty>
                         ) : (

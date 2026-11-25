@@ -10,7 +10,7 @@ export const AUDIT_COPY = {
     operation: "operation",
     target: "target",
     detail: "detail",
-    empty: "no entries.",
+    empty: "no entries",
     until: "until",
     renamed: (from: string, to: string) => `${from} → ${to}`,
     seal: (product: string, channel: string, number: string, previous: string | null) =>

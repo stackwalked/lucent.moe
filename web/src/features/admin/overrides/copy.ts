@@ -19,16 +19,15 @@ export const OVERRIDES_COPY = {
     turnOffTitle: (name: string) => `turn ${name} off`,
     turnOnTitle: (name: string) => `turn ${name} back on`,
     turnOffBody:
-        "the switch is recorded and sessions on this release see their data change at their next renewal. modules don't enforce switches yet.",
+        "sessions on this release pick it up at their next renewal. modules don't enforce switches yet.",
     turnOffCoreBody:
-        "this capability is core. the switch is recorded and sessions on this release see their data change at their next renewal. modules don't enforce switches yet.",
-    turnOnBody:
-        "the switch is cleared and sessions on this release see their data change at their next renewal.",
+        "core capability. sessions on this release pick it up at their next renewal. modules don't enforce switches yet.",
+    turnOnBody: "sessions on this release pick it up at their next renewal.",
     switchedBy: "switched by",
-    noFeatures: "this release declares no features.",
-    noCapabilities: "this release declares no capabilities.",
+    noFeatures: "no features",
+    noCapabilities: "no capabilities",
     releases: "releases",
-    noReleases: "no module releases yet.",
+    noReleases: "no module releases",
     line: (product: string, channel: string) => `${product} on ${channel}`,
     current: "current",
     open: "kill switches",

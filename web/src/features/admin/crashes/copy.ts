@@ -12,7 +12,7 @@ export const CRASHES_COPY = {
     crashes: "crashes",
     first: "first",
     last: "last",
-    empty: "no crashes.",
+    empty: "no crashes",
     noFrames: "—",
     releaseName: (product: string, channel: string, seal: string | null) =>
         seal === null ? `${product} ${channel}` : `${product} ${channel} #${seal}`,

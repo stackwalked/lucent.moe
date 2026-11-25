@@ -6,7 +6,7 @@ export const ROLES_COPY = {
     permissions: "permissions",
     holders: "holders",
     unknown: "unknown",
-    none: "no roles yet.",
+    none: "no roles",
     new: "new role",
     edit: "edit",
     editRole: (role: string) => `edit ${role}`,
@@ -20,5 +20,5 @@ export const ROLES_COPY = {
     nameProblem: "use at least 2 letters or digits.",
     nameTaken: "a role already has that name.",
     dropsUnknown: (names: string) => `saving drops what this site doesn't know: ${names}.`,
-    noPermissions: "you hold no permissions to give.",
+    noPermissions: "no permissions to give",
 } as const;

@@ -46,13 +46,7 @@ function RestrictForm() {
             <Field label={MODERATION_COPY.endsOptional}>
                 {(control) => <input {...control} type="date" name="until" />}
             </Field>
-            <TextField
-                name="reason"
-                label={MODERATION_COPY.reason}
-                hint={MODERATION_COPY.reasonHint}
-                required
-                maxLength={500}
-            />
+            <TextField name="reason" label={MODERATION_COPY.reason} required maxLength={500} />
         </>
     );
 }

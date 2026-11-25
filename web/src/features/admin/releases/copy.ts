@@ -7,11 +7,11 @@ export const RELEASES_COPY = {
     staged: "staged",
     state: "state",
     current: "current",
-    nothingStaged: "nothing staged.",
+    nothingStaged: "nothing staged",
     promote: "promote",
     promoteSeal: (number: string) => `promote seal ${number}`,
     promoteSealBody: (product: string, channel: string) =>
-        `it becomes current on ${product} ${channel}, and the seal it replaces can't be promoted again. members get it on their next start.`,
+        `becomes current on ${product} ${channel}. the seal it replaces can't be promoted again. members get it on their next start.`,
     factSets: "fact sets",
     factSetsOf: (release: string) => `fact sets for ${release}`,
     builds: "builds",
@@ -20,8 +20,8 @@ export const RELEASES_COPY = {
     promoted: "promoted",
     none: "none",
     sets: "sets",
-    noSets: "no fact sets for this release yet.",
+    noSets: "no fact sets",
     promoteRevision: (revision: number) => `promote revision ${revision}`,
     promoteSetBody: (builds: number) =>
-        `it becomes current for ${builds === 1 ? "its build" : `all ${builds} of its builds`}. sessions running on them are told at their next renewal and can fetch it.`,
+        `becomes current for ${builds === 1 ? "its build" : `all ${builds} of its builds`}. running sessions get it at their next renewal.`,
 } as const;

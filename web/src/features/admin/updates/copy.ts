@@ -7,9 +7,9 @@ export const UPDATES_COPY = {
     covered: "covered",
     latency: "latency",
     waiting: (duration: string) => `waiting ${duration}`,
-    none: "none yet",
-    truncated: "showing the 100 latest builds.",
-    nothingReported: "no start has reported a game build yet.",
+    none: "not yet",
+    truncated: "latest 100 builds",
+    nothingReported: "no builds reported",
     duration: (ms: number) => {
         const minutes = Math.floor(ms / 60_000);
         if (minutes < 1) return "under a minute";

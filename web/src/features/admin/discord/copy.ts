@@ -2,16 +2,11 @@ export const DISCORD_RULES_TITLE = "discord";
 
 export const DISCORD_RULES_COPY = {
     roles: "roles",
-    rolesHint:
-        "the bot gives each discord role to linked accounts that meet its rule, and takes it back when they stop. a role in no rule is never touched.",
     staffChannels: "staff channels",
-    staffHint: "staff lookups are answered only in these channels.",
     feeds: "feeds",
-    feedsHint:
-        "what the bot posts to each channel. a feed starts with what happens after it is added.",
     role: "discord role id",
     channel: "discord channel id",
-    idHint: "turn on developer mode in discord, then right-click and copy the id.",
+    idHint: "in discord: developer mode on, right-click, copy id",
     who: "given to",
     feed: "posts",
     added: "added",
@@ -29,10 +24,9 @@ export const DISCORD_RULES_COPY = {
     addFeed: "add a feed",
     remove: "remove",
     removeTitle: (id: string) => `remove the rule for ${id}`,
-    removeBody:
-        "the bot stops acting on it. roles it gave stay until staff remove them in discord.",
-    noRoles: "no role rules yet.",
-    noChannels: "no staff channels yet.",
-    noFeeds: "no feeds yet.",
+    removeBody: "the bot stops acting on it. roles it gave stay.",
+    noRoles: "no role rules",
+    noChannels: "no staff channels",
+    noFeeds: "no feeds",
     unknown: "unknown",
 } as const;

@@ -19,9 +19,9 @@ export const ADMIN_COPY = {
     applications: "applications",
     invites: "invite tree",
     pending: "—",
-    needsPasskey: "staff actions need a passkey. add one in security.",
+    needsPasskey: "staff actions need a passkey.",
     firstPage: "first page",
-    ignored: (tokens: string) => `ignored ${tokens}: not a filter this list can use.`,
+    ignored: (tokens: string) => `ignored ${tokens}: not a filter here.`,
 } as const;
 
 // What each audit operation reads as. Typed against the platform's own list: an operation added

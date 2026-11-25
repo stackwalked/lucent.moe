@@ -2,7 +2,7 @@ export const STAFF_TICKETS_TITLE = "tickets";
 
 export const STAFF_TICKETS_COPY = {
     views: { open: "waiting", answered: "answered", closed: "closed" },
-    none: { open: "nothing waiting.", answered: "nothing answered.", closed: "nothing closed." },
+    none: { open: "none waiting", answered: "none answered", closed: "none closed" },
     subject: "subject",
     appeal: "appeal",
     account: "account",
@@ -21,13 +21,13 @@ export const STAFF_TICKETS_COPY = {
     replyLabel: "answer",
     close: "close ticket",
     closeTitle: "close this ticket",
-    closeBody: "the member can reopen it by writing again.",
-    suspended: "this account is suspended.",
+    closeBody: "the member can reopen it by writing.",
+    suspended: "account suspended",
     reason: "suspension reason",
-    noReason: "none recorded.",
+    noReason: "none recorded",
     reinstate: "reinstate on the account page",
     configs: "config access",
-    configsReadable: "the member allows reading their configs for this ticket.",
-    configsClosed: "the member doesn't allow reading their configs.",
+    configsReadable: "allowed",
+    configsClosed: "not allowed",
     member: "member",
 } as const;

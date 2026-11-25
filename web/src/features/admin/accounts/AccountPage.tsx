@@ -186,7 +186,6 @@ export function AccountPage() {
                     <TextField
                         name="reason"
                         label={ACCOUNTS_COPY.reason}
-                        hint={ACCOUNTS_COPY.reasonHint}
                         required
                         maxLength={500}
                         customCheck={(value) =>

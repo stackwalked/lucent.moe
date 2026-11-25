@@ -67,7 +67,6 @@ export function InviteTreePage() {
     );
     return (
         <Page title={INVITE_TREE_COPY.title}>
-            <p>{INVITE_TREE_COPY.intro}</p>
             {read.value.truncated ? <p>{INVITE_TREE_COPY.truncated}</p> : null}
             {roots.length === 0 ? <Empty>{INVITE_TREE_COPY.none}</Empty> : branch(roots)}
         </Page>

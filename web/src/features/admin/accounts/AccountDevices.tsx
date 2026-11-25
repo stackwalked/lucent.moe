@@ -60,13 +60,14 @@ export function AccountDevices({ account }: { readonly account: Account }) {
                         rowKey={(d) => d.deviceId}
                     />
                 )}
-                {account.replaceableFrom === null ? (
-                    <p>{ACCOUNTS_COPY.windowOpen}</p>
-                ) : (
-                    <p>
-                        {ACCOUNTS_COPY.windowClosed} <Time at={account.replaceableFrom} />
-                    </p>
-                )}
+                <p>
+                    {ACCOUNTS_COPY.nextChange}{" "}
+                    {account.replaceableFrom === null ? (
+                        ACCOUNTS_COPY.now
+                    ) : (
+                        <Time at={account.replaceableFrom} />
+                    )}
+                </p>
             </Stack>
         </Section>
     );

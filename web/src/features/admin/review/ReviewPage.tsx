@@ -161,14 +161,7 @@ function Signals({ item }: { readonly item: Item }) {
 
 function Decide({ item }: { readonly item: Item }) {
     const name = item.account.username ?? item.account.id;
-    const note = (
-        <TextField
-            name="note"
-            label={REVIEW_COPY.note}
-            hint={REVIEW_COPY.noteHint}
-            maxLength={500}
-        />
-    );
+    const note = <TextField name="note" label={REVIEW_COPY.note} maxLength={500} />;
     const noteOf = (form: FormData) => {
         const text = String(form.get("note") ?? "").trim();
         return text === "" ? null : text;
