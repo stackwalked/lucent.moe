@@ -1,0 +1,45 @@
+@layer components {
+    .list {
+        display: flex;
+        flex-direction: column;
+        border: 1px solid var(--line);
+        border-radius: var(--r);
+    }
+
+    .message {
+        display: grid;
+        gap: var(--s-1);
+        padding: var(--s-3);
+        border-block-end: 1px solid var(--line);
+    }
+
+    .message:last-child {
+        border-block-end: 0;
+    }
+
+    .head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--s-1) var(--s-3);
+        color: var(--ink-2);
+        font-size: var(--size-12);
+    }
+
+    .author {
+        color: var(--ink);
+        font-weight: var(--w-medium);
+    }
+
+    .aside {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--s-2);
+        margin-inline-start: auto;
+    }
+
+    .body {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+    }
+}

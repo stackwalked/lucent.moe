@@ -5,17 +5,17 @@ import type { Refused } from "../../server/outcome.ts";
 import { Named } from "../../ui/Avatar/Avatar.tsx";
 import { Button } from "../../ui/Button/Button.tsx";
 import { Empty } from "../../ui/Empty/Empty.tsx";
+import { Messages } from "../../ui/Messages/Messages.tsx";
 import { Page } from "../../ui/Page/Page.tsx";
 import { Pager } from "../../ui/Pager/Pager.tsx";
 import { Section } from "../../ui/Section/Section.tsx";
 import { Stack } from "../../ui/Stack/Stack.tsx";
-import { Table } from "../../ui/Table/Table.tsx";
-import { TextField } from "../../ui/TextField/TextField.tsx";
-import { Time } from "../../ui/Time/Time.tsx";
 import { RefusalNote } from "../auth/RefusalNote.tsx";
 import { postingNote } from "../comments/posting.ts";
 import { ReportButton } from "../comments/ReportButton.tsx";
 import { TextArea } from "../comments/TextArea.tsx";
+import { ProductSelect } from "../products/ProductSelect.tsx";
+import { productName } from "../products/view.ts";
 import { SHOUTS_COPY } from "./copy.ts";
 import { postShout } from "./server.ts";
 import { SHOUTS_TITLE } from "./title.ts";
@@ -23,12 +23,17 @@ import { SHOUTS_TITLE } from "./title.ts";
 const route = getRouteApi("/_member/shouts");
 
 export function ShoutsPage() {
-    const outcome = route.useLoaderData();
+    const { shouts: outcome, products } = route.useLoaderData();
     const { product } = route.useSearch();
     const router = useRouter();
     const [refused, setRefused] = useState<Refused | null>(null);
+    const visible = products.ok ? products.value : [];
+    const nameOf = (productId: string) => {
+        const found = visible.find((p) => p.productId === productId);
+        return found === undefined ? productId : productName(found.name);
+    };
     const post = async (form: FormData) => {
-        const named = String(form.get("product") ?? "").trim();
+        const named = String(form.get("product") ?? "");
         const reply = await postShout({
             data: {
                 productId: isProductId(named) ? named : null,
@@ -42,7 +47,7 @@ export function ShoutsPage() {
     const note = postingNote(shown);
     return (
         <Page
-            title={product === undefined ? SHOUTS_TITLE : SHOUTS_COPY.forProduct(product)}
+            title={product === undefined ? SHOUTS_TITLE : SHOUTS_COPY.forProduct(nameOf(product))}
             actions={
                 product === undefined ? null : <Link to="/shouts">{SHOUTS_COPY.allShouts}</Link>
             }
@@ -60,17 +65,12 @@ export function ShoutsPage() {
                                         maxLength={280}
                                         required
                                     />
-                                    <TextField
+                                    <ProductSelect
                                         name="product"
                                         label={SHOUTS_COPY.productField}
-                                        hint={SHOUTS_COPY.productHint}
-                                        maxLength={32}
+                                        none={SHOUTS_COPY.noProduct}
+                                        products={visible}
                                         defaultValue={product ?? ""}
-                                        customCheck={(value) =>
-                                            value.trim() === "" || isProductId(value.trim())
-                                                ? undefined
-                                                : SHOUTS_COPY.productFormat
-                                        }
                                     />
                                     <div>
                                         <Button type="submit">{SHOUTS_COPY.post}</Button>
@@ -82,67 +82,46 @@ export function ShoutsPage() {
                             <Empty>{SHOUTS_COPY.none}</Empty>
                         ) : (
                             <>
-                                <Table
-                                    caption={SHOUTS_COPY.table}
-                                    rows={outcome.value.items}
-                                    rowKey={(row) => row.id}
-                                    columns={[
-                                        {
-                                            key: "author",
-                                            header: SHOUTS_COPY.author,
-                                            cell: (row) => (
-                                                <Named avatar={row.author.avatar}>
-                                                    {row.isMine ? (
-                                                        SHOUTS_COPY.you
-                                                    ) : row.author.username === null ? (
-                                                        "—"
-                                                    ) : (
-                                                        <Link
-                                                            to="/members/$username"
-                                                            params={{
-                                                                username: row.author.username,
-                                                            }}
-                                                        >
-                                                            {row.author.username}
-                                                        </Link>
-                                                    )}
-                                                </Named>
-                                            ),
-                                        },
-                                        {
-                                            key: "body",
-                                            header: SHOUTS_COPY.body,
-                                            cell: (row) => row.body,
-                                        },
-                                        {
-                                            key: "report",
-                                            header: "",
-                                            cell: (row) =>
-                                                row.isMine ? null : (
-                                                    <ReportButton kind="shout" targetId={row.id} />
-                                                ),
-                                        },
-                                        {
-                                            key: "about",
-                                            header: SHOUTS_COPY.about,
-                                            cell: (row) =>
-                                                row.productId === null ? null : (
+                                <Messages
+                                    label={SHOUTS_COPY.table}
+                                    messages={outcome.value.items.map((row) => ({
+                                        key: row.id,
+                                        at: row.createdAt,
+                                        body: row.body,
+                                        author: (
+                                            <Named avatar={row.author.avatar}>
+                                                {row.isMine ? (
+                                                    SHOUTS_COPY.you
+                                                ) : row.author.username === null ? (
+                                                    "—"
+                                                ) : (
+                                                    <Link
+                                                        to="/members/$username"
+                                                        params={{
+                                                            username: row.author.username,
+                                                        }}
+                                                    >
+                                                        {row.author.username}
+                                                    </Link>
+                                                )}
+                                            </Named>
+                                        ),
+                                        aside: (
+                                            <>
+                                                {row.productId === null ? null : (
                                                     <Link
                                                         to="/shouts"
                                                         search={{ product: row.productId }}
                                                     >
-                                                        {row.productId}
+                                                        {nameOf(row.productId)}
                                                     </Link>
-                                                ),
-                                        },
-                                        {
-                                            key: "time",
-                                            header: SHOUTS_COPY.time,
-                                            cell: (row) => (
-                                                <Time at={row.createdAt} format="relative" />
-                                            ),
-                                        },
-                                    ]}
+                                                )}
+                                                {row.isMine ? null : (
+                                                    <ReportButton kind="shout" targetId={row.id} />
+                                                )}
+                                            </>
+                                        ),
+                                    }))}
                                 />
                                 <Pager
                                     nextCursor={outcome.value.nextCursor}

@@ -12,9 +12,10 @@ import { TextField } from "../../ui/TextField/TextField.tsx";
 import { Time } from "../../ui/Time/Time.tsx";
 import { RefusalNote } from "../auth/RefusalNote.tsx";
 import { TextArea } from "../comments/TextArea.tsx";
+import { ProductSelect } from "../products/ProductSelect.tsx";
+import { productName } from "../products/view.ts";
 import { TICKETS_COPY, TICKETS_TITLE } from "./copy.ts";
 import { openTicket } from "./server.ts";
-import styles from "./Thread.module.css";
 
 const route = getRouteApi("/_member/tickets/");
 
@@ -25,6 +26,12 @@ type Product = { readonly productId: string; readonly name: string };
 export function TicketsPage() {
     const { tickets, products } = route.useLoaderData();
     const router = useRouter();
+    const nameOf = (productId: string) => {
+        const product = products.ok
+            ? products.value.find((p) => p.productId === productId)
+            : undefined;
+        return product === undefined ? productId : productName(product.name);
+    };
     return (
         <Page title={TICKETS_TITLE}>
             <Stack gap={6}>
@@ -57,7 +64,9 @@ export function TicketsPage() {
                                         key: "product",
                                         header: TICKETS_COPY.product,
                                         cell: (ticket) =>
-                                            ticket.productId ?? TICKETS_COPY.noProduct,
+                                            ticket.productId === null
+                                                ? TICKETS_COPY.noProduct
+                                                : nameOf(ticket.productId),
                                     },
                                     {
                                         key: "state",
@@ -117,17 +126,12 @@ function OpenTicket({ products }: { readonly products: readonly Product[] }) {
                         required
                         maxLength={120}
                     />
-                    <label className={styles.field}>
-                        <span className={styles.label}>{TICKETS_COPY.product}</span>
-                        <select name="productId" className={styles.control} defaultValue="">
-                            <option value="">{TICKETS_COPY.noProduct}</option>
-                            {products.map((product) => (
-                                <option key={product.productId} value={product.productId}>
-                                    {product.name}
-                                </option>
-                            ))}
-                        </select>
-                    </label>
+                    <ProductSelect
+                        name="productId"
+                        label={TICKETS_COPY.product}
+                        none={TICKETS_COPY.noProduct}
+                        products={products}
+                    />
                     <TextArea name="body" label={TICKETS_COPY.body} maxLength={4000} required />
                     <RefusalNote refused={refused} />
                     <div>

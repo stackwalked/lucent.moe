@@ -3,9 +3,11 @@ import { useActionState } from "react";
 import type { Outcome, Refused } from "../../../server/outcome.ts";
 import { Button } from "../../../ui/Button/Button.tsx";
 import { Empty } from "../../../ui/Empty/Empty.tsx";
+import { Field } from "../../../ui/Field/Field.tsx";
 import { Page } from "../../../ui/Page/Page.tsx";
 import { Refusal } from "../../../ui/Refusal/Refusal.tsx";
 import { Section } from "../../../ui/Section/Section.tsx";
+import { Select } from "../../../ui/Select/Select.tsx";
 import { Stack } from "../../../ui/Stack/Stack.tsx";
 import { Table } from "../../../ui/Table/Table.tsx";
 import { TextField } from "../../../ui/TextField/TextField.tsx";
@@ -13,8 +15,8 @@ import { Time } from "../../../ui/Time/Time.tsx";
 import { Who } from "../../../ui/Who/Who.tsx";
 import { RefusalNote } from "../../auth/RefusalNote.tsx";
 import { TextArea } from "../../comments/TextArea.tsx";
+import { productName } from "../../products/view.ts";
 import { sizeText } from "../../resources/copy.ts";
-import styles from "../../tickets/Thread.module.css";
 import { AccountAction } from "../accounts/AccountAction.tsx";
 import { ADMIN_COPY } from "../copy.ts";
 import { useStaffAction } from "../staff.ts";
@@ -54,18 +56,21 @@ function ProductPicker({
     readonly current: string | null;
 }) {
     return (
-        <label className={styles.field}>
-            <span className={styles.label}>{C.product}</span>
-            <select name="productId" className={styles.control} defaultValue={current ?? ""}>
-                <option value="">{C.everyone}</option>
-                {products.map((product) => (
-                    <option key={product.id} value={product.id}>
-                        {product.name}
-                    </option>
-                ))}
-            </select>
-        </label>
+        <Select
+            name="productId"
+            label={C.product}
+            defaultValue={current ?? ""}
+            options={[
+                { value: "", label: C.everyone },
+                ...products.map((p) => ({ value: p.id, label: productName(p.name) })),
+            ]}
+        />
     );
+}
+
+function nameOf(products: readonly Product[], productId: string): string {
+    const product = products.find((p) => p.id === productId);
+    return product === undefined ? productId : productName(product.name);
 }
 
 function DetailFields({
@@ -93,7 +98,6 @@ function DetailFields({
             <TextField
                 name="fileName"
                 label={C.fileName}
-                hint={C.fileNameHint}
                 required={current !== null}
                 maxLength={120}
                 {...(current === null ? {} : { defaultValue: current.fileName })}
@@ -134,7 +138,10 @@ export function StaffResourcesPage() {
                                     {
                                         key: "product",
                                         header: C.product,
-                                        cell: (item) => item.productId ?? C.everyone,
+                                        cell: (item) =>
+                                            item.productId === null
+                                                ? C.everyone
+                                                : nameOf(products, item.productId),
                                     },
                                     {
                                         key: "size",
@@ -241,11 +248,9 @@ function Publish({ products }: { readonly products: readonly Product[] }) {
             <form action={submit} key={answer === null ? "fresh" : "kept"}>
                 <fieldset disabled={pending}>
                     <Stack gap={3}>
-                        <p>{C.publishHint}</p>
-                        <label className={styles.field}>
-                            <span className={styles.label}>{C.file}</span>
-                            <input type="file" name="file" required />
-                        </label>
+                        <Field label={C.file} hint={C.fileHint}>
+                            {(control) => <input {...control} type="file" name="file" required />}
+                        </Field>
                         <DetailFields products={products} current={null} />
                         {answer !== null && "problem" in answer ? (
                             <Refusal>{answer.problem}</Refusal>

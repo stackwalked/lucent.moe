@@ -5,12 +5,13 @@ import type { ReactNode } from "react";
 import { Empty } from "../../../ui/Empty/Empty.tsx";
 import { Page } from "../../../ui/Page/Page.tsx";
 import { Section } from "../../../ui/Section/Section.tsx";
+import { Select } from "../../../ui/Select/Select.tsx";
 import { Stack } from "../../../ui/Stack/Stack.tsx";
 import { Table } from "../../../ui/Table/Table.tsx";
 import { TextField } from "../../../ui/TextField/TextField.tsx";
 import { Time } from "../../../ui/Time/Time.tsx";
 import { RefusalNote } from "../../auth/RefusalNote.tsx";
-import styles from "../../tickets/Thread.module.css";
+import { productName } from "../../products/view.ts";
 import { AccountAction } from "../accounts/AccountAction.tsx";
 import { DISCORD_RULES_COPY as C, DISCORD_RULES_TITLE } from "./copy.ts";
 import { addDiscordRule, removeDiscordRule } from "./server.ts";
@@ -58,17 +59,17 @@ function Picker({
     readonly options: readonly (readonly [string, string])[];
 }) {
     return (
-        <label className={styles.field}>
-            <span className={styles.label}>{label}</span>
-            <select name={name} className={styles.control}>
-                {options.map(([value, text]) => (
-                    <option key={value} value={value}>
-                        {text}
-                    </option>
-                ))}
-            </select>
-        </label>
+        <Select
+            name={name}
+            label={label}
+            options={options.map(([value, text]) => ({ value, label: text }))}
+        />
     );
+}
+
+function nameOf(products: readonly Named[], productId: string): string {
+    const product = products.find((p) => p.id === productId);
+    return product === undefined ? productId : productName(product.name);
 }
 
 // What a role rule's condition reads as; a product or role since removed shows its id.
@@ -80,10 +81,7 @@ function conditionLabel(
         case "linked":
             return C.linked;
         case "entitled":
-            return C.entitled(
-                listed.products.find((p) => p.id === condition.productId)?.name ??
-                    condition.productId,
-            );
+            return C.entitled(nameOf(listed.products, condition.productId));
         case "holds_role":
             return C.holds(
                 listed.roles.find((r) => r.id === condition.roleId)?.name ?? condition.roleId,
@@ -174,7 +172,9 @@ export function DiscordRulesPage() {
     };
     const conditions: readonly (readonly [string, string])[] = [
         ["linked", C.linked],
-        ...value.products.map((p) => [`entitled:${p.id}`, C.entitled(p.name)] as const),
+        ...value.products.map(
+            (p) => [`entitled:${p.id}`, C.entitled(productName(p.name))] as const,
+        ),
         ...value.roles.map((r) => [`holds_role:${r.id}`, C.holds(r.name)] as const),
     ];
 

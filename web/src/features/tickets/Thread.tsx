@@ -3,13 +3,11 @@ import { useRouter } from "@tanstack/react-router";
 import { useActionState } from "react";
 import type { Outcome, Refused } from "../../server/outcome.ts";
 import { Button } from "../../ui/Button/Button.tsx";
+import { Messages } from "../../ui/Messages/Messages.tsx";
 import { Stack } from "../../ui/Stack/Stack.tsx";
-import { Table } from "../../ui/Table/Table.tsx";
-import { Time } from "../../ui/Time/Time.tsx";
 import { RefusalNote } from "../auth/RefusalNote.tsx";
 import { TextArea } from "../comments/TextArea.tsx";
 import { TICKETS_COPY } from "./copy.ts";
-import styles from "./Thread.module.css";
 
 export type ThreadMessage = {
     readonly id: string;
@@ -33,23 +31,14 @@ export function Thread({
         authorOf ??
         ((message: ThreadMessage) => (message.fromStaff ? TICKETS_COPY.staff : TICKETS_COPY.you));
     return (
-        <Table
-            caption={caption}
-            rows={messages}
-            rowKey={(message) => message.id}
-            columns={[
-                { key: "author", header: "", cell: author },
-                {
-                    key: "body",
-                    header: TICKETS_COPY.body,
-                    cell: (message) => <span className={styles.body}>{message.body}</span>,
-                },
-                {
-                    key: "at",
-                    header: "",
-                    cell: (message) => <Time at={message.at} format="relative" />,
-                },
-            ]}
+        <Messages
+            label={caption}
+            messages={messages.map((message) => ({
+                key: message.id,
+                author: author(message),
+                at: message.at,
+                body: message.body,
+            }))}
         />
     );
 }

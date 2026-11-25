@@ -2,6 +2,8 @@
     .status {
         display: inline-flex;
         align-items: center;
+        /* Its text's width even where a column layout would stretch it. */
+        inline-size: fit-content;
         gap: var(--s-1);
         padding-inline: var(--s-2);
         border: 1px solid var(--line-2);

@@ -12,6 +12,7 @@ import { Section } from "../../ui/Section/Section.tsx";
 import { Stack } from "../../ui/Stack/Stack.tsx";
 import { TextField } from "../../ui/TextField/TextField.tsx";
 import { RefusalNote } from "../auth/RefusalNote.tsx";
+import { productName } from "../products/view.ts";
 import { CLOUD_COPY as C } from "./copy.ts";
 import type { fetchHistory } from "./server.ts";
 import {
@@ -283,7 +284,7 @@ export function CloudPage() {
                             {loaded.catalog.products.map((p) => (
                                 <li key={p.id}>
                                     <Link to="/cloud" search={{ product: p.id }}>
-                                        {p.name}
+                                        {productName(p.name)}
                                     </Link>
                                 </li>
                             ))}

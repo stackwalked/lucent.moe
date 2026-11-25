@@ -10,6 +10,7 @@ import { Switch } from "../../ui/Switch/Switch.tsx";
 import { TextField } from "../../ui/TextField/TextField.tsx";
 import { RefusalNote } from "../auth/RefusalNote.tsx";
 import { TextArea } from "../comments/TextArea.tsx";
+import { productName } from "../products/view.ts";
 import styles from "./ApplyPage.module.css";
 import { WAITLIST_COPY } from "./copy.ts";
 import { submitApplication } from "./server.ts";
@@ -84,7 +85,7 @@ export function ApplyPage() {
                                         <Switch
                                             key={product.productId}
                                             name={`${PRODUCT}${product.productId}`}
-                                            label={product.name}
+                                            label={productName(product.name)}
                                             defaultChecked={products.length === 1}
                                         />
                                     ))}

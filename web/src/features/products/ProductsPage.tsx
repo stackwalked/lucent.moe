@@ -1,7 +1,6 @@
 import { getRouteApi, Link } from "@tanstack/react-router";
 import { Empty } from "../../ui/Empty/Empty.tsx";
 import { Page } from "../../ui/Page/Page.tsx";
-import { Section } from "../../ui/Section/Section.tsx";
 import { Table } from "../../ui/Table/Table.tsx";
 import { RefusalNote } from "../auth/RefusalNote.tsx";
 import { SearchSection } from "../search/SearchSection.tsx";
@@ -27,40 +26,38 @@ export function ProductsPage() {
             title={PRODUCTS_COPY.title}
             actions={<Link to="/shouts">{PRODUCTS_COPY.shouts}</Link>}
         >
-            <Section caption={PRODUCTS_COPY.title}>
-                {products.length === 0 ? (
-                    <Empty>{PRODUCTS_COPY.none}</Empty>
-                ) : (
-                    <Table
-                        caption={PRODUCTS_COPY.title}
-                        columns={[
-                            {
-                                key: "name",
-                                header: PRODUCTS_COPY.product,
-                                cell: (p: Product) => productName(p.name),
-                            },
-                            {
-                                key: "channels",
-                                header: PRODUCTS_COPY.channels,
-                                cell: (p) => p.channels.map((c) => c.channel).join(", "),
-                            },
-                            {
-                                key: "state",
-                                header: PRODUCTS_COPY.state,
-                                align: "end",
-                                cell: (p) => PRODUCTS_COPY.lifecycle[p.state],
-                            },
-                        ]}
-                        rows={products}
-                        rowKey={(p) => p.productId}
-                        rowLink={(p, content) => (
-                            <Link to="/products/$productId" params={{ productId: p.productId }}>
-                                {content}
-                            </Link>
-                        )}
-                    />
-                )}
-            </Section>
+            {products.length === 0 ? (
+                <Empty>{PRODUCTS_COPY.none}</Empty>
+            ) : (
+                <Table
+                    caption={PRODUCTS_COPY.title}
+                    columns={[
+                        {
+                            key: "name",
+                            header: PRODUCTS_COPY.product,
+                            cell: (p: Product) => productName(p.name),
+                        },
+                        {
+                            key: "channels",
+                            header: PRODUCTS_COPY.channels,
+                            cell: (p) => p.channels.map((c) => c.channel).join(", "),
+                        },
+                        {
+                            key: "state",
+                            header: PRODUCTS_COPY.state,
+                            align: "end",
+                            cell: (p) => PRODUCTS_COPY.lifecycle[p.state],
+                        },
+                    ]}
+                    rows={products}
+                    rowKey={(p) => p.productId}
+                    rowLink={(p, content) => (
+                        <Link to="/products/$productId" params={{ productId: p.productId }}>
+                            {content}
+                        </Link>
+                    )}
+                />
+            )}
             <SearchSection />
         </Page>
     );

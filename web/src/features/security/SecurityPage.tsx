@@ -1,4 +1,4 @@
-import { Link, useRouteContext } from "@tanstack/react-router";
+import { useRouteContext } from "@tanstack/react-router";
 import { useEffect, useEffectEvent, useState } from "react";
 import type { Outcome, Refused } from "../../server/outcome.ts";
 import { Button } from "../../ui/Button/Button.tsx";
@@ -17,7 +17,6 @@ import { AddApp } from "../credentials/AddApp.tsx";
 import { AddPasskey } from "../credentials/AddPasskey.tsx";
 import { SetPassword } from "../credentials/SetPassword.tsx";
 import { listCredentials, removeCredential } from "../credentials/server.ts";
-import { DISCORD_TITLE } from "../discord/copy.ts";
 import { useStepUp } from "../step-up/StepUp.tsx";
 import { SECURITY_COPY } from "./copy.ts";
 import { endOtherSessions, endSession, listSessions } from "./server.ts";
@@ -77,7 +76,7 @@ function Credentials({ username }: { readonly username: string }) {
                         columns={[
                             {
                                 key: "label",
-                                header: SECURITY_COPY.passkeys,
+                                header: SECURITY_COPY.name,
                                 cell: (p: Credentials["passkeys"][number]) => p.label,
                             },
                             {
@@ -193,7 +192,7 @@ function Signins() {
                 columns={[
                     {
                         key: "device",
-                        header: SECURITY_COPY.sessions,
+                        header: SECURITY_COPY.browser,
                         cell: (s: Sessions[number]) =>
                             deviceLabel(s.client.userAgent, SECURITY_COPY.unknownDevice),
                     },
@@ -237,11 +236,7 @@ export function SecurityPage() {
     const { session } = useRouteContext({ from: "__root__" });
     const viewer = memberOf(session);
     return (
-        <Page
-            title={SECURITY_COPY.title}
-            width="narrow"
-            actions={<Link to="/account/discord">{DISCORD_TITLE}</Link>}
-        >
+        <Page title={SECURITY_COPY.title} width="narrow">
             <Credentials username={viewer?.username ?? ""} />
             <Signins />
         </Page>

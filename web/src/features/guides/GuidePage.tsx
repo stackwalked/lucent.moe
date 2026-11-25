@@ -25,6 +25,7 @@ export function GuidePage() {
     const { guide, comments } = route.useLoaderData();
     const router = useRouter();
     const [refused, setRefused] = useState<Refused | null>(null);
+    const [editing, setEditing] = useState(false);
     const save = async (form: FormData) => {
         const reply = await saveGuide({
             data: {
@@ -34,7 +35,9 @@ export function GuidePage() {
             },
         });
         setRefused(reply.ok ? null : reply.refused);
-        if (reply.ok) await router.invalidate();
+        if (!reply.ok) return;
+        setEditing(false);
+        await router.invalidate();
     };
     if (!guide.ok) {
         return (
@@ -52,6 +55,13 @@ export function GuidePage() {
                     {GUIDES_COPY.back}
                 </Link>
             }
+            actions={
+                guide.value.isMine && !editing ? (
+                    <Button size="sm" icon="pencil" onClick={() => setEditing(true)}>
+                        {GUIDES_COPY.edit}
+                    </Button>
+                ) : null
+            }
         >
             <Stack gap={6}>
                 <p>
@@ -62,7 +72,7 @@ export function GuidePage() {
                 </p>
                 <p className={styles.body}>{guide.value.body}</p>
                 {guide.value.isMine ? null : <ReportButton kind="guide" targetId={guideId} />}
-                {guide.value.isMine ? (
+                {editing ? (
                     <Section caption={GUIDES_COPY.edit}>
                         <form action={save} key={guide.value.updatedAt}>
                             <Stack gap={3}>
@@ -84,9 +94,12 @@ export function GuidePage() {
                                     required
                                     defaultValue={guide.value.body}
                                 />
-                                <div>
+                                <Stack direction="row" gap={2}>
                                     <Button type="submit">{GUIDES_COPY.save}</Button>
-                                </div>
+                                    <Button tone="ghost" onClick={() => setEditing(false)}>
+                                        {GUIDES_COPY.cancel}
+                                    </Button>
+                                </Stack>
                             </Stack>
                         </form>
                     </Section>

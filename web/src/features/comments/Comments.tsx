@@ -4,11 +4,10 @@ import type { Outcome, Refused } from "../../server/outcome.ts";
 import { Named } from "../../ui/Avatar/Avatar.tsx";
 import { Button } from "../../ui/Button/Button.tsx";
 import { Empty } from "../../ui/Empty/Empty.tsx";
+import { Messages } from "../../ui/Messages/Messages.tsx";
 import { Pager } from "../../ui/Pager/Pager.tsx";
 import { Section } from "../../ui/Section/Section.tsx";
 import { Stack } from "../../ui/Stack/Stack.tsx";
-import { Table } from "../../ui/Table/Table.tsx";
-import { Time } from "../../ui/Time/Time.tsx";
 import { RefusalNote } from "../auth/RefusalNote.tsx";
 import { COMMENTS_COPY } from "./copy.ts";
 import { postingNote } from "./posting.ts";
@@ -46,41 +45,25 @@ export function Comments({
                     <Empty>{COMMENTS_COPY.none}</Empty>
                 ) : (
                     <>
-                        <Table
-                            caption={COMMENTS_COPY.title}
-                            rows={outcome.value.items}
-                            rowKey={(row) => row.id}
-                            columns={[
-                                {
-                                    key: "author",
-                                    header: "",
-                                    cell: (row) => (
-                                        <Named avatar={row.author.avatar}>
-                                            {row.isMine
-                                                ? COMMENTS_COPY.you
-                                                : COMMENTS_COPY.author(row.author.username)}
-                                        </Named>
-                                    ),
-                                },
-                                {
-                                    key: "body",
-                                    header: COMMENTS_COPY.body,
-                                    cell: (row) => row.body,
-                                },
-                                {
-                                    key: "report",
-                                    header: "",
-                                    cell: (row) =>
-                                        row.isMine ? null : (
-                                            <ReportButton kind="comment" targetId={row.id} />
-                                        ),
-                                },
-                                {
-                                    key: "time",
-                                    header: COMMENTS_COPY.time,
-                                    cell: (row) => <Time at={row.createdAt} format="relative" />,
-                                },
-                            ]}
+                        <Messages
+                            label={COMMENTS_COPY.title}
+                            messages={outcome.value.items.map((row) => ({
+                                key: row.id,
+                                at: row.createdAt,
+                                body: row.body,
+                                author: (
+                                    <Named avatar={row.author.avatar}>
+                                        {row.isMine
+                                            ? COMMENTS_COPY.you
+                                            : COMMENTS_COPY.author(row.author.username)}
+                                    </Named>
+                                ),
+                                ...(row.isMine
+                                    ? {}
+                                    : {
+                                          aside: <ReportButton kind="comment" targetId={row.id} />,
+                                      }),
+                            }))}
                         />
                         <Pager nextCursor={outcome.value.nextCursor} onNext={onNext} />
                     </>

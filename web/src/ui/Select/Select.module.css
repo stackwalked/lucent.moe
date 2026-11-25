@@ -1,26 +1,25 @@
-@layer features {
-    .body {
-        white-space: pre-wrap;
-        overflow-wrap: anywhere;
-    }
-
+@layer components {
     .field {
-        display: flex;
-        flex-direction: column;
+        display: grid;
         gap: var(--s-1);
+        justify-items: start;
+        min-inline-size: 0;
     }
 
     .label {
         color: var(--ink-2);
         font-size: var(--size-13);
+        font-weight: var(--w-medium);
+        line-height: var(--lh-tight);
     }
 
     .control {
+        max-inline-size: 100%;
         block-size: var(--control-h);
         padding-inline: var(--s-2);
         border: 1px solid var(--line-2);
         border-radius: var(--r);
-        background: var(--sunken);
+        background: var(--raised);
         color: var(--ink);
         font-size: var(--size-13);
     }

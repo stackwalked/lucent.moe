@@ -19,7 +19,6 @@ type Channel = ReturnType<typeof route.useLoaderData>["channels"][number];
 // fact sets don't cover the game's builds, as after a game update.
 export function ProductPage() {
     const product = route.useLoaderData();
-    const unsupported = product.channels.some((c) => c.release === null || !c.release.supported);
     const description = PRODUCT_DESCRIPTIONS[product.productId];
     return (
         <Page
@@ -96,8 +95,7 @@ export function ProductPage() {
                             ]}
                             rows={product.channels}
                             rowKey={(c) => c.channel}
-                        />
-                        {unsupported ? <p>{PRODUCTS_COPY.notYetSupportedHint}</p> : null}
+                        />{" "}
                     </Stack>
                 </Section>
             ) : null}

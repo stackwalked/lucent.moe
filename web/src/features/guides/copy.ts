@@ -1,6 +1,6 @@
 export const GUIDES_COPY = {
     forProduct: "guides",
-    none: "no guides yet.",
+    none: "no guides",
     table: "guides",
     guide: "guide",
     author: "by",
@@ -11,6 +11,7 @@ export const GUIDES_COPY = {
     publish: "publish",
     edit: "edit",
     save: "save",
+    cancel: "cancel",
     back: "back to the product",
     search: "search guides and accounts",
     by: (name: string | null) => `by ${name ?? "—"}`,

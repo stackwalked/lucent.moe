@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { SITE_COPY } from "../../copy/site.ts";
-
+import { fetchProducts } from "../../features/products/server.ts";
 import { ShoutsPage } from "../../features/shouts/ShoutsPage.tsx";
 import { shoutsSearch } from "../../features/shouts/search.ts";
 import { fetchShouts } from "../../features/shouts/server.ts";
@@ -12,7 +12,13 @@ export const Route = createFileRoute("/_member/shouts")({
         cursor: search.cursor ?? null,
         product: search.product ?? null,
     }),
-    loader: ({ deps }) => fetchShouts({ data: { productId: deps.product, cursor: deps.cursor } }),
+    loader: async ({ deps }) => {
+        const [shouts, products] = await Promise.all([
+            fetchShouts({ data: { productId: deps.product, cursor: deps.cursor } }),
+            fetchProducts(),
+        ]);
+        return { shouts, products };
+    },
     head: () => ({ meta: [{ title: SITE_COPY.pageTitle(SHOUTS_TITLE) }] }),
     component: ShoutsPage,
 });
