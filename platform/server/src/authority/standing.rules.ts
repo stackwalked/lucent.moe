@@ -10,6 +10,8 @@ export function decideStanding(params: {
         readonly status: "active" | "suspended";
         readonly is_locked: boolean;
         readonly is_root: boolean;
+        // A tombstone (deletion/strip.ts) acts for nobody, whatever its status says.
+        readonly is_deleted: boolean;
     };
     readonly roles: readonly { readonly rank: number; readonly permissions: readonly string[] }[];
 }): Result<AccountStanding, never> {
@@ -24,7 +26,10 @@ export function decideStanding(params: {
     return ok({
         accountId: params.accountId,
         isRoot: params.account.is_root,
-        isActive: params.account.status === "active" && !params.account.is_locked,
+        isActive:
+            params.account.status === "active" &&
+            !params.account.is_locked &&
+            !params.account.is_deleted,
         maxRank,
         permissions,
     });

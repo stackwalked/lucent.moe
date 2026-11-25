@@ -556,11 +556,13 @@ function actAsStaff(
         // standing read here is the one the reply commits with.
         const standing = await queryOne(
             tx,
-            z.object({ status: z.enum(["active", "suspended"]) }),
-            sql`select status from account where id = ${ticket.value.account_id}`,
+            z.object({ status: z.enum(["active", "suspended"]), is_deleted: z.boolean() }),
+            sql`select status, deleted_at is not null as is_deleted
+                from account where id = ${ticket.value.account_id}`,
         );
         if (!standing.ok) return standing;
-        const reachable = standing.value?.status === "active";
+        // A deleted owner has no inbox and no address; their ticket waits out its 30 days.
+        const reachable = standing.value?.status === "active" && !standing.value.is_deleted;
         if (params.event === "staff_replied" && ticket.value.kind === "help" && reachable) {
             invariant(params.site !== null, "a reply knows the site it tells the member about");
             const notified = await recordNotification(tx, {

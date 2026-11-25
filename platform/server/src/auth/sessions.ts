@@ -116,6 +116,7 @@ async function findSession(
             where s.token_hash = ${tokenHash}
               and s.expires_at > ${toTimestamptz(params.txNow)}::timestamptz
               and not a.is_locked
+              and a.deleted_at is null
               and a.status = case when s.purpose = 'appeal' then 'suspended' else 'active' end
             ${lock}`,
     );

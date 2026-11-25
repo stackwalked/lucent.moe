@@ -16,6 +16,7 @@ const AccountRowSchema = z.object({
     username: z.string().nullable(),
     status: z.enum(["active", "suspended"]),
     is_locked: z.boolean(),
+    is_deleted: z.boolean(),
 });
 
 // The first lock any credential writer takes (canonical order: account first).
@@ -26,10 +27,12 @@ export async function lockAccount(
     const row = await queryOne(
         tx,
         AccountRowSchema,
-        sql`select username, status, is_locked from account where id = ${accountId} for update`,
+        sql`select username, status, is_locked, deleted_at is not null as is_deleted
+            from account where id = ${accountId} for update`,
     );
     if (!row.ok) return row;
-    if (row.value === null) return ok(null);
+    // A tombstone is no account to sign in to or act for, nor to appeal from.
+    if (row.value === null || row.value.is_deleted) return ok(null);
     return ok({
         accountId,
         username: row.value.username,

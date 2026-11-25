@@ -19,6 +19,7 @@ const AccountLockRowSchema = z.object({
     status: z.enum(["active", "suspended"]),
     is_root: z.boolean(),
     is_locked: z.boolean(),
+    is_deleted: z.boolean(),
 });
 
 const HeldRoleRowSchema = z.object({
@@ -66,7 +67,8 @@ async function lockAccountStandings(
         const accountRes = await queryOne(
             tx,
             AccountLockRowSchema,
-            sql`select status, is_root, is_locked from account where id = ${accountId} for update`,
+            sql`select status, is_root, is_locked, deleted_at is not null as is_deleted
+                from account where id = ${accountId} for update`,
         );
         if (!accountRes.ok) return accountRes;
         if (accountRes.value === null) continue;
@@ -86,7 +88,8 @@ export async function readStanding(
     const accountRes = await queryOne(
         q,
         AccountLockRowSchema,
-        sql`select status, is_root, is_locked from account where id = ${accountId}`,
+        sql`select status, is_root, is_locked, deleted_at is not null as is_deleted
+            from account where id = ${accountId}`,
     );
     if (!accountRes.ok) return accountRes;
     if (accountRes.value === null) return ok(null);

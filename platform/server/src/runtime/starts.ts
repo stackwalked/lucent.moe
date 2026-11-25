@@ -325,7 +325,8 @@ export async function readStartContainer(
                 consumed_at: EpochMs.nullable(),
                 container: z.instanceof(Uint8Array).nullable(),
             }),
-            sql`select a.status = 'active' and not a.is_locked as account_active,
+            sql`select a.status = 'active' and not a.is_locked and a.deleted_at is null
+                           as account_active,
                        d.revoked_at is not null as device_revoked,
                        s.product_id, s.container_key, s.expires_at, s.consumed_at, r.container
                 from session_start s

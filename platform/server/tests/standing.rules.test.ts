@@ -21,7 +21,11 @@ test.each([
     (status, is_locked, roles, isActive, maxRank, permissions) => {
         const accountId = AccountId.parse(`acc_${"a".repeat(22)}`);
         expect(
-            decideStanding({ accountId, account: { status, is_locked, is_root: true }, roles }),
+            decideStanding({
+                accountId,
+                account: { status, is_locked, is_root: true, is_deleted: false },
+                roles,
+            }),
         ).toEqual({
             ok: true,
             value: {
@@ -34,3 +38,13 @@ test.each([
         });
     },
 );
+
+test("a deleted account is never active, whatever its status says", () => {
+    const accountId = AccountId.parse(`acc_${"b".repeat(22)}`);
+    const decided = decideStanding({
+        accountId,
+        account: { status: "active", is_locked: false, is_root: false, is_deleted: true },
+        roles: [],
+    });
+    expect(decided.ok && decided.value.isActive).toBe(false);
+});
