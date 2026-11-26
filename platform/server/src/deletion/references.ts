@@ -124,6 +124,7 @@ export const ACCOUNT_REFERENCES: Readonly<Record<string, Fate>> = {
     "device_enrollment.public_key": stays(NO_ID),
     "entitlement_product.features": stays(NO_ID),
     "game_build_report.modules": stays(NO_ID),
+    "product_support.builds": stays(NO_ID),
     "role.channel_grants": stays(NO_ID),
     "runtime_session.asked_modules": stays(NO_ID),
     "session_start.modules": stays(NO_ID),
