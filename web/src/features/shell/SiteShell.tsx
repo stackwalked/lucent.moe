@@ -92,6 +92,13 @@ export function SiteShell({
                 viewer === null ? (
                     <>
                         <Link
+                            to="/status"
+                            className={styles.place}
+                            activeProps={{ "aria-current": "page" }}
+                        >
+                            {SHELL_COPY.status}
+                        </Link>
+                        <Link
                             to="/apply"
                             className={styles.place}
                             activeProps={{ "aria-current": "page" }}
@@ -138,6 +145,13 @@ export function SiteShell({
                             activeProps={{ "aria-current": "page" }}
                         >
                             {SHELL_COPY.support}
+                        </Link>
+                        <Link
+                            to="/status"
+                            className={styles.place}
+                            activeProps={{ "aria-current": "page" }}
+                        >
+                            {SHELL_COPY.status}
                         </Link>
                         {isStaff(viewer) ? (
                             <Link

@@ -5,6 +5,7 @@ export const SHELL_COPY = {
     download: "download",
     resources: "resources",
     support: "support",
+    status: "status",
     signIn: "sign in",
     apply: "apply",
     security: "security",
