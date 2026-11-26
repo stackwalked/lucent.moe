@@ -254,7 +254,13 @@ describe("web against a real platform", () => {
             operationId: newOperationId(createSeededRng(7002)),
             email: "bob@lucent.test",
         };
+        // Adding an account asks for a confirmation within the week, and the sign-in was one:
+        // it is refused only once that is older.
+        const db = new SQL(platform.databaseUrl);
+        await db`update browser_session set authenticated_at = now() - interval '8 days'`;
         expect(refusedCode(await page.call(fn.createAccount, add))).toBe("STEP_UP_REQUIRED");
+        await db`update browser_session set authenticated_at = now()`;
+        await db.close();
 
         const proof = accepted(RequestOptions, await page.call(fn.beginStepUp));
         accepted(
@@ -442,7 +448,9 @@ describe("web against a real platform", () => {
         await db`insert into fact_set_build
                      (set_id, release_id, name_hash, time_date_stamp, size_of_image, revision)
                  values (${set.id}::bigint, decode(${releaseId}, 'hex'), 4660, 1, 2, 1)`;
-        await db`update browser_session set step_up_at = null`;
+        // Promotion asks for a confirmation within the week: neither a step-up nor the sign-in.
+        await db`update browser_session
+                 set step_up_at = null, authenticated_at = now() - interval '8 days'`;
 
         const Lines = z.array(
             z.object({

@@ -83,7 +83,11 @@ async function readSubject(
     const standing = await readStanding(q, caller.accountId, txNow);
     if (!standing.ok) return standing;
     if (standing.value === null) return err({ code: "FORBIDDEN" });
-    return ok({ ...standing.value, stepUpAt: caller.stepUpAt });
+    return ok({
+        ...standing.value,
+        stepUpAt: caller.stepUpAt,
+        authenticatedAt: caller.authenticatedAt,
+    });
 }
 
 export async function readAs<T>(

@@ -22,7 +22,14 @@ export function readAsStaff<T, E extends { readonly code: string }>(
             if (!standing.ok) return standing;
             if (
                 standing.value === null ||
-                !can({ ...standing.value, stepUpAt: params.caller.stepUpAt }, params.action)
+                !can(
+                    {
+                        ...standing.value,
+                        stepUpAt: params.caller.stepUpAt,
+                        authenticatedAt: params.caller.authenticatedAt,
+                    },
+                    params.action,
+                )
             ) {
                 return err({ code: "FORBIDDEN" as const });
             }

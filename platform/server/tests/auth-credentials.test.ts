@@ -3,7 +3,7 @@ import { invariant } from "@lucent/core/contain";
 import { err, ok } from "@lucent/core/result";
 import { createSeededRng } from "@lucent/core/rng";
 import { newOperationId, toHex } from "@lucent/core/scalars";
-import { STEP_UP_WINDOW_SECONDS } from "@lucent/policy/policy";
+import { RECENT_WINDOW_SECONDS } from "@lucent/policy/policy";
 import { AuthenticationResponse, RegistrationResponse } from "@lucent/rpc/webauthn";
 import { createTestAuthenticator } from "@lucent/testing/authenticator";
 import { z } from "zod";
@@ -199,7 +199,7 @@ describe("credential changes", () => {
                 });
             };
             expect(await create()).toEqual(
-                err({ code: "STEP_UP_REQUIRED", withinSeconds: STEP_UP_WINDOW_SECONDS }),
+                err({ code: "STEP_UP_REQUIRED", withinSeconds: RECENT_WINDOW_SECONDS }),
             );
 
             const passkey = await createTestAuthenticator({ rng });

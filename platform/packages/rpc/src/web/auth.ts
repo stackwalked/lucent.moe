@@ -134,6 +134,8 @@ export const authContract = defineContract({
             purpose: SessionPurpose,
             expiresAt: EpochMs,
             stepUpAt: EpochMs.nullable(),
+            // When the sign-in finished: with the step-up time, what "recent" is measured from.
+            authenticatedAt: EpochMs,
             // When the account's requested deletion completes; null when none waits. Optional for
             // one deploy.
             deletionDueAt: EpochMs.nullable().optional(),

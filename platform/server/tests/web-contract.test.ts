@@ -452,10 +452,15 @@ test("adding an account through the contract needs a step-up and shows the setup
         });
         const input = { operationId: newOperationId(rng), email: "new@lucent.test" };
 
-        expect(await client.call("admin.accounts.create", input, { session })).toEqual(
-            err({ code: "STEP_UP_REQUIRED", withinSeconds: 1_800 }),
-        );
         const tokenHash = await hashToken(session);
+        await execute(
+            nativeDb,
+            sql`update browser_session set authenticated_at = now() - interval '8 days'
+                where token_hash = ${tokenHash}`,
+        );
+        expect(await client.call("admin.accounts.create", input, { session })).toEqual(
+            err({ code: "STEP_UP_REQUIRED", withinSeconds: 604_800 }),
+        );
         await execute(
             nativeDb,
             sql`update browser_session set step_up_at = now() where token_hash = ${tokenHash}`,

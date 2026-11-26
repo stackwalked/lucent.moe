@@ -124,7 +124,11 @@ export async function lockCallerWith(
         return err({ code: "FORBIDDEN" });
     }
     return ok({
-        subject: { ...standing, stepUpAt: params.caller.stepUpAt },
+        subject: {
+            ...standing,
+            stepUpAt: params.caller.stepUpAt,
+            authenticatedAt: params.caller.authenticatedAt,
+        },
         accounts: locked.value,
     });
 }

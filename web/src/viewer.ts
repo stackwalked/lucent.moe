@@ -64,6 +64,7 @@ export function subjectOf(viewer: Viewer): Subject {
         maxRank: viewer.standing.maxRank,
         permissions: new Set(known),
         stepUpAt: viewer.stepUpAt,
+        authenticatedAt: viewer.authenticatedAt,
     };
 }
 

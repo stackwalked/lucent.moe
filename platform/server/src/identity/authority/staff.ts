@@ -19,7 +19,11 @@ export async function readAsStaff<T, E>(
         const standing = await readStanding(tx, params.caller.accountId, txNow);
         if (!standing.ok) return standing;
         if (standing.value === null) return err({ code: "FORBIDDEN" as const });
-        const subject = { ...standing.value, stepUpAt: params.caller.stepUpAt };
+        const subject = {
+            ...standing.value,
+            stepUpAt: params.caller.stepUpAt,
+            authenticatedAt: params.caller.authenticatedAt,
+        };
         if (!params.actions.some((action) => can(subject, action))) {
             return err({ code: "FORBIDDEN" as const });
         }

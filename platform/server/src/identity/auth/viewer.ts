@@ -24,6 +24,7 @@ export type Viewer = {
     readonly purpose: SessionPurpose;
     readonly expiresAt: EpochMs;
     readonly stepUpAt: EpochMs | null;
+    readonly authenticatedAt: EpochMs;
     // A requested deletion waiting to complete: web puts it in front of the member on every page.
     readonly deletionDueAt: EpochMs | null;
     readonly standing: {
@@ -77,6 +78,7 @@ export async function resolveViewer(
             purpose: session.value.purpose,
             expiresAt: session.value.expiresAt,
             stepUpAt: params.stepUpWaived === true ? txNow : session.value.stepUpAt,
+            authenticatedAt: session.value.authenticatedAt,
             deletionDueAt: account.value.deletion_due_at,
             standing:
                 session.value.purpose === "appeal"
@@ -112,6 +114,7 @@ export async function resolveCaller(
         return ok({
             accountId: session.value.accountId,
             stepUpAt: params.stepUpWaived === true ? txNow : session.value.stepUpAt,
+            authenticatedAt: session.value.authenticatedAt,
             client: params.client,
         });
     });

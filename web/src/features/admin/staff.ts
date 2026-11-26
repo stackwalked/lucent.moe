@@ -1,6 +1,6 @@
 import { systemClock } from "@lucent/core/clock";
 import { ACTION_POLICY, type Action } from "@lucent/policy/action-list";
-import { STEP_UP_WINDOW_SECONDS } from "@lucent/policy/policy";
+import { RECENT_WINDOW_SECONDS, STEP_UP_WINDOW_SECONDS } from "@lucent/policy/policy";
 import { useRouteContext } from "@tanstack/react-router";
 import type { Outcome } from "../../server/outcome.ts";
 import { memberOf } from "../../viewer.ts";
@@ -16,8 +16,13 @@ export function useStaffAction() {
     const viewer = memberOf(session);
     return async <T>(action: Action, run: () => Promise<Outcome<T>>): Promise<Outcome<T>> => {
         const stepUpAt = Math.max(viewer?.stepUpAt ?? 0, provenAt() ?? 0);
-        const fresh = systemClock.now() - stepUpAt < STEP_UP_WINDOW_SECONDS * 1_000;
-        if (ACTION_POLICY[action].stepUp && !fresh) {
+        const tier = ACTION_POLICY[action].stepUp;
+        // "fresh" asks for a step-up in the last 30 minutes; "recent" for a confirmation (the
+        // sign-in or a step-up) in the last 7 days.
+        const confirmedAt = Math.max(stepUpAt, viewer?.authenticatedAt ?? 0);
+        const age = systemClock.now() - (tier === "recent" ? confirmedAt : stepUpAt);
+        const window = tier === "recent" ? RECENT_WINDOW_SECONDS : STEP_UP_WINDOW_SECONDS;
+        if (tier !== "none" && age >= window * 1_000) {
             const proof = await ask();
             if (proof === "cancelled")
                 return { ok: false, refused: { code: "STEP_UP_REQUIRED", reference: null } };

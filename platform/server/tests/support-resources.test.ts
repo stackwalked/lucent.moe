@@ -109,9 +109,14 @@ test("a resource uploads, lists for members entitled to its product and no one e
         const stranger = await member(nativeDb, rng, "stranger@lucent.test");
 
         const bytes = fileOf(300_000);
-        // Publishing is a release: no step-up, no upload.
+        // Publishing is a release: with no sign-in inside a week and no step-up, no upload.
+        await execute(
+            nativeDb,
+            sql`update browser_session set authenticated_at = now() - interval '8 days'
+                where token_hash = ${await hashToken(staff.token)}`,
+        );
         expect(await (await upload(staff.token, bytes, bytes.byteLength)).json()).toEqual(
-            err({ code: "STEP_UP_REQUIRED", withinSeconds: 1_800 }),
+            err({ code: "STEP_UP_REQUIRED", withinSeconds: 604_800 }),
         );
         expect(await (await upload(holder.token, bytes, bytes.byteLength)).json()).toEqual(
             err({ code: "FORBIDDEN" }),

@@ -7,7 +7,7 @@ import { toReleaseManifestV3Bytes } from "@lucent/bundle/release-manifest";
 import { invariant } from "@lucent/core/contain";
 import { createSeededRng, type SeededRng } from "@lucent/core/rng";
 import { ChannelId, ProductId, toHex } from "@lucent/core/scalars";
-import { STEP_UP_WINDOW_SECONDS } from "@lucent/policy/policy";
+import { RECENT_WINDOW_SECONDS } from "@lucent/policy/policy";
 import { LOADER_DOWNLOAD_PATH } from "@lucent/rpc/web";
 import { z } from "zod";
 import { claimServiceEpoch, openEpochGuard } from "../src/base/db/epoch-guard.ts";
@@ -189,7 +189,7 @@ test("promoting releases and fact sets needs the permission and a recent passkey
         const stale = { accountId: staffId, stepUpAt: null, client: null };
         expect(await promoteLoaderAs(stale)).toEqual({
             ok: false,
-            error: { code: "STEP_UP_REQUIRED", withinSeconds: STEP_UP_WINDOW_SECONDS },
+            error: { code: "STEP_UP_REQUIRED", withinSeconds: RECENT_WINDOW_SECONDS },
         });
         expect(await promoteLoaderAs(await steppedUp(nativeDb, outsiderId))).toEqual({
             ok: false,
@@ -228,7 +228,7 @@ test("promoting releases and fact sets needs the permission and a recent passkey
             promoteFactSet(nativeDb, { caller, releaseId: release.id, setId });
         expect(await promoteSet(stale)).toEqual({
             ok: false,
-            error: { code: "STEP_UP_REQUIRED", withinSeconds: STEP_UP_WINDOW_SECONDS },
+            error: { code: "STEP_UP_REQUIRED", withinSeconds: RECENT_WINDOW_SECONDS },
         });
         expect(await promoteSet(await steppedUp(nativeDb, outsiderId))).toEqual({
             ok: false,
