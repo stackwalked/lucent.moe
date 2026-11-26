@@ -298,3 +298,37 @@ test("a drop that keeps failing is given up after five attempts, and the drops a
         expect(await tell()).toEqual({ ok: true, value: { told: 0, givenUp: [] } });
     });
 });
+
+test("a suspended follower is told nothing, by inbox or by mail", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ nativeDb, browserDb }) => {
+        const rng = createSeededRng(11_108);
+        const products = liveCatalog();
+        const world = await supportWorld(nativeDb, rng, products);
+        const kept = await follower(browserDb, rng, {
+            email: "kept@lucent.test",
+            follows: true,
+            mail: true,
+        });
+        const suspended = await follower(browserDb, rng, {
+            email: "suspended@lucent.test",
+            follows: true,
+            mail: true,
+        });
+        await execute(
+            browserDb,
+            sql`update account set status = 'suspended' where id = ${suspended}`,
+        );
+        await world.support(GAME);
+        expect(await world.start(GAME)).toBe("NOT_A_REFUSAL");
+        expect(await world.start(UPDATED)).toBe("GAME_BUILD_UNSUPPORTED");
+
+        expect(await tellFollowers(browserDb, { catalog: products, mail: true })).toEqual({
+            ok: true,
+            value: { told: 1, givenUp: [] },
+        });
+        expect(await inboxOf(browserDb, kept)).toBe(1);
+        expect(await inboxOf(browserDb, suspended)).toBe(0);
+        expect(await mailTo(browserDb, "suspended@lucent.test")).toBe(0);
+    });
+});

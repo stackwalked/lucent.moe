@@ -24,6 +24,11 @@ import { recordNotification } from "../notify/inbox.ts";
 const FOLLOWERS_PER_BATCH = 10;
 const BATCHES_PER_RUN = 500;
 
+// Who may still be told, checked under the follower's account lock (taken here in id order, the
+// order recordNotification locks in too): a suspended account is not. Account deletion adds
+// `and deleted_at is null` here.
+const ACTIVE_FOLLOWER = sql`status = 'active'`;
+
 const PendingRow = z.object({
     id: z.string(),
     product_id: ProductId,
@@ -57,8 +62,17 @@ async function tellBatch(
                       order by account_id limit ${FOLLOWERS_PER_BATCH}`,
               );
         if (!followers.ok) return followers;
+        let told = 0;
         for (const { account_id } of followers.value) {
-            const told = await recordNotification(tx, {
+            const active = await queryOne(
+                tx,
+                z.object({ id: AccountId }),
+                sql`select id from account where id = ${account_id} and ${ACTIVE_FOLLOWER}
+                    for update`,
+            );
+            if (!active.ok) return active;
+            if (active.value === null) continue;
+            const notified = await recordNotification(tx, {
                 recipient: account_id,
                 notice: {
                     kind: "product_status",
@@ -67,7 +81,8 @@ async function tellBatch(
                 },
                 mail: params.mail,
             });
-            if (!told.ok) return told;
+            if (!notified.ok) return notified;
+            told += 1;
         }
         const last = followers.value.at(-1)?.account_id ?? change.notified_through;
         const done = followers.value.length < FOLLOWERS_PER_BATCH;
@@ -83,7 +98,7 @@ async function tellBatch(
         );
         if (!moved.ok) return moved;
         if (moved.value === null) return err({ code: "RACED" as const });
-        return ok(followers.value.length);
+        return ok(told);
     });
 }
 
