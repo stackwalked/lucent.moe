@@ -124,8 +124,13 @@ export const discordContract = defineContract({
     // account that is suspended or locked.
     "members.resolve": {
         session: "none",
-        effect: "read",
-        input: z.strictObject({ userIds: z.array(Snowflake).min(1).max(100) }),
+        // Resolving is also the connector's role-sync heartbeat for a member, so an optional
+        // username map refreshes the public handle stored on those links.
+        effect: "write",
+        input: z.strictObject({
+            userIds: z.array(Snowflake).min(1).max(100),
+            usernames: z.record(z.string(), z.string().min(1).max(64)).optional(),
+        }),
         output: z.object({ members: z.array(MemberRoles).readonly() }),
         error: Failure,
     },
@@ -150,7 +155,12 @@ export const discordContract = defineContract({
     "links.redeem": {
         session: "none",
         effect: "write",
-        input: z.strictObject({ userId: Snowflake, code: LinkCode }),
+        // `username` is the handle Discord shows, optional so an older connector still links.
+        input: z.strictObject({
+            userId: Snowflake,
+            code: LinkCode,
+            username: z.string().min(1).max(64).optional(),
+        }),
         output: Done,
         error: z.discriminatedUnion("code", [
             Unavailable,

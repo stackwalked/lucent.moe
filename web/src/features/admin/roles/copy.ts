@@ -21,4 +21,6 @@ export const ROLES_COPY = {
     nameTaken: "a role already has that name.",
     dropsUnknown: (names: string) => `saving drops what this site doesn't know: ${names}.`,
     noPermissions: "no permissions to give",
+    labelColor: "label colour",
+    noColour: "none",
 } as const;

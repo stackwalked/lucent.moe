@@ -45,6 +45,8 @@ const AccountSummary = z.object({
     roles: z.array(z.string()).readonly(),
 });
 
+const RoleLabelColor = z.enum(["pink", "shu", "ok", "wait", "violet", "aqua"]);
+
 const RoleSummary = z.object({
     roleId: RoleId,
     name: z.string(),
@@ -52,6 +54,8 @@ const RoleSummary = z.object({
     permissions: z.array(z.string()).readonly(),
     unknownPermissions: z.array(z.string()).readonly(),
     holders: z.number().int(),
+    // Display only: the member-facing label's colour, null for no label.
+    labelColor: RoleLabelColor.nullable(),
 });
 
 const ProductGrant = z.object({
@@ -242,6 +246,7 @@ export const authorityContract = defineContract({
             name: z.string().trim().min(1).max(64),
             rank: z.number().int().nonnegative(),
             permissions: z.array(ActionSchema).max(64),
+            labelColor: RoleLabelColor.nullable(),
         }),
         output: z.object({ roleId: RoleId }),
         error: z.discriminatedUnion("code", [

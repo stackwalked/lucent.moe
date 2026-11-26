@@ -123,11 +123,12 @@ async function runChild(
     bytes: Uint8Array,
     entry: string,
     deadlineMs: number,
+    args: readonly string[] = [],
 ): Promise<Result<AvatarImages, ImageRefusal | ImageFailure>> {
     const deadline = AbortSignal.timeout(deadlineMs);
     const child = await tryAsync(
         async () =>
-            Bun.spawn([process.execPath, entry], {
+            Bun.spawn([process.execPath, entry, ...args], {
                 env: {},
                 stdin: bytes,
                 stdout: "pipe",
@@ -166,21 +167,26 @@ async function runChild(
         }
         return err({ code: "IMAGE_UNDECODABLE" });
     }
-    if (sniffImage(answer.large) !== "webp" || sniffImage(answer.small) !== "webp") {
+    // Banner mode leaves the small slot empty by design; the banner check is the caller's.
+    const smallOk = args.includes("banner") || sniffImage(answer.small) === "webp";
+    if (sniffImage(answer.large) !== "webp" || !smallOk) {
         return err({ code: "IMAGE_UNDECODABLE" });
     }
     return ok({ large: answer.large, small: answer.small });
 }
 
-export async function transcodeAvatar(
+export type TranscodeOptions = {
+    readonly deadlineMs?: number;
+    // Tests stand other children in for the real one (one that never answers, one whose
+    // codec is broken) and give the slots a limit of their own.
+    readonly entry?: string;
+    readonly slots?: DecoderSlots;
+};
+
+async function transcode(
     bytes: Uint8Array,
-    options?: {
-        readonly deadlineMs?: number;
-        // Tests stand other children in for the real one (one that never answers, one whose
-        // codec is broken) and give the slots a limit of their own.
-        readonly entry?: string;
-        readonly slots?: DecoderSlots;
-    },
+    args: readonly string[],
+    options?: TranscodeOptions,
 ): Promise<Result<AvatarImages, ImageRefusal | ImageFailure>> {
     if (bytes.length > AVATAR_MAX_BYTES) return err({ code: "IMAGE_TOO_LARGE" });
     if (sniffImage(bytes) === null) return err({ code: "NOT_AN_IMAGE" });
@@ -193,10 +199,30 @@ export async function transcodeAvatar(
                 bytes,
                 options?.entry ?? CHILD_ENTRY,
                 options?.deadlineMs ?? IMAGE_CHILD_DEADLINE_MS,
+                args,
             ),
         (cause) => ({ code: "IMAGE_CHILD_FAILED" as const, detail: describeUnknownError(cause) }),
     );
     slots.release();
     if (!result.ok) return result;
     return result.value;
+}
+
+export async function transcodeAvatar(
+    bytes: Uint8Array,
+    options?: TranscodeOptions,
+): Promise<Result<AvatarImages, ImageRefusal | ImageFailure>> {
+    return await transcode(bytes, [], options);
+}
+
+// The same upload through the same child in its banner mode: one 1500x400 WebP in the frame's
+// large slot. Everything else — limits, refusals, deadlines, slots — is the avatar's.
+export async function transcodeBanner(
+    bytes: Uint8Array,
+    options?: TranscodeOptions,
+): Promise<Result<Uint8Array, ImageRefusal | ImageFailure>> {
+    const images = await transcode(bytes, ["banner"], options);
+    if (!images.ok) return images;
+    if (sniffImage(images.value.large) !== "webp") return err({ code: "IMAGE_UNDECODABLE" });
+    return ok(images.value.large);
 }

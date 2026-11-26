@@ -23,6 +23,7 @@ import { Pairs } from "../../ui/Pairs/Pairs.tsx";
 import { Popover } from "../../ui/Popover/Popover.tsx";
 import { ProductPick } from "../../ui/ProductPick/ProductPick.tsx";
 import { Refusal } from "../../ui/Refusal/Refusal.tsx";
+import { RoleLabel } from "../../ui/RoleLabel/RoleLabel.tsx";
 import { Section } from "../../ui/Section/Section.tsx";
 import { Stack } from "../../ui/Stack/Stack.tsx";
 import { Status } from "../../ui/Status/Status.tsx";
@@ -206,6 +207,14 @@ function Data({ now }: { readonly now: EpochMs }) {
                     { label: "your access", value: "until 3 jan 2027" },
                 ]}
             />
+            <Stack direction="row" gap={3} align="center">
+                <RoleLabel name="staff" color="pink" />
+                <RoleLabel name="moderator" color="shu" />
+                <RoleLabel name="guide" color="ok" />
+                <RoleLabel name="trial" color="wait" />
+                <RoleLabel name="artist" color="violet" />
+                <RoleLabel name="helper" color="aqua" />
+            </Stack>
             <Table
                 caption="accounts"
                 columns={[

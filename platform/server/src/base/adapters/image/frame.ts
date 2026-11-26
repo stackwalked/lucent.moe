@@ -11,6 +11,11 @@ export const AVATAR_MAX_SIDE = 4096;
 // The two squares an avatar is stored as, in pixels: the profile's and the author line's.
 export const AVATAR_SIDES = [256, 64] as const;
 
+// The one rectangle a profile banner is stored as. In banner mode the frame's large slot carries
+// it and the small slot is empty; the parent knows which mode it asked for.
+export const BANNER_WIDTH = 1500;
+export const BANNER_HEIGHT = 400;
+
 // A refusal's byte is its place in this list plus one.
 // CODEC_FAILED is the child's own fault (a codec that would not load, instantiate or encode good
 // pixels), not the upload's; the child says why on stderr.

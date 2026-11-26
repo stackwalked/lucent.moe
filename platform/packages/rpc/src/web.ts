@@ -59,6 +59,9 @@ export const RESOURCE_DOWNLOAD_PATH = "/internal/web/resources/files";
 // or 404.
 export const AVATAR_UPLOAD_PATH = "/internal/web/avatars/upload";
 export const AVATAR_IMAGE_PATH = "/internal/web/avatars/images";
+// The banner's upload is the avatar's route in every way but what platform stores: one 1500x400
+// WebP instead of the two squares. Its image is served by the same digest route.
+export const BANNER_UPLOAD_PATH = "/internal/web/banner/upload";
 
 function composeWebContract() {
     return defineContract({

@@ -7,6 +7,7 @@ import { Page } from "../../ui/Page/Page.tsx";
 import { Section } from "../../ui/Section/Section.tsx";
 import { Select } from "../../ui/Select/Select.tsx";
 import { Stack } from "../../ui/Stack/Stack.tsx";
+import { Switch } from "../../ui/Switch/Switch.tsx";
 import { Table } from "../../ui/Table/Table.tsx";
 import { TextField } from "../../ui/TextField/TextField.tsx";
 import { Time } from "../../ui/Time/Time.tsx";
@@ -14,7 +15,7 @@ import { memberOf } from "../../viewer.ts";
 import { RefusalNote } from "../auth/RefusalNote.tsx";
 import { PRIVACY_COPY } from "./copy.ts";
 import { DeletionSection } from "./DeletionSection.tsx";
-import { blockAccount, fetchExport, saveVisibility } from "./server.ts";
+import { blockAccount, fetchExport, saveShows, saveVisibility } from "./server.ts";
 import { PRIVACY_TITLE } from "./title.ts";
 
 const route = getRouteApi("/_member/account/privacy");
@@ -129,6 +130,30 @@ export function PrivacyPage() {
                                 <Button type="submit">{PRIVACY_COPY.save}</Button>
                             </Stack>
                         </form>
+                    </Section>
+                    <Section caption={PRIVACY_COPY.shownOnProfile}>
+                        <Stack gap={2}>
+                            {(
+                                [
+                                    ["invitedBy", PRIVACY_COPY.showInvitedBy],
+                                    ["invited", PRIVACY_COPY.showInvited],
+                                    ["products", PRIVACY_COPY.showProducts],
+                                    ["lastSeen", PRIVACY_COPY.showLastSeen],
+                                    ["discord", PRIVACY_COPY.showDiscord],
+                                    ["wall", PRIVACY_COPY.showWall],
+                                ] as const
+                            ).map(([key, label]) => (
+                                <Switch
+                                    key={`${key}-${String(outcome.value.shows[key])}`}
+                                    name={key}
+                                    label={label}
+                                    defaultChecked={outcome.value.shows[key]}
+                                    onChange={async (shown) => {
+                                        void answer(await saveShows({ data: { key, shown } }));
+                                    }}
+                                />
+                            ))}
+                        </Stack>
                     </Section>
                     <Section caption={PRIVACY_COPY.blocks}>
                         <Stack gap={4}>

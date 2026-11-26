@@ -25,6 +25,9 @@ type ThemeInputs = {
     // Product and ticket states only: ok works, wait is changing.
     readonly okInk: string;
     readonly waitInk: string;
+    // Role label colours: display only, set per role.
+    readonly violetInk: string;
+    readonly aquaInk: string;
     readonly shadow: Rgba;
 };
 
@@ -45,6 +48,8 @@ const THEMES: Readonly<Record<ThemeName, ThemeInputs>> = {
         shuInk: "#f25a2b",
         okInk: "#8fd19e",
         waitInk: "#e8c07a",
+        violetInk: "#c9a6f2",
+        aquaInk: "#96d8e4",
         shadow: withAlpha(BLACK, 0.5),
     },
     washi: {
@@ -61,6 +66,8 @@ const THEMES: Readonly<Record<ThemeName, ThemeInputs>> = {
         shuInk: "#bc3504",
         okInk: "#1d6f36",
         waitInk: "#7c5200",
+        violetInk: "#7a3fc8",
+        aquaInk: "#0d6e7e",
         shadow: withAlpha(fromHex("#2a2226"), 0.18),
     },
 };
@@ -79,6 +86,8 @@ export const COLOR_TOKENS = [
     "shu-ink",
     "ok-ink",
     "wait-ink",
+    "violet-ink",
+    "aqua-ink",
     "shadow",
     "raised",
     "sunken",
@@ -115,6 +124,8 @@ export function resolveTheme(name: ThemeName): Readonly<Record<ColorToken, Rgba>
         "shu-ink": fromHex(t.shuInk),
         "ok-ink": fromHex(t.okInk),
         "wait-ink": fromHex(t.waitInk),
+        "violet-ink": fromHex(t.violetInk),
+        "aqua-ink": fromHex(t.aquaInk),
         shadow: t.shadow,
         // Surfaces and states, mixed from the inputs as old lucent's tokens.css did.
         raised: mix(ink, 0.03, ground),
@@ -143,9 +154,18 @@ type Pair = { readonly fg: ColorToken; readonly bg: ColorToken };
 const SURFACES = ["ground", "side", "raised", "floating"] as const;
 
 export const TEXT_PAIRS: readonly Pair[] = [
-    ...(["ink", "ink-2", "pink-ink", "shu-ink", "ok-ink", "wait-ink"] as const).flatMap((fg) =>
-        SURFACES.map((bg) => ({ fg, bg })),
-    ),
+    ...(
+        [
+            "ink",
+            "ink-2",
+            "pink-ink",
+            "shu-ink",
+            "ok-ink",
+            "wait-ink",
+            "violet-ink",
+            "aqua-ink",
+        ] as const
+    ).flatMap((fg) => SURFACES.map((bg) => ({ fg, bg }))),
     { fg: "ink", bg: "sunken" },
     { fg: "ink", bg: "pink-wash" },
     { fg: "pink-ink", bg: "pink-wash" },

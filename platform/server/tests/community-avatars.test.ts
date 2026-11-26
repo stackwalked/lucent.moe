@@ -4,13 +4,19 @@ import { err, ok } from "@lucent/core/result";
 import { createSeededRng } from "@lucent/core/rng";
 import type { BearerToken } from "@lucent/core/scalars";
 import { RPC_HEADERS } from "@lucent/rpc/contract";
-import { AVATAR_IMAGE_PATH, AVATAR_UPLOAD_PATH } from "@lucent/rpc/web";
+import { AVATAR_IMAGE_PATH, AVATAR_UPLOAD_PATH, BANNER_UPLOAD_PATH } from "@lucent/rpc/web";
 import { z } from "zod";
 import { claimServiceEpoch, openEpochGuard } from "../src/base/db/epoch-guard.ts";
 import { type Db, execute, queryAll, sql } from "../src/base/db/pool.ts";
 import { withTx } from "../src/base/db/tx.ts";
 import { createInternalWebApp } from "../src/edge/listeners/internal/app.ts";
-import { clearAvatar, setAvatar, toAvatarDigest } from "../src/members/community/avatars.ts";
+import {
+    clearAvatar,
+    clearBanner,
+    setAvatar,
+    setBanner,
+    toAvatarDigest,
+} from "../src/members/community/avatars.ts";
 import { setBlock } from "../src/members/community/blocks.ts";
 import { exportOwnData } from "../src/members/community/export.ts";
 import { readProfile, setBio, setVisibility } from "../src/members/community/profiles.ts";
@@ -69,9 +75,10 @@ async function internalApp(db: Db, seed: number) {
         session: BearerToken,
         body: Uint8Array<ArrayBuffer> | ReadableStream<Uint8Array>,
         length: number,
+        path: string = AVATAR_UPLOAD_PATH,
     ) =>
         app.fetch(
-            new Request(`http://localhost${AVATAR_UPLOAD_PATH}`, {
+            new Request(`http://localhost${path}`, {
                 method: "POST",
                 headers: {
                     authorization: `Bearer ${PEER_KEY}`,
@@ -373,5 +380,72 @@ test("two members swapping pictures at once both get the other's", async () => {
         expect(await storedDigests(db)).toEqual(
             [hers.value.large, hers.value.small, his.value.large, his.value.small].sort(),
         );
+    });
+});
+
+test("an uploaded banner shows on the profile, serves by its digest, clears, and staff removal takes it down", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ nativeDb: db }) => {
+        const rng = createSeededRng(9571);
+        const { image } = await internalApp(db, 9572);
+        const mod = await moderator(db, rng, "mod@lucent.test");
+        const alice = await member(db, rng, "alice@lucent.test", "alice");
+        const bob = await member(db, rng, "bob@lucent.test", "bob");
+        const app = await internalApp(db, 9573);
+        const uploadBanner = (session: BearerToken, body: Uint8Array<ArrayBuffer>) =>
+            app.upload(session, body, body.length, BANNER_UPLOAD_PATH);
+
+        const jpeg = await fixture("metadata.jpg");
+        const answer = await uploadBanner(alice.token, jpeg);
+        expect(answer.status).toBe(200);
+        const parsed = z
+            .object({ ok: z.literal(true), value: z.object({ digest: z.string() }) })
+            .parse(await answer.json());
+        const digest = parsed.value.digest;
+
+        const seen = await readProfile(db, bob.token, { username: "alice" });
+        invariant(seen.ok, "expected the profile");
+        expect(seen.value.banner).toBe(digest);
+
+        const served = await image(bob.token, digest);
+        expect(served.status).toBe(200);
+        expect(served.headers.get("content-type")).toBe("image/webp");
+        const bytes = new Uint8Array(await served.arrayBuffer());
+        expect(toAvatarDigest(bytes)).toBe(digest);
+
+        expect(await clearBanner(db, alice.token)).toEqual(ok(undefined));
+        const cleared = await readProfile(db, bob.token, { username: "alice" });
+        invariant(cleared.ok, "expected the profile");
+        expect(cleared.value.banner).toBeNull();
+        expect(await storedDigests(db)).toEqual([]);
+
+        // Staff removing the profile take the banner with the avatar, through the same path.
+        const again = await setBanner(db, alice.token, new TextEncoder().encode("RIFFbannerWEBP"));
+        invariant(again.ok, "expected the banner");
+        expect(await setAvatar(db, alice.token, images("rude"))).toMatchObject({ ok: true });
+        const profile = await readProfile(db, bob.token, { username: "alice" });
+        invariant(profile.ok && profile.value.id !== null, "expected the profile row");
+        expect(
+            await createReport(db, bob.token, {
+                catalog: products,
+                kind: "profile",
+                targetId: profile.value.id,
+                reason: "abuse",
+                note: "",
+            }),
+        ).toEqual(ok(undefined));
+        const queue = await listReports(db, { caller: mod.caller, cursor: null });
+        invariant(queue.ok && queue.value.items[0] !== undefined, "expected the report");
+        const resolved = await resolveReport({
+            db,
+            caller: mod.caller,
+            id: queue.value.items[0].id,
+            outcome: "remove",
+        });
+        expect(resolved).toEqual(ok({ removed: { kind: "profile", id: profile.value.id } }));
+        expect(await storedDigests(db)).toEqual([]);
+        const after = await readProfile(db, bob.token, { username: "alice" });
+        invariant(after.ok, "expected the profile");
+        expect(after.value.banner).toBeNull();
     });
 });

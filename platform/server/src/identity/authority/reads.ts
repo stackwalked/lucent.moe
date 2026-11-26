@@ -553,6 +553,7 @@ const RoleRowSchema = z.object({
     rank: z.number().int(),
     permissions: z.array(z.string()),
     holders: z.coerce.number().int(),
+    labelColor: z.enum(["pink", "shu", "ok", "wait", "violet", "aqua"]).nullable(),
 });
 
 export type RoleSummary = {
@@ -563,6 +564,7 @@ export type RoleSummary = {
     // Stored strings no Action matches any more: they grant nothing, and saving the role drops them.
     readonly unknownPermissions: readonly string[];
     readonly holders: number;
+    readonly labelColor: "pink" | "shu" | "ok" | "wait" | "violet" | "aqua" | null;
 };
 
 function toRoleSummary(row: z.output<typeof RoleRowSchema>): RoleSummary {
@@ -573,11 +575,12 @@ function toRoleSummary(row: z.output<typeof RoleRowSchema>): RoleSummary {
         permissions: knownActions(row.permissions),
         unknownPermissions: row.permissions.filter((permission) => !ACTION_SET.has(permission)),
         holders: row.holders,
+        labelColor: row.labelColor,
     };
 }
 
 function roleSelect(txNow: EpochMs): SqlFragment {
-    return sql`select r.id, r.name, r.rank, r.permissions,
+    return sql`select r.id, r.name, r.rank, r.permissions, r.label_color as "labelColor",
                       (select count(*) from account_role ar
                        where ar.role_id = r.id
                          and (ar.expires_at is null

@@ -1,4 +1,4 @@
-import { Bio } from "@lucent/rpc/web/profile";
+import { Bio, Tagline } from "@lucent/rpc/web/profile";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { done, refuse } from "../../server/outcome.ts";
@@ -22,3 +22,15 @@ export const saveBio = createServerFn({ method: "POST" })
         const reply = await callPlatform("profile.bio.set", data);
         return reply.ok ? done(null) : refuse(reply.error);
     });
+
+export const saveTagline = createServerFn({ method: "POST" })
+    .validator((data: unknown) => z.strictObject({ tagline: Tagline }).parse(data))
+    .handler(async ({ data }) => {
+        const reply = await callPlatform("profile.tagline.set", data);
+        return reply.ok ? done(null) : refuse(reply.error);
+    });
+
+export const removeBanner = createServerFn({ method: "POST" }).handler(async () => {
+    const reply = await callPlatform("profile.banner.clear", {});
+    return reply.ok ? done(null) : refuse(reply.error);
+});

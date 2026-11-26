@@ -176,7 +176,11 @@ export function removeDiscordLinkBySite(
 // there and the second sees it used.
 export async function redeemLinkCode(
     db: Db,
-    params: { readonly userId: string; readonly code: string },
+    params: {
+        readonly userId: string;
+        readonly code: string;
+        readonly username?: string | undefined;
+    },
 ): Promise<Result<void, LinkRefusal | DbFailure>> {
     const codeHash = await hashCode(foldLinkCode(params.code));
     return await withTx(db, async (tx, txNow) => {
@@ -221,8 +225,8 @@ export async function redeemLinkCode(
         // and here; the unique index makes this one wait for it and then insert nothing.
         const linked = await execute(
             tx,
-            sql`insert into connector_discord_link (account_id, discord_user_id, linked_at)
-                values (${accountId}, ${params.userId}, now())
+            sql`insert into connector_discord_link (account_id, discord_user_id, linked_at, username)
+                values (${accountId}, ${params.userId}, now(), ${params.username ?? null})
                 on conflict do nothing`,
         );
         if (!linked.ok) return linked;

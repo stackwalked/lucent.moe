@@ -8,6 +8,8 @@ import {
     AVATAR_MAX_BYTES,
     AVATAR_MAX_SIDE,
     AVATAR_SIDES,
+    BANNER_HEIGHT,
+    BANNER_WIDTH,
     type ChildAnswer,
     toChildFrame,
 } from "./frame.ts";
@@ -19,7 +21,7 @@ import {
     webpBitstreamDimensions,
 } from "./header.ts";
 import { type ImageFormat, sniffImage } from "./sniff.ts";
-import { orient, type Rgba, toSquare } from "./square.ts";
+import { orient, type Rgba, toCover, toSquare } from "./square.ts";
 import { capWasmMemory } from "./wasm-memory.ts";
 
 // The decoder child's work, from the upload's bytes to its answer frame. Runs only in the child
@@ -168,9 +170,12 @@ function codecFailed(detail: string): ChildAnswer {
     return { ok: false, refusal: "CODEC_FAILED", detail };
 }
 
+export type TranscodeTarget = "avatar" | "banner";
+
 export async function transcodeUpload(
     bytes: Uint8Array,
     files: WasmFiles = WASM_FILES,
+    target: TranscodeTarget = "avatar",
 ): Promise<ChildAnswer> {
     if (bytes.length > AVATAR_MAX_BYTES) return { ok: false, refusal: "TOO_LARGE" };
     const format = sniffImage(bytes);
@@ -208,13 +213,20 @@ export async function transcodeUpload(
 
     const encoder = await openEncoder(files);
     if (!encoder.ok) return codecFailed(encoder.error);
-    const [largeSide, smallSide] = AVATAR_SIDES;
-    const largeSquare = toSquare(orient(image, orientation), largeSide);
-    const encode = (square: Rgba) =>
+    const upright = orient(image, orientation);
+    const encode = (pixels: Rgba) =>
         tryAsync(
-            async () => new Uint8Array(await encoder.value.run(square)),
+            async () => new Uint8Array(await encoder.value.run(pixels)),
             (cause) => `encoding: ${describeUnknownError(cause)}`,
         );
+    if (target === "banner") {
+        const banner = await encode(toCover(upright, BANNER_WIDTH, BANNER_HEIGHT));
+        if (!banner.ok) return codecFailed(banner.error);
+        // The frame keeps its two slots; the small one is empty in banner mode.
+        return { ok: true, large: banner.value, small: new Uint8Array(0) };
+    }
+    const [largeSide, smallSide] = AVATAR_SIDES;
+    const largeSquare = toSquare(upright, largeSide);
     const large = await encode(largeSquare);
     if (!large.ok) return codecFailed(large.error);
     const small = await encode(toSquare(largeSquare, smallSide));
@@ -224,7 +236,8 @@ export async function transcodeUpload(
 
 export async function runAvatarChild(files: WasmFiles = WASM_FILES): Promise<void> {
     const input = await Bun.stdin.bytes();
-    const answer = await transcodeUpload(input, files);
+    const target = process.argv[2] === "banner" ? "banner" : "avatar";
+    const answer = await transcodeUpload(input, files, target);
     if (!answer.ok && answer.detail !== undefined) {
         await Bun.write(Bun.stderr, `${answer.detail}\n`);
     }

@@ -8,6 +8,7 @@ import { Page } from "../../ui/Page/Page.tsx";
 import { Pairs } from "../../ui/Pairs/Pairs.tsx";
 import { Section } from "../../ui/Section/Section.tsx";
 import { Stack } from "../../ui/Stack/Stack.tsx";
+import { TextField } from "../../ui/TextField/TextField.tsx";
 import { Time } from "../../ui/Time/Time.tsx";
 import { RefusalNote } from "../auth/RefusalNote.tsx";
 import { postingNote } from "../comments/posting.ts";
@@ -15,8 +16,9 @@ import { ReportButton } from "../comments/ReportButton.tsx";
 import { TextArea } from "../comments/TextArea.tsx";
 import { blockAccount } from "../privacy/server.ts";
 import { AVATAR_ACCEPT, uploadAvatar } from "./avatar.ts";
+import { BANNER_ACCEPT, uploadBanner } from "./banner.ts";
 import { PROFILE_COPY } from "./copy.ts";
-import { removeAvatar, saveBio } from "./server.ts";
+import { removeAvatar, removeBanner, saveBio, saveTagline } from "./server.ts";
 import { PROFILE_TITLE } from "./title.ts";
 
 const route = getRouteApi("/_member/members/$username");
@@ -25,7 +27,26 @@ export function ProfilePage() {
     const outcome = route.useLoaderData();
     const router = useRouter();
     const [refused, setRefused] = useState<Refused | null>(null);
+    const [taglineRefused, setTaglineRefused] = useState<Refused | null>(null);
     const [pictureRefused, setPictureRefused] = useState<Refused | null>(null);
+    const [bannerRefused, setBannerRefused] = useState<Refused | null>(null);
+    const saveTag = async (form: FormData) => {
+        const reply = await saveTagline({ data: { tagline: String(form.get("tagline") ?? "") } });
+        setTaglineRefused(reply.ok ? null : reply.refused);
+        if (reply.ok) await router.invalidate();
+    };
+    const sendBanner = async (form: FormData) => {
+        const file = form.get("banner");
+        if (!(file instanceof File) || file.size === 0) return;
+        const reply = await uploadBanner(file);
+        setBannerRefused(reply.ok ? null : reply.refused);
+        if (reply.ok) await router.invalidate();
+    };
+    const takeDownBanner = async () => {
+        const reply = await removeBanner();
+        setBannerRefused(reply.ok ? null : reply.refused);
+        if (reply.ok) await router.invalidate();
+    };
     const save = async (form: FormData) => {
         const reply = await saveBio({ data: { bio: String(form.get("bio") ?? "") } });
         setRefused(reply.ok ? null : reply.refused);
@@ -121,6 +142,55 @@ export function ProfilePage() {
                                                 {PROFILE_COPY.removePicture}
                                             </Button>
                                         )}
+                                    </div>
+                                </Stack>
+                            </form>
+                            <form action={sendBanner} key={profile.banner ?? "none"}>
+                                <Stack gap={3}>
+                                    <RefusalNote refused={bannerRefused} />
+                                    {profile.banner === null ? null : (
+                                        <img
+                                            src={`/avatars/${profile.banner}`}
+                                            alt=""
+                                            width={300}
+                                            height={80}
+                                        />
+                                    )}
+                                    <Field
+                                        label={PROFILE_COPY.banner}
+                                        hint={PROFILE_COPY.pictureHint}
+                                    >
+                                        {(control) => (
+                                            <input
+                                                {...control}
+                                                type="file"
+                                                name="banner"
+                                                accept={BANNER_ACCEPT}
+                                                required
+                                            />
+                                        )}
+                                    </Field>
+                                    <div>
+                                        <Button type="submit">{PROFILE_COPY.upload}</Button>{" "}
+                                        {profile.banner === null ? null : (
+                                            <Button tone="danger" onClick={takeDownBanner}>
+                                                {PROFILE_COPY.removeBanner}
+                                            </Button>
+                                        )}
+                                    </div>
+                                </Stack>
+                            </form>
+                            <form action={saveTag} key={profile.tagline}>
+                                <Stack gap={3}>
+                                    <RefusalNote refused={taglineRefused} />
+                                    <TextField
+                                        name="tagline"
+                                        label={PROFILE_COPY.tagline}
+                                        maxLength={80}
+                                        defaultValue={profile.tagline}
+                                    />
+                                    <div>
+                                        <Button type="submit">{PROFILE_COPY.save}</Button>
                                     </div>
                                 </Stack>
                             </form>

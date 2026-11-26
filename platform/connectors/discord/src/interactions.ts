@@ -157,10 +157,18 @@ export function createInteractions(deps: InteractionDeps) {
         );
     }
 
-    async function link(userId: string, code: string | null): Promise<Reply> {
+    async function link(
+        userId: string,
+        code: string | null,
+        username: string | null,
+    ): Promise<Reply> {
         const typed = LinkCode.safeParse(code ?? "");
         if (!typed.success) return { content: REPLIES.codeInvalid(linkPage()) };
-        const linked = await platform.call("links.redeem", { userId, code: typed.data });
+        const linked = await platform.call("links.redeem", {
+            userId,
+            code: typed.data,
+            ...(username === null ? {} : { username }),
+        });
         if (linked.ok) {
             deps.syncLater(userId);
             return { content: REPLIES.linked };
@@ -377,7 +385,9 @@ export function createInteractions(deps: InteractionDeps) {
                 const option = command.data.options?.find((o) => o.name === "code");
                 const code =
                     option?.type === ApplicationCommandOptionType.String ? option.value : null;
-                await deferThen(command, "ephemeral", () => link(userId, code));
+                // The handle Discord shows for the user, stored on the link for the profile.
+                const handle = command.member?.user.username ?? command.user?.username ?? null;
+                await deferThen(command, "ephemeral", () => link(userId, code, handle));
                 return;
             }
             case "unlink":

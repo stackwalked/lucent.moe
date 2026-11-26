@@ -8,6 +8,7 @@ import type { Outcome, Refused } from "../../../server/outcome.ts";
 import { Button } from "../../../ui/Button/Button.tsx";
 import { Check } from "../../../ui/Check/Check.tsx";
 import { Dialog } from "../../../ui/Dialog/Dialog.tsx";
+import { Select } from "../../../ui/Select/Select.tsx";
 import { Stack } from "../../../ui/Stack/Stack.tsx";
 import { TextField } from "../../../ui/TextField/TextField.tsx";
 import { memberOf, subjectOf } from "../../../viewer.ts";
@@ -95,8 +96,21 @@ export function RoleEditor({
             if (!can(subject, "roles:manage", { kind: "role", rank, permissions })) {
                 return { refused: { code: "FORBIDDEN", reference: null }, problem: null };
             }
+            const colourRaw = String(form.get("labelColor") ?? "");
+            const labelColor = (["pink", "shu", "ok", "wait", "violet", "aqua"] as const).find(
+                (colour) => colour === colourRaw,
+            );
             const reply: Outcome<unknown> = await staff("roles:manage", () =>
-                saveRole({ data: { operationId, roleId, name, rank, permissions } }),
+                saveRole({
+                    data: {
+                        operationId,
+                        roleId,
+                        name,
+                        rank,
+                        permissions,
+                        labelColor: labelColor ?? null,
+                    },
+                }),
             );
             if (!reply.ok) return { refused: reply.refused, problem: null };
             await router.invalidate();
@@ -155,6 +169,20 @@ export function RoleEditor({
                                     : ROLES_COPY.rankBelow(subject.maxRank)
                             }
                             {...problem("rank")}
+                        />
+                        <Select
+                            name="labelColor"
+                            label={ROLES_COPY.labelColor}
+                            defaultValue={role?.labelColor ?? ""}
+                            options={[
+                                { value: "", label: ROLES_COPY.noColour },
+                                { value: "pink", label: "pink" },
+                                { value: "shu", label: "shu" },
+                                { value: "ok", label: "ok" },
+                                { value: "wait", label: "wait" },
+                                { value: "violet", label: "violet" },
+                                { value: "aqua", label: "aqua" },
+                            ]}
                         />
                         {offered.length === 0 ? (
                             <p className={styles.note}>{ROLES_COPY.noPermissions}</p>

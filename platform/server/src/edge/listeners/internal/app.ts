@@ -50,6 +50,8 @@ export function createInternalWebApp(deps: {
                     artifactDir: deps.artifactDir,
                     overrideSigner: deps.overrideSigner ?? null,
                     ...(deps.cloudLimits === undefined ? {} : { cloudLimits: deps.cloudLimits }),
+                    presentOnline: (accountId: Parameters<typeof events.present>[0]) =>
+                        events.present(accountId),
                 }),
             );
         },

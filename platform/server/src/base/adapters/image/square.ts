@@ -111,3 +111,86 @@ export function toSquare(image: Rgba, side: number): Rgba {
     }
     return { width: side, height: side, data };
 }
+
+// The centred crop of an image that covers `outWidth` x `outHeight` exactly: scaled by the
+// larger factor so both output dimensions are covered, the overflow cut evenly off the long
+// axis. Integer box, so the resample below walks whole source rows like toSquare.
+export function coverCropBox(
+    imageWidth: number,
+    imageHeight: number,
+    outWidth: number,
+    outHeight: number,
+): {
+    readonly left: number;
+    readonly top: number;
+    readonly width: number;
+    readonly height: number;
+} {
+    const scale = Math.max(outWidth / imageWidth, outHeight / imageHeight);
+    const width = Math.min(imageWidth, Math.max(1, Math.round(outWidth / scale)));
+    const height = Math.min(imageHeight, Math.max(1, Math.round(outHeight / scale)));
+    return {
+        left: Math.floor((imageWidth - width) / 2),
+        top: Math.floor((imageHeight - height) / 2),
+        width,
+        height,
+    };
+}
+
+// Cover-cropped and resampled to `outWidth` x `outHeight` by the same premultiplied
+// area-averaging as toSquare, generalized to a rectangle.
+export function toCover(image: Rgba, outWidth: number, outHeight: number): Rgba {
+    const crop = coverCropBox(image.width, image.height, outWidth, outHeight);
+    const weightsX = taps(crop.width, outWidth);
+    const weightsY = taps(crop.height, outHeight);
+
+    // Horizontal pass over the crop's rows into premultiplied floats.
+    const rows = new Float32Array(crop.height * outWidth * 4);
+    for (let y = 0; y < crop.height; y++) {
+        const sourceRow = ((crop.top + y) * image.width + crop.left) * 4;
+        for (let x = 0; x < outWidth; x++) {
+            let r = 0;
+            let g = 0;
+            let b = 0;
+            let a = 0;
+            for (const tap of weightsX[x] ?? []) {
+                const at = sourceRow + tap.index * 4;
+                const alpha = ((image.data[at + 3] ?? 0) / 255) * tap.weight;
+                r += (image.data[at] ?? 0) * alpha;
+                g += (image.data[at + 1] ?? 0) * alpha;
+                b += (image.data[at + 2] ?? 0) * alpha;
+                a += alpha;
+            }
+            const to = (y * outWidth + x) * 4;
+            rows[to] = r;
+            rows[to + 1] = g;
+            rows[to + 2] = b;
+            rows[to + 3] = a;
+        }
+    }
+
+    const data = new Uint8ClampedArray(outWidth * outHeight * 4);
+    for (let y = 0; y < outHeight; y++) {
+        for (let x = 0; x < outWidth; x++) {
+            let r = 0;
+            let g = 0;
+            let b = 0;
+            let a = 0;
+            for (const tap of weightsY[y] ?? []) {
+                const at = (tap.index * outWidth + x) * 4;
+                r += (rows[at] ?? 0) * tap.weight;
+                g += (rows[at + 1] ?? 0) * tap.weight;
+                b += (rows[at + 2] ?? 0) * tap.weight;
+                a += (rows[at + 3] ?? 0) * tap.weight;
+            }
+            const to = (y * outWidth + x) * 4;
+            if (a > 0) {
+                data[to] = Math.round(r / a);
+                data[to + 1] = Math.round(g / a);
+                data[to + 2] = Math.round(b / a);
+            }
+            data[to + 3] = Math.round(a * 255);
+        }
+    }
+    return { width: outWidth, height: outHeight, data };
+}

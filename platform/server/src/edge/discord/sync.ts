@@ -21,8 +21,23 @@ const StandingRowSchema = z.object({
 export async function resolveMembers(
     db: Db,
     userIds: readonly string[],
+    usernames?: Readonly<Record<string, string>>,
 ): Promise<Result<{ readonly members: readonly MemberRoles[] }, DbFailure>> {
     return await withTx(db, async (tx) => {
+        if (usernames !== undefined) {
+            for (const userId of userIds) {
+                const username = usernames[userId];
+                if (username === undefined) continue;
+                const refreshed = await queryOne(
+                    tx,
+                    z.object({ username: z.string().nullable() }),
+                    sql`update connector_discord_link set username = ${username}
+                        where discord_user_id = ${userId} and username is distinct from ${username}
+                        returning username`,
+                );
+                if (!refreshed.ok) return refreshed;
+            }
+        }
         const rules = await listRules(tx);
         if (!rules.ok) return rules;
         const rows = await queryAll(

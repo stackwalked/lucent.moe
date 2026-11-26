@@ -187,11 +187,15 @@ export function createConnector(params: {
 
     async function resolve(
         userIds: readonly string[],
+        usernames?: Readonly<Record<string, string>>,
     ): Promise<ReadonlyMap<string, readonly string[]> | null> {
         const resolved = new Map<string, readonly string[]>();
         for (let i = 0; i < userIds.length; i += USERS_PER_RESOLVE) {
             const batch = userIds.slice(i, i + USERS_PER_RESOLVE);
-            const reply = await platform.call("members.resolve", { userIds: batch });
+            const reply = await platform.call("members.resolve", {
+                userIds: batch,
+                ...(usernames === undefined ? {} : { usernames }),
+            });
             if (!reply.ok) {
                 warn("platform", "members unavailable", reply.error.code);
                 return null;
@@ -203,10 +207,12 @@ export function createConnector(params: {
 
     async function syncUsers(userIds: readonly string[]): Promise<void> {
         if (userIds.length === 0) return;
-        const pass = newPass([]);
-        const desired = await resolve(userIds);
-        if (desired === null) return;
-        for (const [userId, roleIds] of desired) {
+        const present: {
+            readonly userId: string;
+            readonly username: string;
+            readonly roles: readonly string[];
+        }[] = [];
+        for (const userId of userIds) {
             const member = await tryAsync(
                 () => api.guilds.getMember(guildId, userId),
                 (cause) => cause,
@@ -219,7 +225,21 @@ export function createConnector(params: {
                 continue;
             }
             if (member.value.user.bot === true) continue;
-            await applyRoles(pass, userId, member.value.roles, roleIds);
+            present.push({
+                userId,
+                username: member.value.user.username,
+                roles: member.value.roles,
+            });
+        }
+        if (present.length === 0) return;
+        const pass = newPass([]);
+        const desired = await resolve(
+            present.map((member) => member.userId),
+            Object.fromEntries(present.map((member) => [member.userId, member.username])),
+        );
+        if (desired === null) return;
+        for (const member of present) {
+            await applyRoles(pass, member.userId, member.roles, desired.get(member.userId) ?? []);
         }
     }
 
@@ -234,7 +254,10 @@ export function createConnector(params: {
             );
             if (!page.ok) return;
             const humans = page.value.filter((member) => member.user.bot !== true);
-            const desired = await resolve(humans.map((member) => member.user.id));
+            const desired = await resolve(
+                humans.map((member) => member.user.id),
+                Object.fromEntries(humans.map((member) => [member.user.id, member.user.username])),
+            );
             if (desired === null) return;
             for (const member of humans) {
                 await applyRoles(

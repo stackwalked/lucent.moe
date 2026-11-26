@@ -2,16 +2,21 @@ import { type Clock, systemClock } from "@lucent/core/clock";
 import { err, ok } from "@lucent/core/result";
 import { BearerToken } from "@lucent/core/scalars";
 import { RPC_HEADERS } from "@lucent/rpc/contract";
-import { AVATAR_IMAGE_PATH, AVATAR_UPLOAD_PATH } from "@lucent/rpc/web";
+import { AVATAR_IMAGE_PATH, AVATAR_UPLOAD_PATH, BANNER_UPLOAD_PATH } from "@lucent/rpc/web";
 import { AvatarDigest } from "@lucent/rpc/web/community";
 import type { Hono } from "hono";
-import { AVATAR_MAX_BYTES, transcodeAvatar } from "../../../base/adapters/image/image.ts";
+import {
+    AVATAR_MAX_BYTES,
+    transcodeAvatar,
+    transcodeBanner,
+} from "../../../base/adapters/image/image.ts";
 import type { Logger } from "../../../base/core/log.ts";
 import type { Db } from "../../../base/db/pool.ts";
 import {
     checkAvatarUpload,
     readAvatarImage,
     setAvatar,
+    setBanner,
 } from "../../../members/community/avatars.ts";
 import { createRateLimiter, type RateRule } from "../native/rate-limit.ts";
 
@@ -114,6 +119,50 @@ export function mountAvatars(
         const saved = await setAvatar(deps.db, token.data, images.value);
         if (!saved.ok) return writeRefusal(saved.error);
         return Response.json(ok(saved.value), { headers: { "cache-control": "no-store" } });
+    });
+
+    // The banner upload is the avatar upload's twin, ending in one stored image rather than a
+    // pair; the answer is its digest.
+    app.post(BANNER_UPLOAD_PATH, async (c) => {
+        if (deps.isSuperseded()) return refusal({ code: "SERVICE_UNAVAILABLE" }, 503);
+        const token = BearerToken.safeParse(c.req.header(RPC_HEADERS.session));
+        if (!token.success) return refusal({ code: "INVALID_REQUEST" }, 400);
+        const length = Number(c.req.header("content-length") ?? "");
+        if (!Number.isSafeInteger(length) || length <= 0) {
+            return refusal({ code: "INVALID_REQUEST" }, 400);
+        }
+        if (length > AVATAR_MAX_BYTES) return refusal({ code: "IMAGE_TOO_LARGE" }, 413);
+        const allowed = await checkAvatarUpload(deps.db, token.data);
+        if (!allowed.ok) return writeRefusal(allowed.error);
+        if (!limiter.take(UPLOAD_ROUTE, allowed.value.accountId).ok) {
+            return refusal({ code: "THROTTLED" }, 429);
+        }
+        const body = c.req.raw.body;
+        if (body === null) return refusal({ code: "INVALID_REQUEST" }, 400);
+        const bytes = await readBounded(body, AVATAR_MAX_BYTES);
+        if (bytes === null) return refusal({ code: "IMAGE_TOO_LARGE" }, 413);
+
+        const image = await transcodeBanner(bytes);
+        if (!image.ok) {
+            const { error } = image;
+            if (error.code === "IMAGE_BUSY") {
+                deps.logger.write("warn", "avatar_decoders_busy", { origin: "internal-web" });
+                return refusal({ code: "SERVICE_UNAVAILABLE" }, 503);
+            }
+            if (error.code === "IMAGE_CHILD_FAILED" || error.code === "IMAGE_CODEC_FAILED") {
+                deps.logger.write("error", "avatar_decoder_failed", {
+                    origin: "internal-web",
+                    detail: `${error.code}: ${error.detail}`,
+                });
+                return refusal({ code: "SERVICE_UNAVAILABLE" }, 503);
+            }
+            return refusal(error, error.code === "IMAGE_TOO_LARGE" ? 413 : 422);
+        }
+        const saved = await setBanner(deps.db, token.data, image.value);
+        if (!saved.ok) return writeRefusal(saved.error);
+        return Response.json(ok({ digest: saved.value }), {
+            headers: { "cache-control": "no-store" },
+        });
     });
 
     app.get(`${AVATAR_IMAGE_PATH}/:digest`, async (c) => {

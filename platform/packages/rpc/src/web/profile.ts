@@ -7,6 +7,13 @@ import { ProfileVisibility } from "./privacy.ts";
 import { Done, refusal, Unavailable } from "./shared.ts";
 
 export const Bio = z.string().max(500);
+// One line beside the name; the column's check holds it to the same shape.
+export const Tagline = z
+    .string()
+    .max(80)
+    .regex(/^[^\r\n]*$/);
+
+export const RoleLabelColor = z.enum(["pink", "shu", "ok", "wait", "violet", "aqua"]);
 
 // What the avatar upload route (AVATAR_UPLOAD_PATH in web.ts) answers instead of the new digests:
 // the posting refusals, a profile staff removed (a new bio lifts that), and what the decoder made
@@ -37,6 +44,20 @@ export const profileContract = defineContract({
             joinedAt: EpochMs,
             isSelf: z.boolean(),
             avatar: Avatar.nullable(),
+            memberNo: z.number().int().positive(),
+            tagline: z.string(),
+            // One digest in the avatar image store (the banner is a single 1500x400 WebP).
+            banner: z.string().nullable(),
+            role: z.object({ name: z.string(), color: RoleLabelColor }).nullable(),
+            // Each of the five is null when the owner's opt-out hides it from this viewer;
+            // the owner always reads their own. `invited` is oldest first, at most 50.
+            invitedBy: z.string().nullable(),
+            invited: z.array(z.string()).readonly().nullable(),
+            products: z.array(z.string()).readonly().nullable(),
+            // "now" for a live presence, else the start of the UTC day of the account's last
+            // session as EpochMs, else null when never seen.
+            lastSeen: z.union([z.literal("now"), EpochMs]).nullable(),
+            discord: z.string().nullable(),
         }),
         error: ViewRefusal,
     },
@@ -46,6 +67,21 @@ export const profileContract = defineContract({
         input: z.strictObject({ bio: Bio }),
         output: Done,
         error: PostRefusal,
+    },
+    "profile.tagline.set": {
+        session: "member",
+        effect: "write",
+        input: z.strictObject({ tagline: Tagline }),
+        output: Done,
+        error: PostRefusal,
+    },
+    // Setting one is the upload route's; taking it down is not posting, so never restricted.
+    "profile.banner.clear": {
+        session: "member",
+        effect: "write",
+        input: z.strictObject({}),
+        output: Done,
+        error: MemberRefusal,
     },
     // Setting one is the upload route's; taking it down is not posting, so never restricted.
     "profile.avatar.clear": {

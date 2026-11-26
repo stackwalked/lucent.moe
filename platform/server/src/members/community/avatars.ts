@@ -87,7 +87,8 @@ export async function forgetAvatars(tx: Tx, digests: readonly string[]) {
         tx,
         sql`delete from avatar_image i where i.digest = any(${digests}::text[])
             and not exists (select 1 from profile p
-                            where p.avatar_large = i.digest or p.avatar_small = i.digest)`,
+                            where p.avatar_large = i.digest or p.avatar_small = i.digest
+                               or p.banner = i.digest)`,
     );
 }
 
@@ -172,22 +173,88 @@ export function clearAvatar(db: Db, token: BearerToken) {
     });
 }
 
+// The banner is one image, not a pair; everything else is the avatar's rule.
+export function setBanner(db: Db, token: BearerToken, image: Uint8Array) {
+    const digest = toAvatarDigest(image);
+    return withMemberAt(db, token, async (tx, accountId, txNow) => {
+        const gathered = await gatherSetAvatar(tx, accountId);
+        if (!gathered.ok) return gathered;
+        const decided = decideSetAvatar({ ...gathered.value, now: txNow });
+        if (!decided.ok) return decided;
+        const previous = await queryOne(
+            tx,
+            z.object({ banner: z.string().nullable() }),
+            sql`select banner from profile where account_id = ${accountId} for update`,
+        );
+        if (!previous.ok) return previous;
+        const written = await execute(
+            tx,
+            sql`insert into avatar_image (digest, bytes) values (${digest}, ${image})
+                on conflict (digest) do update set digest = excluded.digest`,
+        );
+        if (!written.ok) return written;
+        const named = await execute(
+            tx,
+            sql`insert into profile (account_id, bio, banner) values (${accountId}, '', ${digest})
+                on conflict (account_id) do update set banner = excluded.banner, updated_at = now()`,
+        );
+        if (!named.ok) return named;
+        const old = previous.value?.banner ?? null;
+        if (old !== null && old !== digest) {
+            const forgotten = await forgetAvatars(tx, [old]);
+            if (!forgotten.ok) return forgotten;
+        }
+        return ok(digest);
+    });
+}
+
+export function clearBanner(db: Db, token: BearerToken) {
+    return withMember(db, token, async (tx, accountId) => {
+        const profile = await queryOne(
+            tx,
+            z.object({ banner: z.string().nullable() }),
+            sql`select banner from profile where account_id = ${accountId} for update`,
+        );
+        if (!profile.ok) return profile;
+        const old = profile.value?.banner ?? null;
+        if (old === null) return ok(undefined);
+        const cleared = await execute(
+            tx,
+            sql`update profile set banner = null, updated_at = now() where account_id = ${accountId}`,
+        );
+        if (!cleared.ok) return cleared;
+        const forgotten = await forgetAvatars(tx, [old]);
+        if (!forgotten.ok) return forgotten;
+        return ok(undefined);
+    });
+}
+
 // Staff removing a profile (moderation/reports.ts) take its picture down with the bio, inside
 // the removal's transaction and after it locked the profile row. The removal's audit row covers
 // both. The owner can set a new one once a new bio lifts the removal.
 export async function clearRemovedAvatar(tx: Tx, profileId: string) {
     const previous = await queryOne(
         tx,
-        z.object({ large: z.string(), small: z.string() }),
-        sql`update profile p set avatar_large = null, avatar_small = null
-            from (select id, avatar_large, avatar_small from profile
+        z.object({
+            large: z.string().nullable(),
+            small: z.string().nullable(),
+            banner: z.string().nullable(),
+        }),
+        sql`update profile p set avatar_large = null, avatar_small = null, banner = null
+            from (select id, avatar_large, avatar_small, banner from profile
                   where id = ${profileId}::uuid for update) old
-            where p.id = old.id and old.avatar_large is not null
-            returning old.avatar_large as large, old.avatar_small as small`,
+            where p.id = old.id
+              and (old.avatar_large is not null or old.banner is not null)
+            returning old.avatar_large as large, old.avatar_small as small, old.banner as banner`,
     );
     if (!previous.ok) return previous;
     if (previous.value === null) return ok(0);
-    return await forgetAvatars(tx, [previous.value.large, previous.value.small]);
+    return await forgetAvatars(
+        tx,
+        [previous.value.large, previous.value.small, previous.value.banner].filter(
+            (digest): digest is string => digest !== null,
+        ),
+    );
 }
 
 // One stored image, only while some profile the member may open names it: a digest that was
@@ -200,7 +267,8 @@ export function readAvatarImage(db: Db, token: BearerToken, params: { readonly d
             sql`select i.bytes from avatar_image i
                 where i.digest = ${params.digest}
                   and exists (select 1 from profile p
-                              where (p.avatar_large = i.digest or p.avatar_small = i.digest)
+                              where (p.avatar_large = i.digest or p.avatar_small = i.digest
+                                     or p.banner = i.digest)
                                 and ${avatarVisible(accountId, sql`p.account_id`)})`,
         );
         if (!row.ok) return row;

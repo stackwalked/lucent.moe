@@ -16,6 +16,8 @@ export const fetchPrivacy = createServerFn({ method: "GET" })
         if (!blocks.ok) return refuse(blocks.error);
         const deletion = await readPlatform("deletion.request.read", {});
         if (!deletion.ok) return refuse(deletion.error);
+        const shows = await readPlatform("privacy.shows.get", {});
+        if (!shows.ok) return refuse(shows.error);
         const profile =
             data.username === null
                 ? null
@@ -25,6 +27,7 @@ export const fetchPrivacy = createServerFn({ method: "GET" })
             blocks: blocks.value.blocks,
             deletion: deletion.value,
             visibility: profile?.ok === true ? profile.value.visibility : ("members" as const),
+            shows: shows.value,
         });
     });
 
@@ -45,6 +48,22 @@ export const saveVisibility = createServerFn({ method: "POST" })
     )
     .handler(async ({ data }) => {
         const reply = await callPlatform("privacy.visibility.set", data);
+        return reply.ok ? done(null) : refuse(reply.error);
+    });
+
+const SHOW_KEYS = ["invitedBy", "invited", "products", "lastSeen", "discord", "wall"] as const;
+
+export const saveShows = createServerFn({ method: "POST" })
+    .validator((data: unknown) =>
+        z
+            .strictObject({
+                key: z.enum(SHOW_KEYS),
+                shown: z.boolean(),
+            })
+            .parse(data),
+    )
+    .handler(async ({ data }) => {
+        const reply = await callPlatform("privacy.shows.set", { [data.key]: data.shown });
         return reply.ok ? done(null) : refuse(reply.error);
     });
 

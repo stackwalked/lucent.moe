@@ -9,6 +9,7 @@ import { RequestId, RPC_HEADERS, toClientHeader } from "@lucent/rpc/contract";
 import {
     AVATAR_IMAGE_PATH,
     AVATAR_UPLOAD_PATH,
+    BANNER_UPLOAD_PATH,
     LOADER_DOWNLOAD_PATH,
     RESOURCE_DOWNLOAD_PATH,
     RESOURCE_UPLOAD_PATH,
@@ -348,6 +349,59 @@ export async function uploadAvatar(request: Request): Promise<Response> {
     if ("value" in body && reply.ok && reply.value.status === 200) {
         const digests = digestsOf(body.value);
         if (digests !== null) return answerAvatar({ ok: true, value: digests });
+    }
+    const code = "error" in body ? codeOf(body.error) : null;
+    if (code === "SESSION_INVALID") clearSessionToken();
+    return answerAvatar(refuse({ code: isAvatarRefusal(code) ? code : "SERVICE_UNAVAILABLE" }));
+}
+
+// The banner upload is the avatar upload's twin: the answer is one digest instead of a pair.
+export async function uploadBanner(request: Request): Promise<Response> {
+    const web = currentRequest();
+    const session = readSessionToken();
+    if (session === null) return answerAvatar(refuse({ code: "SESSION_INVALID" }));
+    const length = Number(request.headers.get("content-length") ?? "");
+    if (!Number.isSafeInteger(length) || length <= 0 || request.body === null) {
+        return answerAvatar(refuse({ code: "INVALID_REQUEST" }));
+    }
+    if (length > AVATAR_MAX_BYTES) return answerAvatar(refuse({ code: "IMAGE_TOO_LARGE" }));
+    const startedAt = systemClock.now();
+    const reply = await tryAsync(
+        async () => {
+            const res = await platformStreams()(
+                BANNER_UPLOAD_PATH,
+                {
+                    [RPC_HEADERS.session]: session,
+                    [RPC_HEADERS.client]: toClientHeader(web.client),
+                    [RPC_HEADERS.request]: web.requestId,
+                    "content-length": String(length),
+                },
+                AbortSignal.any([request.signal, AbortSignal.timeout(AVATAR_DEADLINE_MS)]),
+                request.body ?? undefined,
+            );
+            const parsed: unknown = await res.json();
+            return { status: res.status, body: parsed };
+        },
+        () => null,
+    );
+    web.trace.addPlatformTime(systemClock.now() - startedAt);
+    const body = reply.ok ? reply.value.body : null;
+    if (typeof body !== "object" || body === null) {
+        return answerAvatar(refuse({ code: "SERVICE_UNAVAILABLE" }));
+    }
+    if ("value" in body && reply.ok && reply.value.status === 200) {
+        const value = body.value;
+        if (
+            typeof value === "object" &&
+            value !== null &&
+            "digest" in value &&
+            typeof value.digest === "string"
+        ) {
+            return Response.json(
+                { ok: true, value: { digest: value.digest } },
+                { headers: { "cache-control": "no-store" } },
+            );
+        }
     }
     const code = "error" in body ? codeOf(body.error) : null;
     if (code === "SESSION_INVALID") clearSessionToken();

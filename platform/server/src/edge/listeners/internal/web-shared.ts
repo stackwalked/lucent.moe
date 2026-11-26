@@ -1,6 +1,6 @@
 import type { ProductCatalog } from "@lucent/catalog/catalog";
 import { err, ok, type Result } from "@lucent/core/result";
-import type { BearerToken, ClientInfo } from "@lucent/core/scalars";
+import type { AccountId, BearerToken, ClientInfo } from "@lucent/core/scalars";
 import type { Caller } from "@lucent/policy/policy";
 import type { Logger } from "../../../base/core/log.ts";
 import type { DbFailure } from "../../../base/db/pool.ts";
@@ -22,6 +22,8 @@ export type WebRpcContext = {
     // Signs the override document a kill switch changes; null or left out without the loaders'
     // listener, which nothing then serves.
     readonly overrideSigner?: OverrideSigner | null;
+    // Live presence from the event hub; absent in tests, where nobody is present.
+    readonly presentOnline?: (accountId: AccountId) => boolean;
 };
 
 type Unavailable = { readonly code: "SERVICE_UNAVAILABLE" };

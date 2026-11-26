@@ -22,6 +22,8 @@ export type EventHub = {
         stream: StreamEnd,
     ) => Result<() => void, StreamRefusal>;
     readonly online: () => number;
+    // Whether the account holds at least one live stream.
+    readonly present: (accountId: AccountId) => boolean;
     // Ends every stream and refuses new ones: the server is stopping.
     readonly close: () => void;
 };
@@ -97,6 +99,7 @@ export function createEventHub(options?: {
             return ok(() => drop(id));
         },
         online: () => perAccount.size,
+        present: (accountId) => perAccount.has(accountId),
         close: () => {
             closed = true;
             const open = [...streams.values()];

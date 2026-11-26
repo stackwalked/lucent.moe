@@ -126,6 +126,35 @@ export const privacyContract = defineContract({
         output: Done,
         error: ViewRefusal,
     },
+    "privacy.shows.get": {
+        session: "member",
+        effect: "read",
+        input: z.strictObject({}),
+        output: z.object({
+            invitedBy: z.boolean(),
+            invited: z.boolean(),
+            products: z.boolean(),
+            lastSeen: z.boolean(),
+            discord: z.boolean(),
+            wall: z.boolean(),
+        }),
+        error: MemberRefusal,
+    },
+    // Each key present is set; absent keys stay as they are.
+    "privacy.shows.set": {
+        session: "member",
+        effect: "write",
+        input: z.strictObject({
+            invitedBy: z.boolean().optional(),
+            invited: z.boolean().optional(),
+            products: z.boolean().optional(),
+            lastSeen: z.boolean().optional(),
+            discord: z.boolean().optional(),
+            wall: z.boolean().optional(),
+        }),
+        output: Done,
+        error: MemberRefusal,
+    },
     "privacy.visibility.set": {
         session: "member",
         effect: "write",

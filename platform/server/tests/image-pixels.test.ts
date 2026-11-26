@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { readJpegOrientation } from "../src/base/adapters/image/header.ts";
-import { orient, type Rgba, toSquare } from "../src/base/adapters/image/square.ts";
+import {
+    coverCropBox,
+    orient,
+    type Rgba,
+    toCover,
+    toSquare,
+} from "../src/base/adapters/image/square.ts";
 
 function image(width: number, height: number, at: (x: number, y: number) => number[]): Rgba {
     const data = new Uint8ClampedArray(width * height * 4);
@@ -128,5 +134,58 @@ describe("the orientation a JPEG asks for", () => {
         ],
     ])("is as stored for %s", (_name, bytes) => {
         expect(readJpegOrientation(bytes)).toBe(1);
+    });
+});
+
+describe("the crop a banner is cut to", () => {
+    // 1500 x 400 cover: scaled to cover, the overflow centred and cut.
+    test.each([
+        // Wide: the height fits exactly, the sides go.
+        [3000, 400, { left: 750, top: 0, width: 1500, height: 400 }],
+        // Tall: the width fits exactly, top and bottom go.
+        [1500, 1200, { left: 0, top: 400, width: 1500, height: 400 }],
+        // Already the banner's shape: nothing is cut.
+        [1500, 400, { left: 0, top: 0, width: 1500, height: 400 }],
+        // Tiny: the whole image scales up, nothing is cut.
+        [300, 80, { left: 0, top: 0, width: 300, height: 80 }],
+        // Degenerate tiny: the ideal crop is under one source pixel tall, so the integer box
+        // is the one-pixel centre row.
+        [3, 4, { left: 0, top: 1, width: 3, height: 1 }],
+        // Wider than the shape but not exactly: full width, central rows.
+        [2000, 1000, { left: 0, top: 233, width: 2000, height: 533 }],
+    ])("coverCropBox(%i, %i) is the centred covering crop", (w, h, expected) => {
+        expect(coverCropBox(w, h, 1500, 400)).toEqual(expected);
+    });
+
+    test("the crop is centred: a wide image keeps its middle and drops both edges", () => {
+        // 60 x 10 into 30 x 10: crop box 30 x 10 from x = 15, so output is the red middle.
+        const wide = image(60, 10, (x) => (x >= 15 && x < 45 ? RED : BLUE));
+        const banner = toCover(wide, 30, 10);
+        expect([banner.width, banner.height]).toEqual([30, 10]);
+        expect(pixel(banner, 0, 0)).toEqual(RED);
+        expect(pixel(banner, 29, 9)).toEqual(RED);
+    });
+
+    test("the crop is centred vertically in a tall image", () => {
+        // 10 x 60 into 10 x 30: crop rows 15..44, the red middle survives.
+        const tall = image(10, 60, (_x, y) => (y >= 15 && y < 45 ? RED : BLUE));
+        const banner = toCover(tall, 10, 30);
+        expect(pixel(banner, 5, 15)).toEqual(RED);
+    });
+
+    test("a tiny image enlarges to every pixel of the rectangle", () => {
+        const one = image(1, 1, () => [10, 20, 30, 255]);
+        const banner = toCover(one, 6, 2);
+        expect([banner.width, banner.height]).toEqual([6, 2]);
+        for (let y = 0; y < 2; y++) {
+            for (let x = 0; x < 6; x++) expect(pixel(banner, x, y)).toEqual([10, 20, 30, 255]);
+        }
+    });
+
+    test("an exact input is itself resampled one to one", () => {
+        const exact = image(4, 2, (x, y) => [x * 40, y * 100, 0, 255]);
+        const banner = toCover(exact, 4, 2);
+        expect(pixel(banner, 0, 0)).toEqual([0, 0, 0, 255]);
+        expect(pixel(banner, 3, 1)).toEqual([120, 100, 0, 255]);
     });
 });

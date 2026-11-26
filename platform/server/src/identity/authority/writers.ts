@@ -404,6 +404,9 @@ export async function upsertRole(params: {
     readonly name: string;
     readonly rank: number;
     readonly permissions: readonly Action[];
+    // Display only: the colour of the member-facing label, null for none. Never part of the
+    // rank or permission check -- it grants nothing.
+    readonly labelColor?: string | null;
     // "unchanged" keeps what the role has (none for a new one): the slice 1 editor doesn't show
     // channel grants, and saving there must not wipe them.
     readonly channelGrants: readonly ChannelGrantInput[] | "unchanged";
@@ -432,6 +435,7 @@ export async function upsertRole(params: {
         name: params.name,
         rank: params.rank,
         permissions: sortedUnique(params.permissions),
+        labelColor: params.labelColor ?? null,
         channelGrants: requestedGrants,
     };
 
@@ -483,14 +487,15 @@ export async function upsertRole(params: {
             before === null
                 ? await execute(
                       tx,
-                      sql`insert into role (id, name, rank, permissions, channel_grants, created_at)
+                      sql`insert into role (id, name, rank, permissions, channel_grants, created_at, label_color)
                           values (
                               ${params.roleId},
                               ${after.name},
                               ${after.rank},
                               ${after.permissions},
                               ${JSON.stringify(after.channelGrants)}::jsonb,
-                              ${toTimestamptz(txNow)}::timestamptz
+                              ${toTimestamptz(txNow)}::timestamptz,
+                              ${after.labelColor}
                           )`,
                   )
                 : await execute(
@@ -499,7 +504,8 @@ export async function upsertRole(params: {
                               name = ${after.name},
                               rank = ${after.rank},
                               permissions = ${after.permissions},
-                              channel_grants = ${JSON.stringify(after.channelGrants)}::jsonb
+                              channel_grants = ${JSON.stringify(after.channelGrants)}::jsonb,
+                              label_color = ${after.labelColor}
                           where id = ${params.roleId}`,
                   );
         if (!written.ok) {

@@ -9,4 +9,7 @@ export const PROFILE_COPY = {
     pictureHint: "jpeg, png or webp, up to 512 kb",
     upload: "upload",
     removePicture: "remove picture",
+    tagline: "tagline",
+    banner: "banner",
+    removeBanner: "remove banner",
 } as const;

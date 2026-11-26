@@ -1,0 +1,29 @@
+@layer components {
+    .label {
+        font-size: var(--size-13);
+    }
+
+    .label[data-color="pink"] {
+        color: var(--pink-ink);
+    }
+
+    .label[data-color="shu"] {
+        color: var(--shu-ink);
+    }
+
+    .label[data-color="ok"] {
+        color: var(--ok-ink);
+    }
+
+    .label[data-color="wait"] {
+        color: var(--wait-ink);
+    }
+
+    .label[data-color="violet"] {
+        color: var(--violet-ink);
+    }
+
+    .label[data-color="aqua"] {
+        color: var(--aqua-ink);
+    }
+}
