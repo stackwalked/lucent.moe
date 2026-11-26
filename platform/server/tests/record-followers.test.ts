@@ -72,14 +72,14 @@ test("each follower is told once per support drop, by inbox and by mail as they 
 
         await world.support(GAME);
         expect(await world.start(GAME)).toBe("NOT_A_REFUSAL");
-        expect(await tell()).toEqual({ ok: true, value: 0 });
+        expect(await tell()).toEqual({ ok: true, value: { told: 0, givenUp: [] } });
 
         expect(await world.start(UPDATED)).toBe("GAME_BUILD_UNSUPPORTED");
         expect(await world.start(UPDATED)).toBe("GAME_BUILD_UNSUPPORTED");
         // Two runners at once still tell each follower once.
         const [first, second] = await Promise.all([tell(), tell()]);
-        expect((first.ok ? first.value : -1) + (second.ok ? second.value : -1)).toBe(2);
-        expect(await tell()).toEqual({ ok: true, value: 0 });
+        expect((first.ok ? first.value.told : -1) + (second.ok ? second.value.told : -1)).toBe(2);
+        expect(await tell()).toEqual({ ok: true, value: { told: 0, givenUp: [] } });
 
         expect(await inboxOf(browserDb, alice)).toBe(1);
         expect(await mailTo(browserDb, "alice@lucent.test")).toBe(1);
@@ -90,7 +90,7 @@ test("each follower is told once per support drop, by inbox and by mail as they 
 
         // The recovery tells nobody.
         await world.support(UPDATED);
-        expect(await tell()).toEqual({ ok: true, value: 0 });
+        expect(await tell()).toEqual({ ok: true, value: { told: 0, givenUp: [] } });
         expect(await inboxOf(browserDb, alice)).toBe(1);
         expect(await inboxOf(browserDb, bob)).toBe(1);
     });
@@ -115,7 +115,7 @@ test("a drop already recovered from before anyone was told tells nobody", async 
 
         expect(await tellFollowers(browserDb, { catalog: products, mail: true })).toEqual({
             ok: true,
-            value: 0,
+            value: { told: 0, givenUp: [] },
         });
         expect(await inboxOf(browserDb, alice)).toBe(0);
         expect(
@@ -193,11 +193,11 @@ test("a second game update after a recovery is a second drop, and only the drops
         await world.support(GAME);
         expect(await world.start(GAME)).toBe("NOT_A_REFUSAL");
         expect(await world.start(UPDATED)).toBe("GAME_BUILD_UNSUPPORTED");
-        expect(await tell()).toEqual({ ok: true, value: 1 });
+        expect(await tell()).toEqual({ ok: true, value: { told: 1, givenUp: [] } });
         await world.support(UPDATED);
-        expect(await tell()).toEqual({ ok: true, value: 0 });
+        expect(await tell()).toEqual({ ok: true, value: { told: 0, givenUp: [] } });
         expect(await world.start(later)).toBe("GAME_BUILD_UNSUPPORTED");
-        expect(await tell()).toEqual({ ok: true, value: 1 });
+        expect(await tell()).toEqual({ ok: true, value: { told: 1, givenUp: [] } });
         expect(await changesOf(browserDb)).toBe("drop rise drop");
         expect(await inboxOf(browserDb, alice)).toBe(2);
     });
@@ -252,5 +252,49 @@ test("followers are told ten to a transaction, so a failure keeps the batches be
         expect((await tellFollowers(browserDb, { catalog: products, mail: true })).ok).toBe(false);
         const told = await Promise.all(followers.map((id) => inboxOf(browserDb, id)));
         expect(told.filter((n) => n === 1)).toHaveLength(10);
+    });
+});
+
+test("a drop that keeps failing is given up after five attempts, and the drops after it are told", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ browserDb: db }) => {
+        const rng = createSeededRng(11_107);
+        const products = liveCatalog();
+        const stuck = await follower(db, rng, {
+            email: "stuck@lucent.test",
+            follows: true,
+            mail: false,
+        });
+        const waiting = await seedAccount(db, rng, "waiting@lucent.test");
+        await execute(
+            db,
+            sql`insert into product_subscription (account_id, product_id)
+                values (${waiting}, 'lucent-loader')`,
+        );
+        await refuseInboxFor(db, [stuck]);
+        const first = await scalar(
+            db,
+            z.string(),
+            sql`with added as (
+                    insert into product_support_change (product_id, supported, changed_at)
+                    values ('cs2', false, now()), ('lucent-loader', false, now())
+                    returning id)
+                select min(id)::text as value from added`,
+        );
+        const tell = () => tellFollowers(db, { catalog: products, mail: true });
+
+        for (let attempt = 1; attempt < 5; attempt += 1) {
+            expect((await tell()).ok).toBe(false);
+        }
+        const loaderInbox = () =>
+            scalar(
+                db,
+                z.coerce.number(),
+                sql`select count(*) as value from inbox_entry where account_id = ${waiting}`,
+            );
+        expect(await loaderInbox()).toBe(0);
+        expect(await tell()).toEqual({ ok: true, value: { told: 1, givenUp: [first] } });
+        expect(await loaderInbox()).toBe(1);
+        expect(await tell()).toEqual({ ok: true, value: { told: 0, givenUp: [] } });
     });
 });

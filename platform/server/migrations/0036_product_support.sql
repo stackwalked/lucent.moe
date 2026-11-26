@@ -29,6 +29,8 @@ create table product_support_change (
     changed_at        timestamptz not null,
     notified_through  text,
     notified_at       timestamptz,
+    -- Failed tries at telling the next batch; the fifth gives the row up (record/followers.ts).
+    attempts          integer not null default 0 check (attempts between 0 and 5),
     -- A rise tells nobody: it is written as done.
     check (not supported or notified_at is not null)
 );

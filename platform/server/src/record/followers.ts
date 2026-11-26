@@ -87,12 +87,38 @@ async function tellBatch(
     });
 }
 
-// How many followers were told. Oldest drop first.
+const MAX_ATTEMPTS = 5;
+
+// Counts a failed batch on its row; the fifth failure marks the row done, so one row that keeps
+// failing does not hold back every later drop. True when it was given up.
+async function countFailure(db: Db, id: string): Promise<Result<boolean, DbFailure>> {
+    const counted = await queryOne(
+        db,
+        z.object({ given_up: z.boolean() }),
+        sql`update product_support_change
+            set attempts = attempts + 1,
+                notified_at = case when attempts + 1 >= ${MAX_ATTEMPTS} then now() end
+            where id = ${id}::bigint and notified_at is null
+            returning notified_at is not null as given_up`,
+    );
+    if (!counted.ok) return counted;
+    return ok(counted.value?.given_up ?? false);
+}
+
+export type Told = {
+    readonly told: number;
+    // Change rows given up on this run, after their fifth failed attempt.
+    readonly givenUp: readonly string[];
+};
+
+// Oldest drop first. A failed batch ends the run (the next one tries again) unless it was the
+// row's last attempt.
 export async function tellFollowers(
     db: Db,
     params: { readonly catalog: ProductCatalog; readonly mail: boolean },
-): Promise<Result<number, DbFailure>> {
+): Promise<Result<Told, DbFailure>> {
     let told = 0;
+    const givenUp: string[] = [];
     for (let batch = 0; batch < BATCHES_PER_RUN; batch += 1) {
         const pending = await queryOne(
             db,
@@ -109,11 +135,15 @@ export async function tellFollowers(
         const sent = await tellBatch(db, { ...params, change: pending.value });
         if (!sent.ok) {
             if (sent.error.code === "RACED") continue;
-            return err(sent.error);
+            const counted = await countFailure(db, pending.value.id);
+            if (!counted.ok) return counted;
+            if (!counted.value) return err(sent.error);
+            givenUp.push(pending.value.id);
+            continue;
         }
         told += sent.value;
     }
-    return ok(told);
+    return ok({ told, givenUp });
 }
 
 export function followerNoticeJob(params: {
@@ -125,9 +155,16 @@ export function followerNoticeJob(params: {
         name: "support-followers",
         everyMs: 30 * 1_000,
         run: async () => {
-            const told = await tellFollowers(params.db, params);
-            if (!told.ok) return told;
-            return ok(told.value === 0 ? null : `told ${told.value} followers of a support drop`);
+            const run = await tellFollowers(params.db, params);
+            if (!run.ok) return run;
+            const { told, givenUp } = run.value;
+            const lines = [
+                ...(told === 0 ? [] : [`told ${told} followers of a support drop`]),
+                ...givenUp.map(
+                    (id) => `gave up on support change ${id} after ${MAX_ATTEMPTS} attempts`,
+                ),
+            ];
+            return ok(lines.length === 0 ? null : lines.join("; "));
         },
     };
 }
