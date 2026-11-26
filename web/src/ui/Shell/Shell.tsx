@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
+import { UI_COPY } from "../copy.ts";
 import { SkipLink } from "../SkipLink/SkipLink.tsx";
 import styles from "./Shell.module.css";
 
@@ -34,7 +35,11 @@ export function Shell({
                 <Link to="/" className={styles.wordmark}>
                     lucent
                 </Link>
-                {places === undefined ? null : <nav className={styles.places}>{places}</nav>}
+                {places === undefined ? null : (
+                    <nav className={styles.places} aria-label={UI_COPY.places}>
+                        {places}
+                    </nav>
+                )}
                 {account === undefined ? null : <div className={styles.account}>{account}</div>}
             </header>
             <div className={styles.frame} data-side={side === undefined ? "none" : "nav"}>

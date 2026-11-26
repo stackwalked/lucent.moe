@@ -1,6 +1,7 @@
 // Words the building blocks show on their own. Feature words live in each feature's copy.ts.
 export const UI_COPY = {
     skipToContent: "skip to content",
+    places: "site",
     opensElsewhere: "opens in a new tab",
     close: "close",
     copy: "copy",

@@ -1,4 +1,4 @@
-import { Link, useRouteContext, useRouter } from "@tanstack/react-router";
+import { Link, useMatchRoute, useRouteContext, useRouter } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { chooseTheme } from "../../theme.ts";
 import { Dropdown } from "../../ui/Dropdown/Dropdown.tsx";
@@ -45,7 +45,8 @@ function AccountMenu({ viewer }: { readonly viewer: Viewer }) {
 }
 
 // The account's corner of the bar: its pages, unread notifications while there are any, and the
-// menu. It stays beside the wordmark at every width; the places move to a row of their own.
+// menu. It stays beside the wordmark at every width; the places move to a row of their own. On
+// the account's own pages the side nav carries the unread count, so the bar doesn't repeat it.
 function AccountCorner({
     viewer,
     unreadCount,
@@ -53,9 +54,11 @@ function AccountCorner({
     readonly viewer: Viewer;
     readonly unreadCount: number | null;
 }) {
+    const matchRoute = useMatchRoute();
+    const onAccount = matchRoute({ to: "/account", fuzzy: true }) !== false;
     return (
         <>
-            {unreadCount === null || unreadCount === 0 ? null : (
+            {onAccount || unreadCount === null || unreadCount === 0 ? null : (
                 <Link
                     to="/account/inbox"
                     className={styles.place}
