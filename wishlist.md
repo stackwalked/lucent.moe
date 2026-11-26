@@ -891,7 +891,7 @@ live in `wishlist/protection.md`.
   - optional plan templates when their consumer lands.
 - Auth, credentials, sessions and authority:
   - No `better-auth`: old lucent spent too long fighting it, and its model has no room for the
-    native DPoP flow. Browser credentials and sessions landed in `platform/server/src/auth/` with
+    native DPoP flow. Browser credentials and sessions landed in `platform/server/src/identity/auth/` with
     migration `0002_credentials.sql`; new passwords are checked against Have I Been Pwned's range
     API, and a job sweeps expired sessions, flows and setup links. Still to land with them:
     - `jose@6.2.17` for client P-256 DPoP proofs, with the native loader's sign-in. (Web's

@@ -99,7 +99,7 @@ auto verifies(
 }
 
 TEST_CASE("the thumbprint and match code are the platform's for the same key") {
-    // Computed by jose's calculateJwkThumbprint and platform/server/src/core/ids.ts's
+    // Computed by jose's calculateJwkThumbprint and platform/server/src/base/core/ids.ts's
     // matchCodeOf for this JWK.
     REQUIRE(thumbprint_of(counting_point()) == "0r62zgBj277RicA3LnaBKQ5_9RCDIomrlbpWjO0QTG0");
     REQUIRE(match_code_of(counting_point()) == "TAZB-DKG0");

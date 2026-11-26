@@ -16,7 +16,7 @@
 #include "text/json.hpp"
 
 // The native /v1 listener as the loader calls it: every request with its DPoP proof, binary
-// bodies, the refusal body on every refusal (platform/server/src/listeners/native/app.ts).
+// bodies, the refusal body on every refusal (platform/server/src/edge/listeners/native/app.ts).
 
 namespace lucent::loader {
 
@@ -66,7 +66,7 @@ private:
 
     auto prepare(const call& asked, std::string_view operation_id) -> result<prepared>;
     // Sends once, and once more after correcting the clock when the proof was refused and the
-    // server's Date says ours is off: platform/server/src/listeners/native/dpop.ts allows 5 s
+    // server's Date says ours is off: platform/server/src/edge/listeners/native/dpop.ts allows 5 s
     // ahead and 300 s behind.
     auto exchange(const call& asked, http::body_sink sink) -> result<http::response>;
     auto is_clock_off(const http::response& answered) -> bool;
