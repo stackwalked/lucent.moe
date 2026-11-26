@@ -52,8 +52,10 @@ async function gather(tx: Tx, accountId: AccountId, txNow: EpochMs) {
         tx,
         ExportData.shape.comments.unwrap().element,
         sql`
-        select id, guide_id as "guideId", body, created_at as "createdAt", removed_at as "removedAt"
-        from comment where author_id = ${accountId} order by created_at desc, id desc limit ${EXPORT_CAP + 1}`,
+        select c.id, c.guide_id as "guideId", w.username as "profileUsername", c.body,
+               c.created_at as "createdAt", c.removed_at as "removedAt"
+        from comment c left join account w on w.id = c.profile_account_id
+        where c.author_id = ${accountId} order by c.created_at desc, c.id desc limit ${EXPORT_CAP + 1}`,
     );
     if (!comments.ok) return comments;
     const shouts = await queryAll(

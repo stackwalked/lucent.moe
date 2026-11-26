@@ -38,6 +38,8 @@ export const AUDIT_OPERATIONS = [
     "community.lift",
     "community.remove",
     "community.dismiss_report",
+    "shout.remove",
+    "shout.purge",
     "ticket.reply",
     "ticket.close",
     "resource.publish",

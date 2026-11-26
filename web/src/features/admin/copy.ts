@@ -63,6 +63,8 @@ export const OPERATION_LABELS: Readonly<Record<AuditOperation, string>> = {
     "community.lift": "restriction lifted",
     "community.remove": "content removed",
     "community.dismiss_report": "report dismissed",
+    "shout.remove": "shout removed",
+    "shout.purge": "shouts purged",
     "ticket.reply": "ticket answered",
     "ticket.close": "ticket closed",
     "resource.publish": "resource published",

@@ -73,6 +73,7 @@ const BaseRow = z.object({
         products: z.boolean(),
         lastSeen: z.boolean(),
         discord: z.boolean(),
+        wall: z.boolean(),
     }),
 });
 
@@ -107,7 +108,8 @@ export function readProfile(
                            'invited', coalesce(p.show_invited, true),
                            'products', coalesce(p.show_products, true),
                            'lastSeen', coalesce(p.show_last_seen, true),
-                           'discord', coalesce(p.show_discord, true)) as shows
+                           'discord', coalesce(p.show_discord, true),
+                           'wall', coalesce(p.show_wall, true)) as shows
                 from account a left join profile p on p.account_id = a.id
                 where a.username = ${params.username.toLowerCase()}
                   and (a.id = ${accountId} or coalesce(p.visibility, 'members') = 'members')
@@ -218,6 +220,7 @@ export function readProfile(
             products,
             lastSeen,
             discord,
+            wall: shown("wall"),
         });
     });
 }

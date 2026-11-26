@@ -129,6 +129,13 @@ test(
                 union all select theirs.id, ${id}, 'COMMENT-ELSEWHERE-7731' from theirs`,
         );
         await seed(db, sql`insert into shout (author_id, body) values (${id}, 'SHOUT-7731')`);
+        // A wall goes with its owner, and what the member wrote on someone else's goes with them.
+        await seed(
+            db,
+            sql`insert into comment (profile_account_id, author_id, body)
+                values (${id}, ${obo.accountId}, 'WALL-ON-MINE-7731'),
+                       (${obo.accountId}, ${id}, 'WALL-ON-THEIRS-7731')`,
+        );
         await seed(
             db,
             sql`insert into report (reporter_id, target_kind, target_id, reason, note)
@@ -196,6 +203,8 @@ test(
                 "COMMENT-OTHER-7731",
                 "COMMENT-ELSEWHERE-7731",
                 "SHOUT-7731",
+                "WALL-ON-MINE-7731",
+                "WALL-ON-THEIRS-7731",
                 "REPORT-NOTE-7731",
                 "TICKET-SUBJECT-7731",
                 "TICKET-BODY-7731",

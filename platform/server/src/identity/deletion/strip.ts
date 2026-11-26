@@ -307,9 +307,11 @@ async function strip(
     });
 }
 
-// Guides go with every comment under them, whoever wrote it. The member's guides are locked first,
+// Guides go with every comment under them, whoever wrote it; so does the member's wall, and what
+// they wrote on other walls goes with their other writing. The member's guides are locked first,
 // so a comment on one can't be added between the comment and guide deletes (its insert takes a key
-// share on the guide), then every row that goes is locked: a report filed meanwhile locks its
+// share on the guide; one on a wall takes a share lock on the owner's account row, which the
+// deletion holds), then every row that goes is locked: a report filed meanwhile locks its
 // target too (moderation/reports.ts), so it either finds the row gone or commits first and is
 // closed with the rest. Open reports about what goes would wait in no queue (it joins the
 // content), so they go; decided ones are staff's record and stay.
@@ -322,7 +324,8 @@ async function stripCommunity(tx: Tx, id: AccountId) {
     const comments = await ids(
         tx,
         sql`select id::text as id from comment
-            where author_id = ${id} or guide_id = any(${guides.value}::uuid[])
+            where author_id = ${id} or profile_account_id = ${id}
+               or guide_id = any(${guides.value}::uuid[])
             order by id for update`,
     );
     if (!comments.ok) return comments;

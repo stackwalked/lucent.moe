@@ -1,7 +1,15 @@
 import { EpochMs } from "@lucent/core/scalars";
 import { z } from "zod";
 import { defineContract } from "../contract.ts";
-import { Avatar, ContentId, PostingRestricted, PostRefusal, ViewRefusal } from "./community.ts";
+import { CommentBody } from "./comments.ts";
+import {
+    Author,
+    Avatar,
+    ContentId,
+    PostingRestricted,
+    PostRefusal,
+    ViewRefusal,
+} from "./community.ts";
 import { MemberRefusal } from "./inbox.ts";
 import { ProfileVisibility } from "./privacy.ts";
 import { Done, refusal, Unavailable } from "./shared.ts";
@@ -58,7 +66,49 @@ export const profileContract = defineContract({
             // session as EpochMs, else null when never seen.
             lastSeen: z.union([z.literal("now"), EpochMs]).nullable(),
             discord: z.string().nullable(),
+            // Whether the viewer may see the wall: the owner always, others unless the owner
+            // hid it.
+            wall: z.boolean(),
         }),
+        error: ViewRefusal,
+    },
+    // The profile's wall, newest first. Refused as a missing thing on a private profile (the
+    // owner's own excepted), a tombstone, and a block either way; an owner who hid the wall
+    // shows others an empty page.
+    "profile.comments.list": {
+        session: "member",
+        effect: "read",
+        input: z.strictObject({ username: z.string().max(64), cursor: ContentId.nullable() }),
+        output: z.object({
+            items: z
+                .array(
+                    z.object({
+                        id: ContentId,
+                        author: Author,
+                        body: z.string(),
+                        createdAt: EpochMs,
+                        canDelete: z.boolean(),
+                    }),
+                )
+                .readonly(),
+            nextCursor: ContentId.nullable(),
+        }),
+        error: ViewRefusal,
+    },
+    "profile.comments.create": {
+        session: "member",
+        effect: "write",
+        input: z.strictObject({ username: z.string().max(64), body: CommentBody }),
+        output: z.object({ id: ContentId }),
+        error: PostRefusal,
+    },
+    // The wall's owner and the comment's author may delete it; anyone else is told it is not
+    // there. Staff remove through moderation reports, as for any comment.
+    "profile.comments.delete": {
+        session: "member",
+        effect: "write",
+        input: z.strictObject({ id: ContentId }),
+        output: Done,
         error: ViewRefusal,
     },
     "profile.bio.set": {

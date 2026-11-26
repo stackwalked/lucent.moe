@@ -46,17 +46,30 @@ function findTarget(tx: Tx, kind: Kind, id: string, viewer: AccountId | null) {
                 tx,
                 Target,
                 sql`select c.author_id as "authorId", g.product_id as "productId", left(c.body, 280) as excerpt
-                    from comment c join guide g on g.id = c.guide_id
+                    from comment c
+                    left join guide g on g.id = c.guide_id
+                    left join account w on w.id = c.profile_account_id
+                    left join profile wp on wp.account_id = c.profile_account_id
                     where c.id = ${id}::uuid and c.removed_at is null
                       and ${unblocked(sql`c.author_id`)}
-                      and ${
-                          viewer === null
-                              ? sql`g.removed_at is null`
-                              : guideReadable(viewer, {
-                                    removedAt: sql`g.removed_at`,
-                                    authorId: sql`g.author_id`,
-                                })
-                      }
+                      and (
+                          (c.guide_id is not null and ${
+                              viewer === null
+                                  ? sql`g.removed_at is null`
+                                  : guideReadable(viewer, {
+                                        removedAt: sql`g.removed_at`,
+                                        authorId: sql`g.author_id`,
+                                    })
+                          })
+                          or (c.profile_account_id is not null and w.username is not null and ${
+                              viewer === null
+                                  ? sql`true`
+                                  : sql`${notBlockedWith(viewer, sql`w.id`)}
+                                        and (w.id = ${viewer}
+                                             or (coalesce(wp.visibility, 'members') = 'members'
+                                                 and coalesce(wp.show_wall, true)))`
+                          })
+                      )
                     for share of c`,
             );
         case "shout":

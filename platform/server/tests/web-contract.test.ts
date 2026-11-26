@@ -289,6 +289,9 @@ const inputs: SinglePurpose = {
     },
     "members.list": {},
     "profile.get": { username: "someone" },
+    "profile.comments.list": { username: "someone", cursor: null },
+    "profile.comments.create": { username: "someone", body: "hello" },
+    "profile.comments.delete": { id: "00000000-0000-4000-8000-000000000001" },
     "profile.bio.set": { bio: "hello" },
     "profile.tagline.set": { tagline: "hi" },
     "profile.banner.clear": {},
@@ -301,6 +304,8 @@ const inputs: SinglePurpose = {
     "comments.create": { guideId: "00000000-0000-4000-8000-000000000001", body: "body" },
     "shouts.list": { productId: null, cursor: null },
     "shouts.create": { productId: null, body: "body" },
+    "shouts.delete": { id: "00000000-0000-4000-8000-000000000001" },
+    "admin.shouts.purge": { last: 1 },
     "admin.moderation.restrictions.list": { cursor: null },
     "admin.moderation.restrictions.set": {
         username: "someone",

@@ -49,7 +49,9 @@ export const ExportData = z.object({
         .array(
             z.object({
                 id: z.uuid(),
-                guideId: z.uuid(),
+                // Null for a comment on a profile wall, which names the profile instead.
+                guideId: z.uuid().nullable(),
+                profileUsername: z.string().nullable(),
                 body: z.string(),
                 createdAt: EpochMs,
                 removedAt: Removed,
