@@ -20,6 +20,9 @@ export const productsContract = defineContract({
                         name: z.string(),
                         kind: z.string(),
                         state: ProductState,
+                        // The member's entitlement to it, when one is active now: validUntil
+                        // null when it does not end. Null access: none held.
+                        access: z.object({ validUntil: EpochMs.nullable() }).nullable(),
                         features: Features,
                         channels: z
                             .array(

@@ -26,4 +26,12 @@
         background: var(--shu-wash);
         color: var(--shu-ink);
     }
+
+    .status[data-tone="ok"] {
+        color: var(--ok-ink);
+    }
+
+    .status[data-tone="wait"] {
+        color: var(--wait-ink);
+    }
 }

@@ -60,7 +60,7 @@ const fn = {
     promoteRelease: "features.admin.releases.promote--promoteRelease",
     listFactSets: "features.admin.releases.server--listFactSets",
     promoteFactSet: "features.admin.releases.promote--promoteFactSet",
-    fetchLoaderOffer: "features.download.server--fetchLoaderOffer",
+    fetchLoaderOffer: "features.products.server--fetchLoaderOffer",
 } as const;
 
 // A device key's thumbprint as the loader would push it: 32 bytes, here all zero, so its match
@@ -420,8 +420,8 @@ describe("web against a real platform", () => {
         );
         expect(visible).toEqual([{ productId: "lucent-loader", state: "live" }]);
         expect((await page.get("/products")).status).toBe(200);
-        expect((await page.get("/products/lucent-loader")).status).toBe(200);
-        expect((await page.get("/download")).status).toBe(200);
+        expect((await page.get("/products/lucent-loader")).status).toBe(404);
+        expect((await page.get("/download")).status).toBe(404);
         expect((await page.get("/products/cs2")).status).toBe(404);
     });
 
@@ -505,7 +505,7 @@ describe("web against a real platform", () => {
         });
         const refused = await page.get(file);
         expect(refused.status).toBe(303);
-        expect(refused.headers.get("location")).toEndWith("/download");
+        expect(refused.headers.get("location")).toEndWith("/products");
 
         // The golden loader seal (number 12) is current; its loader digest names the file.
         const seal = await readFile(join(WEB_DIR, "../contracts/release-seal/v1/loader.bin"));
@@ -543,7 +543,7 @@ describe("web against a real platform", () => {
 
         const stranger = await browser().get(file);
         expect(stranger.status).toBe(303);
-        expect(stranger.headers.get("location")).toEndWith("/download");
+        expect(stranger.headers.get("location")).toEndWith("/products");
     });
 
     test("the member cloud page serves only metadata and issued links never enter HTML or request logs", async () => {
@@ -620,8 +620,8 @@ describe("web against a real platform", () => {
         expect(web.output()).not.toContain(link.token);
     });
 
-    test("status and changelog are for members: a signed-out visitor is sent to sign in, a member reads them unindexed", async () => {
-        for (const path of ["/status", "/changelog"]) {
+    test("the changelog pages are for members: a signed-out visitor is sent to sign in, a member reads them unindexed", async () => {
+        for (const path of ["/changes", "/changes/loader"]) {
             const stranger = await browser().get(path);
             expect(stranger.status).toBe(303);
             expect(stranger.headers.get("location")).toEndWith("/sign-in");
@@ -629,8 +629,12 @@ describe("web against a real platform", () => {
             expect(page.status).toBe(200);
             expect(await page.text()).toContain('<meta name="robots" content="noindex"');
         }
-        expect((await (await member.get("/status")).text()).toLowerCase()).toContain(
-            "lucent loader",
+        expect((await (await member.get("/changes")).text()).toLowerCase()).toContain(
+            "no changes yet",
         );
+        // The pages they replace are gone.
+        for (const path of ["/status", "/changelog", "/download"]) {
+            expect((await member.get(path)).status).toBe(404);
+        }
     });
 });

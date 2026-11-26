@@ -12,3 +12,8 @@ export const fetchProducts = createServerFn({ method: "GET" }).handler(async () 
     const reply = await readPlatform("products.list", {});
     return reply.ok ? done(reply.value.products) : refuse(reply.error);
 });
+
+export const fetchLoaderOffer = createServerFn({ method: "GET" }).handler(async () => {
+    const reply = await readPlatform("download.loader", {});
+    return reply.ok ? done(reply.value) : refuse(reply.error);
+});

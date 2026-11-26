@@ -22,6 +22,9 @@ type ThemeInputs = {
     readonly pinkInk: string;
     readonly shu: string;
     readonly shuInk: string;
+    // Product and ticket states only: ok works, wait is changing.
+    readonly okInk: string;
+    readonly waitInk: string;
     readonly shadow: Rgba;
 };
 
@@ -40,6 +43,8 @@ const THEMES: Readonly<Record<ThemeName, ThemeInputs>> = {
         pinkInk: "#e8a3b8",
         shu: "#f25a2b",
         shuInk: "#f25a2b",
+        okInk: "#8fd19e",
+        waitInk: "#e8c07a",
         shadow: withAlpha(BLACK, 0.5),
     },
     washi: {
@@ -54,6 +59,8 @@ const THEMES: Readonly<Record<ThemeName, ThemeInputs>> = {
         pinkInk: "#a6385f",
         shu: "#f25a2b",
         shuInk: "#bc3504",
+        okInk: "#1d6f36",
+        waitInk: "#7c5200",
         shadow: withAlpha(fromHex("#2a2226"), 0.18),
     },
 };
@@ -70,6 +77,8 @@ export const COLOR_TOKENS = [
     "pink-ink",
     "shu",
     "shu-ink",
+    "ok-ink",
+    "wait-ink",
     "shadow",
     "raised",
     "sunken",
@@ -104,6 +113,8 @@ export function resolveTheme(name: ThemeName): Readonly<Record<ColorToken, Rgba>
         "pink-ink": fromHex(t.pinkInk),
         shu,
         "shu-ink": fromHex(t.shuInk),
+        "ok-ink": fromHex(t.okInk),
+        "wait-ink": fromHex(t.waitInk),
         shadow: t.shadow,
         // Surfaces and states, mixed from the inputs as old lucent's tokens.css did.
         raised: mix(ink, 0.03, ground),
@@ -132,7 +143,7 @@ type Pair = { readonly fg: ColorToken; readonly bg: ColorToken };
 const SURFACES = ["ground", "side", "raised", "floating"] as const;
 
 export const TEXT_PAIRS: readonly Pair[] = [
-    ...(["ink", "ink-2", "pink-ink", "shu-ink"] as const).flatMap((fg) =>
+    ...(["ink", "ink-2", "pink-ink", "shu-ink", "ok-ink", "wait-ink"] as const).flatMap((fg) =>
         SURFACES.map((bg) => ({ fg, bg })),
     ),
     { fg: "ink", bg: "sunken" },
@@ -213,6 +224,9 @@ const SCALES: Readonly<Record<string, string>> = {
     "page-gap": "40px",
     "caption-h": "40px",
     aside: "444px",
+    // The measure of an entry row's version-and-date gutter, from the product mock; only the
+    // changelog rows use it.
+    "entry-gutter": "180px",
     "control-h": "32px",
     "control-sm": "24px",
     "nav-h": "44px",

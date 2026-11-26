@@ -11,6 +11,7 @@ export function Page({
     title,
     hideTitle = false,
     trail,
+    tabs,
     actions,
     width = "wide",
     children,
@@ -18,6 +19,8 @@ export function Page({
     readonly title: ReactNode;
     readonly hideTitle?: boolean;
     readonly trail?: ReactNode;
+    // The page's sub-tabs (ui/Tabs), after the title in the head row.
+    readonly tabs?: ReactNode;
     readonly actions?: ReactNode;
     readonly width?: "wide" | "narrow";
     readonly children: ReactNode;
@@ -31,6 +34,7 @@ export function Page({
                     <div className={styles.lead}>
                         {trail === undefined ? null : <nav className={styles.trail}>{trail}</nav>}
                         <h1 className={styles.title}>{title}</h1>
+                        {tabs === undefined ? null : tabs}
                     </div>
                     {actions === undefined ? null : <div className={styles.actions}>{actions}</div>}
                 </header>

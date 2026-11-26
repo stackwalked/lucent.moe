@@ -23,6 +23,40 @@
         overflow-wrap: anywhere;
     }
 
+    .value[data-tone="ok"] {
+        color: var(--ok-ink);
+    }
+
+    .value[data-tone="wait"] {
+        color: var(--wait-ink);
+    }
+
+    .value[data-tone="shu"] {
+        color: var(--shu-ink);
+    }
+
+    .value[data-tone="dim"] {
+        color: var(--ink-2);
+    }
+
+    .pairs[data-align="end"] {
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+    }
+
+    .pairs[data-align="end"] .pair {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--s-4);
+        min-block-size: var(--row2-h);
+    }
+
+    .pairs[data-align="end"] .value {
+        text-align: end;
+    }
+
     @media (max-width: 480px) {
         .pairs {
             grid-template-columns: minmax(0, 1fr);

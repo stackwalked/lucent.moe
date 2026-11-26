@@ -24,6 +24,20 @@ export function formatAbsolute(at: EpochMs, timeZone: string): string {
     return `${part("day")} ${part("month").toLowerCase()} ${part("year")}, ${part("hour")}:${part("minute")}`;
 }
 
+// "18 nov 2026": the date of formatAbsolute without the day time, for what a date alone says
+// (an access that ends).
+export function formatDate(at: EpochMs, timeZone: string): string {
+    const parts = new Intl.DateTimeFormat("en-US", {
+        timeZone,
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+    }).formatToParts(at);
+    const part = (type: Intl.DateTimeFormatPartTypes): string =>
+        parts.find((p) => p.type === type)?.value ?? "";
+    return `${part("day")} ${part("month").toLowerCase()} ${part("year")}`;
+}
+
 // Whole units, rounded down, so "1h ago" never shows before an hour has passed. A time ahead of
 // `now` (clock skew between server and browser) reads as just now.
 export function formatRelative(at: EpochMs, now: EpochMs): string {

@@ -1,11 +1,15 @@
 import { expect, test } from "bun:test";
 import { invariant } from "@lucent/core/contain";
-import { err } from "@lucent/core/result";
+import { err, ok } from "@lucent/core/result";
 import { createSeededRng } from "@lucent/core/rng";
-import { ProductId } from "@lucent/core/scalars";
+import { BearerToken, ProductId } from "@lucent/core/scalars";
+import { createRpcClient } from "@lucent/rpc/client";
+import { mountInternalRpc } from "@lucent/rpc/mount";
 import { webContract } from "@lucent/rpc/web";
 import { z } from "zod";
 import { type Db, execute, sql } from "../src/base/db/pool.ts";
+import { webProcedures } from "../src/edge/listeners/internal/web-rpc.ts";
+import type { ChangelogEntryFields } from "../src/members/record/notes.rules.ts";
 import {
     addNote,
     closeIssue,
@@ -13,9 +17,19 @@ import {
     listStaffNotes,
     updateNote,
 } from "../src/members/record/notes.ts";
-import { listPublicChangelog, readPublicStatus } from "../src/members/record/status.ts";
-import { seedRootOnce } from "./auth-fixtures.ts";
-import { catalog, scalar, seedRole, seedStaff, steppedUp } from "./authority-fixtures.ts";
+import { listMemberChangelog, readMemberStatus } from "../src/members/record/status.ts";
+import { memberSession, seedRootOnce } from "./auth-fixtures.ts";
+import {
+    catalog,
+    product,
+    scalar,
+    seedAccount,
+    seedRole,
+    seedStaff,
+    steppedUp,
+} from "./authority-fixtures.ts";
+import { NO_LOG } from "./community-fixtures.ts";
+import { createTestAuthDeps } from "./harness/auth.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 import { liveCatalog } from "./record-fixtures.ts";
 
@@ -28,11 +42,43 @@ const auditCount = (db: Db, operation: string) =>
         sql`select count(*) as value from audit where operation = ${operation}`,
     );
 
-test("a known issue and a changelog entry staff add appear publicly, and a closed issue stops showing as open", async () => {
+function entryFields(over: Partial<ChangelogEntryFields>): ChangelogEntryFields {
+    return {
+        subject: "service",
+        productId: null,
+        version: null,
+        title: "faster sign-in",
+        added: [],
+        changed: [],
+        fixed: [],
+        body: "it now takes a second less",
+        ...over,
+    };
+}
+
+async function holdCs2(db: Db, accountId: string) {
+    const entitlement = await execute(
+        db,
+        sql`insert into entitlement (id, account_id, valid_from)
+            values (${`ent_${accountId.slice(-8)}`}, ${accountId}, now())`,
+    );
+    invariant(entitlement.ok, "the entitlement is written");
+    const granted = await execute(
+        db,
+        sql`insert into entitlement_product (entitlement_id, product_id, features, channels)
+            values (${`ent_${accountId.slice(-8)}`}, ${CS2}, '"*"'::jsonb, array['stable'])`,
+    );
+    invariant(granted.ok, "the product grant is written");
+}
+
+test("a known issue and a changelog entry staff add appear in the member reads, and a closed issue stops showing as open", async () => {
     const cluster = await sharedTestCluster();
     await cluster.withTestDb(async ({ browserDb: db }) => {
+        const rng = createSeededRng(11_201);
         const products = liveCatalog();
-        const caller = await steppedUp(db, await seedRootOnce(db, createSeededRng(11_201)));
+        const auth = await createTestAuthDeps(db, rng);
+        const caller = await steppedUp(db, await seedRootOnce(db, rng));
+        const session = await memberSession(auth, caller.accountId);
         const issue = await addNote(db, {
             caller,
             catalog: products,
@@ -44,11 +90,11 @@ test("a known issue and a changelog entry staff add appear publicly, and a close
             caller,
             catalog: products,
             kind: "changelog",
-            fields: { productId: null, title: "faster sign-in", body: "" },
+            fields: entryFields({}),
         });
         invariant(entry.ok, "the entry is added");
 
-        const shown = await readPublicStatus(db, { catalog: products });
+        const shown = await readMemberStatus(db, { catalog: products, sessionToken: session });
         invariant(shown.ok, "the status reads");
         expect(shown.value.issues).toMatchObject([
             {
@@ -58,10 +104,23 @@ test("a known issue and a changelog entry staff add appear publicly, and a close
                 body: "on <b>4:3</b>",
             },
         ]);
-        expect(shown.value.changelog).toMatchObject([{ id: entry.value.id, productId: null }]);
-        const changelog = await listPublicChangelog(db, { catalog: products });
+        const changelog = await listMemberChangelog(db, {
+            catalog: products,
+            sessionToken: session,
+            input: {},
+        });
         invariant(changelog.ok, "the changelog reads");
-        expect(changelog.value.entries.map((e) => e.id)).toEqual([entry.value.id]);
+        expect(changelog.value.entries).toMatchObject([
+            {
+                id: entry.value.id,
+                subject: "service",
+                productId: null,
+                version: null,
+                title: "faster sign-in",
+                added: [],
+            },
+        ]);
+        expect(changelog.value.next).toBeNull();
 
         expect(
             await updateNote(db, {
@@ -75,7 +134,7 @@ test("a known issue and a changelog entry staff add appear publicly, and a close
         expect((await closeIssue(db, { caller, id: issue.value.id })).ok).toBe(true);
         // Closing it again changes nothing and records nothing.
         expect((await closeIssue(db, { caller, id: issue.value.id })).ok).toBe(true);
-        const after = await readPublicStatus(db, { catalog: products });
+        const after = await readMemberStatus(db, { catalog: products, sessionToken: session });
         invariant(after.ok, "the status reads");
         expect(after.value.issues).toEqual([]);
         const staff = await listStaffNotes(db, { caller });
@@ -91,7 +150,11 @@ test("a known issue and a changelog entry staff add appear publicly, and a close
         expect((await deleteNote(db, { caller, kind: "changelog", id: entry.value.id })).ok).toBe(
             true,
         );
-        const emptied = await listPublicChangelog(db, { catalog: products });
+        const emptied = await listMemberChangelog(db, {
+            catalog: products,
+            sessionToken: session,
+            input: {},
+        });
         invariant(emptied.ok, "the changelog reads");
         expect(emptied.value.entries).toEqual([]);
         expect(await deleteNote(db, { caller, kind: "changelog", id: entry.value.id })).toEqual(
@@ -106,6 +169,151 @@ test("a known issue and a changelog entry staff add appear publicly, and a close
             ["changelog.delete", 1],
         ] as const) {
             expect(await auditCount(db, operation)).toBe(count);
+        }
+    });
+});
+
+test("a title-and-body entry with empty lists and no version round-trips unchanged through read and update", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ browserDb: db }) => {
+        const rng = createSeededRng(11_204);
+        const products = liveCatalog();
+        const auth = await createTestAuthDeps(db, rng);
+        const caller = await steppedUp(db, await seedRootOnce(db, rng));
+        const session = await memberSession(auth, caller.accountId);
+        const fields = entryFields({ title: "as entries always were", version: null });
+        const added = await addNote(db, { caller, catalog: products, kind: "changelog", fields });
+        invariant(added.ok, "the entry is added");
+
+        const page = await listMemberChangelog(db, {
+            catalog: products,
+            sessionToken: session,
+            input: {},
+        });
+        invariant(page.ok, "the changelog reads");
+        expect(page.value.entries).toMatchObject([
+            {
+                subject: "service",
+                version: null,
+                title: "as entries always were",
+                added: [],
+                changed: [],
+                fixed: [],
+                body: "it now takes a second less",
+            },
+        ]);
+
+        expect(
+            await updateNote(db, {
+                caller,
+                catalog: products,
+                kind: "changelog",
+                id: added.value.id,
+                fields,
+            }),
+        ).toEqual({ ok: true, value: undefined });
+        const reread = await listMemberChangelog(db, {
+            catalog: products,
+            sessionToken: session,
+            input: {},
+        });
+        invariant(reread.ok, "the changelog reads again");
+        expect(reread.value.entries.map(({ updatedAt: _, ...row }) => row)).toEqual(
+            page.value.entries.map(({ updatedAt: _, ...row }) => row),
+        );
+    });
+});
+
+test("a title-only row written before the entry shape, with an empty body and no lists, reads back unchanged", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ browserDb: db }) => {
+        const rng = createSeededRng(11_205);
+        const products = liveCatalog();
+        const auth = await createTestAuthDeps(db, rng);
+        const root = await seedRootOnce(db, rng);
+        const session = await memberSession(auth, root);
+
+        // As migration 0039 found them: the row predates the content check, so the check is
+        // dropped and re-added NOT VALID around the write, which never scans existing rows.
+        invariant(
+            (
+                await execute(
+                    db,
+                    sql`alter table changelog_entry drop constraint changelog_entry_content_check`,
+                )
+            ).ok,
+            "the check drops",
+        );
+        invariant(
+            (
+                await execute(
+                    db,
+                    sql`insert into changelog_entry
+                            (subject, product_id, version, title, added, changed, fixed, body,
+                             published_at, updated_at)
+                        values ('service', null, null, 'as entries always were',
+                                '{}', '{}', '{}', '', now(), now())`,
+                )
+            ).ok,
+            "the legacy row writes",
+        );
+        invariant(
+            (
+                await execute(
+                    db,
+                    sql`alter table changelog_entry add constraint changelog_entry_content_check
+                        check (body <> '' or cardinality(added) > 0 or cardinality(changed) > 0
+                               or cardinality(fixed) > 0) not valid`,
+                )
+            ).ok,
+            "the check returns",
+        );
+
+        const page = await listMemberChangelog(db, {
+            catalog: products,
+            sessionToken: session,
+            input: {},
+        });
+        invariant(page.ok, "the changelog reads");
+        expect(page.value.entries).toMatchObject([
+            {
+                subject: "service",
+                productId: null,
+                version: null,
+                title: "as entries always were",
+                added: [],
+                changed: [],
+                fixed: [],
+                body: "",
+            },
+        ]);
+    });
+});
+
+test("an entry without a version or a title, or without any content, is refused and nothing is written", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ browserDb: db }) => {
+        const products = liveCatalog();
+        const caller = await steppedUp(db, await seedRootOnce(db, createSeededRng(11_205)));
+        const invalid = err({ code: "INVALID_ENTRY" });
+        for (const fields of [
+            entryFields({ title: null, version: null }),
+            entryFields({ body: "" }),
+            entryFields({ subject: "loader", productId: ProductId.parse("lucent-loader") }),
+            entryFields({ subject: "product", productId: null }),
+        ]) {
+            expect(
+                await addNote(db, { caller, catalog: products, kind: "changelog", fields }),
+            ).toEqual(invalid);
+        }
+        // A version alone names it; a list alone is content.
+        for (const fields of [
+            entryFields({ title: null, version: "0.8.3-alpha.4", body: "", added: ["x"] }),
+            entryFields({ body: "", fixed: ["a crash"] }),
+        ]) {
+            expect(
+                (await addNote(db, { caller, catalog: products, kind: "changelog", fields })).ok,
+            ).toBe(true);
         }
     });
 });
@@ -132,19 +340,24 @@ test("without releases:promote every write is refused and nothing is written", a
             db,
             await seedStaff(db, rng, { email: "facts@lucent.test", roleId }),
         );
-        const fields = { productId: null, title: "two", body: "" };
         const forbidden = err({ code: "FORBIDDEN" });
+        const fields = entryFields({});
         for (const kind of ["issue", "changelog"] as const) {
-            expect(await addNote(db, { caller, catalog: products, kind, fields })).toEqual(
-                forbidden,
-            );
+            expect(
+                await addNote(db, {
+                    caller,
+                    catalog: products,
+                    kind,
+                    fields: kind === "issue" ? { productId: null, title: "two", body: "" } : fields,
+                }),
+            ).toEqual(forbidden);
             expect(
                 await updateNote(db, {
                     caller,
                     catalog: products,
                     kind,
                     id: issue.value.id,
-                    fields,
+                    fields: kind === "issue" ? { productId: null, title: "two", body: "" } : fields,
                 }),
             ).toEqual(forbidden);
             expect(await deleteNote(db, { caller, kind, id: issue.value.id })).toEqual(forbidden);
@@ -165,54 +378,256 @@ test("without releases:promote every write is refused and nothing is written", a
     });
 });
 
-test("an issue or entry naming a seed product is in no public output, and an unknown product is refused", async () => {
+test("entries of a seed product show only to a member who holds it, and an unknown product is refused", async () => {
     const cluster = await sharedTestCluster();
     await cluster.withTestDb(async ({ browserDb: db }) => {
+        const rng = createSeededRng(11_203);
         const products = catalog();
         expect(products.get(CS2)?.state).toBe("seed");
-        const caller = await steppedUp(db, await seedRootOnce(db, createSeededRng(11_203)));
-        for (const kind of ["issue", "changelog"] as const) {
-            const added = await addNote(db, {
+        const auth = await createTestAuthDeps(db, rng);
+        const caller = await steppedUp(db, await seedRootOnce(db, rng));
+        const entry = await addNote(db, {
+            caller,
+            catalog: products,
+            kind: "changelog",
+            fields: entryFields({ subject: "product", productId: CS2, title: "unannounced" }),
+        });
+        invariant(entry.ok, "the entry is added");
+        expect(
+            await addNote(db, {
                 caller,
                 catalog: products,
-                kind,
-                fields: { productId: CS2, title: "unannounced", body: "" },
-            });
-            expect(added.ok).toBe(true);
-            expect(
-                await addNote(db, {
-                    caller,
-                    catalog: products,
-                    kind,
-                    fields: { productId: ProductId.parse("nope"), title: "x", body: "" },
+                kind: "changelog",
+                fields: entryFields({
+                    subject: "product",
+                    productId: ProductId.parse("nope"),
+                    title: "x",
                 }),
-            ).toEqual(err({ code: "UNKNOWN_PRODUCT" }));
-        }
-        const status = await readPublicStatus(db, { catalog: products });
-        const changelog = await listPublicChangelog(db, { catalog: products });
-        invariant(status.ok && changelog.ok, "the public reads answer");
-        for (const output of [status.value, changelog.value]) {
-            expect(JSON.stringify(output)).not.toContain("cs2");
-            expect(JSON.stringify(output)).not.toContain("unannounced");
-        }
+            }),
+        ).toEqual(err({ code: "UNKNOWN_PRODUCT" }));
+
+        // A stranger holds nothing: a seed product is not theirs to see, by id or in the stream.
+        const stranger = await memberSession(
+            auth,
+            await seedAccount(db, rng, "stranger@lucent.test"),
+        );
+        const hidden = await listMemberChangelog(db, {
+            catalog: products,
+            sessionToken: stranger,
+            input: {},
+        });
+        invariant(hidden.ok, "the changelog reads");
+        expect(hidden.value.entries).toEqual([]);
+        expect(hidden.value.names).toEqual([]);
+        const status = await readMemberStatus(db, { catalog: products, sessionToken: stranger });
+        invariant(status.ok, "the status reads");
+        expect(status.value.products).toEqual([]);
+        // Asking for it by id is an empty page, not a refusal.
+        const asked = await listMemberChangelog(db, {
+            catalog: products,
+            sessionToken: stranger,
+            input: { productId: CS2 },
+        });
+        invariant(asked.ok, "the filtered changelog reads");
+        expect(asked.value.entries).toEqual([]);
+
+        // A holder of the seed product sees it, its entries and its status.
+        const holderId = await seedAccount(db, rng, "holder@lucent.test");
+        await holdCs2(db, holderId);
+        const holder = await memberSession(auth, holderId);
+        const shown = await listMemberChangelog(db, {
+            catalog: products,
+            sessionToken: holder,
+            input: {},
+        });
+        invariant(shown.ok, "the changelog reads");
+        expect(shown.value.entries.map((row) => row.id)).toEqual([entry.value.id]);
+        expect(shown.value.names).toEqual([{ id: CS2, name: product("cs2").name }]);
+        const own = await readMemberStatus(db, { catalog: products, sessionToken: holder });
+        invariant(own.ok, "the status reads");
+        expect(own.value.products.map((row) => row.productId)).toEqual([CS2]);
+        const filtered = await listMemberChangelog(db, {
+            catalog: products,
+            sessionToken: holder,
+            input: { productId: CS2 },
+        });
+        invariant(filtered.ok, "the filtered changelog reads");
+        expect(filtered.value.entries.map((row) => row.id)).toEqual([entry.value.id]);
+        // The loader never appears as a product, however the member is scoped.
+        expect(own.value.products.some((row) => String(row.productId) === "lucent-loader")).toBe(
+            false,
+        );
     });
 });
 
-test("titles and bodies are bounded plain text", () => {
-    const add = webContract["admin.issues.add"].input;
-    const entry = webContract["admin.changelog.add"].input;
-    const accepts = (input: unknown, schema = add) => schema.safeParse(input).success;
-    const fields = { productId: null, title: "one", body: "line\nline\ttab" };
+test("the changelog pages 25 at a time through its cursor, newest first, and filters by subject and null product", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ browserDb: db }) => {
+        const rng = createSeededRng(11_206);
+        const products = liveCatalog();
+        const auth = await createTestAuthDeps(db, rng);
+        const caller = await steppedUp(db, await seedRootOnce(db, rng));
+        const session = await memberSession(auth, caller.accountId);
+        // 27 service entries, a loader entry and a cs2 entry, all distinguishable.
+        for (let i = 1; i <= 27; i += 1) {
+            const added = await addNote(db, {
+                caller,
+                catalog: products,
+                kind: "changelog",
+                fields: entryFields({ title: `service ${String(i).padStart(2, "0")}` }),
+            });
+            invariant(added.ok, "the entry is added");
+            // published_at ties order by id desc within one transaction time, so make times distinct.
+            await execute(
+                db,
+                sql`update changelog_entry set published_at = now() + (${i} || ' seconds')::interval
+                    where id = ${added.value.id}::uuid`,
+            );
+        }
+        for (const [subject, productId, title, bump] of [
+            ["loader", null, "loader one", 99],
+            ["product", CS2, "cs2 one", 100],
+        ] as const) {
+            const added = await addNote(db, {
+                caller,
+                catalog: products,
+                kind: "changelog",
+                fields: entryFields({ subject, productId, title }),
+            });
+            invariant(added.ok, "the entry is added");
+            await execute(
+                db,
+                sql`update changelog_entry set published_at = now() + (${bump} || ' seconds')::interval
+                    where id = ${added.value.id}::uuid`,
+            );
+        }
+
+        const first = await listMemberChangelog(db, {
+            catalog: products,
+            sessionToken: session,
+            input: {},
+        });
+        invariant(first.ok, "the first page reads");
+        expect(first.value.entries.length).toBe(25);
+        expect(first.value.next).not.toBeNull();
+        // Newest first: the cs2 and loader entries carry the latest times.
+        expect(first.value.entries[0]?.title).toBe("cs2 one");
+        expect(first.value.entries[1]?.title).toBe("loader one");
+        const second = await listMemberChangelog(db, {
+            catalog: products,
+            sessionToken: session,
+            input: { cursor: first.value.next ?? "never" },
+        });
+        invariant(second.ok, "the second page reads");
+        expect(second.value.entries.length).toBe(4);
+        expect(second.value.next).toBeNull();
+        // No overlap, no gap: every entry exactly once, order kept.
+        const titles = [...first.value.entries, ...second.value.entries].map((row) => row.title);
+        expect(new Set(titles).size).toBe(29);
+
+        // Null productId: the service's entries alone.
+        const service = await listMemberChangelog(db, {
+            catalog: products,
+            sessionToken: session,
+            input: { productId: null },
+        });
+        invariant(service.ok, "the service page reads");
+        expect(service.value.entries.length).toBe(25);
+        expect(service.value.entries.every((row) => row.subject === "service")).toBe(true);
+
+        // A subject narrows further: the loader's entries, then cs2's.
+        const loader = await listMemberChangelog(db, {
+            catalog: products,
+            sessionToken: session,
+            input: { subject: "loader" },
+        });
+        invariant(loader.ok, "the loader page reads");
+        expect(loader.value.entries.map((row) => row.title)).toEqual(["loader one"]);
+        const own = await listMemberChangelog(db, {
+            catalog: products,
+            sessionToken: session,
+            input: { productId: CS2, subject: "product" },
+        });
+        invariant(own.ok, "the product page reads");
+        expect(own.value.entries.map((row) => row.title)).toEqual(["cs2 one"]);
+        // A subject that contradicts the product filter is empty, not an error.
+        const mixed = await listMemberChangelog(db, {
+            catalog: products,
+            sessionToken: session,
+            input: { productId: CS2, subject: "loader" },
+        });
+        invariant(mixed.ok, "the mixed page reads");
+        expect(mixed.value.entries).toEqual([]);
+
+        const broken = await listMemberChangelog(db, {
+            catalog: products,
+            sessionToken: session,
+            input: { cursor: "not-a-cursor" },
+        });
+        expect(broken).toEqual(err({ code: "INVALID_CURSOR" }));
+    });
+});
+
+test("signed-out callers are refused on both record reads", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ browserDb: db }) => {
+        const rng = createSeededRng(11_207);
+        const auth = await createTestAuthDeps(db, rng);
+        const peerKey = "test-peer-key-0123456789abcdefghijklmnopqrstuvwxyz";
+        const app = mountInternalRpc({
+            path: "/rpc",
+            peerKey,
+            procedures: webProcedures,
+            createContext: () =>
+                Promise.resolve(ok({ catalog: liveCatalog(), auth, logger: NO_LOG })),
+            onUnhandledError: () => {},
+        });
+        const client = createRpcClient(webContract, {
+            endpointUrl: "http://localhost/rpc",
+            peerKey,
+            fetcher: async (req) => await app.fetch(req),
+        });
+        // A signed-out caller's token never verifies; wrong-purpose sessions are covered for
+        // every member procedure in web-contract.test.ts.
+        const noOne = BearerToken.parse("a".repeat(43));
+        expect(await client.call("record.status.get", {}, { session: noOne })).toEqual(
+            err({ code: "SESSION_INVALID" }),
+        );
+        expect(await client.call("record.changelog.list", {}, { session: noOne })).toEqual(
+            err({ code: "SESSION_INVALID" }),
+        );
+    });
+});
+
+test("entry fields are bounded plain text", () => {
+    const add = webContract["admin.changelog.add"].input;
+    const accepts = (input: unknown) => add.safeParse(input).success;
+    const fields = {
+        subject: "service",
+        productId: null,
+        version: "0.8.3",
+        title: "one",
+        added: [],
+        changed: [],
+        fixed: [],
+        body: "line\nline\ttab",
+    };
     expect(accepts(fields)).toBe(true);
     expect(accepts({ ...fields, title: "x".repeat(120) })).toBe(true);
     expect(accepts({ ...fields, title: "x".repeat(121) })).toBe(false);
     expect(accepts({ ...fields, title: "   " })).toBe(false);
     expect(accepts({ ...fields, title: "a\nb" })).toBe(false);
-    expect(accepts({ ...fields, body: "a\u0000b" })).toBe(false);
-    expect(accepts({ ...fields, body: "x".repeat(2_000) })).toBe(true);
-    expect(accepts({ ...fields, body: "x".repeat(2_001) })).toBe(false);
-    expect(accepts({ ...fields, body: "x".repeat(4_000) }, entry)).toBe(true);
-    expect(accepts({ ...fields, body: "x".repeat(4_001) }, entry)).toBe(false);
+    expect(accepts({ ...fields, version: "v".repeat(40) })).toBe(true);
+    expect(accepts({ ...fields, version: "v".repeat(41) })).toBe(false);
+    expect(accepts({ ...fields, version: "a\nb" })).toBe(false);
+    expect(accepts({ ...fields, added: ["x".repeat(200)] })).toBe(true);
+    expect(accepts({ ...fields, added: ["x".repeat(201)] })).toBe(false);
+    expect(accepts({ ...fields, added: [""] })).toBe(false);
+    expect(accepts({ ...fields, added: Array(30).fill("one") })).toBe(true);
+    expect(accepts({ ...fields, added: Array(31).fill("one") })).toBe(false);
+    expect(accepts({ ...fields, body: "a b" })).toBe(false);
+    expect(accepts({ ...fields, body: "x".repeat(4_000) })).toBe(true);
+    expect(accepts({ ...fields, body: "x".repeat(4_001) })).toBe(false);
     expect(accepts({ ...fields, extra: 1 })).toBe(false);
 });
 
@@ -230,10 +645,7 @@ test("titles and bodies refuse format characters such as bidi overrides, in the 
     }
     const cluster = await sharedTestCluster();
     await cluster.withTestDb(async ({ browserDb: db }) => {
-        for (const [table, at] of [
-            [sql`known_issue`, sql`opened_at`],
-            [sql`changelog_entry`, sql`published_at`],
-        ] as const) {
+        for (const table of ["issue", "changelog"] as const) {
             const refused = [
                 ...FORMAT.flatMap((sneaky) => [
                     [`a${sneaky}b`, ""],
@@ -242,19 +654,73 @@ test("titles and bodies refuse format characters such as bidi overrides, in the 
                 [`a${String.fromCodePoint(7)}b`, ""],
             ];
             for (const [title, body] of refused) {
-                const stored = await execute(
-                    db,
-                    sql`insert into ${table} (title, body, ${at}, updated_at)
-                        values (${title}, ${body}, now(), now())`,
-                );
+                const stored =
+                    table === "issue"
+                        ? await execute(
+                              db,
+                              sql`insert into known_issue (title, body, opened_at, updated_at)
+                                  values (${title}, ${body}, now(), now())`,
+                          )
+                        : await execute(
+                              db,
+                              sql`insert into changelog_entry
+                                      (subject, title, body, published_at, updated_at)
+                                  values ('service', ${title}, ${body}, now(), now())`,
+                          );
                 expect(stored.ok).toBe(false);
             }
-            const plain = await execute(
-                db,
-                sql`insert into ${table} (title, body, ${at}, updated_at)
-                    values ('ab', ${"line\nline\ttab"}, now(), now())`,
-            );
+            const plain =
+                table === "issue"
+                    ? await execute(
+                          db,
+                          sql`insert into known_issue (title, body, opened_at, updated_at)
+                              values ('ab', ${"line\nline\ttab"}, now(), now())`,
+                      )
+                    : await execute(
+                          db,
+                          sql`insert into changelog_entry
+                                  (subject, title, body, published_at, updated_at)
+                              values ('service', 'ab', ${"line\nline\ttab"}, now(), now())`,
+                      );
             expect(plain).toEqual({ ok: true, value: 1 });
         }
+    });
+});
+
+test("the table mirrors the entry rules: a product exactly for a product subject, a name, and some content", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ browserDb: db }) => {
+        const insert = (over: {
+            subject?: string;
+            productId?: string | null;
+            version?: string | null;
+            title?: string | null;
+            body?: string;
+            added?: readonly string[];
+        }) =>
+            execute(
+                db,
+                sql`insert into changelog_entry
+                        (subject, product_id, version, title, added, body, published_at, updated_at)
+                    values (${over.subject ?? "service"}, ${over.productId ?? null},
+                            ${over.version === undefined ? null : over.version},
+                            ${over.title === undefined ? "one" : over.title},
+                            ${over.added ?? []}, ${over.body ?? "text"}, now(), now())`,
+            );
+        expect((await insert({})).ok).toBe(true);
+        // A product subject needs its product; other subjects need none.
+        expect((await insert({ subject: "product", productId: null })).ok).toBe(false);
+        expect((await insert({ subject: "service", productId: CS2 })).ok).toBe(false);
+        expect((await insert({ subject: "product", productId: CS2 })).ok).toBe(true);
+        // A version or a title, and some content.
+        expect((await insert({ title: null, version: null })).ok).toBe(false);
+        expect((await insert({ title: null, version: "0.8.3" })).ok).toBe(true);
+        expect((await insert({ body: "", added: [] })).ok).toBe(false);
+        expect((await insert({ body: "", added: ["a line"] })).ok).toBe(true);
+        // Lines are bounded plain text, 30 at most.
+        expect((await insert({ added: ["x".repeat(201)] })).ok).toBe(false);
+        expect((await insert({ added: Array(31).fill("one") })).ok).toBe(false);
+        expect((await insert({ added: [`a${FORMAT[0]}b`] })).ok).toBe(false);
+        expect((await insert({ version: "v".repeat(41) })).ok).toBe(false);
     });
 });

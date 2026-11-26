@@ -1,0 +1,43 @@
+@layer components {
+    .tabs {
+        display: flex;
+        gap: var(--s-5);
+        min-inline-size: 0;
+        overflow-x: auto;
+        scrollbar-width: none;
+        align-self: stretch;
+        /* The head row's bottom padding, so the tabs' bottom edge is the hairline itself,
+           the bar's tabs' own trick. */
+        margin-block-end: calc(-1 * var(--s-2));
+    }
+
+    .tab {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--s-1);
+        border-block-end: 1px solid transparent;
+        margin-block-end: -1px;
+        color: var(--ink-2);
+        font-size: var(--size-14);
+        white-space: nowrap;
+        transition: color var(--t-hover) var(--ease);
+    }
+
+    .tab:hover {
+        color: var(--ink);
+    }
+
+    .tab:focus-visible {
+        outline-offset: -2px;
+    }
+
+    .tab[aria-current="page"] {
+        border-block-end-color: var(--pink);
+        color: var(--ink);
+    }
+
+    .count {
+        color: var(--ink-2);
+        font-size: var(--size-12);
+    }
+}

@@ -4,15 +4,17 @@ import { toReleaseManifestV3Bytes } from "@lucent/bundle/release-manifest";
 import type { ProductCatalog } from "@lucent/catalog/catalog";
 import { invariant } from "@lucent/core/contain";
 import { createSeededRng, type SeededRng } from "@lucent/core/rng";
-import { ChannelId, ProductId } from "@lucent/core/scalars";
+import { type BearerToken, ChannelId, ProductId } from "@lucent/core/scalars";
 import type { Caller } from "@lucent/policy/policy";
 import { z } from "zod";
 import { type Db, execute, queryAll, sql } from "../src/base/db/pool.ts";
 import { promoteFactSet } from "../src/delivery/facts/promotion.ts";
 import { promoteRelease } from "../src/delivery/releases/promotion.ts";
-import { readPublicStatus } from "../src/members/record/status.ts";
-import { catalog, product, scalar } from "./authority-fixtures.ts";
+import { readMemberStatus } from "../src/members/record/status.ts";
+import { memberSession } from "./auth-fixtures.ts";
+import { catalog, product, scalar, seedAccount } from "./authority-fixtures.ts";
 import { CAPABILITIES, FACTS, GAME, publishWith } from "./fact-set-fixtures.ts";
+import { createTestAuthDeps } from "./harness/auth.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 import { FEATURES } from "./native-fixtures.ts";
 import { liveCatalog, supportWorld, UPDATED } from "./record-fixtures.ts";
@@ -27,9 +29,9 @@ async function changes(db: Db) {
     return rows.value;
 }
 
-async function status(db: Db, products: ProductCatalog) {
-    const read = await readPublicStatus(db, { catalog: products });
-    invariant(read.ok, "the public status reads");
+async function status(db: Db, products: ProductCatalog, sessionToken: BearerToken) {
+    const read = await readMemberStatus(db, { catalog: products, sessionToken });
+    invariant(read.ok, "the member status reads");
     return read.value.products;
 }
 
@@ -39,7 +41,9 @@ test("a game update no promoted set covers shows not yet supported once, and its
         const products = liveCatalog();
         const world = await supportWorld(nativeDb, createSeededRng(11_001), products);
         const cs2 = async () =>
-            (await status(nativeDb, products)).find((p) => p.productId === "cs2");
+            (await status(nativeDb, products, world.member.browserSession)).find(
+                (p) => p.productId === "cs2",
+            );
 
         await world.support(GAME);
         expect(await world.start(GAME)).toBe("NOT_A_REFUSAL");
@@ -91,7 +95,11 @@ test("a seed product's game update is recorded nowhere and is in no public statu
         await world.support(UPDATED);
 
         expect(await changes(nativeDb)).toEqual([]);
-        const listed = await status(nativeDb, products);
+        const stranger = await memberSession(
+            await createTestAuthDeps(nativeDb, createSeededRng(11_003)),
+            await seedAccount(nativeDb, createSeededRng(11_004), "outsider@lucent.test"),
+        );
+        const listed = await status(nativeDb, products, stranger);
         expect(listed.map((p) => p.productId)).not.toContain(product("cs2").id);
         expect(JSON.stringify(listed)).not.toContain("cs2");
     });

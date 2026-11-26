@@ -45,6 +45,158 @@ function fieldsOf(form: FormData): Fields {
     };
 }
 
+type EntryFields = {
+    readonly subject: "product" | "loader" | "service";
+    readonly productId: string | null;
+    readonly version: string | null;
+    readonly title: string | null;
+    readonly added: readonly string[];
+    readonly changed: readonly string[];
+    readonly fixed: readonly string[];
+    readonly body: string;
+};
+
+const linesOf = (form: FormData, name: string): readonly string[] =>
+    String(form.get(name) ?? "")
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line !== "");
+
+const blank = (form: FormData, name: string): string | null => {
+    const value = String(form.get(name) ?? "").trim();
+    return value === "" ? null : value;
+};
+
+// The subject select carries the product with it: "product:<id>" is that product's entries,
+// "loader" the loader's, "lucent" the service's.
+function entryFieldsOf(form: FormData): EntryFields {
+    const about = String(form.get("subject") ?? "lucent");
+    const product = about.startsWith("product:") ? about.slice("product:".length) : null;
+    return {
+        subject: product !== null ? "product" : about === "loader" ? "loader" : "service",
+        productId: product,
+        version: blank(form, "version"),
+        title: blank(form, "title"),
+        added: linesOf(form, "added"),
+        changed: linesOf(form, "changed"),
+        fixed: linesOf(form, "fixed"),
+        body: String(form.get("body") ?? ""),
+    };
+}
+
+function subjectOf(entry: {
+    readonly subject: "product" | "loader" | "service";
+    readonly productId: string | null;
+}): string {
+    return entry.subject === "product" && entry.productId !== null
+        ? `product:${entry.productId}`
+        : entry.subject;
+}
+
+function EntryFieldsInputs({
+    products,
+    current,
+}: {
+    readonly products: readonly Product[];
+    readonly current: EntryFields | null;
+}) {
+    const list = (lines: readonly string[] | undefined) =>
+        lines === undefined || lines.length === 0 ? {} : { defaultValue: lines.join("\n") };
+    return (
+        <>
+            <Select
+                name="subject"
+                label={C.about}
+                defaultValue={current === null ? "lucent" : subjectOf(current)}
+                options={[
+                    ...products.map((product) => ({
+                        value: `product:${product.id}`,
+                        label: productName(product.name),
+                    })),
+                    { value: "loader", label: C.loaderAbout },
+                    { value: "lucent", label: C.service },
+                ]}
+            />
+            <TextField
+                name="version"
+                label={C.version}
+                maxLength={40}
+                {...(current?.version == null ? {} : { defaultValue: current.version })}
+            />
+            <TextField
+                name="title"
+                label={C.titleField}
+                maxLength={120}
+                {...(current?.title == null ? {} : { defaultValue: current.title })}
+            />
+            <TextArea
+                name="added"
+                label={C.addedLines}
+                maxLength={6200}
+                {...list(current?.added)}
+            />
+            <TextArea
+                name="changed"
+                label={C.changedLines}
+                maxLength={6200}
+                {...list(current?.changed)}
+            />
+            <TextArea
+                name="fixed"
+                label={C.fixedLines}
+                maxLength={6200}
+                {...list(current?.fixed)}
+            />
+            <TextArea
+                name="body"
+                label={C.body}
+                maxLength={ENTRY_BODY_MAX}
+                {...(current === null || current.body === "" ? {} : { defaultValue: current.body })}
+            />
+        </>
+    );
+}
+
+function AddEntry({
+    products,
+    add,
+}: {
+    readonly products: readonly Product[];
+    readonly add: (fields: EntryFields) => Promise<Outcome<string>>;
+}) {
+    const router = useRouter();
+    const staff = useStaffAction();
+    const [answer, submit, pending] = useActionState(
+        async (_: Answer, form: FormData): Promise<Answer> => {
+            const added = await staff("releases:promote", () => add(entryFieldsOf(form)));
+            if (!added.ok) return { refused: added.refused };
+            await router.invalidate();
+            return null;
+        },
+        null,
+    );
+    return (
+        <Section caption={C.addEntry}>
+            <form action={submit} key={answer === null ? "fresh" : "kept"}>
+                <fieldset disabled={pending}>
+                    <Stack gap={3}>
+                        <EntryFieldsInputs products={products} current={null} />
+                        <RefusalNote
+                            refused={answer?.refused ?? null}
+                            overrides={{ NO_PASSKEY: ADMIN_COPY.needsPasskey }}
+                        />
+                        <div>
+                            <Button type="submit" pending={pending}>
+                                {C.add}
+                            </Button>
+                        </div>
+                    </Stack>
+                </fieldset>
+            </form>
+        </Section>
+    );
+}
+
 function NoteFields({
     products,
     current,
@@ -249,12 +401,7 @@ export function RecordPage() {
                         />
                     )}
                 </Section>
-                <AddNote
-                    caption={C.addEntry}
-                    products={products}
-                    bodyMax={ENTRY_BODY_MAX}
-                    add={(fields) => addEntry({ data: fields })}
-                />
+                <AddEntry products={products} add={(fields) => addEntry({ data: fields })} />
                 <Section caption={C.changelog}>
                     {changelog.length === 0 ? (
                         <Empty>{C.noEntries}</Empty>
@@ -267,12 +414,17 @@ export function RecordPage() {
                                 {
                                     key: "title",
                                     header: C.titleField,
-                                    cell: (entry) => entry.title,
+                                    cell: (entry) => entry.version ?? entry.title ?? "\u2014",
                                 },
                                 {
                                     key: "product",
                                     header: C.product,
-                                    cell: (entry) => about(entry.productId),
+                                    cell: (entry) =>
+                                        entry.subject === "loader"
+                                            ? C.loaderAbout
+                                            : entry.subject === "service"
+                                              ? C.service
+                                              : about(entry.productId),
                                 },
                                 {
                                     key: "published",
@@ -289,13 +441,14 @@ export function RecordPage() {
                                                 action="releases:promote"
                                                 label={C.edit}
                                                 submitLabel={C.save}
-                                                title={C.editTitle(entry.title)}
+                                                title={C.editTitle(
+                                                    entry.title ?? entry.version ?? entry.id,
+                                                )}
                                                 fields={
                                                     <Stack gap={3}>
-                                                        <NoteFields
+                                                        <EntryFieldsInputs
                                                             products={products}
                                                             current={entry}
-                                                            bodyMax={ENTRY_BODY_MAX}
                                                         />
                                                     </Stack>
                                                 }
@@ -303,7 +456,7 @@ export function RecordPage() {
                                                     updateEntry({
                                                         data: {
                                                             entryId: entry.id,
-                                                            ...fieldsOf(form),
+                                                            ...entryFieldsOf(form),
                                                         },
                                                     })
                                                 }
@@ -311,7 +464,9 @@ export function RecordPage() {
                                             <AccountAction
                                                 action="releases:promote"
                                                 label={C.remove}
-                                                title={C.removeTitle(entry.title)}
+                                                title={C.removeTitle(
+                                                    entry.title ?? entry.version ?? entry.id,
+                                                )}
                                                 tone="danger"
                                                 fields={<p>{C.removeBody}</p>}
                                                 run={() =>

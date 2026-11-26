@@ -33,8 +33,8 @@ Glossary:
 - Colors and sizes come from tokens (`src/ui/tokens.ts`). The contrast test covers only the
   pairings listed there: keep text and marks to those (no ink-2 on sunken, marks in pink-ink or
   shu-ink, ink-3 for inert controls only).
-- Two hues: pink (yours, current, needs you) and shu (stopped, danger, refused). Success is ink
-  with a check.
+- Two hues: pink (yours, current, needs you) and shu (stopped, danger, refused). Product and
+  ticket states also take ok (green) and wait (amber). Success is ink with a check.
 - Hidden, not disabled, when `can()` says no.
 - Native elements first: `<dialog>` with `showModal()`, the `popover` attribute, anchor
   positioning, `<details>`; no positioning or focus-trap code.

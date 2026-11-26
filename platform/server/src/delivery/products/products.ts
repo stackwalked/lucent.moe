@@ -24,6 +24,10 @@ export type MemberProduct = {
     readonly name: string;
     readonly kind: ProductDefinition["kind"];
     readonly state: ProductDefinition["state"];
+    // The member's latest-ending active entitlement to it (validUntil null: it does not end, and
+    // a non-ending one wins), or null access when none is active now — the same test
+    // readEffectiveProductAccess makes, account and revocation included.
+    readonly access: { readonly validUntil: EpochMs | null } | null;
     readonly features: FeatureSelection;
     readonly channels: readonly {
         readonly channel: ChannelId;
@@ -94,6 +98,27 @@ export async function readMemberProducts(
     );
     if (!promoted.ok) return promoted;
 
+    const entitlements = await queryAll(
+        tx,
+        z.object({
+            product_id: ProductId,
+            valid_until: EpochMs.nullable(),
+        }),
+        sql`select ep.product_id,
+                   case when bool_or(e.valid_until is null) then null
+                        else max(e.valid_until) end as valid_until
+            from entitlement e
+            join entitlement_product ep on ep.entitlement_id = e.id
+            join account a on a.id = e.account_id
+            where e.account_id = ${params.accountId}
+              and a.status = 'active'
+              and e.status = 'active'
+              and e.valid_from <= now()
+              and (e.valid_until is null or e.valid_until > now())
+            group by ep.product_id`,
+    );
+    if (!entitlements.ok) return entitlements;
+
     const products: MemberProduct[] = [];
     for (const product of params.catalog.values()) {
         const memberProduct = await readMemberProduct(tx, {
@@ -123,11 +148,13 @@ export async function readMemberProducts(
             }
             channels.push({ channel, release: { promotedAt: current.promoted_at, supported } });
         }
+        const held = entitlements.value.find((row) => row.product_id === product.id);
         products.push({
             productId: product.id,
             name: product.name,
             kind: product.kind,
             state: product.state,
+            access: held === undefined ? null : { validUntil: held.valid_until },
             features: lifecycle.startRefusal === null ? access.features : [],
             channels,
         });

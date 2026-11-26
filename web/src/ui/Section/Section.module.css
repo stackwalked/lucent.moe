@@ -27,4 +27,14 @@
         align-items: center;
         gap: var(--s-2);
     }
+
+    .actions a {
+        color: var(--ink-2);
+        font-size: var(--size-13);
+        transition: color var(--t-hover) var(--ease);
+    }
+
+    .actions a:hover {
+        color: var(--ink);
+    }
 }

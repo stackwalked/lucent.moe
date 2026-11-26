@@ -177,7 +177,7 @@ const DOWNLOAD_NAME = "lucent-loader.exe";
 // which says why (or, signed out, on to sign-in).
 export async function downloadLoader(signal: AbortSignal): Promise<Response> {
     const web = currentRequest();
-    const back = new Response(null, { status: 303, headers: { location: "/download" } });
+    const back = new Response(null, { status: 303, headers: { location: "/products" } });
     const session = readSessionToken();
     if (session === null) return back;
     const startedAt = systemClock.now();

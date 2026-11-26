@@ -1,5 +1,6 @@
 import { type EpochMs, isEpochMs } from "@lucent/core/brands";
 import { invariant } from "@lucent/core/contain";
+import { Link } from "@tanstack/react-router";
 import { type ReactNode, useState } from "react";
 import { Button } from "../../ui/Button/Button.tsx";
 import { Check } from "../../ui/Check/Check.tsx";
@@ -20,12 +21,14 @@ import { Page } from "../../ui/Page/Page.tsx";
 import { Pager } from "../../ui/Pager/Pager.tsx";
 import { Pairs } from "../../ui/Pairs/Pairs.tsx";
 import { Popover } from "../../ui/Popover/Popover.tsx";
+import { ProductPick } from "../../ui/ProductPick/ProductPick.tsx";
 import { Refusal } from "../../ui/Refusal/Refusal.tsx";
 import { Section } from "../../ui/Section/Section.tsx";
 import { Stack } from "../../ui/Stack/Stack.tsx";
 import { Status } from "../../ui/Status/Status.tsx";
 import { Switch } from "../../ui/Switch/Switch.tsx";
 import { Table } from "../../ui/Table/Table.tsx";
+import { Tabs } from "../../ui/Tabs/Tabs.tsx";
 import { TextField } from "../../ui/TextField/TextField.tsx";
 import { Time } from "../../ui/Time/Time.tsx";
 import { TimeProvider } from "../../ui/Time/TimeProvider.tsx";
@@ -194,6 +197,15 @@ function Data({ now }: { readonly now: EpochMs }) {
                     },
                 ]}
             />
+            <Pairs
+                align="end"
+                items={[
+                    { label: "support", value: "supported", tone: "ok" },
+                    { label: "while a patch lands", value: "updating", tone: "wait" },
+                    { label: "before it is out", value: "early access", tone: "dim" },
+                    { label: "your access", value: "until 3 jan 2027" },
+                ]}
+            />
             <Table
                 caption="accounts"
                 columns={[
@@ -226,6 +238,38 @@ function Data({ now }: { readonly now: EpochMs }) {
                 rows={rows}
                 rowKey={(row) => row.id}
             />
+            <Stack direction="row" gap={2} align="center">
+                <Status tone="ok">supported</Status>
+                <Status tone="wait">updating</Status>
+                <Status tone="shu">stopped</Status>
+            </Stack>
+            <Tabs
+                tabs={[
+                    { to: "/dev/kit", label: "changes" },
+                    { to: "/dev/kit", label: "docs" },
+                    { to: "/dev/kit", label: "cloud" },
+                ]}
+            />
+            <h1>
+                <ProductPick
+                    label="counter-strike 2"
+                    current="cs2"
+                    rows={[
+                        {
+                            id: "cs2",
+                            label: "counter-strike 2",
+                            status: { word: "supported", tone: "ok" },
+                        },
+                        {
+                            id: "dota2",
+                            label: "dota 2",
+                            status: { word: "updating", tone: "wait" },
+                        },
+                        { id: "tf2", label: "team fortress 2", status: "no-access" },
+                    ]}
+                    linkFor={(_id, children) => <Link to="/dev/kit">{children}</Link>}
+                />
+            </h1>
             <Pager nextCursor="next" onNext={() => undefined} />
             <Code>moon run server:seed -- recover-root</Code>
             <Empty action={<Button size="sm">add account</Button>}>no accounts match.</Empty>

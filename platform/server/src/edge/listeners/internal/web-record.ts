@@ -7,14 +7,22 @@ import {
     listStaffNotes,
     updateNote,
 } from "../../../members/record/notes.ts";
-import { listPublicChangelog, readPublicStatus } from "../../../members/record/status.ts";
+import { listMemberChangelog, readMemberStatus } from "../../../members/record/status.ts";
 import { asStaff, done, mapOk, served, type WebRpcContext } from "./web-shared.ts";
 
 export const recordHandlers = {
-    "record.status.get": async (ctx) =>
-        served(await readPublicStatus(ctx.auth.db, { catalog: ctx.catalog })),
-    "record.changelog.list": async (ctx) =>
-        served(await listPublicChangelog(ctx.auth.db, { catalog: ctx.catalog })),
+    "record.status.get": async (ctx, _input, { session }) =>
+        served(
+            await readMemberStatus(ctx.auth.db, { catalog: ctx.catalog, sessionToken: session }),
+        ),
+    "record.changelog.list": async (ctx, input, { session }) =>
+        served(
+            await listMemberChangelog(ctx.auth.db, {
+                catalog: ctx.catalog,
+                sessionToken: session,
+                input,
+            }),
+        ),
     "admin.record.list": (ctx, _input, call) =>
         asStaff(ctx, call, async (caller) =>
             mapOk(await listStaffNotes(ctx.auth.db, { caller }), (listed) => ({

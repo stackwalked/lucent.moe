@@ -1,0 +1,83 @@
+@layer components {
+    .pick {
+        display: inline-flex;
+        align-items: baseline;
+        gap: var(--s-2);
+        padding: 0;
+        border: 0;
+        background: none;
+        color: inherit;
+        font: inherit;
+        cursor: pointer;
+    }
+
+    .pick:focus-visible {
+        border-radius: var(--r);
+    }
+
+    .name {
+        font-weight: inherit;
+    }
+
+    .pick svg {
+        color: var(--ink-2);
+    }
+
+    .menu {
+        display: flex;
+        flex-direction: column;
+        padding: var(--s-1);
+        /* Rows keep their own width: no size token sits near the mock's 340px, so the list is
+           as wide as its widest row and no more. */
+        min-inline-size: max-content;
+    }
+
+    .row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--s-4);
+        padding: var(--s-2) var(--s-3);
+        border-radius: var(--r-inner);
+        color: var(--ink);
+        font-size: var(--size-14);
+        white-space: nowrap;
+        cursor: pointer;
+    }
+
+    .row[aria-current="true"] {
+        background: var(--hover);
+    }
+
+    .word[data-tone="ok"] {
+        color: var(--ok-ink);
+    }
+
+    .word[data-tone="wait"] {
+        color: var(--wait-ink);
+    }
+
+    .word[data-tone="shu"] {
+        color: var(--shu-ink);
+    }
+
+    .word[data-tone="dim"] {
+        color: var(--ink-2);
+    }
+
+    .noAccess {
+        color: var(--ink-2);
+    }
+
+    .menu a {
+        display: block;
+    }
+
+    .menu a:focus-visible {
+        outline-offset: -2px;
+    }
+
+    .menu a:hover .row {
+        background: var(--hover);
+    }
+}

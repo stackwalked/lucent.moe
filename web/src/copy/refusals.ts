@@ -29,6 +29,7 @@ export const UNEXPECTED: ReadonlySet<RefusalCode> = new Set<RefusalCode>([
 ]);
 
 export const REFUSALS: Readonly<Record<RefusalCode, string>> = {
+    INVALID_ENTRY: "an entry needs a version or a title, and some text.",
     INVALID_BASE: "this item changed. reload its history.",
     ITEM_LIMIT: "item limit reached",
     VERSION_LIMIT: "version limit reached",

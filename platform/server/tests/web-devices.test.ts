@@ -146,6 +146,7 @@ test("a seed holder sees their channels and a live product without any grant", a
                 name: "Counter-Strike 2",
                 kind: "module",
                 state: "seed",
+                access: { validUntil: null },
                 features: "*",
                 channels: [
                     { channel: "stable", release: null },
@@ -160,6 +161,7 @@ test("a seed holder sees their channels and a live product without any grant", a
                 name: "Lucent Loader",
                 kind: "standalone",
                 state: "live",
+                access: null,
                 features: [],
                 channels: [],
             },

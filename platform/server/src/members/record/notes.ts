@@ -9,11 +9,16 @@ import { appendAudit } from "../../base/db/audit.ts";
 import { type Db, type DbFailure, queryAll, queryOne, sql } from "../../base/db/pool.ts";
 import { withTx } from "../../base/db/tx.ts";
 import { type Forbidden, lockAuthorized, readAsStaff } from "../../identity/authority/staff.ts";
+import {
+    type ChangelogEntryFields,
+    decideChangelogEntry,
+    type InvalidEntry,
+} from "./notes.rules.ts";
 
-// Known issues and changelog entries: what staff tell the public about a product, or about the
-// service (no product). Writing one takes releases:promote, with its step-up and audit, as
-// publishing a resource does: it is a release of words. They show without a deploy; the public
-// reads are in status.ts.
+// Known issues and changelog entries: what staff tell the members about a product, the loader,
+// or the service. Writing one takes releases:promote, with its step-up and audit, as publishing
+// a resource does: it is a release of words. They show without a deploy; the member reads are in
+// status.ts.
 
 export const NOTE_ACTION = "releases:promote";
 
@@ -25,7 +30,6 @@ export type NoteKind = "issue" | "changelog";
 const TABLES = {
     issue: {
         table: sql`known_issue`,
-        at: sql`opened_at`,
         operations: {
             add: "known_issue.add",
             update: "known_issue.update",
@@ -34,7 +38,6 @@ const TABLES = {
     },
     changelog: {
         table: sql`changelog_entry`,
-        at: sql`published_at`,
         operations: {
             add: "changelog.add",
             update: "changelog.update",
@@ -45,20 +48,24 @@ const TABLES = {
     NoteKind,
     {
         readonly table: unknown;
-        readonly at: unknown;
         readonly operations: Record<"add" | "update" | "delete", AuditOperation>;
     }
 >;
 
-export type NoteFields = {
+export type IssueNoteFields = {
     readonly productId: ProductId | null;
     readonly title: string;
     readonly body: string;
 };
 
+export type NoteFieldsOf<K extends NoteKind> = K extends "changelog"
+    ? ChangelogEntryFields
+    : IssueNoteFields;
+
 type NoteRefusal =
     | AuthzRefusal
     | Forbidden
+    | InvalidEntry
     | { readonly code: "NOT_FOUND" }
     | { readonly code: "UNKNOWN_PRODUCT" };
 
@@ -74,14 +81,23 @@ const IssueRow = z.object({
     closedAt: EpochMs.nullable(),
 });
 
-const ChangelogRow = z.object({
+export const ChangelogRow = z.object({
     id: z.string(),
+    subject: z.enum(["product", "loader", "service"]),
     productId: ProductId.nullable(),
-    title: z.string(),
+    version: z.string().nullable(),
+    title: z.string().nullable(),
+    added: z.array(z.string()),
+    changed: z.array(z.string()),
+    fixed: z.array(z.string()),
     body: z.string(),
     publishedAt: EpochMs,
     updatedAt: EpochMs,
 });
+
+export const CHANGELOG_COLUMNS = sql`id::text as id, subject, product_id as "productId",
+    version, title, added, changed, fixed, body,
+    published_at as "publishedAt", updated_at as "updatedAt"`;
 
 export function listStaffNotes(db: Db, params: { readonly caller: Caller }) {
     return readAsStaff(db, { caller: params.caller, actions: [NOTE_ACTION] }, async (q) => {
@@ -96,9 +112,8 @@ export function listStaffNotes(db: Db, params: { readonly caller: Caller }) {
         const changelog = await queryAll(
             q,
             ChangelogRow,
-            sql`select id::text as id, product_id as "productId", title, body,
-                       published_at as "publishedAt", updated_at as "updatedAt"
-                from changelog_entry order by published_at desc, id desc
+            sql`select ${CHANGELOG_COLUMNS} from changelog_entry
+                order by published_at desc, id desc
                 limit ${STAFF_LIMIT + 1}`,
         );
         if (!changelog.ok) return changelog;
@@ -110,23 +125,83 @@ export function listStaffNotes(db: Db, params: { readonly caller: Caller }) {
     });
 }
 
-// A product the catalog has, seed or not: staff may write ahead of a launch. Only what the public
-// home lists is ever read publicly.
+// A product the catalog has, seed or not: staff may write ahead of a launch. Only what a member
+// may see is ever read back to members.
 function knownProduct(catalog: ProductCatalog, productId: ProductId | null) {
     return productId === null || catalog.has(productId);
 }
 
-export async function addNote(
+type AnyNoteFields = ChangelogEntryFields | IssueNoteFields;
+
+// Changelog fields carry a subject; issue fields never do.
+function isEntry(fields: AnyNoteFields): fields is ChangelogEntryFields {
+    return "subject" in fields;
+}
+
+// What the audit calls a note: an issue its title, an entry its title or version — the entry
+// rule guarantees one of them by the time a write is audited.
+function noteTitle(fields: AnyNoteFields): string {
+    if (!isEntry(fields)) return fields.title;
+    const named = fields.title ?? fields.version;
+    invariant(named !== null, "an entry has a title or a version");
+    return named;
+}
+
+function insertSql(fields: AnyNoteFields): ReturnType<typeof sql> {
+    if (isEntry(fields)) {
+        const entry = fields;
+        return sql`insert into changelog_entry
+                (subject, product_id, version, title, added, changed, fixed, body,
+                 published_at, updated_at)
+            values (${entry.subject}, ${entry.productId}, ${entry.version}, ${entry.title},
+                    ${entry.added}, ${entry.changed}, ${entry.fixed}, ${entry.body},
+                    now(), now())
+            returning id::text as id`;
+    }
+    const issue = fields;
+    return sql`insert into known_issue (product_id, title, body, opened_at, updated_at)
+        values (${issue.productId}, ${issue.title}, ${issue.body}, now(), now())
+        returning id::text as id`;
+}
+
+function updateSql(id: string, fields: AnyNoteFields): ReturnType<typeof sql> {
+    if (isEntry(fields)) {
+        const entry = fields;
+        return sql`update changelog_entry
+            set subject = ${entry.subject}, product_id = ${entry.productId},
+                version = ${entry.version}, title = ${entry.title},
+                added = ${entry.added}, changed = ${entry.changed}, fixed = ${entry.fixed},
+                body = ${entry.body}, updated_at = now()
+            where id = ${id}::uuid
+            returning id::text as id`;
+    }
+    const issue = fields;
+    return sql`update known_issue
+        set product_id = ${issue.productId}, title = ${issue.title},
+            body = ${issue.body}, updated_at = now()
+        where id = ${id}::uuid
+        returning id::text as id`;
+}
+
+function checked(fields: AnyNoteFields): Result<void, InvalidEntry> {
+    if (!isEntry(fields)) return ok(undefined);
+    const decided = decideChangelogEntry(fields);
+    return decided.ok ? ok(undefined) : decided;
+}
+
+export async function addNote<K extends NoteKind>(
     db: Db,
     params: {
         readonly caller: Caller;
         readonly catalog: ProductCatalog;
-        readonly kind: NoteKind;
-        readonly fields: NoteFields;
+        readonly kind: K;
+        readonly fields: NoteFieldsOf<K>;
     },
 ): Promise<Result<{ readonly id: string }, NoteRefusal | DbFailure>> {
     const { fields } = params;
     if (!knownProduct(params.catalog, fields.productId)) return err({ code: "UNKNOWN_PRODUCT" });
+    const valid = checked(fields);
+    if (!valid.ok) return valid;
     const kind = TABLES[params.kind];
     return await withTx(db, async (tx, txNow) => {
         const authorized = await lockAuthorized(tx, {
@@ -135,20 +210,18 @@ export async function addNote(
             txNow,
         });
         if (!authorized.ok) return authorized;
-        const inserted = await queryOne(
-            tx,
-            IdRow,
-            sql`insert into ${kind.table} (product_id, title, body, ${kind.at}, updated_at)
-                values (${fields.productId}, ${fields.title}, ${fields.body}, now(), now())
-                returning id::text as id`,
-        );
+        const inserted = await queryOne(tx, IdRow, insertSql(fields));
         if (!inserted.ok) return inserted;
         invariant(inserted.value !== null, "an insert returns its row");
         const audited = await appendAudit(tx, {
             actorId: params.caller.accountId,
             client: params.caller.client,
             operation: kind.operations.add,
-            target: { id: inserted.value.id, productId: fields.productId, title: fields.title },
+            target: {
+                id: inserted.value.id,
+                productId: fields.productId,
+                title: noteTitle(fields),
+            },
             at: txNow,
         });
         if (!audited.ok) return audited;
@@ -156,18 +229,20 @@ export async function addNote(
     });
 }
 
-export async function updateNote(
+export async function updateNote<K extends NoteKind>(
     db: Db,
     params: {
         readonly caller: Caller;
         readonly catalog: ProductCatalog;
-        readonly kind: NoteKind;
+        readonly kind: K;
         readonly id: string;
-        readonly fields: NoteFields;
+        readonly fields: NoteFieldsOf<K>;
     },
 ): Promise<Result<void, NoteRefusal | DbFailure>> {
     const { fields } = params;
     if (!knownProduct(params.catalog, fields.productId)) return err({ code: "UNKNOWN_PRODUCT" });
+    const valid = checked(fields);
+    if (!valid.ok) return valid;
     const kind = TABLES[params.kind];
     return await withTx(db, async (tx, txNow) => {
         const authorized = await lockAuthorized(tx, {
@@ -176,22 +251,18 @@ export async function updateNote(
             txNow,
         });
         if (!authorized.ok) return authorized;
-        const updated = await queryOne(
-            tx,
-            IdRow,
-            sql`update ${kind.table}
-                set product_id = ${fields.productId}, title = ${fields.title},
-                    body = ${fields.body}, updated_at = now()
-                where id = ${params.id}::uuid
-                returning id::text as id`,
-        );
+        const updated = await queryOne(tx, IdRow, updateSql(params.id, fields));
         if (!updated.ok) return updated;
         if (updated.value === null) return err({ code: "NOT_FOUND" as const });
         return await appendAudit(tx, {
             actorId: params.caller.accountId,
             client: params.caller.client,
             operation: kind.operations.update,
-            target: { id: params.id, productId: fields.productId, title: fields.title },
+            target: {
+                id: params.id,
+                productId: fields.productId,
+                title: noteTitle(fields),
+            },
             at: txNow,
         });
     });
@@ -211,12 +282,19 @@ export async function deleteNote(
         if (!authorized.ok) return authorized;
         const deleted = await queryOne(
             tx,
-            z.object({ product_id: ProductId.nullable(), title: z.string() }),
+            z.object({
+                product_id: ProductId.nullable(),
+                title: z.string().nullable(),
+                version: z.string().nullable(),
+            }),
             sql`delete from ${kind.table} where id = ${params.id}::uuid
-                returning product_id, title`,
+                returning product_id, title,
+                    ${params.kind === "changelog" ? sql`version` : sql`null`} as version`,
         );
         if (!deleted.ok) return deleted;
         if (deleted.value === null) return err({ code: "NOT_FOUND" as const });
+        const named = deleted.value.title ?? deleted.value.version;
+        invariant(named !== null, "an entry has a title or a version");
         return await appendAudit(tx, {
             actorId: params.caller.accountId,
             client: params.caller.client,
@@ -224,7 +302,7 @@ export async function deleteNote(
             target: {
                 id: params.id,
                 productId: deleted.value.product_id,
-                title: deleted.value.title,
+                title: named,
             },
             at: txNow,
         });
