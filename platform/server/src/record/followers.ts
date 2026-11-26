@@ -25,9 +25,10 @@ const FOLLOWERS_PER_BATCH = 10;
 const BATCHES_PER_RUN = 500;
 
 // Who may still be told, checked under the follower's account lock (taken here in id order, the
-// order recordNotification locks in too): a suspended account is not. Account deletion adds
-// `and deleted_at is null` here.
-const ACTIVE_FOLLOWER = sql`status = 'active'`;
+// order recordNotification locks in too): not a suspended account, nor a deleted one (a tombstone
+// has no address, so its mail would fail the batch). Another standing that stops notices joins
+// this fragment.
+const ACTIVE_FOLLOWER = sql`status = 'active' and deleted_at is null`;
 
 const PendingRow = z.object({
     id: z.string(),

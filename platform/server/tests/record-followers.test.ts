@@ -332,3 +332,40 @@ test("a suspended follower is told nothing, by inbox or by mail", async () => {
         expect(await mailTo(browserDb, "suspended@lucent.test")).toBe(0);
     });
 });
+
+test("a deleted follower is told nothing, and the batch still tells the rest", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ nativeDb, browserDb }) => {
+        const rng = createSeededRng(11_109);
+        const products = liveCatalog();
+        const world = await supportWorld(nativeDb, rng, products);
+        const kept = await follower(browserDb, rng, {
+            email: "kept@lucent.test",
+            follows: true,
+            mail: true,
+        });
+        const deleted = await follower(browserDb, rng, {
+            email: "deleted@lucent.test",
+            follows: true,
+            mail: true,
+        });
+        // A tombstone as deletion/strip.ts leaves one, its subscription left behind.
+        const stripped = await execute(
+            browserDb,
+            sql`update account set deleted_at = now(), email = null, username = null,
+                                   suspended_at_deletion = false
+                where id = ${deleted}`,
+        );
+        expect(stripped).toEqual({ ok: true, value: 1 });
+        await world.support(GAME);
+        expect(await world.start(GAME)).toBe("NOT_A_REFUSAL");
+        expect(await world.start(UPDATED)).toBe("GAME_BUILD_UNSUPPORTED");
+
+        expect(await tellFollowers(browserDb, { catalog: products, mail: true })).toEqual({
+            ok: true,
+            value: { told: 1, givenUp: [] },
+        });
+        expect(await inboxOf(browserDb, kept)).toBe(1);
+        expect(await inboxOf(browserDb, deleted)).toBe(0);
+    });
+});
