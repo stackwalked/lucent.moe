@@ -13,6 +13,7 @@ import {
     type Tx,
     toTimestamptz,
 } from "../db/pool.ts";
+import { lockBuildCoverage } from "../facts/coverage-lock.ts";
 import { findCurrentRelease } from "../releases/reads.ts";
 import { coversCoreFacts, StartModules, toModulesJson } from "../runtime/starts.ts";
 import { decideSupportMove } from "./support.rules.ts";
@@ -235,4 +236,54 @@ export async function recordSupportAfterFactPromotion(
     });
     if (move.value !== "rise") return ok(undefined);
     return await recordRise(tx, params);
+}
+
+// After a release was promoted on a live module product's first channel: a rise when it covers
+// the open drop's builds, a drop when nothing is open and it doesn't cover the game's builds.
+// Takes the build coverage lock exclusively (as a fact set promotion does), after the release
+// line's lock, so no start judges the replaced release meanwhile.
+export async function recordSupportAfterReleasePromotion(
+    tx: Tx,
+    params: {
+        readonly product: ProductDefinition;
+        readonly channel: string;
+        readonly releaseId: Uint8Array;
+        readonly txNow: EpochMs;
+    },
+): Promise<Result<void, DbFailure>> {
+    const { product } = params;
+    if (
+        product.state !== "live" ||
+        product.kind !== "module" ||
+        product.channels[0] !== params.channel
+    ) {
+        return ok(undefined);
+    }
+    const locked = await lockBuildCoverage(tx, { productId: product.id, mode: "exclusive" });
+    if (!locked.ok) return locked;
+    const open = await readOpenDrop(tx, product.id);
+    if (!open.ok) return open;
+    const builds =
+        open.value === null
+            ? await readGameBuilds(tx, { productId: product.id, releaseId: params.releaseId })
+            : ok(open.value.builds);
+    if (!builds.ok) return builds;
+    const covered = await coversCoreFacts(tx, params.releaseId, builds.value);
+    if (!covered.ok) return covered;
+    const move = decideSupportMove({
+        down: open.value !== null,
+        event: "release_promotion",
+        covered: covered.value,
+    });
+    if (move.value === "rise")
+        return await recordRise(tx, { productId: product.id, txNow: params.txNow });
+    if (move.value === "drop") {
+        return await recordDrop(tx, {
+            productId: product.id,
+            channel: params.channel,
+            builds: builds.value,
+            txNow: params.txNow,
+        });
+    }
+    return ok(undefined);
 }

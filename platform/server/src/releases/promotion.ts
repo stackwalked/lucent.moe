@@ -16,6 +16,7 @@ import {
     toTimestamptz,
 } from "../db/pool.ts";
 import { withTx } from "../db/tx.ts";
+import { recordSupportAfterReleasePromotion } from "../record/support.ts";
 
 // Promotion of staged releases. One current seal per product and channel; promoting one replaces
 // the last. Seal numbers only rise: a client refuses a number below one it has seen signed, so a
@@ -172,6 +173,13 @@ export async function promoteRelease(
                 do update set number = excluded.number, promoted_at = excluded.promoted_at`,
         );
         if (!promoted.ok) return promoted;
+        const support = await recordSupportAfterReleasePromotion(tx, {
+            product,
+            channel: params.channel,
+            releaseId: Uint8Array.fromHex(seal.value.release_id),
+            txNow,
+        });
+        if (!support.ok) return support;
         const audited = await appendAudit(tx, {
             actorId: params.caller.accountId,
             client: params.caller.client,
