@@ -10,14 +10,14 @@ import { ChannelId, ProductId, toHex } from "@lucent/core/scalars";
 import { STEP_UP_WINDOW_SECONDS } from "@lucent/policy/policy";
 import { LOADER_DOWNLOAD_PATH } from "@lucent/rpc/web";
 import { z } from "zod";
-import { claimServiceEpoch, openEpochGuard } from "../src/db/epoch-guard.ts";
-import { type Db, execute, queryAll, sql } from "../src/db/pool.ts";
-import { listReleaseFactSets, promoteFactSet } from "../src/facts/promotion.ts";
-import { createInternalWebApp } from "../src/listeners/internal/app.ts";
-import { listMemberProducts } from "../src/products/products.ts";
-import { readLoaderOffer } from "../src/releases/offer.ts";
-import { listReleaseLines, promoteRelease } from "../src/releases/promotion.ts";
-import { findCurrentRelease } from "../src/releases/reads.ts";
+import { claimServiceEpoch, openEpochGuard } from "../src/base/db/epoch-guard.ts";
+import { type Db, execute, queryAll, sql } from "../src/base/db/pool.ts";
+import { listReleaseFactSets, promoteFactSet } from "../src/delivery/facts/promotion.ts";
+import { listMemberProducts } from "../src/delivery/products/products.ts";
+import { readLoaderOffer } from "../src/delivery/releases/offer.ts";
+import { listReleaseLines, promoteRelease } from "../src/delivery/releases/promotion.ts";
+import { findCurrentRelease } from "../src/delivery/releases/reads.ts";
+import { createInternalWebApp } from "../src/edge/listeners/internal/app.ts";
 import { memberSession, seedRootOnce } from "./auth-fixtures.ts";
 import {
     catalog,

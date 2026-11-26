@@ -12,7 +12,7 @@ import {
     type TicketEvent,
     type TicketState,
     UNCLOSED_TICKETS_PER_ACCOUNT,
-} from "../src/support/tickets.rules.ts";
+} from "../src/members/support/tickets.rules.ts";
 
 const MEMBER = "acc_member";
 const STAFF = "acc_staff";

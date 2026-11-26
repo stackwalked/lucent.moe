@@ -1,6 +1,10 @@
 import { expect, test } from "bun:test";
 import { EpochMs } from "@lucent/core/scalars";
-import { LEASE_DURATION_MS, RESUME_WINDOW_MS, SESSION_CAP_MS } from "../src/runtime/leases.ts";
+import {
+    LEASE_DURATION_MS,
+    RESUME_WINDOW_MS,
+    SESSION_CAP_MS,
+} from "../src/delivery/runtime/leases.ts";
 import {
     decideCloseSession,
     decideLiveSession,
@@ -11,7 +15,7 @@ import {
     decideReplaySequence,
     decideSessionAccess,
     decideSessionStanding,
-} from "../src/runtime/sessions.rules.ts";
+} from "../src/delivery/runtime/sessions.rules.ts";
 
 test.each([
     [100, "other", "DEVICE_REVOKED"],

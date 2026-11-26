@@ -5,7 +5,7 @@ import {
     decidePostRate,
     decideReportLimit,
     type LimitRefusal,
-} from "../src/community/limits.rules.ts";
+} from "../src/members/community/limits.rules.ts";
 
 const refused = (limit: LimitRefusal["limit"]) => err({ code: "LIMIT_REACHED", limit });
 

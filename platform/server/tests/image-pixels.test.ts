@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { readJpegOrientation } from "../src/adapters/image/header.ts";
-import { orient, type Rgba, toSquare } from "../src/adapters/image/square.ts";
+import { readJpegOrientation } from "../src/base/adapters/image/header.ts";
+import { orient, type Rgba, toSquare } from "../src/base/adapters/image/square.ts";
 
 function image(width: number, height: number, at: (x: number, y: number) => number[]): Rgba {
     const data = new Uint8ClampedArray(width * height * 4);

@@ -1,11 +1,11 @@
 import type { SeededRng } from "@lucent/core/rng";
 import { TEST_RELYING_PARTY } from "@lucent/testing/authenticator";
-import type { BreachCheck } from "../../src/auth/breach.ts";
-import { type AuthDeps, createAuthDeps } from "../../src/auth/deps.ts";
-import { createArgon2idHasher } from "../../src/auth/password.ts";
-import { createTotpKeyring } from "../../src/auth/totp.ts";
-import type { Db } from "../../src/db/pool.ts";
-import { createEmailHasher } from "../../src/deletion/email-hash.ts";
+import type { Db } from "../../src/base/db/pool.ts";
+import type { BreachCheck } from "../../src/identity/auth/breach.ts";
+import { type AuthDeps, createAuthDeps } from "../../src/identity/auth/deps.ts";
+import { createArgon2idHasher } from "../../src/identity/auth/password.ts";
+import { createTotpKeyring } from "../../src/identity/auth/totp.ts";
+import { createEmailHasher } from "../../src/identity/deletion/email-hash.ts";
 
 // The keyring every auth test seals TOTP secrets under: "old" is still listed, so secrets sealed
 // before a rotation keep opening.

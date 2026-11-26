@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { ignoreErrorsSync, invariant } from "@lucent/core/contain";
 import { resolvePgBinary, WORKSPACE_ROOT } from "@lucent/testing/postgres";
 import { z } from "zod";
-import { execute, openPool, queryOne, sql } from "../src/db/pool.ts";
+import { execute, openPool, queryOne, sql } from "../src/base/db/pool.ts";
 
 const DEV_DATA_DIR = join(WORKSPACE_ROOT, ".moon/cache/dev/pg");
 const DEV_PORT = 4719;

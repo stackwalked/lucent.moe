@@ -4,8 +4,8 @@ import { err, ok } from "@lucent/core/result";
 import { createSeededRng } from "@lucent/core/rng";
 import { newAccountId } from "@lucent/core/scalars";
 import { z } from "zod";
-import { type Db, execute, queryOne, sql, toTimestamptz } from "../src/db/pool.ts";
-import { errCommit, withTx } from "../src/db/tx.ts";
+import { type Db, execute, queryOne, sql, toTimestamptz } from "../src/base/db/pool.ts";
+import { errCommit, withTx } from "../src/base/db/tx.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 
 const CountSchema = z.object({ count: z.coerce.number().int() });

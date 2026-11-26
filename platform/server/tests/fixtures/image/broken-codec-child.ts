@@ -1,4 +1,4 @@
-import { runAvatarChild, WASM_FILES } from "../../../src/adapters/image/transcode.ts";
+import { runAvatarChild, WASM_FILES } from "../../../src/base/adapters/image/transcode.ts";
 
 // The real decoder child with its PNG codec swapped for a file that isn't WebAssembly, as a bad
 // install or a corrupted package would leave it.

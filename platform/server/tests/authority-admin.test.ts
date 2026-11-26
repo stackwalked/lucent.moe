@@ -4,22 +4,22 @@ import { err, ok } from "@lucent/core/result";
 import { createSeededRng } from "@lucent/core/rng";
 import { type AccountId, newOperationId, RoleId } from "@lucent/core/scalars";
 import { z } from "zod";
+import { type Db, execute, sql } from "../src/base/db/pool.ts";
 import {
     type AccountSummary,
     listAccounts,
     listAudit,
     PAGE_SIZE,
     readAccount,
-} from "../src/authority/reads.ts";
-import { readRole } from "../src/authority/standing.ts";
+} from "../src/identity/authority/reads.ts";
+import { readRole } from "../src/identity/authority/standing.ts";
 import {
     reinstateAccount,
     renameAccount,
     suspendAccount,
     unassignAccountRole,
     upsertRole,
-} from "../src/authority/writers.ts";
-import { type Db, execute, sql } from "../src/db/pool.ts";
+} from "../src/identity/authority/writers.ts";
 import { newMember, seedRootOnce } from "./auth-fixtures.ts";
 import {
     catalog,

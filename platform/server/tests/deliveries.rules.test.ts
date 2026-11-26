@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { ProductId } from "@lucent/core/scalars";
 import type { Notice } from "@lucent/rpc/web/inbox";
-import { decideDeliveries } from "../src/notify/deliveries.rules.ts";
+import { decideDeliveries } from "../src/members/notify/deliveries.rules.ts";
 
 const productId = ProductId.parse("cs2");
 const security: Notice = { kind: "security", productId: null };

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { invariant } from "@lucent/core/contain";
 import { ok } from "@lucent/core/result";
-import { openGeo, parseCountryDatabase } from "../src/adapters/geo/geo.ts";
+import { openGeo, parseCountryDatabase } from "../src/base/adapters/geo/geo.ts";
 import { countryDatabase } from "./geo-fixtures.ts";
 
 const NETWORKS = [

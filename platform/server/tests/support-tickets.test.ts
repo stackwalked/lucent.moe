@@ -4,9 +4,9 @@ import { err, ok } from "@lucent/core/result";
 import { createSeededRng, type SeededRng } from "@lucent/core/rng";
 import { type BearerToken, ProductId } from "@lucent/core/scalars";
 import { z } from "zod";
-import { type Db, execute, queryAll, sql } from "../src/db/pool.ts";
-import { listInbox } from "../src/notify/inbox.ts";
-import { setPreference } from "../src/notify/preferences.ts";
+import { type Db, execute, queryAll, sql } from "../src/base/db/pool.ts";
+import { listInbox } from "../src/members/notify/inbox.ts";
+import { setPreference } from "../src/members/notify/preferences.ts";
 import {
     closeIdleTickets,
     closeMemberTicket,
@@ -18,7 +18,7 @@ import {
     replyToTicket,
     setTicketConsent,
     writeMemberTicket,
-} from "../src/support/tickets.ts";
+} from "../src/members/support/tickets.ts";
 import { catalog, grantRole, scalar, seedRole, steppedUp } from "./authority-fixtures.ts";
 import { holdProduct, member } from "./community-fixtures.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";

@@ -7,7 +7,7 @@ import {
     decideResetRequest,
     RESET_LINK_TTL_MS,
     type ResetAccount,
-} from "../src/auth/password-reset.rules.ts";
+} from "../src/identity/auth/password-reset.rules.ts";
 
 const now = EpochMs.parse(1_000_000);
 const at = (offset: number) => EpochMs.parse(now + offset);

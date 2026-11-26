@@ -7,7 +7,7 @@ import {
     type ApplicationState,
     decideApplication,
     REAPPLY_AFTER_MS,
-} from "../src/admission/applications.rules.ts";
+} from "../src/identity/admission/applications.rules.ts";
 
 const now = EpochMs.parse(100_000_000_000);
 const decidedLongAgo = EpochMs.parse(now - REAPPLY_AFTER_MS);

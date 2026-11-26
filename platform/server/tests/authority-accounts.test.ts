@@ -2,14 +2,14 @@ import { describe, expect, test } from "bun:test";
 import { createSeededRng } from "@lucent/core/rng";
 import { ChannelId, EpochMs, newOperationId } from "@lucent/core/scalars";
 import { z } from "zod";
-import { readEffectiveProductAccess } from "../src/authority/entitlements.ts";
+import { execute, sql } from "../src/base/db/pool.ts";
+import { readEffectiveProductAccess } from "../src/identity/authority/entitlements.ts";
 import {
     assignAccountRole,
     bootstrapRootAccount,
     issueEntitlement,
     suspendAccount,
-} from "../src/authority/writers.ts";
-import { execute, sql } from "../src/db/pool.ts";
+} from "../src/identity/authority/writers.ts";
 import {
     catalog,
     product,

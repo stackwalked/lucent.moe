@@ -7,6 +7,8 @@ import { STEP_UP_WINDOW_SECONDS } from "@lucent/policy/policy";
 import { AuthenticationResponse, RegistrationResponse } from "@lucent/rpc/webauthn";
 import { createTestAuthenticator } from "@lucent/testing/authenticator";
 import { z } from "zod";
+import { execute, queryAll, sql } from "../src/base/db/pool.ts";
+import { withTx } from "../src/base/db/tx.ts";
 import {
     beginPasskeyRegistration,
     beginStepUp,
@@ -14,15 +16,13 @@ import {
     finishStepUp,
     removeCredential,
     setPassword,
-} from "../src/auth/credentials.ts";
-import { signOutOthers } from "../src/auth/sessions.ts";
-import { redeemSetupLink } from "../src/auth/setup.ts";
-import { signInWithPassword } from "../src/auth/sign-in.ts";
-import { hashToken } from "../src/auth/tokens.ts";
-import { resolveViewer } from "../src/auth/viewer.ts";
-import { createAccount, recoverAccount } from "../src/authority/writers.ts";
-import { execute, queryAll, sql } from "../src/db/pool.ts";
-import { withTx } from "../src/db/tx.ts";
+} from "../src/identity/auth/credentials.ts";
+import { signOutOthers } from "../src/identity/auth/sessions.ts";
+import { redeemSetupLink } from "../src/identity/auth/setup.ts";
+import { signInWithPassword } from "../src/identity/auth/sign-in.ts";
+import { hashToken } from "../src/identity/auth/tokens.ts";
+import { resolveViewer } from "../src/identity/auth/viewer.ts";
+import { createAccount, recoverAccount } from "../src/identity/authority/writers.ts";
 import {
     MEMBER_PASSWORD,
     memberSession,

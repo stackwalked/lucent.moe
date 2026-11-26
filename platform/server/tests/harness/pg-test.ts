@@ -1,7 +1,7 @@
 import { invariant, onThrowCleanup } from "@lucent/core/contain";
 import { type EphemeralCluster, sharedEphemeralCluster } from "@lucent/testing/postgres";
-import { migrateDatabase } from "../../src/db/migrate.ts";
-import { type Db, openPool } from "../../src/db/pool.ts";
+import { migrateDatabase } from "../../src/base/db/migrate.ts";
+import { type Db, openPool } from "../../src/base/db/pool.ts";
 
 // The shared ephemeral cluster with platform's schema in a template, so each test copies a
 // migrated database instead of migrating its own.

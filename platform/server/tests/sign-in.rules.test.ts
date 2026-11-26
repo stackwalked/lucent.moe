@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { EpochMs } from "@lucent/core/scalars";
-import { decideRefresh } from "../src/devices/sign-in.rules.ts";
+import { decideRefresh } from "../src/identity/devices/sign-in.rules.ts";
 
 const now = EpochMs.parse(101);
 const parent = Uint8Array.of(1);

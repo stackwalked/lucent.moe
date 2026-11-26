@@ -4,9 +4,11 @@ import { err, ok, type Result } from "@lucent/core/result";
 import { createSeededRng, type SeededRng } from "@lucent/core/rng";
 import { type AccountId, ChannelId, newOperationId, RoleId } from "@lucent/core/scalars";
 import { z } from "zod";
-import { setInviteAllowance } from "../src/admission/invites.ts";
-import type { AuthDeps } from "../src/auth/deps.ts";
-import { resolveViewer } from "../src/auth/viewer.ts";
+import { type Db, execute, queryOne, type SqlFragment, sql } from "../src/base/db/pool.ts";
+import { withTx } from "../src/base/db/tx.ts";
+import { setInviteAllowance } from "../src/identity/admission/invites.ts";
+import type { AuthDeps } from "../src/identity/auth/deps.ts";
+import { resolveViewer } from "../src/identity/auth/viewer.ts";
 import {
     assignAccountRole,
     issueEntitlement,
@@ -15,12 +17,10 @@ import {
     renameAccount,
     suspendAccount,
     unassignAccountRole,
-} from "../src/authority/writers.ts";
-import { type Db, execute, queryOne, type SqlFragment, sql } from "../src/db/pool.ts";
-import { withTx } from "../src/db/tx.ts";
-import { requestDeletion } from "../src/deletion/deletion.ts";
-import { completeDeletion } from "../src/deletion/strip.ts";
-import { readStaffTicket } from "../src/support/tickets.ts";
+} from "../src/identity/authority/writers.ts";
+import { requestDeletion } from "../src/identity/deletion/deletion.ts";
+import { completeDeletion } from "../src/identity/deletion/strip.ts";
+import { readStaffTicket } from "../src/members/support/tickets.ts";
 import { type Member, newMember, seedRootOnce } from "./auth-fixtures.ts";
 import {
     catalog,

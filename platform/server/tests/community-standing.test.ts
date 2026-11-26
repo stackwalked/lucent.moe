@@ -4,15 +4,15 @@ import { err, ok } from "@lucent/core/result";
 import { createSeededRng } from "@lucent/core/rng";
 import { EpochMs, ProductId } from "@lucent/core/scalars";
 import { z } from "zod";
-import { withMemberAt } from "../src/community/member.ts";
-import { listOwnRestrictions, mayPostHere } from "../src/community/standing.ts";
-import { execute, queryOne, sql } from "../src/db/pool.ts";
+import { execute, queryOne, sql } from "../src/base/db/pool.ts";
+import { withMemberAt } from "../src/members/community/member.ts";
+import { listOwnRestrictions, mayPostHere } from "../src/members/community/standing.ts";
 import {
     expireRestrictions,
     liftRestriction,
     listRestrictions,
     setRestriction,
-} from "../src/moderation/restrictions.ts";
+} from "../src/members/moderation/restrictions.ts";
 import { catalog, dbNow } from "./authority-fixtures.ts";
 import { member, moderator } from "./community-fixtures.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";

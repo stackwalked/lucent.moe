@@ -6,14 +6,14 @@ import {
     decideScoringFrom,
     type ObservedSignal,
     REVIEW_THRESHOLD,
-} from "../src/risk/score.rules.ts";
+} from "../src/delivery/risk/score.rules.ts";
 import {
     decideIntegritySignals,
     decideOpenSignals,
     decideRenewalSignals,
     decideReportSignals,
     type SignalKind,
-} from "../src/risk/signals.rules.ts";
+} from "../src/delivery/risk/signals.rules.ts";
 
 const DAY = 24 * 60 * 60 * 1_000;
 const now = EpochMs.parse(100 * DAY);

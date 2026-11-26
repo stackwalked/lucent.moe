@@ -3,9 +3,9 @@ import { createSeededRng } from "@lucent/core/rng";
 import { EpochMs, newOperationId, RoleId } from "@lucent/core/scalars";
 import { STEP_UP_WINDOW_SECONDS } from "@lucent/policy/policy";
 import { z } from "zod";
-import { readRole } from "../src/authority/standing.ts";
-import { assignAccountRole, upsertRole } from "../src/authority/writers.ts";
-import { sql } from "../src/db/pool.ts";
+import { sql } from "../src/base/db/pool.ts";
+import { readRole } from "../src/identity/authority/standing.ts";
+import { assignAccountRole, upsertRole } from "../src/identity/authority/writers.ts";
 import {
     catalog,
     dbNow,

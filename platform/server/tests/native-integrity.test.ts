@@ -5,7 +5,7 @@ import { newOperationId } from "@lucent/core/scalars";
 import { SIGNALS_SIZE } from "@lucent/wire/lease";
 import { toRenewalBitsBytes } from "@lucent/wire/renewal-bits";
 import { z } from "zod";
-import { type Db, queryAll, sql } from "../src/db/pool.ts";
+import { type Db, queryAll, sql } from "../src/base/db/pool.ts";
 import { scalar } from "./authority-fixtures.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 import {

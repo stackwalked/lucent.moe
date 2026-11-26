@@ -1,9 +1,9 @@
 import { invariant } from "@lucent/core/contain";
 import { systemCryptoRng } from "@lucent/core/rng";
-import { setupPath } from "../src/auth/setup.ts";
-import { bootstrapRootAccount, recoverRootAccount } from "../src/authority/writers.ts";
-import { migrateDatabase } from "../src/db/migrate.ts";
-import { openPool } from "../src/db/pool.ts";
+import { migrateDatabase } from "../src/base/db/migrate.ts";
+import { openPool } from "../src/base/db/pool.ts";
+import { setupPath } from "../src/identity/auth/setup.ts";
+import { bootstrapRootAccount, recoverRootAccount } from "../src/identity/authority/writers.ts";
 import { openDevCluster } from "./postgres.ts";
 
 // Migrates the dev database and writes its root account; running it again changes nothing.

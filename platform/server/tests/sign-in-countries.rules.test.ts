@@ -4,7 +4,7 @@ import { EpochMs } from "@lucent/core/scalars";
 import {
     decideSignInCountry,
     decideUnjudgedCutoff,
-} from "../src/support/sign-in-countries.rules.ts";
+} from "../src/members/support/sign-in-countries.rules.ts";
 
 describe("decideSignInCountry", () => {
     const cases: readonly [string, readonly string[], string | null, string | null, boolean][] = [

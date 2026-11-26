@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import { invariant } from "@lucent/core/contain";
 import { z } from "zod";
-import { type Db, execute, queryAll, sql } from "../src/db/pool.ts";
-import { ACCOUNT_REFERENCES } from "../src/deletion/references.ts";
+import { type Db, execute, queryAll, sql } from "../src/base/db/pool.ts";
+import { ACCOUNT_REFERENCES } from "../src/identity/deletion/references.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 
 // Every column that can hold an account id, from the catalog: each column of a declared foreign

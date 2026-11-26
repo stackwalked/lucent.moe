@@ -7,13 +7,22 @@ import { createRpcClient } from "@lucent/rpc/client";
 import { mountInternalRpc } from "@lucent/rpc/mount";
 import { webContract } from "@lucent/rpc/web";
 import { z } from "zod";
-import { mintSession } from "../src/auth/sessions.ts";
-import { type Db, execute, queryAll, sql } from "../src/db/pool.ts";
-import { withTx } from "../src/db/tx.ts";
-import { webProcedures } from "../src/listeners/internal/web-rpc.ts";
-import { withMember } from "../src/notify/account.ts";
-import { countUnread, listInbox, markRead, recordNotification } from "../src/notify/inbox.ts";
-import { listPreferences, setPreference, setSubscription } from "../src/notify/preferences.ts";
+import { type Db, execute, queryAll, sql } from "../src/base/db/pool.ts";
+import { withTx } from "../src/base/db/tx.ts";
+import { webProcedures } from "../src/edge/listeners/internal/web-rpc.ts";
+import { mintSession } from "../src/identity/auth/sessions.ts";
+import { withMember } from "../src/members/notify/account.ts";
+import {
+    countUnread,
+    listInbox,
+    markRead,
+    recordNotification,
+} from "../src/members/notify/inbox.ts";
+import {
+    listPreferences,
+    setPreference,
+    setSubscription,
+} from "../src/members/notify/preferences.ts";
 import { catalog, seedAccount } from "./authority-fixtures.ts";
 import { NO_LOG } from "./community-fixtures.ts";
 import { createTestAuthDeps } from "./harness/auth.ts";

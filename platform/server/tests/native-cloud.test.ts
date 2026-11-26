@@ -6,10 +6,10 @@ import { newOperationId, ProductId } from "@lucent/core/scalars";
 import type { CloudRequest, CloudResponse } from "@lucent/wire/cloud";
 import { parseFrame } from "@lucent/wire/frame";
 import { z } from "zod";
-import { CLOUD_LIMITS } from "../src/cloud/items.rules.ts";
-import { createItem } from "../src/cloud/items.ts";
-import { execute, queryOne, sql } from "../src/db/pool.ts";
-import { withTx } from "../src/db/tx.ts";
+import { execute, queryOne, sql } from "../src/base/db/pool.ts";
+import { withTx } from "../src/base/db/tx.ts";
+import { CLOUD_LIMITS } from "../src/delivery/cloud/items.rules.ts";
+import { createItem } from "../src/delivery/cloud/items.ts";
 import { seedAccount } from "./authority-fixtures.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 import {

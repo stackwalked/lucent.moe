@@ -3,9 +3,13 @@ import { invariant } from "@lucent/core/contain";
 import { createSeededRng } from "@lucent/core/rng";
 import { BearerToken, sha256Base64Url, toBase64Url } from "@lucent/core/scalars";
 import { z } from "zod";
-import { hashToken } from "../src/auth/tokens.ts";
-import { execute, sql } from "../src/db/pool.ts";
-import { answerSignInRequest, readSignInRequest, SignInRequestId } from "../src/devices/sign-in.ts";
+import { execute, sql } from "../src/base/db/pool.ts";
+import { hashToken } from "../src/identity/auth/tokens.ts";
+import {
+    answerSignInRequest,
+    readSignInRequest,
+    SignInRequestId,
+} from "../src/identity/devices/sign-in.ts";
 import { dbNow, scalar } from "./authority-fixtures.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 import {

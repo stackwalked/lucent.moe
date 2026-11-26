@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { invariant } from "@lucent/core/contain";
 import { EpochMs } from "@lucent/core/scalars";
-import { decideRecoveries, decideSupportMove } from "../src/record/support.rules.ts";
+import { decideRecoveries, decideSupportMove } from "../src/members/record/support.rules.ts";
 
 test.each([
     ["a newly seen build the release covers moves nothing", false, "first_report", true, null],

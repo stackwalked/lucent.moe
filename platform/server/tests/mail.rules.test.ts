@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { EpochMs } from "@lucent/core/scalars";
-import { decideMailClaim, decideMailRetry } from "../src/notify/mail.rules.ts";
+import { decideMailClaim, decideMailRetry } from "../src/members/notify/mail.rules.ts";
 
 test.each([
     ["brevo", 839_999, 11, true],

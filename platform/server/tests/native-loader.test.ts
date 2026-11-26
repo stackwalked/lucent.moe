@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { blake2b256 } from "@lucent/bundle/crypto";
 import { createSeededRng, type SeededRng } from "@lucent/core/rng";
-import { type Db, execute, sql } from "../src/db/pool.ts";
+import { type Db, execute, sql } from "../src/base/db/pool.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 import {
     createNativeHarness,

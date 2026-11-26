@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { ModuleKey } from "@lucent/bundle/fact-set";
-import { decideAskedBuilds, decideDataRevisions } from "../src/runtime/revisions.rules.ts";
+import { decideAskedBuilds, decideDataRevisions } from "../src/delivery/runtime/revisions.rules.ts";
 
 const GAME: ModuleKey = { nameHash: 0x10n, timeDateStamp: 1, sizeOfImage: 2 };
 const LATE: ModuleKey = { nameHash: 0x20n, timeDateStamp: 3, sizeOfImage: 4 };

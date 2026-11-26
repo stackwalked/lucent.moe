@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { invariant } from "@lucent/core/contain";
-import { createMailTransport } from "../src/adapters/mail/mail.ts";
+import { createMailTransport } from "../src/base/adapters/mail/mail.ts";
 
 const envelope = {
     id: "a5a48808-a7ef-49f9-b23a-9902c4cd3836",

@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { invariant } from "@lucent/core/contain";
-import { claimServiceEpoch, openEpochGuard } from "../src/db/epoch-guard.ts";
-import type { DbFailure } from "../src/db/pool.ts";
+import { claimServiceEpoch, openEpochGuard } from "../src/base/db/epoch-guard.ts";
+import type { DbFailure } from "../src/base/db/pool.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 
 test("an instance is superseded once a later instance claims the next epoch", async () => {

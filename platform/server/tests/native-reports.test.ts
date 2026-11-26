@@ -4,16 +4,16 @@ import { createSeededRng } from "@lucent/core/rng";
 import { AccountId, newOperationId, ProductId, toHex } from "@lucent/core/scalars";
 import type { ReportEvent } from "@lucent/wire/reports";
 import { z } from "zod";
-import { revokeAccess } from "../src/auth/revoke-access.ts";
-import { type Db, execute, queryAll, sql } from "../src/db/pool.ts";
-import { withTx } from "../src/db/tx.ts";
-import { sweepRetention } from "../src/jobs/retention.ts";
-import { listCrashSummaries } from "../src/runtime/crashes.ts";
-import { sweepNative } from "../src/runtime/expiry.ts";
+import { type Db, execute, queryAll, sql } from "../src/base/db/pool.ts";
+import { withTx } from "../src/base/db/tx.ts";
+import { sweepRetention } from "../src/base/jobs/retention.ts";
+import { listCrashSummaries } from "../src/delivery/runtime/crashes.ts";
+import { sweepNative } from "../src/delivery/runtime/expiry.ts";
 import {
     MAX_REPORTS_PER_ACCOUNT_DAY,
     MAX_REPORTS_PER_SESSION,
-} from "../src/runtime/reports.rules.ts";
+} from "../src/delivery/runtime/reports.rules.ts";
+import { revokeAccess } from "../src/identity/auth/revoke-access.ts";
 import { seedRootOnce } from "./auth-fixtures.ts";
 import { seedRole, seedStaff, steppedUp } from "./authority-fixtures.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";

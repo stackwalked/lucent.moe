@@ -7,9 +7,9 @@ import { webContract } from "@lucent/rpc/web";
 import { TEST_RELYING_PARTY } from "@lucent/testing/authenticator";
 import { WORKSPACE_ROOT } from "@lucent/testing/postgres";
 import { type RunningServer, startServer } from "../src/boot.ts";
-import { CLOUD_LIMITS } from "../src/cloud/items.rules.ts";
 import type { ServerConfig } from "../src/config.ts";
-import { checkCloudLimits } from "../src/runtime/cloud.ts";
+import { CLOUD_LIMITS } from "../src/delivery/cloud/items.rules.ts";
+import { checkCloudLimits } from "../src/delivery/runtime/cloud.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 
 const PEER_KEY = "test-peer-key-0123456789abcdefghijklmnopqrstuvwxyz";

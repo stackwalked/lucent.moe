@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { err, ok } from "@lucent/core/result";
 import { createSeededRng } from "@lucent/core/rng";
 import { type AccountId, EpochMs } from "@lucent/core/scalars";
-import { type Db, execute, sql } from "../src/db/pool.ts";
+import { type Db, execute, sql } from "../src/base/db/pool.ts";
 import { decideUsageWindow } from "../src/system/usage.rules.ts";
 import { readUsage } from "../src/system/usage.ts";
 import { seedAccount, seedRoot, steppedUp } from "./authority-fixtures.ts";

@@ -4,21 +4,21 @@ import { ok } from "@lucent/core/result";
 import { createSeededRng, type SeededRng } from "@lucent/core/rng";
 import { type AccountId, newOperationId, ProductId, sha256Base64Url } from "@lucent/core/scalars";
 import { z } from "zod";
-import { listApplications, submitApplication } from "../src/admission/applications.ts";
+import { type Db, execute, queryAll, queryOne, sql, sqlIdent } from "../src/base/db/pool.ts";
+import { withTx } from "../src/base/db/tx.ts";
+import { sweepRetention } from "../src/base/jobs/retention.ts";
+import { listApplications, submitApplication } from "../src/identity/admission/applications.ts";
 import {
     createInvite,
     readInviteStanding,
     redeemInvite,
     setInviteAllowance,
-} from "../src/admission/invites.ts";
-import type { AuthDeps } from "../src/auth/deps.ts";
-import { mintSession } from "../src/auth/sessions.ts";
-import { suspendAccount } from "../src/authority/writers.ts";
-import { type Db, execute, queryAll, queryOne, sql, sqlIdent } from "../src/db/pool.ts";
-import { withTx } from "../src/db/tx.ts";
-import { requestDeletion } from "../src/deletion/deletion.ts";
-import { completeDeletion } from "../src/deletion/strip.ts";
-import { sweepRetention } from "../src/jobs/retention.ts";
+} from "../src/identity/admission/invites.ts";
+import type { AuthDeps } from "../src/identity/auth/deps.ts";
+import { mintSession } from "../src/identity/auth/sessions.ts";
+import { suspendAccount } from "../src/identity/authority/writers.ts";
+import { requestDeletion } from "../src/identity/deletion/deletion.ts";
+import { completeDeletion } from "../src/identity/deletion/strip.ts";
 import { newMember, seedRootOnce } from "./auth-fixtures.ts";
 import { catalog, scalar, steppedUp } from "./authority-fixtures.ts";
 import { createTestAuthDeps } from "./harness/auth.ts";

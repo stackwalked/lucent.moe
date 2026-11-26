@@ -4,14 +4,14 @@ import { err, ok } from "@lucent/core/result";
 import { createSeededRng } from "@lucent/core/rng";
 import { AccountId } from "@lucent/core/scalars";
 import { Hono } from "hono";
+import { execute, sql } from "../src/base/db/pool.ts";
+import { mountCommunityEvents } from "../src/edge/listeners/internal/events.ts";
 import {
     decideStreamAdmission,
     MAX_STREAMS,
     MAX_STREAMS_PER_ACCOUNT,
-} from "../src/community/events.rules.ts";
-import { createEventHub, type PresenceEvent } from "../src/community/events.ts";
-import { execute, sql } from "../src/db/pool.ts";
-import { mountCommunityEvents } from "../src/listeners/internal/events.ts";
+} from "../src/members/community/events.rules.ts";
+import { createEventHub, type PresenceEvent } from "../src/members/community/events.ts";
 import { member } from "./community-fixtures.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 

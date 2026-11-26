@@ -6,7 +6,7 @@ import {
     type MigrationFile,
     migrateDatabase,
     verifySchemaCurrent,
-} from "../src/db/migrate.ts";
+} from "../src/base/db/migrate.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 
 const ZERO_CHECKSUM = "0".repeat(64);

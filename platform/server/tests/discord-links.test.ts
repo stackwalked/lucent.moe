@@ -4,16 +4,16 @@ import { err, ok } from "@lucent/core/result";
 import { createSeededRng } from "@lucent/core/rng";
 import type { AccountId } from "@lucent/core/scalars";
 import { z } from "zod";
-import type { AuthDeps } from "../src/auth/deps.ts";
-import { type Db, execute, queryAll, sql } from "../src/db/pool.ts";
-import { withTx } from "../src/db/tx.ts";
+import { type Db, execute, queryAll, sql } from "../src/base/db/pool.ts";
+import { withTx } from "../src/base/db/tx.ts";
 import {
     readDiscordLink,
     redeemLinkCode,
     removeDiscordLinkBySite,
     removeDiscordLinkByUser,
     startDiscordLink,
-} from "../src/discord/links.ts";
+} from "../src/edge/discord/links.ts";
+import type { AuthDeps } from "../src/identity/auth/deps.ts";
 import { memberSession } from "./auth-fixtures.ts";
 import { seedAccount, waitForLockWaiters } from "./authority-fixtures.ts";
 import { createTestAuthDeps } from "./harness/auth.ts";

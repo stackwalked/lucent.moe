@@ -2,8 +2,8 @@ import { ok, type Result } from "@lucent/core/result";
 import { EpochMs } from "@lucent/core/scalars";
 import type { Caller } from "@lucent/policy/policy";
 import { z } from "zod";
-import { type Forbidden, readAsStaff } from "../authority/staff.ts";
-import { type Db, type DbFailure, queryAll, sql, toTimestamptz } from "../db/pool.ts";
+import { type Db, type DbFailure, queryAll, sql, toTimestamptz } from "../base/db/pool.ts";
+import { type Forbidden, readAsStaff } from "../identity/authority/staff.ts";
 import { decideUsageWindow, type UsageWindow } from "./usage.rules.ts";
 
 // Usage as runtime_session already records it; nothing is tracked for this page. A session is

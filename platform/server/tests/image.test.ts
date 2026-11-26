@@ -1,12 +1,12 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 import { invariant } from "@lucent/core/contain";
-import { createDecoderSlots, transcodeAvatar } from "../src/adapters/image/image.ts";
+import { createDecoderSlots, transcodeAvatar } from "../src/base/adapters/image/image.ts";
 import {
     openDecoder,
     openEncoder,
     WASM_MEMORY_MAX_BYTES,
-} from "../src/adapters/image/transcode.ts";
-import { capWasmMemory } from "../src/adapters/image/wasm-memory.ts";
+} from "../src/base/adapters/image/transcode.ts";
+import { capWasmMemory } from "../src/base/adapters/image/wasm-memory.ts";
 
 // Fixtures in tests/fixtures/image were written once with the pinned codecs' own encoders, then
 // edited by hand: metadata chunks spliced in (each holding a LUCENT-SECRET marker), a header's

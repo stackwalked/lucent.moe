@@ -7,7 +7,7 @@ import {
     decideEnrollmentRequest,
     decidePendingEnrollment,
     decidePendingRequest,
-} from "../src/devices/devices.rules.ts";
+} from "../src/identity/devices/devices.rules.ts";
 
 const accountId = AccountId.parse(`acc_${"a".repeat(22)}`);
 const other = AccountId.parse(`acc_${"b".repeat(22)}`);

@@ -6,7 +6,6 @@ import type { SeededRng } from "@lucent/core/rng";
 import { type AccountId, EpochMs, newAccountId, ProductId, RoleId } from "@lucent/core/scalars";
 import type { Caller } from "@lucent/policy/policy";
 import { z } from "zod";
-import { bootstrapRootAccount } from "../src/authority/writers.ts";
 import {
     type Db,
     execute,
@@ -14,7 +13,8 @@ import {
     type SqlFragment,
     sql,
     toTimestamptz,
-} from "../src/db/pool.ts";
+} from "../src/base/db/pool.ts";
+import { bootstrapRootAccount } from "../src/identity/authority/writers.ts";
 
 export function catalog(): ProductCatalog {
     const res = loadProductCatalog();

@@ -9,13 +9,13 @@ import {
     RoleId,
 } from "@lucent/core/scalars";
 import type { Caller } from "@lucent/policy/policy";
-import { readEffectiveProductAccess } from "../src/authority/entitlements.ts";
+import { type Db, execute, sql } from "../src/base/db/pool.ts";
+import { readEffectiveProductAccess } from "../src/identity/authority/entitlements.ts";
 import {
     type EntitlementProductInput,
     issueEntitlement,
     upsertRole,
-} from "../src/authority/writers.ts";
-import { type Db, execute, sql } from "../src/db/pool.ts";
+} from "../src/identity/authority/writers.ts";
 import {
     catalog,
     grantRole,

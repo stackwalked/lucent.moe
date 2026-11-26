@@ -3,12 +3,17 @@ import { invariant } from "@lucent/core/contain";
 import { err, ok } from "@lucent/core/result";
 import { createSeededRng } from "@lucent/core/rng";
 import { ProductId } from "@lucent/core/scalars";
-import { createComment, listComments } from "../src/community/comments.ts";
-import { createGuide, listGuides, readGuide, updateGuide } from "../src/community/guides.ts";
-import { readProfile, setBio } from "../src/community/profiles.ts";
-import { createShout, listShouts } from "../src/community/shouts.ts";
-import { execute, sql } from "../src/db/pool.ts";
-import { setRestriction } from "../src/moderation/restrictions.ts";
+import { execute, sql } from "../src/base/db/pool.ts";
+import { createComment, listComments } from "../src/members/community/comments.ts";
+import {
+    createGuide,
+    listGuides,
+    readGuide,
+    updateGuide,
+} from "../src/members/community/guides.ts";
+import { readProfile, setBio } from "../src/members/community/profiles.ts";
+import { createShout, listShouts } from "../src/members/community/shouts.ts";
+import { setRestriction } from "../src/members/moderation/restrictions.ts";
 import { catalog } from "./authority-fixtures.ts";
 import { holdProduct, member, moderator } from "./community-fixtures.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";

@@ -4,7 +4,10 @@ import { err, ok } from "@lucent/core/result";
 import { createSeededRng, type SeededRng } from "@lucent/core/rng";
 import { type AccountId, BearerToken, ProductId } from "@lucent/core/scalars";
 import { z } from "zod";
-import { createMailTransport } from "../src/adapters/mail/mail.ts";
+import { createMailTransport } from "../src/base/adapters/mail/mail.ts";
+import { type Db, execute, queryAll, sql } from "../src/base/db/pool.ts";
+import { withTx } from "../src/base/db/tx.ts";
+import { sweepRetention } from "../src/base/jobs/retention.ts";
 import {
     type ApplicationInput,
     approveApplication,
@@ -13,14 +16,11 @@ import {
     listOfferedProducts,
     readApplication,
     submitApplication,
-} from "../src/admission/applications.ts";
-import type { AuthDeps } from "../src/auth/deps.ts";
-import { redeemSetupLink } from "../src/auth/setup.ts";
-import { recoverAccount } from "../src/authority/writers.ts";
-import { type Db, execute, queryAll, sql } from "../src/db/pool.ts";
-import { withTx } from "../src/db/tx.ts";
-import { sweepRetention } from "../src/jobs/retention.ts";
-import { claimMail, sendClaim, settleMail } from "../src/notify/mail.ts";
+} from "../src/identity/admission/applications.ts";
+import type { AuthDeps } from "../src/identity/auth/deps.ts";
+import { redeemSetupLink } from "../src/identity/auth/setup.ts";
+import { recoverAccount } from "../src/identity/authority/writers.ts";
+import { claimMail, sendClaim, settleMail } from "../src/members/notify/mail.ts";
 import { seedRootOnce } from "./auth-fixtures.ts";
 import {
     catalog,

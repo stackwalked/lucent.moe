@@ -7,8 +7,12 @@ import {
     type GatheredRedeem,
     LINK_CODE_TTL_MS,
     type LinkRefusal,
-} from "../src/discord/links.rules.ts";
-import { decideRoles, type LinkedStanding, type RoleRule } from "../src/discord/roles.rules.ts";
+} from "../src/edge/discord/links.rules.ts";
+import {
+    decideRoles,
+    type LinkedStanding,
+    type RoleRule,
+} from "../src/edge/discord/roles.rules.ts";
 
 const MEMBERS = "100000000000000001";
 const CS2_ROLE = "100000000000000002";

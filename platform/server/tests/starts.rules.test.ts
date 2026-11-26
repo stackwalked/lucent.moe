@@ -12,7 +12,7 @@ import {
     decideStartRelease,
     decideStartReplay,
     decideStartStillOpen,
-} from "../src/runtime/starts.rules.ts";
+} from "../src/delivery/runtime/starts.rules.ts";
 
 function definition(kind: string, state: string): ProductDefinition {
     return ProductDefinition.parse({

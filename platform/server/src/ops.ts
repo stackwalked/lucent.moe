@@ -4,17 +4,17 @@ import { parseArgs } from "node:util";
 import { blake2b256 } from "@lucent/bundle/crypto";
 import { trySync } from "@lucent/core/contain";
 import { systemCryptoRng } from "@lucent/core/rng";
-import { setupPath } from "./auth/setup.ts";
-import { bootstrapRootAccount, recoverRootAccount } from "./authority/writers.ts";
+import { migrateDatabase, verifySchemaCurrent } from "./base/db/migrate.ts";
+import { openPool } from "./base/db/pool.ts";
 import { processEnvironment, readOpsConfig } from "./config.ts";
-import { migrateDatabase, verifySchemaCurrent } from "./db/migrate.ts";
-import { openPool } from "./db/pool.ts";
-import { describePublishedFactSet, publishFactSet } from "./facts/publishing.ts";
+import { describePublishedFactSet, publishFactSet } from "./delivery/facts/publishing.ts";
 import {
     describePublished,
     publishLoaderRelease,
     publishModuleRelease,
-} from "./releases/publish.ts";
+} from "./delivery/releases/publish.ts";
+import { setupPath } from "./identity/auth/setup.ts";
+import { bootstrapRootAccount, recoverRootAccount } from "./identity/authority/writers.ts";
 import { transferRoot } from "./system/root-transfer.ts";
 
 // Operator verbs, run against the database the server uses. Exit 1 on any refusal; the reason

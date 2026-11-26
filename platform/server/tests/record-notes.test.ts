@@ -5,15 +5,15 @@ import { createSeededRng } from "@lucent/core/rng";
 import { ProductId } from "@lucent/core/scalars";
 import { webContract } from "@lucent/rpc/web";
 import { z } from "zod";
-import { type Db, execute, sql } from "../src/db/pool.ts";
+import { type Db, execute, sql } from "../src/base/db/pool.ts";
 import {
     addNote,
     closeIssue,
     deleteNote,
     listStaffNotes,
     updateNote,
-} from "../src/record/notes.ts";
-import { listPublicChangelog, readPublicStatus } from "../src/record/status.ts";
+} from "../src/members/record/notes.ts";
+import { listPublicChangelog, readPublicStatus } from "../src/members/record/status.ts";
 import { seedRootOnce } from "./auth-fixtures.ts";
 import { catalog, scalar, seedRole, seedStaff, steppedUp } from "./authority-fixtures.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";

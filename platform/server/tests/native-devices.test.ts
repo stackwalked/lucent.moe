@@ -4,15 +4,15 @@ import { createSeededRng } from "@lucent/core/rng";
 import { newOperationId, toHex } from "@lucent/core/scalars";
 import { parseEnrollmentStatus, toEnrollmentRequestBytes } from "@lucent/wire/enrollment";
 import { z } from "zod";
-import { hashToken } from "../src/auth/tokens.ts";
-import { matchCodeOf } from "../src/core/ids.ts";
-import { execute, sql } from "../src/db/pool.ts";
+import { matchCodeOf } from "../src/base/core/ids.ts";
+import { execute, sql } from "../src/base/db/pool.ts";
+import { hashToken } from "../src/identity/auth/tokens.ts";
 import {
     approveEnrollment,
     denyEnrollment,
     listDevices,
     listPendingEnrollments,
-} from "../src/devices/devices.ts";
+} from "../src/identity/devices/devices.ts";
 import { scalar } from "./authority-fixtures.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 import {

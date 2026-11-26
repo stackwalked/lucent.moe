@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import { err, ok } from "@lucent/core/result";
 import { EpochMs, ProductId } from "@lucent/core/scalars";
-import { decideSetAvatar } from "../src/community/avatars.rules.ts";
-import type { Restriction } from "../src/community/standing.rules.ts";
+import { decideSetAvatar } from "../src/members/community/avatars.rules.ts";
+import type { Restriction } from "../src/members/community/standing.rules.ts";
 
 const now = EpochMs.parse(1_800_000_000_000);
 const later = EpochMs.parse(1_800_000_600_000);

@@ -5,9 +5,16 @@ import { err, ok, type Result } from "@lucent/core/result";
 import { EpochMs, ServiceEpoch } from "@lucent/core/scalars";
 import type { Caller } from "@lucent/policy/policy";
 import { z } from "zod";
-import { type Forbidden, readAsStaff } from "../authority/staff.ts";
-import { loadMigrations } from "../db/migrate.ts";
-import { type Db, type DbFailure, type Queryable, queryAll, queryOne, sql } from "../db/pool.ts";
+import { loadMigrations } from "../base/db/migrate.ts";
+import {
+    type Db,
+    type DbFailure,
+    type Queryable,
+    queryAll,
+    queryOne,
+    sql,
+} from "../base/db/pool.ts";
+import { type Forbidden, readAsStaff } from "../identity/authority/staff.ts";
 import { type JobState, readJobStates } from "./jobs.ts";
 
 // What the server already knows about its own health, for staff: nothing here is collected for

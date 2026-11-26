@@ -1,10 +1,10 @@
 import { systemClock } from "@lucent/core/clock";
 import { invariant } from "@lucent/core/contain";
+import { createJsonlLogger, writeToStdout } from "../src/base/core/log.ts";
+import { migrateDatabase } from "../src/base/db/migrate.ts";
+import { openPool } from "../src/base/db/pool.ts";
 import { startServer } from "../src/boot.ts";
 import { processEnvironment, readServerConfig } from "../src/config.ts";
-import { createJsonlLogger, writeToStdout } from "../src/core/log.ts";
-import { migrateDatabase } from "../src/db/migrate.ts";
-import { openPool } from "../src/db/pool.ts";
 import { openDevCluster } from "./postgres.ts";
 
 // The server against the dev cluster, migrated on start. Config comes from the environment as in

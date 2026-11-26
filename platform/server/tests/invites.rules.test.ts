@@ -10,7 +10,7 @@ import {
     inviteStateAt,
     MAX_PROBES,
     spentOf,
-} from "../src/admission/invites.rules.ts";
+} from "../src/identity/admission/invites.rules.ts";
 
 const now = EpochMs.parse(10_000_000_000);
 const at = (offset: number) => EpochMs.parse(now + offset);

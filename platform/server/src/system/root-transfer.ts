@@ -2,11 +2,11 @@ import { invariant } from "@lucent/core/contain";
 import { ok, type Result } from "@lucent/core/result";
 import { AccountId } from "@lucent/core/scalars";
 import { z } from "zod";
-import { revokeAccess } from "../auth/revoke-access.ts";
-import { parseUsername, type UsernameInvalid } from "../authority/usernames.ts";
-import { appendAudit } from "../db/audit.ts";
-import { type Db, type DbFailure, execute, queryAll, sql } from "../db/pool.ts";
-import { withTx } from "../db/tx.ts";
+import { appendAudit } from "../base/db/audit.ts";
+import { type Db, type DbFailure, execute, queryAll, sql } from "../base/db/pool.ts";
+import { withTx } from "../base/db/tx.ts";
+import { revokeAccess } from "../identity/auth/revoke-access.ts";
+import { parseUsername, type UsernameInvalid } from "../identity/authority/usernames.ts";
 import {
     decideRootTransfer,
     type RootTransferPlan,

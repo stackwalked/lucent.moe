@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { loggablePath } from "../src/core/log.ts";
+import { loggablePath } from "../src/base/core/log.ts";
 
 test("an allowlisted route is logged as is", () => {
     expect(loggablePath("/internal/web/rpc")).toBe("/internal/web/rpc");

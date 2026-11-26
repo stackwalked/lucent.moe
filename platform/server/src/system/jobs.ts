@@ -9,8 +9,8 @@ import {
     queryAll,
     sql,
     toTimestamptz,
-} from "../db/pool.ts";
-import type { JobRun, RecordJobRun } from "../jobs/runner.ts";
+} from "../base/db/pool.ts";
+import type { JobRun, RecordJobRun } from "../base/jobs/runner.ts";
 
 // The runner's memory of each job (migrations/0023_job_run.sql), kept across restarts and shared by
 // every instance: staff read whichever instance ran it last. A run older than the one recorded

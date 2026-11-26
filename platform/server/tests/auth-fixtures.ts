@@ -9,20 +9,20 @@ import {
 } from "@lucent/core/scalars";
 import { RegistrationResponse } from "@lucent/rpc/webauthn";
 import { createTestAuthenticator, type TestAuthenticator } from "@lucent/testing/authenticator";
+import type { Db } from "../src/base/db/pool.ts";
+import { withTx } from "../src/base/db/tx.ts";
 import {
     beginPasskeyRegistration,
     beginTotpEnrollment,
     confirmTotpEnrollment,
     finishPasskeyRegistration,
     setPassword,
-} from "../src/auth/credentials.ts";
-import type { AuthDeps } from "../src/auth/deps.ts";
-import { mintSession } from "../src/auth/sessions.ts";
-import { chooseUsername, redeemSetupLink } from "../src/auth/setup.ts";
-import { totpCode, totpStepAt } from "../src/auth/totp.ts";
-import { createAccount } from "../src/authority/writers.ts";
-import type { Db } from "../src/db/pool.ts";
-import { withTx } from "../src/db/tx.ts";
+} from "../src/identity/auth/credentials.ts";
+import type { AuthDeps } from "../src/identity/auth/deps.ts";
+import { mintSession } from "../src/identity/auth/sessions.ts";
+import { chooseUsername, redeemSetupLink } from "../src/identity/auth/setup.ts";
+import { totpCode, totpStepAt } from "../src/identity/auth/totp.ts";
+import { createAccount } from "../src/identity/authority/writers.ts";
 import { dbNow, seedRoot, steppedUp } from "./authority-fixtures.ts";
 
 export const MEMBER_PASSWORD = "correct horse battery staple";

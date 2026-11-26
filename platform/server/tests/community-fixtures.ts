@@ -2,10 +2,10 @@ import { invariant } from "@lucent/core/contain";
 import type { SeededRng } from "@lucent/core/rng";
 import { type AccountId, type BearerToken, newEntitlementId, RoleId } from "@lucent/core/scalars";
 import type { Caller } from "@lucent/policy/policy";
-import { mintSession } from "../src/auth/sessions.ts";
-import type { Logger } from "../src/core/log.ts";
-import { type Db, execute, sql } from "../src/db/pool.ts";
-import { withTx } from "../src/db/tx.ts";
+import type { Logger } from "../src/base/core/log.ts";
+import { type Db, execute, sql } from "../src/base/db/pool.ts";
+import { withTx } from "../src/base/db/tx.ts";
+import { mintSession } from "../src/identity/auth/sessions.ts";
 import { grantRole, seedAccount, seedRole, steppedUp } from "./authority-fixtures.ts";
 
 export type Member = { readonly id: AccountId; readonly token: BearerToken };

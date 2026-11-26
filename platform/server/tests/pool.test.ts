@@ -12,7 +12,7 @@ import {
     sql,
     sqlIdent,
     toTimestamptz,
-} from "../src/db/pool.ts";
+} from "../src/base/db/pool.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 
 test("an interpolated value is bound as a parameter, never spliced into the text", () => {

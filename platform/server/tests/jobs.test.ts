@@ -3,14 +3,14 @@ import type { Clock } from "@lucent/core/clock";
 import { raiseInvariant } from "@lucent/core/contain";
 import { err, ok } from "@lucent/core/result";
 import { EpochMs } from "@lucent/core/scalars";
-import type { Logger } from "../src/core/log.ts";
+import type { Logger } from "../src/base/core/log.ts";
 import {
     type Every,
     type Job,
     type JobRun,
     type RecordJobRun,
     startJobs,
-} from "../src/jobs/runner.ts";
+} from "../src/base/jobs/runner.ts";
 
 // A timer the test fires by hand.
 function manualTimer(): Every & { readonly fire: () => void } {

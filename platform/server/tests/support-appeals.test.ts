@@ -4,17 +4,17 @@ import { err, ok } from "@lucent/core/result";
 import { createSeededRng } from "@lucent/core/rng";
 import { newOperationId } from "@lucent/core/scalars";
 import { z } from "zod";
-import { signInWithPassword, signInWithTotp } from "../src/auth/sign-in.ts";
-import { reinstateAccount, suspendAccount } from "../src/authority/writers.ts";
-import { sql } from "../src/db/pool.ts";
-import { readAppeal, writeAppeal } from "../src/support/appeals.ts";
-import { listMemberResources } from "../src/support/resources.ts";
+import { sql } from "../src/base/db/pool.ts";
+import { signInWithPassword, signInWithTotp } from "../src/identity/auth/sign-in.ts";
+import { reinstateAccount, suspendAccount } from "../src/identity/authority/writers.ts";
+import { readAppeal, writeAppeal } from "../src/members/support/appeals.ts";
+import { listMemberResources } from "../src/members/support/resources.ts";
 import {
     listMemberTickets,
     listStaffTickets,
     readStaffTicket,
     replyToTicket,
-} from "../src/support/tickets.ts";
+} from "../src/members/support/tickets.ts";
 import { codeAt, MEMBER_PASSWORD, newMember, seedRootOnce } from "./auth-fixtures.ts";
 import { catalog, scalar, steppedUp } from "./authority-fixtures.ts";
 import { createTestAuthDeps } from "./harness/auth.ts";

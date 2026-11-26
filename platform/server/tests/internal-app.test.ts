@@ -2,8 +2,8 @@ import { expect, test } from "bun:test";
 import { invariant } from "@lucent/core/contain";
 import { err } from "@lucent/core/result";
 import { createSeededRng } from "@lucent/core/rng";
-import { claimServiceEpoch, openEpochGuard } from "../src/db/epoch-guard.ts";
-import { createInternalWebApp } from "../src/listeners/internal/app.ts";
+import { claimServiceEpoch, openEpochGuard } from "../src/base/db/epoch-guard.ts";
+import { createInternalWebApp } from "../src/edge/listeners/internal/app.ts";
 import { createTestAuthDeps } from "./harness/auth.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 

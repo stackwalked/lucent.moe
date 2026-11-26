@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { EpochMs } from "@lucent/core/scalars";
-import { CREDENTIAL_FRESHNESS_MS } from "../src/auth/sessions.ts";
+import { CREDENTIAL_FRESHNESS_MS } from "../src/identity/auth/sessions.ts";
 import {
     DELETION_EVENTS,
     DELETION_GRACE_MS,
@@ -8,7 +8,7 @@ import {
     type DeletionFacts,
     type DeletionState,
     decideDeletion,
-} from "../src/deletion/deletion.rules.ts";
+} from "../src/identity/deletion/deletion.rules.ts";
 
 const now = EpochMs.parse(100_000_000_000);
 const due = EpochMs.parse(now - 1);

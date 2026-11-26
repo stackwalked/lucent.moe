@@ -9,10 +9,10 @@ import { TEST_RELYING_PARTY } from "@lucent/testing/authenticator";
 import { WORKSPACE_ROOT } from "@lucent/testing/postgres";
 import { parseEnrollmentStatus, toEnrollmentRequestBytes } from "@lucent/wire/enrollment";
 import { z } from "zod";
+import { matchCodeOf } from "../src/base/core/ids.ts";
+import { openPool } from "../src/base/db/pool.ts";
 import { startServer } from "../src/boot.ts";
-import { matchCodeOf } from "../src/core/ids.ts";
-import { openPool } from "../src/db/pool.ts";
-import { createLeaseSigner } from "../src/runtime/lease-key.ts";
+import { createLeaseSigner } from "../src/delivery/runtime/lease-key.ts";
 import { catalog } from "./authority-fixtures.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 import {

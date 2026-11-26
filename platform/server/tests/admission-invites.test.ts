@@ -4,6 +4,8 @@ import { err, ok, type Result } from "@lucent/core/result";
 import { createSeededRng, type SeededRng } from "@lucent/core/rng";
 import { AccountId, BearerToken, newOperationId } from "@lucent/core/scalars";
 import { z } from "zod";
+import { type Db, execute, queryAll, sql } from "../src/base/db/pool.ts";
+import { withTx } from "../src/base/db/tx.ts";
 import {
     createInvite,
     invitePath,
@@ -13,12 +15,10 @@ import {
     redeemInvite,
     revokeInvite,
     setInviteAllowance,
-} from "../src/admission/invites.ts";
-import type { AuthDeps } from "../src/auth/deps.ts";
-import { redeemSetupLink } from "../src/auth/setup.ts";
-import { reinstateAccount, suspendAccount } from "../src/authority/writers.ts";
-import { type Db, execute, queryAll, sql } from "../src/db/pool.ts";
-import { withTx } from "../src/db/tx.ts";
+} from "../src/identity/admission/invites.ts";
+import type { AuthDeps } from "../src/identity/auth/deps.ts";
+import { redeemSetupLink } from "../src/identity/auth/setup.ts";
+import { reinstateAccount, suspendAccount } from "../src/identity/authority/writers.ts";
 import { memberSession, seedRootOnce } from "./auth-fixtures.ts";
 import { scalar, seedAccount, steppedUp, waitForLockWaiters } from "./authority-fixtures.ts";
 import { createTestAuthDeps } from "./harness/auth.ts";

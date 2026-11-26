@@ -4,17 +4,21 @@ import { err, ok } from "@lucent/core/result";
 import { createSeededRng, type SeededRng } from "@lucent/core/rng";
 import { type AccountId, EpochMs } from "@lucent/core/scalars";
 import { z } from "zod";
-import type { AuthDeps } from "../src/auth/deps.ts";
-import { type Db, execute, queryAll, sql } from "../src/db/pool.ts";
-import { withTx } from "../src/db/tx.ts";
-import { decideDmSettlement, decideDmStaleCutoff } from "../src/discord/dms.rules.ts";
-import { readDueDms, settleDm } from "../src/discord/dms.ts";
-import { redeemLinkCode, removeDiscordLinkByUser, startDiscordLink } from "../src/discord/links.ts";
-import { openTicketFromDiscord } from "../src/discord/member.ts";
-import { recordNotification } from "../src/notify/inbox.ts";
-import { setPreference } from "../src/notify/preferences.ts";
-import { UNCLOSED_TICKETS_PER_ACCOUNT } from "../src/support/tickets.rules.ts";
-import { listMemberTickets, openMemberTicket } from "../src/support/tickets.ts";
+import { type Db, execute, queryAll, sql } from "../src/base/db/pool.ts";
+import { withTx } from "../src/base/db/tx.ts";
+import { decideDmSettlement, decideDmStaleCutoff } from "../src/edge/discord/dms.rules.ts";
+import { readDueDms, settleDm } from "../src/edge/discord/dms.ts";
+import {
+    redeemLinkCode,
+    removeDiscordLinkByUser,
+    startDiscordLink,
+} from "../src/edge/discord/links.ts";
+import { openTicketFromDiscord } from "../src/edge/discord/member.ts";
+import type { AuthDeps } from "../src/identity/auth/deps.ts";
+import { recordNotification } from "../src/members/notify/inbox.ts";
+import { setPreference } from "../src/members/notify/preferences.ts";
+import { UNCLOSED_TICKETS_PER_ACCOUNT } from "../src/members/support/tickets.rules.ts";
+import { listMemberTickets, openMemberTicket } from "../src/members/support/tickets.ts";
 import { memberSession } from "./auth-fixtures.ts";
 import { catalog, seedAccount } from "./authority-fixtures.ts";
 import { createTestAuthDeps } from "./harness/auth.ts";

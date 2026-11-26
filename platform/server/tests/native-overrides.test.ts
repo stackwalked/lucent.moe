@@ -17,12 +17,12 @@ import {
 } from "@lucent/wire/overrides";
 import { signingPublicKey, signWithSeed } from "@lucent/wire/session-crypto";
 import { z } from "zod";
-import { hashToken } from "../src/auth/tokens.ts";
-import { type Db, execute, queryOne, sql } from "../src/db/pool.ts";
-import { readFactDelivery } from "../src/facts/publishing.ts";
-import { webProcedures } from "../src/listeners/internal/web-rpc.ts";
-import { assembleData, readDataFormat, sealData } from "../src/runtime/data.ts";
-import { createOverrideSigner } from "../src/runtime/lease-key.ts";
+import { type Db, execute, queryOne, sql } from "../src/base/db/pool.ts";
+import { readFactDelivery } from "../src/delivery/facts/publishing.ts";
+import { assembleData, readDataFormat, sealData } from "../src/delivery/runtime/data.ts";
+import { createOverrideSigner } from "../src/delivery/runtime/lease-key.ts";
+import { webProcedures } from "../src/edge/listeners/internal/web-rpc.ts";
+import { hashToken } from "../src/identity/auth/tokens.ts";
 import { memberSession, seedRootOnce } from "./auth-fixtures.ts";
 import { catalog } from "./authority-fixtures.ts";
 import { NO_LOG } from "./community-fixtures.ts";

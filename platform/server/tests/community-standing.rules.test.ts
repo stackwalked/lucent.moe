@@ -7,7 +7,7 @@ import {
     type PostingRefusal,
     type PostingSurface,
     type Restriction,
-} from "../src/community/standing.rules.ts";
+} from "../src/members/community/standing.rules.ts";
 
 const now = EpochMs.parse(1_000_000);
 const later = EpochMs.parse(2_000_000);

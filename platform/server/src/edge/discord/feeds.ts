@@ -1,0 +1,370 @@
+import type { ProductCatalog } from "@lucent/catalog/catalog";
+import { decideProductLifecycle } from "@lucent/catalog/lifecycle.rules";
+import type { ProductDefinition } from "@lucent/catalog/product";
+import { ok, type Result } from "@lucent/core/result";
+import { ChannelId, EpochMs, ProductId } from "@lucent/core/scalars";
+import { type FeedKind, STAFF_FEEDS } from "@lucent/rpc/discord/rules";
+import { z } from "zod";
+import {
+    type Db,
+    type DbFailure,
+    execute,
+    type Queryable,
+    queryAll,
+    sql,
+    type Tx,
+    toTimestamptz,
+} from "../../base/db/pool.ts";
+import { withTx } from "../../base/db/tx.ts";
+import { readProductSupport } from "../../members/record/support.ts";
+import { listRules } from "./rules.ts";
+
+// A feed channel is anyone's to read, so it is told only what the public home shows: products
+// listed to someone holding nothing, and their first channel's releases. A resource naming a
+// product goes out only when that product is listed so.
+
+export type FeedPost = {
+    readonly ruleId: string;
+    readonly channelId: string;
+    readonly feed: FeedKind;
+    readonly subject: string;
+    readonly state: string;
+    readonly url: string;
+    // The message a queue item was posted as, to be edited in place; null for a new post.
+    readonly messageId: string | null;
+    readonly post:
+        | {
+              readonly kind: "status";
+              readonly product: string;
+              readonly state: "announced" | "live";
+              readonly supported: boolean | null;
+          }
+        | { readonly kind: "resources"; readonly title: string; readonly product: string | null }
+        | {
+              readonly kind: "releases";
+              readonly product: string;
+              readonly channel: ChannelId;
+              readonly number: string;
+              readonly promotedAt: EpochMs;
+          }
+        | {
+              readonly kind: "tickets";
+              readonly ticketKind: "help" | "appeal";
+              readonly subject: string | null;
+              readonly product: string | null;
+              readonly username: string | null;
+              readonly state: "open" | "answered" | "closed";
+          }
+        | {
+              readonly kind: "review";
+              readonly username: string | null;
+              readonly riskScore: number;
+              readonly urgencyScore: number;
+              readonly state: "open" | "decided";
+              readonly outcome: "no_action" | "actioned" | null;
+          };
+};
+
+// The latest post of each subject a queue rule has posted, joined to its item: an item not yet
+// posted goes out while it is still open; one posted goes out again, as an edit, when its state
+// has moved on.
+const QueueTicketRow = z.object({
+    id: z.string(),
+    kind: z.enum(["help", "appeal"]),
+    subject: z.string().nullable(),
+    product_id: ProductId.nullable(),
+    username: z.string().nullable(),
+    state: z.enum(["open", "answered", "closed"]),
+    message_id: z.string().nullable(),
+});
+
+const QueueReviewRow = z.object({
+    id: z.string(),
+    username: z.string().nullable(),
+    risk_score: z.number().int(),
+    urgency_score: z.number().int(),
+    state: z.enum(["open", "decided"]),
+    outcome: z.enum(["no_action", "actioned"]).nullable(),
+    message_id: z.string().nullable(),
+});
+
+// Per rule, so one channel's backlog never holds back another's.
+const POSTS_PER_READ = 20;
+
+function publicProducts(catalog: ProductCatalog): readonly ProductDefinition[] {
+    return [...catalog.values()].filter((p) => decideProductLifecycle(p.state).value.listed);
+}
+
+const CurrentRowSchema = z.object({
+    product_id: ProductId,
+    channel: ChannelId,
+    number: z.string(),
+    promoted_at: EpochMs,
+    release_id: z.instanceof(Uint8Array),
+});
+
+async function readCurrentReleases(q: Queryable) {
+    return await queryAll(
+        q,
+        CurrentRowSchema,
+        sql`select c.product_id, c.channel, c.number::text as number, c.promoted_at, s.release_id
+            from current_release c
+            join release_seal s on s.product_id = c.product_id and s.channel = c.channel
+                               and s.number = c.number`,
+    );
+}
+
+type ProductStatus = Extract<FeedPost["post"], { kind: "status" }>;
+
+async function readStatuses(
+    tx: Tx,
+    catalog: ProductCatalog,
+): Promise<Result<ReadonlyMap<ProductId, ProductStatus>, DbFailure>> {
+    const statuses = new Map<ProductId, ProductStatus>();
+    for (const product of publicProducts(catalog)) {
+        if (product.state !== "live" && product.state !== "announced") continue;
+        const supported = await readProductSupport(tx, product);
+        if (!supported.ok) return supported;
+        statuses.set(product.id, {
+            kind: "status",
+            product: product.name,
+            state: product.state,
+            supported: supported.value,
+        });
+    }
+    return ok(statuses);
+}
+
+// What the public home says of each product it lists: for /status, and the status feed.
+export async function readPublicStatuses(tx: Tx, catalog: ProductCatalog) {
+    return await readStatuses(tx, catalog);
+}
+
+const PostedRowSchema = z.object({ subject: z.string(), state: z.string() });
+
+export async function readPendingPosts(
+    db: Db,
+    params: { readonly catalog: ProductCatalog; readonly siteOrigin: string },
+): Promise<Result<{ readonly posts: readonly FeedPost[] }, DbFailure>> {
+    const { catalog, siteOrigin } = params;
+    return await withTx(db, async (tx) => {
+        const rules = await listRules(tx);
+        if (!rules.ok) return rules;
+        const current = await readCurrentReleases(tx);
+        if (!current.ok) return current;
+        const listed = new Map(publicProducts(catalog).map((p) => [p.id, p]));
+        const posts: FeedPost[] = [];
+        const staffChannels = new Set(
+            rules.value.flatMap(({ fields }) =>
+                fields.kind === "staff_channel" ? [fields.channelId] : [],
+            ),
+        );
+        for (const rule of rules.value) {
+            if (rule.fields.kind !== "feed") continue;
+            // A queue whose channel is no longer marked staff says nothing more there.
+            if (STAFF_FEEDS.has(rule.fields.feed) && !staffChannels.has(rule.fields.channelId)) {
+                continue;
+            }
+            const base = {
+                ruleId: rule.id,
+                channelId: rule.fields.channelId,
+                feed: rule.fields.feed,
+                messageId: null,
+            };
+            const since = toTimestamptz(rule.createdAt);
+            // The latest state each subject was posted in, for status; any post, for the others.
+            const posted = await queryAll(
+                tx,
+                PostedRowSchema,
+                sql`select distinct on (subject) subject, state from connector_discord_post
+                    where rule_id = ${rule.id}::uuid order by subject, posted_at desc`,
+            );
+            if (!posted.ok) return posted;
+            const said = new Map(posted.value.map((row) => [row.subject, row.state]));
+            switch (rule.fields.feed) {
+                case "status": {
+                    const statuses = await readStatuses(tx, catalog);
+                    if (!statuses.ok) return statuses;
+                    for (const [productId, status] of statuses.value) {
+                        const state = `${status.state}:${String(status.supported)}`;
+                        if (said.get(productId) === state) continue;
+                        posts.push({
+                            ...base,
+                            subject: productId,
+                            state,
+                            url: `${siteOrigin}/`,
+                            post: status,
+                        });
+                    }
+                    break;
+                }
+                case "resources": {
+                    const resources = await queryAll(
+                        tx,
+                        z.object({
+                            id: z.string(),
+                            title: z.string(),
+                            product_id: ProductId.nullable(),
+                        }),
+                        // Unlisted products are left out here, not after the limit: skipped
+                        // rows would otherwise fill every read and hold back the rest for good.
+                        sql`select r.id::text as id, r.title, r.product_id from resource r
+                            where r.published_at >= ${toTimestamptz(rule.createdAt)}::timestamptz
+                              and (r.product_id is null
+                                   or r.product_id = any(${[...listed.keys()]}::text[]))
+                              and not exists (select 1 from connector_discord_post p
+                                              where p.rule_id = ${rule.id}::uuid
+                                                and p.subject = r.id::text)
+                            order by r.published_at, r.id
+                            limit ${POSTS_PER_READ}`,
+                    );
+                    if (!resources.ok) return resources;
+                    for (const resource of resources.value) {
+                        const product =
+                            resource.product_id === null ? null : listed.get(resource.product_id);
+                        if (product === undefined) continue;
+                        posts.push({
+                            ...base,
+                            subject: resource.id,
+                            state: "published",
+                            url: `${siteOrigin}/resources`,
+                            post: {
+                                kind: "resources",
+                                title: resource.title,
+                                product: product?.name ?? null,
+                            },
+                        });
+                    }
+                    break;
+                }
+                case "tickets": {
+                    const tickets = await queryAll(
+                        tx,
+                        QueueTicketRow,
+                        sql`select t.id::text as id, t.kind, t.subject, t.product_id, a.username,
+                                   t.state, p.message_id
+                            from ticket t
+                            join account a on a.id = t.account_id
+                            left join lateral (
+                                select state, message_id from connector_discord_post
+                                where rule_id = ${rule.id}::uuid and subject = t.id::text
+                                order by posted_at desc limit 1) p on true
+                            where t.opened_at >= ${since}::timestamptz
+                              and ((p.state is null and t.state <> 'closed')
+                                   or p.state <> t.state)
+                            order by t.last_activity_at, t.id
+                            limit ${POSTS_PER_READ}`,
+                    );
+                    if (!tickets.ok) return tickets;
+                    for (const row of tickets.value) {
+                        posts.push({
+                            ...base,
+                            subject: row.id,
+                            state: row.state,
+                            url: `${siteOrigin}/admin/tickets/${row.id}`,
+                            messageId: row.message_id,
+                            post: {
+                                kind: "tickets",
+                                ticketKind: row.kind,
+                                subject: row.subject,
+                                product:
+                                    row.product_id === null
+                                        ? null
+                                        : (catalog.get(row.product_id)?.name ?? row.product_id),
+                                username: row.username,
+                                state: row.state,
+                            },
+                        });
+                    }
+                    break;
+                }
+                case "review": {
+                    const items = await queryAll(
+                        tx,
+                        QueueReviewRow,
+                        sql`select r.id::text as id, a.username, r.risk_score, r.urgency_score,
+                                   case when r.decided_at is null then 'open' else 'decided' end
+                                       as state,
+                                   r.outcome, p.message_id
+                            from review_item r
+                            join account a on a.id = r.account_id
+                            left join lateral (
+                                select state, message_id from connector_discord_post
+                                where rule_id = ${rule.id}::uuid and subject = r.id::text
+                                order by posted_at desc limit 1) p on true
+                            where r.opened_at >= ${since}::timestamptz
+                              and ((p.state is null and r.decided_at is null)
+                                   or p.state <> (case when r.decided_at is null
+                                                       then 'open' else 'decided' end))
+                            order by r.opened_at, r.id
+                            limit ${POSTS_PER_READ}`,
+                    );
+                    if (!items.ok) return items;
+                    for (const row of items.value) {
+                        posts.push({
+                            ...base,
+                            subject: row.id,
+                            state: row.state,
+                            url: `${siteOrigin}/admin/review`,
+                            messageId: row.message_id,
+                            post: {
+                                kind: "review",
+                                username: row.username,
+                                riskScore: row.risk_score,
+                                urgencyScore: row.urgency_score,
+                                state: row.state,
+                                outcome: row.outcome,
+                            },
+                        });
+                    }
+                    break;
+                }
+                case "releases": {
+                    for (const row of current.value) {
+                        const product = listed.get(row.product_id);
+                        if (product === undefined || product.channels[0] !== row.channel) continue;
+                        if (row.promoted_at < rule.createdAt) continue;
+                        const subject = `${row.product_id}:${row.channel}:${row.number}`;
+                        if (said.has(subject)) continue;
+                        posts.push({
+                            ...base,
+                            subject,
+                            state: "promoted",
+                            url: `${siteOrigin}/products/${row.product_id}`,
+                            post: {
+                                kind: "releases",
+                                product: product.name,
+                                channel: row.channel,
+                                number: row.number,
+                                promotedAt: row.promoted_at,
+                            },
+                        });
+                    }
+                    break;
+                }
+            }
+        }
+        return ok({ posts });
+    });
+}
+
+// A rule removed since the read records nothing: there is no channel left to have told.
+export async function recordPost(
+    db: Db,
+    params: {
+        readonly ruleId: string;
+        readonly subject: string;
+        readonly state: string;
+        readonly messageId: string;
+    },
+): Promise<Result<void, DbFailure>> {
+    const written = await execute(
+        db,
+        sql`insert into connector_discord_post (rule_id, subject, state, message_id, posted_at)
+            select id, ${params.subject}, ${params.state}, ${params.messageId}, now()
+            from connector_discord_rule where id = ${params.ruleId}::uuid and kind = 'feed'
+            on conflict (rule_id, subject, state)
+            do update set message_id = excluded.message_id, posted_at = excluded.posted_at`,
+    );
+    return written.ok ? ok(undefined) : written;
+}

@@ -4,7 +4,7 @@ import { createSeededRng } from "@lucent/core/rng";
 import { newOperationId, newSessionId } from "@lucent/core/scalars";
 import { CONTAINER_CHUNK_SIZE } from "@lucent/wire/container-stream";
 import { parseStartReply } from "@lucent/wire/start";
-import { execute, sql } from "../src/db/pool.ts";
+import { execute, sql } from "../src/base/db/pool.ts";
 import { catalog, product } from "./authority-fixtures.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 import {

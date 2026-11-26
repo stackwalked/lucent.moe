@@ -8,8 +8,8 @@ import {
 import { invariant } from "@lucent/core/contain";
 import { createSeededRng } from "@lucent/core/rng";
 import { z } from "zod";
-import { queryAll, sql } from "../src/db/pool.ts";
-import { publishFactSet } from "../src/facts/publishing.ts";
+import { queryAll, sql } from "../src/base/db/pool.ts";
+import { publishFactSet } from "../src/delivery/facts/publishing.ts";
 import {
     CAPABILITIES,
     coreRelease,

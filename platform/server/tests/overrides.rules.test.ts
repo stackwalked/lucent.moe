@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import { EpochMs } from "@lucent/core/scalars";
-import { decideOverrideChange } from "../src/facts/overrides.rules.ts";
-import { decideUpdateDayLatency } from "../src/facts/updates.rules.ts";
-import { decideReviewOutcome } from "../src/risk/review.rules.ts";
+import { decideOverrideChange } from "../src/delivery/facts/overrides.rules.ts";
+import { decideUpdateDayLatency } from "../src/delivery/facts/updates.rules.ts";
+import { decideReviewOutcome } from "../src/delivery/risk/review.rules.ts";
 
 const known = { features: [0x11n, 0x22n], capabilities: [0x33n] };
 const current = [{ kind: "feature" as const, key: 0x22n }];

@@ -3,9 +3,9 @@ import { ok } from "@lucent/core/result";
 import { createSeededRng } from "@lucent/core/rng";
 import { newOperationId, RoleId } from "@lucent/core/scalars";
 import { z } from "zod";
-import { suspendAccount, upsertRole } from "../src/authority/writers.ts";
-import { execute, sql } from "../src/db/pool.ts";
-import { withTx } from "../src/db/tx.ts";
+import { execute, sql } from "../src/base/db/pool.ts";
+import { withTx } from "../src/base/db/tx.ts";
+import { suspendAccount, upsertRole } from "../src/identity/authority/writers.ts";
 import {
     catalog,
     scalar,

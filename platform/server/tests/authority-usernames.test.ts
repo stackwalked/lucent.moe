@@ -2,9 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { ok } from "@lucent/core/result";
 import { createSeededRng } from "@lucent/core/rng";
 import { z } from "zod";
-import { parseUsername, usernameSkeleton } from "../src/authority/usernames.ts";
-import { execute, queryOne, sql } from "../src/db/pool.ts";
-import { withTx } from "../src/db/tx.ts";
+import { execute, queryOne, sql } from "../src/base/db/pool.ts";
+import { withTx } from "../src/base/db/tx.ts";
+import { parseUsername, usernameSkeleton } from "../src/identity/authority/usernames.ts";
 import { scalar, seedRoot } from "./authority-fixtures.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 

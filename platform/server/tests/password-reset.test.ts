@@ -8,24 +8,24 @@ import { mountInternalRpc } from "@lucent/rpc/mount";
 import { webContract } from "@lucent/rpc/web";
 import { AuthenticationResponse } from "@lucent/rpc/webauthn";
 import { z } from "zod";
-import { createMailTransport } from "../src/adapters/mail/mail.ts";
-import { setPassword } from "../src/auth/credentials.ts";
-import type { AuthDeps } from "../src/auth/deps.ts";
-import { redeemPasswordReset, requestPasswordReset } from "../src/auth/password-reset.ts";
-import { issueSetupToken, redeemSetupLink } from "../src/auth/setup.ts";
+import { createMailTransport } from "../src/base/adapters/mail/mail.ts";
+import { type Db, execute, queryOne, sql } from "../src/base/db/pool.ts";
+import { withTx } from "../src/base/db/tx.ts";
+import { webProcedures } from "../src/edge/listeners/internal/web-rpc.ts";
+import { setPassword } from "../src/identity/auth/credentials.ts";
+import type { AuthDeps } from "../src/identity/auth/deps.ts";
+import { redeemPasswordReset, requestPasswordReset } from "../src/identity/auth/password-reset.ts";
+import { issueSetupToken, redeemSetupLink } from "../src/identity/auth/setup.ts";
 import {
     beginPasskeySignIn,
     finishPasskeySignIn,
     signInWithPassword,
     signInWithTotp,
-} from "../src/auth/sign-in.ts";
-import { hashToken } from "../src/auth/tokens.ts";
-import { resolveViewer } from "../src/auth/viewer.ts";
-import { recoverAccount } from "../src/authority/writers.ts";
-import { type Db, execute, queryOne, sql } from "../src/db/pool.ts";
-import { withTx } from "../src/db/tx.ts";
-import { webProcedures } from "../src/listeners/internal/web-rpc.ts";
-import { mailDeliveryJob } from "../src/notify/mail.ts";
+} from "../src/identity/auth/sign-in.ts";
+import { hashToken } from "../src/identity/auth/tokens.ts";
+import { resolveViewer } from "../src/identity/auth/viewer.ts";
+import { recoverAccount } from "../src/identity/authority/writers.ts";
+import { mailDeliveryJob } from "../src/members/notify/mail.ts";
 import { codeAt, MEMBER_PASSWORD, newMember, seedRootOnce } from "./auth-fixtures.ts";
 import { catalog, grantRole, seedRole, steppedUp } from "./authority-fixtures.ts";
 import { NO_LOG } from "./community-fixtures.ts";

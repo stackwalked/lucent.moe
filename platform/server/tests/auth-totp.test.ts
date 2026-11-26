@@ -2,14 +2,14 @@ import { expect, test } from "bun:test";
 import { err, ok } from "@lucent/core/result";
 import { createSeededRng } from "@lucent/core/rng";
 import { AccountId, EpochMs } from "@lucent/core/scalars";
-import { parseNewPassword } from "../src/auth/password.ts";
+import { parseNewPassword } from "../src/identity/auth/password.ts";
 import {
     createTotpKeyring,
     openTotpSecret,
     sealTotpSecret,
     totpCode,
     totpStepAt,
-} from "../src/auth/totp.ts";
+} from "../src/identity/auth/totp.ts";
 import { TEST_TOTP_KEYS } from "./harness/auth.ts";
 
 const ALICE = AccountId.parse(`acc_${"a".repeat(22)}`);

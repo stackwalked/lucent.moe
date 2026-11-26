@@ -4,7 +4,8 @@ import { err, ok, type Result } from "@lucent/core/result";
 import { createSeededRng } from "@lucent/core/rng";
 import { ProductId } from "@lucent/core/scalars";
 import { z } from "zod";
-import { hashToken } from "../src/auth/tokens.ts";
+import { type Db, execute, queryOne, sql } from "../src/base/db/pool.ts";
+import { withTx } from "../src/base/db/tx.ts";
 import {
     changeItem,
     createItem,
@@ -12,10 +13,9 @@ import {
     listHistory,
     listItems,
     readItem,
-} from "../src/cloud/items.ts";
-import { createShare, importShare, listShares, revokeShare } from "../src/cloud/shares.ts";
-import { type Db, execute, queryOne, sql } from "../src/db/pool.ts";
-import { withTx } from "../src/db/tx.ts";
+} from "../src/delivery/cloud/items.ts";
+import { createShare, importShare, listShares, revokeShare } from "../src/delivery/cloud/shares.ts";
+import { hashToken } from "../src/identity/auth/tokens.ts";
 import { seedAccount } from "./authority-fixtures.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 

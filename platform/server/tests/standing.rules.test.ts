@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { AccountId } from "@lucent/core/scalars";
-import { decideStanding } from "../src/authority/standing.rules.ts";
+import { decideStanding } from "../src/identity/authority/standing.rules.ts";
 
 test.each([
     ["active", false, [], true, 0, []],

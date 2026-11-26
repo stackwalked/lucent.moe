@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import { err, ok } from "@lucent/core/result";
-import { CLOUD_LIMITS, decideAppend } from "../src/cloud/items.rules.ts";
-import { type CloudOperation, decideCloudAccess } from "../src/cloud/member.rules.ts";
-import { decideShare, MAX_SHARES_PER_ITEM } from "../src/cloud/shares.rules.ts";
+import { CLOUD_LIMITS, decideAppend } from "../src/delivery/cloud/items.rules.ts";
+import { type CloudOperation, decideCloudAccess } from "../src/delivery/cloud/member.rules.ts";
+import { decideShare, MAX_SHARES_PER_ITEM } from "../src/delivery/cloud/shares.rules.ts";
 
 const limits = { maxItems: 2, maxStoredBytes: 8, maxVersionBytes: 4, maxVersionsPerItem: 3 };
 const open = { droppable: null } as const;

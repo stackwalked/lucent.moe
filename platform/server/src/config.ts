@@ -1,9 +1,9 @@
 import { err, ok, type Result } from "@lucent/core/result";
 import { isStrongPeerKey, MIN_PEER_KEY_LENGTH } from "@lucent/rpc/contract";
 import { z } from "zod";
-import type { MailConfig } from "./adapters/mail/mail.ts";
-import { PWNED_PASSWORDS_URL } from "./auth/breach.ts";
-import type { RelyingParty } from "./auth/passkeys.ts";
+import type { MailConfig } from "./base/adapters/mail/mail.ts";
+import { PWNED_PASSWORDS_URL } from "./identity/auth/breach.ts";
+import type { RelyingParty } from "./identity/auth/passkeys.ts";
 
 // Only loopback or a Unix socket: the internal listener carries web's and connectors' calls, and
 // a peer key is the only thing standing between it and anyone who can reach it.

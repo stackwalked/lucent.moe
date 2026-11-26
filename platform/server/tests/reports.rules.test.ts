@@ -3,7 +3,7 @@ import {
     decideReportsAnswer,
     MAX_REPORTS_PER_ACCOUNT_DAY,
     MAX_REPORTS_PER_SESSION,
-} from "../src/runtime/reports.rules.ts";
+} from "../src/delivery/runtime/reports.rules.ts";
 
 const route = { inSequence: 4n, outSequence: 3n, stored: 10, accountStored: 10, batch: 5 };
 const SESSION = MAX_REPORTS_PER_SESSION;

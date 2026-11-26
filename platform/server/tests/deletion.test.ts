@@ -4,17 +4,28 @@ import { err, ok } from "@lucent/core/result";
 import { createSeededRng, type SeededRng } from "@lucent/core/rng";
 import type { AccountId } from "@lucent/core/scalars";
 import { z } from "zod";
-import type { AuthDeps } from "../src/auth/deps.ts";
-import { mintSession, readSession } from "../src/auth/sessions.ts";
-import { chooseUsername, redeemSetupLink } from "../src/auth/setup.ts";
-import { signInWithPassword } from "../src/auth/sign-in.ts";
-import { readStanding } from "../src/authority/standing.ts";
-import { type Db, execute, queryAll, type SqlFragment, sql, sqlIdent } from "../src/db/pool.ts";
-import { withTx } from "../src/db/tx.ts";
-import { DELETION_GRACE_MS } from "../src/deletion/deletion.rules.ts";
-import { cancelDeletion, readDeletion, requestDeletion } from "../src/deletion/deletion.ts";
-import { ACCOUNT_REFERENCES } from "../src/deletion/references.ts";
-import { completeDeletion } from "../src/deletion/strip.ts";
+import {
+    type Db,
+    execute,
+    queryAll,
+    type SqlFragment,
+    sql,
+    sqlIdent,
+} from "../src/base/db/pool.ts";
+import { withTx } from "../src/base/db/tx.ts";
+import type { AuthDeps } from "../src/identity/auth/deps.ts";
+import { mintSession, readSession } from "../src/identity/auth/sessions.ts";
+import { chooseUsername, redeemSetupLink } from "../src/identity/auth/setup.ts";
+import { signInWithPassword } from "../src/identity/auth/sign-in.ts";
+import { readStanding } from "../src/identity/authority/standing.ts";
+import { DELETION_GRACE_MS } from "../src/identity/deletion/deletion.rules.ts";
+import {
+    cancelDeletion,
+    readDeletion,
+    requestDeletion,
+} from "../src/identity/deletion/deletion.ts";
+import { ACCOUNT_REFERENCES } from "../src/identity/deletion/references.ts";
+import { completeDeletion } from "../src/identity/deletion/strip.ts";
 import { MEMBER_PASSWORD, newMember, newSetupLink, seedRootOnce } from "./auth-fixtures.ts";
 import { dbNow, grantRole, scalar, seedRole } from "./authority-fixtures.ts";
 import { createTestAuthDeps } from "./harness/auth.ts";

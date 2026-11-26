@@ -4,18 +4,18 @@ import { err } from "@lucent/core/result";
 import { createSeededRng } from "@lucent/core/rng";
 import { AuthenticationResponse } from "@lucent/rpc/webauthn";
 import { TEST_RELYING_PARTY } from "@lucent/testing/authenticator";
-import { createAuthDeps } from "../src/auth/deps.ts";
-import { createArgon2idHasher } from "../src/auth/password.ts";
+import { execute, sql } from "../src/base/db/pool.ts";
+import { createAuthDeps } from "../src/identity/auth/deps.ts";
+import { createArgon2idHasher } from "../src/identity/auth/password.ts";
 import {
     beginPasskeySignIn,
     finishPasskeySignIn,
     signInWithPassword,
     signInWithTotp,
-} from "../src/auth/sign-in.ts";
-import { createTotpKeyring } from "../src/auth/totp.ts";
-import { resolveCaller, resolveViewer } from "../src/auth/viewer.ts";
-import { execute, sql } from "../src/db/pool.ts";
-import { createEmailHasher } from "../src/deletion/email-hash.ts";
+} from "../src/identity/auth/sign-in.ts";
+import { createTotpKeyring } from "../src/identity/auth/totp.ts";
+import { resolveCaller, resolveViewer } from "../src/identity/auth/viewer.ts";
+import { createEmailHasher } from "../src/identity/deletion/email-hash.ts";
 import { codeAt, MEMBER_PASSWORD, newMember } from "./auth-fixtures.ts";
 import { createTestAuthDeps, NEVER_BREACHED, TEST_TOTP_KEYS } from "./harness/auth.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
