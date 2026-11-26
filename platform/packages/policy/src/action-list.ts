@@ -47,7 +47,9 @@ export const ACTION_POLICY: Readonly<Record<Action, ActionPolicy>> = {
     "accounts:rename": { stepUp: "recent", audit: true },
     "accounts:recover": { stepUp: "fresh", audit: true },
     "roles:manage": { stepUp: "fresh", audit: true },
-    "roles:assign": { stepUp: "recent", audit: true },
+    // Fresh, like roles:manage: with accounts:create it would otherwise hand a role carrying a
+    // fresh action to a new account the caller controls, on a week-old session.
+    "roles:assign": { stepUp: "fresh", audit: true },
     "devices:manage": { stepUp: "recent", audit: true },
     "devices:override-window": { stepUp: "recent", audit: true },
     "entitlements:issue": { stepUp: "recent", audit: true },

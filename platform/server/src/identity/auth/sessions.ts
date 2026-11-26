@@ -24,8 +24,9 @@ import { withTx } from "../../base/db/tx.ts";
 import { hashToken, issueToken } from "./tokens.ts";
 
 // Fixed lifetimes; a session never slides. A member signs in again after 7 days whatever they did
-// meanwhile; staff actions still need a passkey step-up within 30 minutes, so a stolen cookie
-// buys a week of reading, not of acting.
+// meanwhile. Most staff actions ask for nothing more than that sign-in (the policy's `recent`
+// tier), so a stolen staff cookie acts for up to a week; only the `fresh` tier (roles and account
+// recovery) still needs a passkey step-up within 30 minutes.
 // An appeal session is what a suspended account gets after every factor passed: half an hour to
 // file or follow its appeal, and nothing else.
 const SESSION_TTL_MS = {

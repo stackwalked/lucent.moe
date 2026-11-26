@@ -21,7 +21,7 @@ const TIERS: Readonly<Record<(typeof ACTIONS)[number], StepUpTier>> = {
     "accounts:rename": "recent",
     "accounts:recover": "fresh",
     "roles:manage": "fresh",
-    "roles:assign": "recent",
+    "roles:assign": "fresh",
     "devices:manage": "recent",
     "devices:override-window": "recent",
     "entitlements:issue": "recent",
