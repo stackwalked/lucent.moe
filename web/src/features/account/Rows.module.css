@@ -1,0 +1,41 @@
+@layer features {
+    .rows {
+        display: flex;
+        flex-direction: column;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+    }
+
+    .row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--s-1) var(--s-4);
+        min-block-size: var(--row2-h);
+        padding-block: var(--s-2);
+        border-block-end: 1px solid var(--line);
+    }
+
+    .row:last-child {
+        border-block-end: 0;
+    }
+
+    .main {
+        flex: 1 1 10rem;
+        min-inline-size: 0;
+        overflow-wrap: anywhere;
+    }
+
+    .meta {
+        color: var(--ink-2);
+        font-size: var(--size-13);
+    }
+
+    .action {
+        display: flex;
+        flex: none;
+        gap: var(--s-1);
+        margin-inline-start: auto;
+    }
+}

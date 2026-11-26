@@ -3,29 +3,33 @@ import { useState } from "react";
 import type { Refused } from "../../server/outcome.ts";
 import { Button } from "../../ui/Button/Button.tsx";
 import { Field } from "../../ui/Field/Field.tsx";
-import { Page } from "../../ui/Page/Page.tsx";
+import { Section } from "../../ui/Section/Section.tsx";
 import { Stack } from "../../ui/Stack/Stack.tsx";
+import { Switch } from "../../ui/Switch/Switch.tsx";
 import { TextField } from "../../ui/TextField/TextField.tsx";
+import { AccountPage, State } from "../account/AccountPage.tsx";
 import { RefusalNote } from "../auth/RefusalNote.tsx";
 import { postingNote } from "../comments/posting.ts";
 import { TextArea } from "../comments/TextArea.tsx";
+import { PRIVACY_COPY } from "../privacy/copy.ts";
+import { saveShows } from "../privacy/server.ts";
 import { AVATAR_ACCEPT, uploadAvatar } from "./avatar.ts";
 import { BANNER_ACCEPT, uploadBanner } from "./banner.ts";
 import { PROFILE_COPY as C } from "./copy.ts";
 import { removeAvatar, removeBanner, saveBio, saveTagline } from "./server.ts";
-import { PROFILE_TITLE } from "./title.ts";
 
 const route = getRouteApi("/_member/account/profile");
 
 // The member's own profile as they write it: picture, banner, tagline and about. Plain; the
 // page others see is /members/<username>.
 export function ProfileEditPage() {
-    const outcome = route.useLoaderData();
+    const { profile: outcome, privacy } = route.useLoaderData();
     const router = useRouter();
     const [refused, setRefused] = useState<Refused | null>(null);
     const [taglineRefused, setTaglineRefused] = useState<Refused | null>(null);
     const [pictureRefused, setPictureRefused] = useState<Refused | null>(null);
     const [bannerRefused, setBannerRefused] = useState<Refused | null>(null);
+    const [showsRefused, setShowsRefused] = useState<Refused | null>(null);
     const answered = async (reply: { readonly ok: boolean }) => {
         if (reply.ok) await router.invalidate();
     };
@@ -63,26 +67,12 @@ export function ProfileEditPage() {
         setBannerRefused(reply.ok ? null : reply.refused);
         await answered(reply);
     };
-    if (!outcome.ok) {
-        return (
-            <Page title={PROFILE_TITLE} width="narrow">
-                <RefusalNote refused={outcome.refused} />
-            </Page>
-        );
-    }
+    if (!outcome.ok) return <AccountPage main={<RefusalNote refused={outcome.refused} />} />;
     const profile = outcome.value;
     const pictureNote = postingNote(pictureRefused);
     const bioNote = postingNote(refused);
-    return (
-        <Page
-            title={PROFILE_TITLE}
-            width="narrow"
-            actions={
-                <Link to="/members/$username" params={{ username: profile.username }}>
-                    {C.yourProfile}
-                </Link>
-            }
-        >
+    const main = (
+        <>
             <Stack gap={6}>
                 <form action={sendPicture} key={profile.avatar?.large ?? "none"}>
                     <Stack gap={3}>
@@ -175,7 +165,63 @@ export function ProfileEditPage() {
                         </div>
                     </Stack>
                 </form>
+                {privacy.ok ? (
+                    <Section caption={PRIVACY_COPY.shownOnProfile}>
+                        <Stack gap={2}>
+                            {(
+                                [
+                                    ["invitedBy", PRIVACY_COPY.showInvitedBy],
+                                    ["invited", PRIVACY_COPY.showInvited],
+                                    ["products", PRIVACY_COPY.showProducts],
+                                    ["lastSeen", PRIVACY_COPY.showLastSeen],
+                                    ["discord", PRIVACY_COPY.showDiscord],
+                                    ["wall", PRIVACY_COPY.showWall],
+                                ] as const
+                            ).map(([key, label]) => (
+                                <Switch
+                                    key={`${key}-${String(privacy.value.shows[key])}`}
+                                    name={key}
+                                    label={label}
+                                    defaultChecked={privacy.value.shows[key]}
+                                    onChange={async (shown) => {
+                                        const reply = await saveShows({ data: { key, shown } });
+                                        setShowsRefused(reply.ok ? null : reply.refused);
+                                        if (reply.ok) await router.invalidate();
+                                    }}
+                                />
+                            ))}
+                        </Stack>
+                        <RefusalNote refused={showsRefused} />
+                    </Section>
+                ) : null}
             </Stack>
-        </Page>
+        </>
+    );
+    return (
+        <AccountPage
+            main={main}
+            aside={
+                <State
+                    caption={C.profileCaption}
+                    items={[
+                        {
+                            label: C.visibility,
+                            value: profile.visibility === "private" ? C.private : C.members,
+                        },
+                        {
+                            label: C.view,
+                            value: (
+                                <Link
+                                    to="/members/$username"
+                                    params={{ username: profile.username }}
+                                >
+                                    {profile.username}
+                                </Link>
+                            ),
+                        },
+                    ]}
+                />
+            }
+        />
     );
 }

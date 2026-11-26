@@ -3,6 +3,7 @@ export const INVITES_COPY = {
     left: (left: number, granted: number) => `${left} of ${granted} left`,
     noAllowance: "no invites",
     vouch: "you vouch for whoever uses your invite. their suspension shows on your account.",
+    leftLabel: "left",
     create: "create invite",
     created: "new invite",
     shownOnce: "shown once; one use, 7 days",

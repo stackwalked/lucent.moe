@@ -4,11 +4,11 @@ import { useState } from "react";
 import type { Refused } from "../../server/outcome.ts";
 import { Button } from "../../ui/Button/Button.tsx";
 import { Code } from "../../ui/Code/Code.tsx";
-import { Page } from "../../ui/Page/Page.tsx";
 import { Pairs } from "../../ui/Pairs/Pairs.tsx";
 import { Section } from "../../ui/Section/Section.tsx";
 import { Stack } from "../../ui/Stack/Stack.tsx";
 import { Time } from "../../ui/Time/Time.tsx";
+import { AccountPage, State } from "../account/AccountPage.tsx";
 import { RefusalNote } from "../auth/RefusalNote.tsx";
 import { DISCORD_COPY as C, DISCORD_TITLE } from "./copy.ts";
 import { removeDiscordLink, startDiscordLink } from "./server.ts";
@@ -43,8 +43,8 @@ export function DiscordPage() {
         await router.invalidate();
     };
 
-    return (
-        <Page title={DISCORD_TITLE} width="narrow">
+    const main = (
+        <>
             <RefusalNote refused={outcome.ok ? refused : outcome.refused} />
             {outcome.ok && outcome.value.linkedAt !== null ? (
                 <Section caption={C.linked}>
@@ -89,6 +89,21 @@ export function DiscordPage() {
                     </Stack>
                 </Section>
             ) : null}
-        </Page>
+        </>
+    );
+    return (
+        <AccountPage
+            main={main}
+            aside={
+                <State
+                    caption={DISCORD_TITLE}
+                    items={[
+                        outcome.ok && outcome.value.linkedAt !== null
+                            ? { label: C.linkedAt, value: <Time at={outcome.value.linkedAt} /> }
+                            : { label: C.status, value: C.notLinked },
+                    ]}
+                />
+            }
+        />
     );
 }

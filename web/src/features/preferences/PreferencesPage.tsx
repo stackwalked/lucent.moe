@@ -3,12 +3,12 @@ import { useState } from "react";
 import type { Refused } from "../../server/outcome.ts";
 import { Button } from "../../ui/Button/Button.tsx";
 import { Check } from "../../ui/Check/Check.tsx";
-import { Page } from "../../ui/Page/Page.tsx";
 import { Section } from "../../ui/Section/Section.tsx";
 import { Stack } from "../../ui/Stack/Stack.tsx";
+import { AccountPage } from "../account/AccountPage.tsx";
 import { RefusalNote } from "../auth/RefusalNote.tsx";
 import { productName } from "../products/view.ts";
-import { PREFERENCES_COPY, PREFERENCES_TITLE } from "./copy.ts";
+import { PREFERENCES_COPY } from "./copy.ts";
 import { savePreference, saveSubscription } from "./server.ts";
 
 const route = getRouteApi("/_member/account/preferences");
@@ -43,8 +43,8 @@ export function PreferencesPage() {
         setRefused(reply.ok ? null : reply.refused);
         if (reply.ok) await router.invalidate();
     };
-    return (
-        <Page title={PREFERENCES_TITLE} width="narrow">
+    const main = (
+        <>
             <RefusalNote refused={outcome.ok ? refused : outcome.refused} />
             {outcome.ok ? (
                 <>
@@ -134,6 +134,7 @@ export function PreferencesPage() {
                     </Section>
                 </>
             ) : null}
-        </Page>
+        </>
     );
+    return <AccountPage main={main} />;
 }

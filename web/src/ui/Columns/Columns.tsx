@@ -14,7 +14,8 @@ export function Columns({
     // The main column's head row: what leads it (a title, tabs) and small verbs at its end.
     readonly head?: { readonly lead: ReactNode; readonly actions?: ReactNode };
     readonly main: ReactNode;
-    readonly aside: ReactNode;
+    // Without one the main column stands alone, at the width it has beside an aside.
+    readonly aside?: ReactNode;
 }) {
     return (
         <div className={styles.columns}>
@@ -31,7 +32,7 @@ export function Columns({
                     </div>
                 )}
             </div>
-            <div className={styles.column}>{aside}</div>
+            {aside === undefined ? null : <div className={styles.column}>{aside}</div>}
         </div>
     );
 }

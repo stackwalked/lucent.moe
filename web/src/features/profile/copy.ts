@@ -30,5 +30,9 @@ export const PROFILE_COPY = {
     taglineHint: "one line, up to 80 characters",
     banner: "banner",
     removeBanner: "remove banner",
-    yourProfile: "your profile",
+    profileCaption: "profile",
+    visibility: "visible to",
+    members: "any member",
+    private: "only you",
+    view: "view",
 } as const;

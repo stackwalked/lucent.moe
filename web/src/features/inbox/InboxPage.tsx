@@ -3,12 +3,11 @@ import { useState } from "react";
 import type { Refused } from "../../server/outcome.ts";
 import { Button } from "../../ui/Button/Button.tsx";
 import { Empty } from "../../ui/Empty/Empty.tsx";
-import { Page } from "../../ui/Page/Page.tsx";
 import { Pager } from "../../ui/Pager/Pager.tsx";
-import { Table } from "../../ui/Table/Table.tsx";
 import { Time } from "../../ui/Time/Time.tsx";
+import { AccountPage } from "../account/AccountPage.tsx";
+import { Rows } from "../account/Rows.tsx";
 import { RefusalNote } from "../auth/RefusalNote.tsx";
-import { PREFERENCES_TITLE } from "../preferences/copy.ts";
 import { INBOX_COPY, INBOX_TITLE } from "./copy.ts";
 import { markInboxRead } from "./server.ts";
 
@@ -24,68 +23,58 @@ export function InboxPage() {
         if (reply.ok) await router.invalidate();
     };
     return (
-        <Page
-            title={INBOX_TITLE}
-            actions={<Link to="/account/preferences">{PREFERENCES_TITLE}</Link>}
-        >
-            <RefusalNote refused={outcome.ok ? refused : outcome.refused} />
-            {!outcome.ok ? null : outcome.value.items.length === 0 ? (
-                <Empty>{INBOX_COPY.empty}</Empty>
-            ) : (
+        <AccountPage
+            main={
                 <>
-                    <Table
-                        caption={INBOX_TITLE}
-                        rows={outcome.value.items}
-                        rowKey={(item) => item.id}
-                        columns={[
-                            {
-                                key: "time",
-                                header: INBOX_COPY.time,
-                                cell: (item) => <Time at={item.createdAt} />,
-                            },
-                            {
-                                key: "kind",
-                                header: INBOX_COPY.notification,
-                                cell: (item) => {
-                                    switch (item.kind) {
-                                        case "security":
-                                            return INBOX_COPY.security;
-                                        case "product_status":
-                                            return INBOX_COPY.product(item.productId);
-                                        case "ticket_reply":
-                                            return (
-                                                <Link
-                                                    to="/support/$ticketId"
-                                                    params={{ ticketId: item.ticketId }}
-                                                >
-                                                    {INBOX_COPY.ticketReply}
-                                                </Link>
-                                            );
-                                    }
-                                },
-                            },
-                            {
-                                key: "status",
-                                header: INBOX_COPY.status,
-                                cell: (item) =>
-                                    item.isRead ? (
+                    <RefusalNote refused={outcome.ok ? refused : outcome.refused} />
+                    {!outcome.ok ? null : outcome.value.items.length === 0 ? (
+                        <Empty>{INBOX_COPY.empty}</Empty>
+                    ) : (
+                        <>
+                            <Rows
+                                label={INBOX_TITLE}
+                                items={outcome.value.items.map((item) => ({
+                                    key: item.id,
+                                    main: (() => {
+                                        switch (item.kind) {
+                                            case "security":
+                                                return INBOX_COPY.security;
+                                            case "product_status":
+                                                return INBOX_COPY.product(item.productId);
+                                            case "ticket_reply":
+                                                return (
+                                                    <Link
+                                                        to="/support/$ticketId"
+                                                        params={{ ticketId: item.ticketId }}
+                                                    >
+                                                        {INBOX_COPY.ticketReply}
+                                                    </Link>
+                                                );
+                                        }
+                                    })(),
+                                    meta: <Time at={item.createdAt} />,
+                                    action: item.isRead ? (
                                         INBOX_COPY.read
                                     ) : (
                                         <Button size="sm" onClick={() => void mark(item.id)}>
                                             {INBOX_COPY.mark}
                                         </Button>
                                     ),
-                            },
-                        ]}
-                    />
-                    <Pager
-                        nextCursor={outcome.value.nextCursor}
-                        onNext={(cursor) =>
-                            void router.navigate({ to: "/account/inbox", search: { cursor } })
-                        }
-                    />
+                                }))}
+                            />
+                            <Pager
+                                nextCursor={outcome.value.nextCursor}
+                                onNext={(cursor) =>
+                                    void router.navigate({
+                                        to: "/account/inbox",
+                                        search: { cursor },
+                                    })
+                                }
+                            />
+                        </>
+                    )}
                 </>
-            )}
-        </Page>
+            }
+        />
     );
 }

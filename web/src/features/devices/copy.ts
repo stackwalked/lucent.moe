@@ -1,5 +1,6 @@
 export const DEVICES_COPY = {
-    title: "devices",
+    title: "pcs",
+    nextChangeLabel: "next change",
     waiting: "waiting for you",
     waitingHint: "approve only if the loader shows the same code.",
     code: "code",

@@ -1,6 +1,7 @@
 export const PRIVACY_COPY = {
+    title: "privacy",
+    blockedLabel: "blocked",
     standing: "posting",
-    yourProfile: "your profile",
     clear: "you can post everywhere.",
     restricted: "posting restrictions on your account",
     muted: "muted: you can't comment or shout",

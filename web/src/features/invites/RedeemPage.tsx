@@ -1,8 +1,8 @@
 import { type BearerToken, isBearerToken } from "@lucent/core/brands";
 import { useEffect, useState } from "react";
 import type { Refused } from "../../server/outcome.ts";
+import { BarePage } from "../../ui/BarePage/BarePage.tsx";
 import { Button } from "../../ui/Button/Button.tsx";
-import { Page } from "../../ui/Page/Page.tsx";
 import { Stack } from "../../ui/Stack/Stack.tsx";
 import { TextField } from "../../ui/TextField/TextField.tsx";
 import { RefusalNote } from "../auth/RefusalNote.tsx";
@@ -36,7 +36,7 @@ export function RedeemPage() {
         setSent(true);
     };
     return (
-        <Page title={INVITES_COPY.redeemTitle} width="narrow">
+        <BarePage title={INVITES_COPY.redeemTitle}>
             <Stack gap={4}>
                 {sent ? (
                     <p role="status">{INVITES_COPY.sent}</p>
@@ -59,6 +59,6 @@ export function RedeemPage() {
                 )}
                 <RefusalNote refused={refused} />
             </Stack>
-        </Page>
+        </BarePage>
     );
 }

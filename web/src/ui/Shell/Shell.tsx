@@ -26,7 +26,12 @@ export function Shell({
         return (
             <div className={styles.bare}>
                 <SkipLink />
-                <div className={styles.card}>{children}</div>
+                <div className={styles.card}>
+                    <div className={styles.mark}>
+                        <Logo />
+                    </div>
+                    {children}
+                </div>
             </div>
         );
     }

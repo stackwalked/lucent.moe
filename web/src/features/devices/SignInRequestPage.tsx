@@ -1,8 +1,8 @@
 import { getRouteApi } from "@tanstack/react-router";
 import { useState } from "react";
 import type { Refused } from "../../server/outcome.ts";
+import { BarePage } from "../../ui/BarePage/BarePage.tsx";
 import { Button } from "../../ui/Button/Button.tsx";
-import { Page } from "../../ui/Page/Page.tsx";
 import { Pairs } from "../../ui/Pairs/Pairs.tsx";
 import { Stack } from "../../ui/Stack/Stack.tsx";
 import { Status } from "../../ui/Status/Status.tsx";
@@ -22,12 +22,12 @@ export function SignInRequestPage() {
 
     if (!loaded.ok) {
         return (
-            <Page title={SIGN_IN_REQUEST_COPY.title} width="narrow">
+            <BarePage title={SIGN_IN_REQUEST_COPY.title}>
                 <RefusalNote
                     refused={loaded.refused}
                     overrides={{ NOT_FOUND: SIGN_IN_REQUEST_COPY.gone }}
                 />
-            </Page>
+            </BarePage>
         );
     }
     const request = loaded.value;
@@ -46,7 +46,7 @@ export function SignInRequestPage() {
     };
 
     return (
-        <Page title={SIGN_IN_REQUEST_COPY.title} width="narrow">
+        <BarePage title={SIGN_IN_REQUEST_COPY.title}>
             <Stack gap={4}>
                 <p>{SIGN_IN_REQUEST_COPY.body}</p>
                 <Pairs
@@ -88,6 +88,6 @@ export function SignInRequestPage() {
                     </Button>
                 </Stack>
             </Stack>
-        </Page>
+        </BarePage>
     );
 }

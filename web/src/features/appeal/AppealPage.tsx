@@ -1,7 +1,7 @@
 import { getRouteApi, useRouter } from "@tanstack/react-router";
+import { BarePage } from "../../ui/BarePage/BarePage.tsx";
 import { Button } from "../../ui/Button/Button.tsx";
 import { Empty } from "../../ui/Empty/Empty.tsx";
-import { Page } from "../../ui/Page/Page.tsx";
 import { Pairs } from "../../ui/Pairs/Pairs.tsx";
 import { Section } from "../../ui/Section/Section.tsx";
 import { Stack } from "../../ui/Stack/Stack.tsx";
@@ -37,14 +37,14 @@ export function AppealPage() {
     );
     if (!outcome.ok) {
         return (
-            <Page title={APPEAL_TITLE} actions={leave}>
+            <BarePage title={APPEAL_TITLE} actions={leave}>
                 <RefusalNote refused={outcome.refused} />
-            </Page>
+            </BarePage>
         );
     }
     const { suspension, appeal, deletion } = outcome.value;
     return (
-        <Page title={APPEAL_TITLE} actions={leave} width="narrow">
+        <BarePage title={APPEAL_TITLE} actions={leave}>
             <Stack gap={6}>
                 <p>{APPEAL_COPY.suspended}</p>
                 <Pairs
@@ -80,6 +80,6 @@ export function AppealPage() {
                 <DeletionSection status={deletion} purpose="appeal" />
                 <p>{APPEAL_COPY.window}</p>
             </Stack>
-        </Page>
+        </BarePage>
     );
 }

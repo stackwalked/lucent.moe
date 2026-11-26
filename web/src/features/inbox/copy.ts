@@ -8,7 +8,4 @@ export const INBOX_COPY = {
     ticketReply: "support replied to your ticket",
     mark: "mark as read",
     read: "read",
-    notification: "notification",
-    time: "received",
-    status: "status",
 } as const;

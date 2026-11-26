@@ -1,6 +1,8 @@
 export const DISCORD_TITLE = "discord";
 export const DISCORD_COPY = {
     linked: "linked",
+    status: "status",
+    notLinked: "not linked",
     linkedAt: "linked since",
     rolesFollow: "unlinking removes your roles in the lucent discord.",
     unlink: "unlink",

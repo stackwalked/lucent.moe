@@ -36,7 +36,7 @@ function AccountMenu({
         {
             label: SHELL_COPY.account,
             icon: "user",
-            onSelect: () => void router.navigate({ to: "/account" }),
+            onSelect: () => void router.navigate({ to: "/account/profile" }),
         },
     ];
     if (isStaff(viewer)) {

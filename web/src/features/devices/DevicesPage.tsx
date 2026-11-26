@@ -6,7 +6,6 @@ import type { Outcome, Refused } from "../../server/outcome.ts";
 import { Button } from "../../ui/Button/Button.tsx";
 import { Dialog } from "../../ui/Dialog/Dialog.tsx";
 import { Empty } from "../../ui/Empty/Empty.tsx";
-import { Page } from "../../ui/Page/Page.tsx";
 import { Section } from "../../ui/Section/Section.tsx";
 import { Stack } from "../../ui/Stack/Stack.tsx";
 import { Status } from "../../ui/Status/Status.tsx";
@@ -14,6 +13,7 @@ import { Table } from "../../ui/Table/Table.tsx";
 import { TextField } from "../../ui/TextField/TextField.tsx";
 import { Time } from "../../ui/Time/Time.tsx";
 import { useToast } from "../../ui/Toast/Toast.tsx";
+import { AccountPage, State } from "../account/AccountPage.tsx";
 import { RefusalNote } from "../auth/RefusalNote.tsx";
 import { useStepUp } from "../step-up/StepUp.tsx";
 import { approvalChange, mayRemove } from "./change.ts";
@@ -206,7 +206,7 @@ function Remove({ device }: { readonly device: Device }) {
         <>
             <Button
                 size="sm"
-                tone="ghost"
+                tone="danger"
                 icon="trash-2"
                 onClick={() => setOperationId(newOperationId(systemCryptoRng))}
             >
@@ -246,16 +246,12 @@ function Remove({ device }: { readonly device: Device }) {
 export function DevicesPage() {
     const loaded = route.useLoaderData();
     if (!loaded.ok) {
-        return (
-            <Page title={DEVICES_COPY.title} width="narrow">
-                <RefusalNote refused={loaded.refused} />
-            </Page>
-        );
+        return <AccountPage main={<RefusalNote refused={loaded.refused} />} />;
     }
     const list = loaded.value;
     const removable = mayRemove(list);
-    return (
-        <Page title={DEVICES_COPY.title} width="narrow">
+    const main = (
+        <>
             {list.enrollments.length === 0 ? null : (
                 <Section caption={DEVICES_COPY.waiting}>
                     <Stack gap={4}>
@@ -319,15 +315,28 @@ export function DevicesPage() {
                         rowKey={(d) => d.deviceId}
                     />
                 )}
-                <p>
-                    {DEVICES_COPY.nextChange}{" "}
-                    {list.replaceableFrom === null ? (
-                        DEVICES_COPY.now
-                    ) : (
-                        <Time at={list.replaceableFrom} />
-                    )}
-                </p>
             </Section>
-        </Page>
+        </>
+    );
+    return (
+        <AccountPage
+            main={main}
+            aside={
+                <State
+                    caption={DEVICES_COPY.title}
+                    items={[
+                        {
+                            label: DEVICES_COPY.nextChangeLabel,
+                            value:
+                                list.replaceableFrom === null ? (
+                                    DEVICES_COPY.now
+                                ) : (
+                                    <Time at={list.replaceableFrom} />
+                                ),
+                        },
+                    ]}
+                />
+            }
+        />
     );
 }

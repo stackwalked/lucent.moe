@@ -1,22 +1,19 @@
-import { getRouteApi, Link, useRouteContext, useRouter } from "@tanstack/react-router";
+import { getRouteApi, useRouter } from "@tanstack/react-router";
 import { useState } from "react";
 import type { Refused } from "../../server/outcome.ts";
 import { Button } from "../../ui/Button/Button.tsx";
 import { Empty } from "../../ui/Empty/Empty.tsx";
-import { Page } from "../../ui/Page/Page.tsx";
 import { Section } from "../../ui/Section/Section.tsx";
 import { Select } from "../../ui/Select/Select.tsx";
 import { Stack } from "../../ui/Stack/Stack.tsx";
-import { Switch } from "../../ui/Switch/Switch.tsx";
-import { Table } from "../../ui/Table/Table.tsx";
 import { TextField } from "../../ui/TextField/TextField.tsx";
 import { Time } from "../../ui/Time/Time.tsx";
-import { memberOf } from "../../viewer.ts";
+import { AccountPage, State } from "../account/AccountPage.tsx";
+import { Rows } from "../account/Rows.tsx";
 import { RefusalNote } from "../auth/RefusalNote.tsx";
 import { PRIVACY_COPY } from "./copy.ts";
 import { DeletionSection } from "./DeletionSection.tsx";
-import { blockAccount, fetchExport, saveShows, saveVisibility } from "./server.ts";
-import { PRIVACY_TITLE } from "./title.ts";
+import { blockAccount, fetchExport, saveVisibility } from "./server.ts";
 
 const route = getRouteApi("/_member/account/privacy");
 
@@ -41,25 +38,13 @@ async function download(): Promise<Refused | null> {
 export function PrivacyPage() {
     const outcome = route.useLoaderData();
     const router = useRouter();
-    const { session } = useRouteContext({ from: "__root__" });
-    const viewer = memberOf(session);
     const [refused, setRefused] = useState<Refused | null>(null);
     const answer = async (reply: Answer) => {
         setRefused(reply.ok ? null : reply.refused);
         if (reply.ok) await router.invalidate();
     };
-    return (
-        <Page
-            title={PRIVACY_TITLE}
-            width="narrow"
-            actions={
-                viewer?.username == null ? null : (
-                    <Link to="/members/$username" params={{ username: viewer.username }}>
-                        {PRIVACY_COPY.yourProfile}
-                    </Link>
-                )
-            }
-        >
+    const main = (
+        <>
             <RefusalNote refused={outcome.ok ? refused : outcome.refused} />
             {outcome.ok ? (
                 <Stack gap={6}>
@@ -67,37 +52,27 @@ export function PrivacyPage() {
                         {outcome.value.restrictions.length === 0 ? (
                             <Empty>{PRIVACY_COPY.clear}</Empty>
                         ) : (
-                            <Table
-                                caption={PRIVACY_COPY.restricted}
-                                rows={outcome.value.restrictions}
-                                rowKey={(row) => row.id}
-                                columns={[
-                                    {
-                                        key: "kind",
-                                        header: PRIVACY_COPY.kind,
-                                        cell: (row) => PRIVACY_COPY[row.kind],
-                                    },
-                                    {
-                                        key: "scope",
-                                        header: PRIVACY_COPY.scope,
-                                        cell: (row) =>
-                                            row.productId === null
+                            <Rows
+                                label={PRIVACY_COPY.restricted}
+                                items={outcome.value.restrictions.map((row) => ({
+                                    key: row.id,
+                                    main: PRIVACY_COPY[row.kind],
+                                    meta: (
+                                        <>
+                                            {row.productId === null
                                                 ? PRIVACY_COPY.everywhere
-                                                : PRIVACY_COPY.inProduct(row.productId),
-                                    },
-                                    {
-                                        key: "ends",
-                                        header: PRIVACY_COPY.ends,
-                                        cell: (row) =>
-                                            row.endsAt === null ? (
+                                                : PRIVACY_COPY.inProduct(row.productId)}
+                                            {" · "}
+                                            {row.endsAt === null ? (
                                                 PRIVACY_COPY.untilLifted
                                             ) : (
                                                 <>
                                                     {PRIVACY_COPY.until} <Time at={row.endsAt} />
                                                 </>
-                                            ),
-                                    },
-                                ]}
+                                            )}
+                                        </>
+                                    ),
+                                }))}
                             />
                         )}
                     </Section>
@@ -131,75 +106,38 @@ export function PrivacyPage() {
                             </Stack>
                         </form>
                     </Section>
-                    <Section caption={PRIVACY_COPY.shownOnProfile}>
-                        <Stack gap={2}>
-                            {(
-                                [
-                                    ["invitedBy", PRIVACY_COPY.showInvitedBy],
-                                    ["invited", PRIVACY_COPY.showInvited],
-                                    ["products", PRIVACY_COPY.showProducts],
-                                    ["lastSeen", PRIVACY_COPY.showLastSeen],
-                                    ["discord", PRIVACY_COPY.showDiscord],
-                                    ["wall", PRIVACY_COPY.showWall],
-                                ] as const
-                            ).map(([key, label]) => (
-                                <Switch
-                                    key={`${key}-${String(outcome.value.shows[key])}`}
-                                    name={key}
-                                    label={label}
-                                    defaultChecked={outcome.value.shows[key]}
-                                    onChange={async (shown) => {
-                                        void answer(await saveShows({ data: { key, shown } }));
-                                    }}
-                                />
-                            ))}
-                        </Stack>
-                    </Section>
+
                     <Section caption={PRIVACY_COPY.blocks}>
                         <Stack gap={4}>
                             <p>{PRIVACY_COPY.blocksHint}</p>
                             {outcome.value.blocks.length === 0 ? (
                                 <Empty>{PRIVACY_COPY.noBlocks}</Empty>
                             ) : (
-                                <Table
-                                    caption={PRIVACY_COPY.blocksTable}
-                                    rows={outcome.value.blocks}
-                                    rowKey={(row) => row.username ?? String(row.createdAt)}
-                                    columns={[
-                                        {
-                                            key: "account",
-                                            header: PRIVACY_COPY.account,
-                                            cell: (row) => row.username,
-                                        },
-                                        {
-                                            key: "since",
-                                            header: PRIVACY_COPY.since,
-                                            cell: (row) => <Time at={row.createdAt} />,
-                                        },
-                                        {
-                                            key: "unblock",
-                                            header: "",
-                                            cell: (row) =>
-                                                row.username === null ? null : (
-                                                    <Button
-                                                        size="sm"
-                                                        onClick={async () =>
-                                                            answer(
-                                                                await blockAccount({
-                                                                    data: {
-                                                                        username:
-                                                                            row.username ?? "",
-                                                                        blocked: false,
-                                                                    },
-                                                                }),
-                                                            )
-                                                        }
-                                                    >
-                                                        {PRIVACY_COPY.unblock}
-                                                    </Button>
-                                                ),
-                                        },
-                                    ]}
+                                <Rows
+                                    label={PRIVACY_COPY.blocksTable}
+                                    items={outcome.value.blocks.map((row) => ({
+                                        key: row.username ?? String(row.createdAt),
+                                        main: row.username,
+                                        meta: <Time at={row.createdAt} />,
+                                        action:
+                                            row.username === null ? undefined : (
+                                                <Button
+                                                    size="sm"
+                                                    onClick={async () =>
+                                                        answer(
+                                                            await blockAccount({
+                                                                data: {
+                                                                    username: row.username ?? "",
+                                                                    blocked: false,
+                                                                },
+                                                            }),
+                                                        )
+                                                    }
+                                                >
+                                                    {PRIVACY_COPY.unblock}
+                                                </Button>
+                                            ),
+                                    }))}
                                 />
                             )}
                             <form
@@ -239,6 +177,31 @@ export function PrivacyPage() {
                     <DeletionSection status={outcome.value.deletion} purpose="member" />
                 </Stack>
             ) : null}
-        </Page>
+        </>
+    );
+    return (
+        <AccountPage
+            main={main}
+            aside={
+                outcome.ok ? (
+                    <State
+                        caption={PRIVACY_COPY.title}
+                        items={[
+                            {
+                                label: PRIVACY_COPY.visibilityField,
+                                value:
+                                    outcome.value.visibility === "private"
+                                        ? PRIVACY_COPY.private
+                                        : PRIVACY_COPY.members,
+                            },
+                            {
+                                label: PRIVACY_COPY.blockedLabel,
+                                value: String(outcome.value.blocks.length),
+                            },
+                        ]}
+                    />
+                ) : null
+            }
+        />
     );
 }

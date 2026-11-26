@@ -8,12 +8,12 @@ import { Button } from "../../ui/Button/Button.tsx";
 import { Code } from "../../ui/Code/Code.tsx";
 import { Copy } from "../../ui/Copy/Copy.tsx";
 import { Empty } from "../../ui/Empty/Empty.tsx";
-import { Page } from "../../ui/Page/Page.tsx";
 import { Section } from "../../ui/Section/Section.tsx";
 import { Stack } from "../../ui/Stack/Stack.tsx";
 import { Status } from "../../ui/Status/Status.tsx";
 import { Table } from "../../ui/Table/Table.tsx";
 import { Time } from "../../ui/Time/Time.tsx";
+import { AccountPage, State } from "../account/AccountPage.tsx";
 import { RefusalNote } from "../auth/RefusalNote.tsx";
 import { INVITES_COPY } from "./copy.ts";
 import { createInvite, revokeInvite } from "./server.ts";
@@ -35,11 +35,7 @@ export function InvitesPage() {
     const [refused, setRefused] = useState<Refused | null>(null);
     const [busy, setBusy] = useState<string | null>(null);
     if (!listed.ok) {
-        return (
-            <Page title={INVITES_COPY.title} width="narrow">
-                <RefusalNote refused={listed.refused} />
-            </Page>
-        );
+        return <AccountPage main={<RefusalNote refused={listed.refused} />} />;
     }
     const { granted, spent, invites } = listed.value;
     const left = Math.max(0, granted - spent);
@@ -68,10 +64,10 @@ export function InvitesPage() {
         await router.invalidate();
     };
 
-    return (
-        <Page title={INVITES_COPY.title} width="narrow">
+    const main = (
+        <>
             <Section
-                caption={granted === 0 ? INVITES_COPY.title : INVITES_COPY.left(left, granted)}
+                caption={INVITES_COPY.title}
                 actions={
                     left > 0 ? (
                         <Button size="sm" pending={busy === "create"} onClick={() => void create()}>
@@ -139,7 +135,7 @@ export function InvitesPage() {
                                     invite.state === "unused" ? (
                                         <Button
                                             size="sm"
-                                            tone="ghost"
+                                            tone="danger"
                                             pending={busy === invite.inviteId}
                                             onClick={() => void revoke(invite)}
                                         >
@@ -151,6 +147,25 @@ export function InvitesPage() {
                     />
                 )}
             </Section>
-        </Page>
+        </>
+    );
+    return (
+        <AccountPage
+            main={main}
+            aside={
+                <State
+                    caption={INVITES_COPY.title}
+                    items={[
+                        {
+                            label: INVITES_COPY.leftLabel,
+                            value:
+                                granted === 0
+                                    ? INVITES_COPY.none
+                                    : INVITES_COPY.left(left, granted),
+                        },
+                    ]}
+                />
+            }
+        />
     );
 }

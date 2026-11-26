@@ -1,7 +1,7 @@
 import { getRouteApi, Link } from "@tanstack/react-router";
 import { useActionState, useEffect, useState } from "react";
+import { BarePage } from "../../ui/BarePage/BarePage.tsx";
 import { Button } from "../../ui/Button/Button.tsx";
-import { Page } from "../../ui/Page/Page.tsx";
 import { RefusalNote } from "../auth/RefusalNote.tsx";
 import { CLOUD_COPY as C } from "./copy.ts";
 import { consumeShareFragment } from "./link.ts";
@@ -34,7 +34,7 @@ export function SharePage() {
     const allowed =
         catalog?.ok && catalog.value.products.find((p) => p.id === link?.productId && p.canCreate);
     return (
-        <Page title={C.import} width="narrow">
+        <BarePage title={C.import}>
             {result?.ok && !link ? (
                 <Link to="/cloud">{C.imported}</Link>
             ) : catalog === null ? (
@@ -54,6 +54,6 @@ export function SharePage() {
                     <RefusalNote refused={result && !result.ok ? result.refused : null} />
                 </form>
             )}
-        </Page>
+        </BarePage>
     );
 }

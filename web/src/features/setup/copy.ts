@@ -16,7 +16,7 @@ export const SETUP_COPY = {
     passwordAndApp: "password and authenticator app",
     passkeyTitle: "add a passkey",
     passwordTitle: "set a password",
-    appTitle: "add an authenticator app",
+    appTitle: "authenticator app",
     doneTitle: "you're set up",
     addAnother: "add another way to sign in",
     finish: "finish",

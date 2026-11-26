@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { UI_COPY } from "../copy.ts";
 import styles from "./Table.module.css";
 
 export type Column<Row> = {
@@ -44,7 +45,11 @@ export function Table<Row>({
                                     ? {}
                                     : { "data-align": column.align })}
                             >
-                                {column.header}
+                                {column.header === "" ? (
+                                    <span className={styles.hidden}>{UI_COPY.actions}</span>
+                                ) : (
+                                    column.header
+                                )}
                             </th>
                         ))}
                     </tr>

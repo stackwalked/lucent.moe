@@ -1,9 +1,9 @@
 import { getRouteApi } from "@tanstack/react-router";
 import { useState } from "react";
 import type { Refused } from "../../server/outcome.ts";
+import { BarePage } from "../../ui/BarePage/BarePage.tsx";
 import { Button } from "../../ui/Button/Button.tsx";
 import { Empty } from "../../ui/Empty/Empty.tsx";
-import { Page } from "../../ui/Page/Page.tsx";
 import { Refusal } from "../../ui/Refusal/Refusal.tsx";
 import { Stack } from "../../ui/Stack/Stack.tsx";
 import { Switch } from "../../ui/Switch/Switch.tsx";
@@ -60,7 +60,7 @@ export function ApplyPage() {
     };
 
     return (
-        <Page title={WAITLIST_COPY.title} width="narrow">
+        <BarePage title={WAITLIST_COPY.title}>
             <Stack gap={4}>
                 {sent ? (
                     <p role="status">{WAITLIST_COPY.sent}</p>
@@ -117,6 +117,6 @@ export function ApplyPage() {
                     </form>
                 )}
             </Stack>
-        </Page>
+        </BarePage>
     );
 }
