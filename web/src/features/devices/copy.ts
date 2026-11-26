@@ -34,7 +34,7 @@ export const DEVICES_COPY = {
     removeTitle: (name: string) => `remove ${name}`,
     removeBody: "this pc stops working at once. next change in 7 days.",
     removed: "removed",
-    alreadyThere: "pc already on an account.",
+    alreadyThere: "pc already on an account",
 } as const;
 
 export const SIGN_IN_REQUEST_COPY = {
@@ -46,5 +46,5 @@ export const SIGN_IN_REQUEST_COPY = {
     expires: "expires",
     approve: "approve",
     deny: "deny",
-    gone: "request expired or already answered.",
+    gone: "request expired or already answered",
 } as const;

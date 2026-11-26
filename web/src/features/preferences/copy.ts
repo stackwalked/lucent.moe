@@ -7,7 +7,7 @@ export const PREFERENCES_COPY = {
     inbox: "inbox",
     mail: "email",
     discord: "discord message",
-    discordUnlinked: "discord not linked.",
+    discordUnlinked: "discord not linked",
     linkDiscord: "link discord",
     save: "save",
     follows: "product subscriptions",

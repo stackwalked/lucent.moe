@@ -1,4 +1,5 @@
 import type { AuditOperation } from "@lucent/policy/operations";
+import { SHARED_COPY } from "../../copy/shared.ts";
 
 export const ADMIN_COPY = {
     admin: "admin",
@@ -19,9 +20,9 @@ export const ADMIN_COPY = {
     applications: "applications",
     invites: "invite tree",
     pending: "—",
-    needsPasskey: "staff actions need a passkey.",
+    needsPasskey: SHARED_COPY.needsPasskey,
     firstPage: "first page",
-    ignored: (tokens: string) => `ignored ${tokens}: not a filter here.`,
+    ignored: (tokens: string) => `ignored ${tokens}: not a filter here`,
 } as const;
 
 // What each audit operation reads as. Typed against the platform's own list: an operation added

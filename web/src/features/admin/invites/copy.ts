@@ -12,7 +12,7 @@ export const INVITE_TREE_COPY = {
     nobody: "staff or before invites",
     allowance: "allowance",
     allowanceOf: (spent: number, granted: number) => `${spent} of ${granted} used`,
-    strikesLabel: "strikes",
+    strikesLabel: "strikes (suspended invitees)",
     change: "change allowance",
     changeTitle: (name: string) => `invites for ${name}`,
     granted: "invites in all",

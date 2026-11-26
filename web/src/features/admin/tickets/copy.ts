@@ -1,3 +1,5 @@
+import { SHARED_COPY } from "../../../copy/shared.ts";
+
 export const STAFF_TICKETS_TITLE = "tickets";
 
 export const STAFF_TICKETS_COPY = {
@@ -22,12 +24,12 @@ export const STAFF_TICKETS_COPY = {
     close: "close ticket",
     closeTitle: "close this ticket",
     closeBody: "the member can reopen it by writing.",
-    suspended: "account suspended",
+    suspended: SHARED_COPY.suspended,
     reason: "suspension reason",
-    noReason: "none recorded",
+    noReason: SHARED_COPY.noneRecorded,
     reinstate: "reinstate on the account page",
     configs: "config access",
-    configsReadable: "allowed",
-    configsClosed: "not allowed",
+    configsReadable: "the member allows it while this ticket is open",
+    configsClosed: "the member doesn't allow it",
     member: "member",
 } as const;

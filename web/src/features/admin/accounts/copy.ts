@@ -10,7 +10,7 @@ export const ACCOUNTS_COPY = {
     addTitle: "add account",
     email: "email",
     addSubmit: "add",
-    notEmail: "not an email address.",
+    notEmail: "not an email address",
     cancel: "cancel",
     done: "done",
     username: "username",

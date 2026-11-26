@@ -5,7 +5,7 @@ export const INVITES_COPY = {
     vouch: "you vouch for whoever uses your invite. their suspension shows on your account.",
     create: "create invite",
     created: "new invite",
-    shownOnce: "shown once. one use, 7 days.",
+    shownOnce: "shown once; one use, 7 days",
     yours: "your invites",
     none: "no invites",
     state: "state",

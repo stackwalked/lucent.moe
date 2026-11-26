@@ -1,9 +1,11 @@
+import { SHARED_COPY } from "../../copy/shared.ts";
+
 export const APPEAL_TITLE = "appeal";
 
 export const APPEAL_COPY = {
-    suspended: "account suspended",
+    suspended: SHARED_COPY.suspended,
     reason: "reason given",
-    noReason: "none recorded",
+    noReason: SHARED_COPY.noneRecorded,
     since: "suspended",
     thread: "your appeal",
     none: "no messages",
@@ -16,5 +18,5 @@ export const APPEAL_COPY = {
         answered: "staff answered",
         closed: "closed",
     },
-    window: "this session lasts 30 minutes.",
+    window: "this session lasts 30 minutes. sign in again to come back.",
 } as const;

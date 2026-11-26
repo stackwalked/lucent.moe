@@ -30,5 +30,5 @@ export const APPLICATIONS_COPY = {
     declineTitle: (email: string) => `decline ${email}`,
     declineBody: "nothing is sent. they can reapply in 30 days.",
     decide: "decide",
-    mailed: "approved. setup link sent.",
+    mailed: "approved; setup link sent",
 } as const;

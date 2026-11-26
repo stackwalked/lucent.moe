@@ -23,7 +23,7 @@ export const TICKETS_COPY = {
     close: "close ticket",
     back: "all tickets",
     consent: "config access",
-    consentGranted: "staff can read your configs.",
+    consentGranted: "staff can read your configs while this ticket is open.",
     consentNone: "staff can't read your configs.",
     allow: "allow",
     withdraw: "withdraw",

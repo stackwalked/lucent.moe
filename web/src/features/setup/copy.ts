@@ -1,11 +1,12 @@
 import { RULES_COPY } from "../../copy/rules.ts";
+import { SHARED_COPY } from "../../copy/shared.ts";
 
 export const SETUP_COPY = {
     pageTitle: "set up",
     title: "set up your lucent.moe account",
     continue: "continue",
     signedInAs: (username: string) => `signed in as ${username}. continuing signs you out.`,
-    noLink: "setup link expired or used",
+    noLink: SHARED_COPY.setupLinkGone,
     usernameTitle: "choose a username",
     username: "username",
     usernameRules: RULES_COPY.username,
