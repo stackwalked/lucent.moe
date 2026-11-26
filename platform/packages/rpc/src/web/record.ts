@@ -9,19 +9,20 @@ import { Done, refusal, StaffRefusals, Unavailable } from "./shared.ts";
 // account, no session, no count of members. Staff write issues and entries under
 // releases:promote; plain text, bounded, rendered as text.
 
-// No control characters but a body's line breaks and tabs.
+// No control characters but a body's line breaks and tabs, and no format characters (bidi
+// overrides, zero widths, tags): text that reads other than it is. The table checks the same.
 const Title = z
     .string()
     .trim()
     .min(1)
     .max(120)
-    .refine((text) => !/\p{Cc}/u.test(text));
+    .refine((text) => !/[\p{Cc}\p{Cf}]/u.test(text));
 const body = (max: number) =>
     z
         .string()
         .trim()
         .max(max)
-        .refine((text) => !/[^\P{Cc}\n\r\t]/u.test(text));
+        .refine((text) => !/\p{Cf}|[^\P{Cc}\n\r\t]/u.test(text));
 
 export const IssueId = z.uuid();
 export const ChangelogId = z.uuid();

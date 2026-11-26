@@ -5,7 +5,7 @@ import { createSeededRng } from "@lucent/core/rng";
 import { ProductId } from "@lucent/core/scalars";
 import { webContract } from "@lucent/rpc/web";
 import { z } from "zod";
-import { type Db, sql } from "../src/db/pool.ts";
+import { type Db, execute, sql } from "../src/db/pool.ts";
 import {
     addNote,
     closeIssue,
@@ -214,4 +214,47 @@ test("titles and bodies are bounded plain text", () => {
     expect(accepts({ ...fields, body: "x".repeat(4_000) }, entry)).toBe(true);
     expect(accepts({ ...fields, body: "x".repeat(4_001) }, entry)).toBe(false);
     expect(accepts({ ...fields, extra: 1 })).toBe(false);
+});
+
+// Written as code points: the characters themselves would be invisible here.
+const FORMAT = [0x202e, 0x2066, 0x200b, 0x00ad, 0xfeff, 0xe0041].map((c) =>
+    String.fromCodePoint(c),
+);
+
+test("titles and bodies refuse format characters such as bidi overrides, in the contract and in the table", async () => {
+    const add = webContract["admin.issues.add"].input;
+    const fields = { productId: null, title: "one", body: "" };
+    for (const sneaky of FORMAT) {
+        expect(add.safeParse({ ...fields, title: `a${sneaky}b` }).success).toBe(false);
+        expect(add.safeParse({ ...fields, body: `a${sneaky}b` }).success).toBe(false);
+    }
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ browserDb: db }) => {
+        for (const [table, at] of [
+            [sql`known_issue`, sql`opened_at`],
+            [sql`changelog_entry`, sql`published_at`],
+        ] as const) {
+            const refused = [
+                ...FORMAT.flatMap((sneaky) => [
+                    [`a${sneaky}b`, ""],
+                    ["ab", `a${sneaky}b`],
+                ]),
+                [`a${String.fromCodePoint(7)}b`, ""],
+            ];
+            for (const [title, body] of refused) {
+                const stored = await execute(
+                    db,
+                    sql`insert into ${table} (title, body, ${at}, updated_at)
+                        values (${title}, ${body}, now(), now())`,
+                );
+                expect(stored.ok).toBe(false);
+            }
+            const plain = await execute(
+                db,
+                sql`insert into ${table} (title, body, ${at}, updated_at)
+                    values ('ab', ${"line\nline\ttab"}, now(), now())`,
+            );
+            expect(plain).toEqual({ ok: true, value: 1 });
+        }
+    });
 });
