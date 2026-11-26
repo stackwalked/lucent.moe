@@ -27,15 +27,17 @@ type ThemeInputs = {
 
 const THEMES: Readonly<Record<ThemeName, ThemeInputs>> = {
     graphite: {
-        ground: "#0e0c0c",
-        side: "#110f0f",
+        ground: "#060506",
+        side: "#0a090a",
         ink: "#efe9e6",
         ink2: "#aaa09c",
         ink3: "#7a706c",
+        // Ink at these alphas over the ground lands on #18171a (hairlines) and #232225 (control
+        // borders), the values the redesign mocks were drawn with.
         lineAlpha: 0.08,
-        line2Alpha: 0.16,
-        pink: "#f2a7bc",
-        pinkInk: "#f2a7bc",
+        line2Alpha: 0.13,
+        pink: "#e8a3b8",
+        pinkInk: "#e8a3b8",
         shu: "#f25a2b",
         shuInk: "#f25a2b",
         shadow: withAlpha(BLACK, 0.5),
@@ -200,13 +202,17 @@ const SCALES: Readonly<Record<string, string>> = {
     ease: "cubic-bezier(0.2, 0.8, 0.2, 1)",
     "ease-in": "cubic-bezier(0.4, 0, 1, 1)",
     "page-slide": "8px",
-    // The page fills the window up to --page; a one-thing page stops at --page-narrow; a form
-    // stays --form wide. The gutter grows with the window.
-    page: "1600px",
+    // The page is a centred column up to --page, gutters included, bar and content alike; a
+    // one-thing page stops at --page-narrow; a form stays --form wide. --page-gap and
+    // --caption-h put the first hairline of every page 80px under the bar. --aside is the narrow
+    // column of a two-column page.
+    page: "1376px",
     "page-narrow": "1040px",
     form: "480px",
-    gutter: "clamp(24px, 6vw, 112px)",
-    "caption-h": "32px",
+    gutter: "24px",
+    "page-gap": "40px",
+    "caption-h": "40px",
+    aside: "444px",
     "control-h": "32px",
     "control-sm": "24px",
     "nav-h": "44px",
