@@ -114,7 +114,6 @@ function AddNote({
             <form action={submit} key={answer === null ? "fresh" : "kept"}>
                 <fieldset disabled={pending}>
                     <Stack gap={3}>
-                        <p>{C.shownAtOnce}</p>
                         <NoteFields products={products} current={null} bodyMax={bodyMax} />
                         <RefusalNote
                             refused={answer?.refused ?? null}
@@ -227,7 +226,7 @@ export function RecordPage() {
                                                     action="releases:promote"
                                                     label={C.close}
                                                     title={C.closeTitle(issue.title)}
-                                                    fields={<p>{C.closeBody}</p>}
+                                                    fields={null}
                                                     run={() =>
                                                         closeIssue({ data: { issueId: issue.id } })
                                                     }

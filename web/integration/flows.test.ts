@@ -648,7 +648,7 @@ describe("web against a real platform", () => {
         await Bun.sleep(15_500);
         for (const path of ["/status", "/changelog"]) {
             const shown = await text(path);
-            expect(shown).toContain("reach the server. this is how things stood at");
+            expect(shown).toContain(">as of");
             expect(shown).toContain("<time");
         }
         expect(await text("/status")).toContain("lucent loader");
@@ -674,7 +674,7 @@ describe("web against a real platform", () => {
             ["/status", "/changelog"].map((path) => text(path, restarted)),
         );
         for (const shown of unavailable) {
-            expect(shown).toContain("status is unavailable until the server is back.");
+            expect(shown).toContain("status unavailable");
         }
     }, 60_000);
 });

@@ -20,7 +20,7 @@ export function SnapshotPage<T>({
         <>
             {snapshot.state === "stale" ? (
                 <p>
-                    {STATUS_COPY.stale} <Time at={snapshot.at} />.
+                    {STATUS_COPY.asOf} <Time at={snapshot.at} />
                 </p>
             ) : null}
             {children(snapshot.value)}
