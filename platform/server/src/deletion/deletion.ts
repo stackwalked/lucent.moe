@@ -4,7 +4,6 @@ import { type AccountId, type BearerToken, type ClientInfo, EpochMs } from "@luc
 import { z } from "zod";
 import type { AuthDeps } from "../auth/deps.ts";
 import { type BrowserSession, lockSession, type SessionInvalid } from "../auth/sessions.ts";
-import { readStanding } from "../authority/standing.ts";
 import { appendAudit } from "../db/audit.ts";
 import {
     type Db,
@@ -16,8 +15,13 @@ import {
     toTimestamptz,
 } from "../db/pool.ts";
 import { withTx } from "../db/tx.ts";
+import { deletionPendingMail } from "../notify/copy.ts";
 import { recordNotification } from "../notify/inbox.ts";
 import { type DeletionState, decideDeletion } from "./deletion.rules.ts";
+import { holdsRoleSql } from "./strip.ts";
+
+// Where the member keeps the account; web serves the privacy page here.
+const PRIVACY_PATH = "/account/privacy";
 
 // The member's side of deletion: ask, see when, keep the account. A suspended member deletes from
 // the appeal session their sign-in gives them; each procedure names the one purpose it serves.
@@ -82,8 +86,10 @@ function lastProofAt(session: BrowserSession): EpochMs {
     return EpochMs.parse(Math.max(session.authenticatedAt, session.stepUpAt ?? 0));
 }
 
-// The member is told through the security notice (inbox, mail, Discord as they chose), so a
-// request they didn't make reaches them while they can still keep the account.
+// The member is told by a mail of its own naming the date and the way back (sent whatever their
+// notice choices, as a security notice's mail is), plus the security notice in the inbox and on
+// Discord as they chose, so a request they didn't make reaches them while they can still keep
+// the account. Signing in shows it too (auth/viewer.ts).
 export function requestDeletion(
     deps: AuthDeps,
     params: {
@@ -100,17 +106,22 @@ export function requestDeletion(
         });
         if (!session.ok) return session;
         const { accountId } = session.value;
-        const standing = await readStanding(tx, accountId, txNow);
+        const standing = await queryOne(
+            tx,
+            z.object({ is_root: z.boolean(), holds_role: z.boolean(), email: z.string() }),
+            sql`select is_root, ${holdsRoleSql(accountId)} as holds_role, email
+                from account where id = ${accountId}`,
+        );
         if (!standing.ok) return standing;
-        invariant(standing.value !== null, "a live session's account has a standing");
+        invariant(standing.value !== null, "a live session's account exists");
         const gathered = await gather(tx, accountId);
         if (!gathered.ok) return gathered;
         const plan = decideDeletion({
             state: gathered.value.state,
             event: "request",
             facts: {
-                isRoot: standing.value.isRoot,
-                holdsRole: standing.value.maxRank > 0 || standing.value.permissions.size > 0,
+                isRoot: standing.value.is_root,
+                holdsRole: standing.value.holds_role,
                 lastProofAt: lastProofAt(session.value),
                 now: txNow,
             },
@@ -139,9 +150,21 @@ export function requestDeletion(
         const notified = await recordNotification(tx, {
             recipient: accountId,
             notice: { kind: "security", productId: null },
-            mail: deps.mailEnabled,
+            mail: false,
         });
         if (!notified.ok) return notified;
+        if (deps.mailEnabled) {
+            const mail = deletionPendingMail({
+                dueAt,
+                link: `${deps.rp.origin}${PRIVACY_PATH}`,
+            });
+            const queued = await execute(
+                tx,
+                sql`insert into mail_outbox (recipient, subject, body)
+                    values (${standing.value.email}, ${mail.subject}, ${mail.body})`,
+            );
+            if (!queued.ok) return queued;
+        }
         const audited = await appendAudit(tx, {
             actorId: accountId,
             client: params.client,

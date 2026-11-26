@@ -261,7 +261,7 @@ export async function startServer(params: {
             expiredAuthJob(db),
             restrictionExpiryJob(db),
             retentionJob(db),
-            deletionJob({ db, emailHasher: auth.emailHasher }),
+            deletionJob({ db, emailHasher: auth.emailHasher, logger }),
             riskScoringJob(db),
             idleTicketJob(db),
             signInCountriesJob(db, geo),

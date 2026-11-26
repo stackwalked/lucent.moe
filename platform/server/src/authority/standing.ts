@@ -71,7 +71,10 @@ async function lockAccountStandings(
                 from account where id = ${accountId} for update`,
         );
         if (!accountRes.ok) return accountRes;
-        if (accountRes.value === null) continue;
+        // A tombstone (deletion/strip.ts) is locked like any row but left out, so every writer
+        // finds it as it finds an account that doesn't exist: NOT_FOUND as a target, nobody as a
+        // caller. Nothing may grant, suspend, rename or recover a deleted account.
+        if (accountRes.value === null || accountRes.value.is_deleted) continue;
         const standing = await standingOf(tx, { accountId, account: accountRes.value, txNow });
         if (!standing.ok) return standing;
         standings.set(accountId, standing.value);

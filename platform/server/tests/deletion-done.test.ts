@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { invariant } from "@lucent/core/contain";
 import { ok } from "@lucent/core/result";
 import { createSeededRng, type SeededRng } from "@lucent/core/rng";
-import { type AccountId, newOperationId, ProductId } from "@lucent/core/scalars";
+import { type AccountId, newOperationId, ProductId, sha256Base64Url } from "@lucent/core/scalars";
 import { z } from "zod";
 import { listApplications, submitApplication } from "../src/admission/applications.ts";
 import {
@@ -43,6 +43,9 @@ function inWorld(seed: number, run: (world: World) => Promise<void>) {
 
 const LOADER = ProductId.parse("lucent-loader");
 
+const count = (db: Db, statement: ReturnType<typeof sql>) =>
+    scalar(db, z.coerce.number(), statement);
+
 async function lapse(db: Db, accountId: AccountId) {
     const moved = await execute(
         db,
@@ -58,8 +61,8 @@ async function seed(db: Db, statement: ReturnType<typeof sql>) {
     invariant(done.ok, `seeding failed: ${JSON.stringify(done)}`);
 }
 
-// Every text, array, json and byte column of every table, searched for each marker: which column
-// holds which marker. Byte columns are searched for every marker's bytes.
+// Every column of every table, cast to text and searched for each marker: which column holds
+// which marker. Byte columns are also searched for every marker's bytes.
 async function holders(
     db: Db,
     markers: { readonly text: readonly string[]; readonly bytes: readonly Uint8Array[] },
@@ -72,7 +75,6 @@ async function holders(
             join information_schema.tables t
               on t.table_schema = c.table_schema and t.table_name = c.table_name
             where c.table_schema = 'public' and t.table_type = 'BASE TABLE'
-              and c.data_type in ('text', 'character varying', 'jsonb', 'json', 'ARRAY', 'bytea')
             order by 1, 2`,
     );
     invariant(columns.ok, "the catalog reads");
@@ -171,6 +173,13 @@ test(
             sql`insert into connector_discord_link (account_id, discord_user_id, linked_at)
                 values (${id}, '123456789012345678', now())`,
         );
+        // Two other applicants name the member as who knows them, one as a look-alike.
+        await seed(
+            db,
+            sql`insert into application (email, products, about, known_by, created_at)
+                values ('friend1@lucent.test', ${[LOADER]}, 'hi', '@qzvex', now()),
+                       ('friend2@lucent.test', ${[LOADER]}, 'hi', 'Qz_Vex', now())`,
+        );
         await seed(
             db,
             sql`insert into device (id, account_id, jkt, public_key, storage, enrolled_at, name)
@@ -206,26 +215,54 @@ test(
             expect(before.some((hit) => hit.endsWith(`: ${marker}`))).toBe(true);
         }
 
+        // Staff made the account by typing its address: the create receipt is keyed on a digest of
+        // it (db/receipt.ts), which anyone holding the address could recompute.
+        const addressDigest = await sha256Base64Url(JSON.stringify({ email: "qzvex@lucent.test" }));
+        const receipts = sql`select count(*) as value from receipt where digest = ${addressDigest}`;
+        expect(await count(db, receipts)).toBe(1);
+
         const asked = await requestDeletion(deps, {
             token: zed.sessionToken,
             purpose: "member",
-            client: null,
+            client: { ip: "203.0.113.77", userAgent: "UA-MARK-7731" },
         });
         invariant(asked.ok, "requesting failed");
         await lapse(db, id);
         expect((await completeDeletion(deps, id)).ok).toBe(true);
+        expect(await count(db, receipts)).toBe(0);
+        expect(
+            await count(
+                db,
+                sql`select count(*) as value from application where known_by is not null`,
+            ),
+        ).toBe(0);
 
-        // Only the member's own ticket text, kept for support's 30 days.
-        expect(await holders(db, markers)).toEqual([
-            "ticket.subject: TICKET-SUBJECT-7731",
-            "ticket_message.body: TICKET-BODY-7731",
-        ]);
+        // What stays by decision, each named: left for the human to decide, not found by omission.
+        const kept = {
+            text: [...markers.text, "203.0.113.77", "UA-MARK-7731", "123456789012345678"],
+            bytes: markers.bytes,
+        };
+        const decided = [
+            // The member's own audit rows keep where the request came from, as every audit row does.
+            "audit.client_ip: 203.0.113.77",
+            "audit.user_agent: UA-MARK-7731",
+            // The unlink row names the Discord user, which is what the connector strips roles from.
+            "audit.target: 123456789012345678",
+        ];
+        // Only the member's own ticket text, kept for support's 30 days, and the decided rows.
+        expect(await holders(db, kept)).toEqual(
+            [
+                ...decided,
+                "ticket.subject: TICKET-SUBJECT-7731",
+                "ticket_message.body: TICKET-BODY-7731",
+            ].sort(),
+        );
         await seed(
             db,
             sql`update account set deleted_at = now() - interval '31 days' where id = ${id}`,
         );
         expect((await sweepRetention(db)).ok).toBe(true);
-        expect(await holders(db, markers)).toEqual([]);
+        expect(await holders(db, kept)).toEqual([...decided].sort());
     }),
 );
 
@@ -344,7 +381,10 @@ test(
                 db,
                 z.coerce.number(),
                 sql`select count(*) as value from audit where operation = 'invite.returning_held'
-                    and target ->> 'accountId' = ${sam.accountId}`,
+                    and target ->> 'accountId' = ${sam.accountId}
+                    and target ->> 'inviterId' = ${inviter.accountId}
+                    and actor_id = 'invite:' || ${invite.value.inviteId}
+                    and client_ip is null and user_agent is null`,
             ),
         ).toBe(1);
     }),

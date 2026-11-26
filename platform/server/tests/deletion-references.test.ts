@@ -6,8 +6,12 @@ import { ACCOUNT_REFERENCES } from "../src/deletion/references.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 
 // Every column that can hold an account id, from the catalog: each column of a declared foreign
-// key to `account`, and each text column named like an account id or an actor (`*account_id`,
-// `*_by`, `actor_id`, `principal`) that declares none.
+// key to `account`, each text column named like an account id or an actor (`*account_id`,
+// `*author_id`, `*owner_id`, `*recipient_id`, `*_by`, `actor_id`, `principal`) that declares none,
+// and every json column, since ids sit inside those under any key. What it can't see: an id in a
+// text column named otherwise, in an array, or composed into another string (a receipt principal
+// `<account>/<product>`, a setup token's `invite:<id>` issuer), and an address or username copied
+// into free text.
 async function accountColumns(db: Db): Promise<readonly string[]> {
     const rows = await queryAll(
         db,
@@ -21,7 +25,11 @@ async function accountColumns(db: Db): Promise<readonly string[]> {
             from information_schema.columns col
             where col.table_schema = 'public' and col.data_type = 'text'
               and col.table_name <> 'account'
-              and col.column_name ~ '(account_id|_by|^actor_id|^principal)$'
+              and col.column_name ~ '(account_id|author_id|owner_id|recipient_id|_by|^actor_id|^principal)$'
+            union
+            select col.table_name || '.' || col.column_name
+            from information_schema.columns col
+            where col.table_schema = 'public' and col.data_type in ('jsonb', 'json')
             order by 1`,
     );
     invariant(rows.ok, `reading the catalog failed: ${JSON.stringify(rows)}`);
@@ -55,11 +63,18 @@ test("a new reference to account that nobody classified fails the walk", async (
             sql`create table deletion_probe (
                     owner text references account (id),
                     approved_by text,
+                    owner_id text,
+                    detail jsonb,
                     note text)`,
         );
         expect(created.ok).toBe(true);
         expect(unclassified(await accountColumns(db))).toEqual({
-            missing: ["deletion_probe.approved_by", "deletion_probe.owner"],
+            missing: [
+                "deletion_probe.approved_by",
+                "deletion_probe.detail",
+                "deletion_probe.owner",
+                "deletion_probe.owner_id",
+            ],
             stale: [],
         });
     });

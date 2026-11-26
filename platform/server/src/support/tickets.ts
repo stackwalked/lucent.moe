@@ -448,8 +448,10 @@ export function readStaffTicket(
     return readAsStaff(db, { caller: params.caller, actions: [TICKET_ACTION] }, async (q) => {
         const ticket = await queryOne(
             q,
-            StaffSummary.extend({ status: z.enum(["active", "suspended"]) }),
-            sql`select ${STAFF_COLUMNS}, a.status from ticket t
+            StaffSummary.extend({ status: z.enum(["active", "suspended", "deleted"]) }),
+            sql`select ${STAFF_COLUMNS},
+                       case when a.deleted_at is not null then 'deleted' else a.status end as status
+                from ticket t
                 join account a on a.id = t.account_id where t.id = ${params.ticketId}::uuid`,
         );
         if (!ticket.ok) return ticket;

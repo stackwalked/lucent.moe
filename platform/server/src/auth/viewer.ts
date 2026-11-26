@@ -1,6 +1,12 @@
 import { invariant } from "@lucent/core/contain";
 import { ok, type Result } from "@lucent/core/result";
-import type { AccountId, BearerToken, ClientInfo, EpochMs, SessionId } from "@lucent/core/scalars";
+import {
+    type AccountId,
+    type BearerToken,
+    type ClientInfo,
+    EpochMs,
+    type SessionId,
+} from "@lucent/core/scalars";
 import type { Action } from "@lucent/policy/actions";
 import type { Caller } from "@lucent/policy/policy";
 import { z } from "zod";
@@ -18,6 +24,8 @@ export type Viewer = {
     readonly purpose: SessionPurpose;
     readonly expiresAt: EpochMs;
     readonly stepUpAt: EpochMs | null;
+    // A requested deletion waiting to complete: web puts it in front of the member on every page.
+    readonly deletionDueAt: EpochMs | null;
     readonly standing: {
         readonly isRoot: boolean;
         readonly maxRank: number;
@@ -48,8 +56,8 @@ export async function resolveViewer(
         const { accountId } = session.value;
         const account = await queryOne(
             tx,
-            z.object({ username: z.string().nullable() }),
-            sql`select username from account where id = ${accountId}`,
+            z.object({ username: z.string().nullable(), deletion_due_at: EpochMs.nullable() }),
+            sql`select username, deletion_due_at from account where id = ${accountId}`,
         );
         if (!account.ok) return account;
         invariant(account.value !== null, "a live session's account exists");
@@ -69,6 +77,7 @@ export async function resolveViewer(
             purpose: session.value.purpose,
             expiresAt: session.value.expiresAt,
             stepUpAt: params.stepUpWaived === true ? txNow : session.value.stepUpAt,
+            deletionDueAt: account.value.deletion_due_at,
             standing:
                 session.value.purpose === "appeal"
                     ? APPEALING

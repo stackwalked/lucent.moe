@@ -9,6 +9,7 @@ const goes = (why: string): Fate => ({ fate: "goes", why });
 const stays = (why: string): Fate => ({ fate: "stays", why });
 
 const STAFF = "written by staff, about their own act";
+const NO_ID = "json holding no account id";
 
 export const ACCOUNT_REFERENCES: Readonly<Record<string, Fate>> = {
     // Authority.
@@ -109,6 +110,23 @@ export const ACCOUNT_REFERENCES: Readonly<Record<string, Fate>> = {
     "application.known_by": stays(
         "not an id: a username as another applicant typed it, linked to nothing",
     ),
+    // Json columns, where an id can sit under any key. Those that hold one are named for what they
+    // hold; the rest are listed so a new json column has to be looked at too.
+    "audit.target": stays(
+        "names the account under accountId (and others under their own keys); usernames are removed",
+    ),
+    "receipt.result": stays(
+        "staff's create and rename receipts naming the account go; other staff receipts hold ids only",
+    ),
+    "review_item.signals": stays("what fed staff's review, for staff only; kept with the review"),
+    "connector_discord_rule.condition": stays(NO_ID),
+    "device.public_key": stays(NO_ID),
+    "device_enrollment.public_key": stays(NO_ID),
+    "entitlement_product.features": stays(NO_ID),
+    "game_build_report.modules": stays(NO_ID),
+    "role.channel_grants": stays(NO_ID),
+    "runtime_session.asked_modules": stays(NO_ID),
+    "session_start.modules": stays(NO_ID),
     "application.returning_account_id": stays(
         "names an earlier tombstone for staff; the application itself has its own retention",
     ),

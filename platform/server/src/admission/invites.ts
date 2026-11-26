@@ -299,9 +299,11 @@ export async function redeemInvite(
             );
             if (!probed.ok) return probed;
             if (returning.value === null) return ok(undefined);
+            // The redeemer is anonymous and the inviter did nothing now: the invite is the actor,
+            // as a setup link's `invite:<id>` names it, and the redeemer's client is not kept.
             return await appendAudit(tx, {
-                actorId: inviterId,
-                client: params.client,
+                actorId: `invite:${inviteId}`,
+                client: null,
                 operation: "invite.returning_held",
                 target: { accountId: returning.value, inviteId, inviterId },
                 at: now,

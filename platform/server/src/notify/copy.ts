@@ -1,3 +1,5 @@
+import { toIsoTimestamp } from "@lucent/core/clock";
+import type { EpochMs } from "@lucent/core/scalars";
 import type { Notice } from "@lucent/rpc/web/inbox";
 
 export function passwordResetMail(link: string) {
@@ -34,5 +36,34 @@ export function notificationMail(notice: Exclude<Notice, { kind: "ticket_reply" 
     return {
         subject: "product support update",
         body: "support has changed for a product you follow. sign in to check its current status.",
+    };
+}
+
+const MONTHS = [
+    "january",
+    "february",
+    "march",
+    "april",
+    "may",
+    "june",
+    "july",
+    "august",
+    "september",
+    "october",
+    "november",
+    "december",
+];
+
+// The day in UTC, as the site writes dates: "2 december 2026".
+export function utcDay(at: EpochMs): string {
+    const [year = "", month = "", day = ""] = toIsoTimestamp(at).slice(0, 10).split("-");
+    return `${Number(day)} ${MONTHS[Number(month) - 1]} ${year}`;
+}
+
+// Sent when a member asks to delete their account; the link is where they keep it.
+export function deletionPendingMail(params: { readonly dueAt: EpochMs; readonly link: string }) {
+    return {
+        subject: "your lucent account will be deleted",
+        body: `your account will be deleted on ${utcDay(params.dueAt)}.\n\nto keep it, sign in before then and choose keep my account:\n\n${params.link}`,
     };
 }

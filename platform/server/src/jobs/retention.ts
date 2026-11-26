@@ -146,6 +146,9 @@ export const RETENTION: readonly Retained[] = [
                     select t.id from ticket t join account a on a.id = t.account_id
                     where a.deleted_at < ${cutoff}::timestamptz
                       and t.owner_text_removed_at is null
+                      and not exists (select 1 from ticket_message m
+                                      where m.ticket_id = t.id and m.author_id = a.id
+                                        and not m.from_staff)
                     limit ${BATCH}))`,
     },
     { what: "audit", tier: "forever" },

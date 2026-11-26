@@ -134,6 +134,9 @@ export const authContract = defineContract({
             purpose: SessionPurpose,
             expiresAt: EpochMs,
             stepUpAt: EpochMs.nullable(),
+            // When the account's requested deletion completes; null when none waits. Optional for
+            // one deploy.
+            deletionDueAt: EpochMs.nullable().optional(),
             // Strings, not the Action enum: a permission added a deploy ahead of web must not make
             // every page fail to parse the viewer. Web keeps the ones it knows.
             standing: z.object({

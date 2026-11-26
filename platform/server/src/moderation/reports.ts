@@ -34,7 +34,9 @@ const Target = z.object({
 // What a report points at, while it is still there: removed content and a comment whose guide
 // was removed are gone for everyone, reports included. With a viewer the answer is also what
 // that member may read, by the same predicates the lists use (guideReadable, blocks, a private
-// profile); without one (staff) it is only what exists.
+// profile); without one (staff) it is only what exists. The row is share-locked, so an account
+// deletion stripping it (deletion/strip.ts) either waits for this report and closes it, or has
+// already taken the row and this finds nothing.
 function findTarget(tx: Tx, kind: Kind, id: string, viewer: AccountId | null) {
     const unblocked = (author: SqlFragment) =>
         viewer === null ? sql`true` : notBlockedWith(viewer, author);
@@ -54,7 +56,8 @@ function findTarget(tx: Tx, kind: Kind, id: string, viewer: AccountId | null) {
                                     removedAt: sql`g.removed_at`,
                                     authorId: sql`g.author_id`,
                                 })
-                      }`,
+                      }
+                    for share of c`,
             );
         case "shout":
             return queryOne(
@@ -62,7 +65,8 @@ function findTarget(tx: Tx, kind: Kind, id: string, viewer: AccountId | null) {
                 Target,
                 sql`select s.author_id as "authorId", s.product_id as "productId", left(s.body, 280) as excerpt
                     from shout s where s.id = ${id}::uuid and s.removed_at is null
-                      and ${unblocked(sql`s.author_id`)}`,
+                      and ${unblocked(sql`s.author_id`)}
+                    for share`,
             );
         case "guide":
             return queryOne(
@@ -70,7 +74,8 @@ function findTarget(tx: Tx, kind: Kind, id: string, viewer: AccountId | null) {
                 Target,
                 sql`select g.author_id as "authorId", g.product_id as "productId", left(g.title, 280) as excerpt
                     from guide g where g.id = ${id}::uuid and g.removed_at is null
-                      and ${unblocked(sql`g.author_id`)}`,
+                      and ${unblocked(sql`g.author_id`)}
+                    for share`,
             );
         case "profile":
             return queryOne(
@@ -80,7 +85,8 @@ function findTarget(tx: Tx, kind: Kind, id: string, viewer: AccountId | null) {
                     from profile p where p.id = ${id}::uuid and p.removed_at is null
                       and (p.bio <> '' or p.avatar_large is not null)
                       and ${unblocked(sql`p.account_id`)}
-                      and (${viewer}::text is null or p.account_id = ${viewer} or p.visibility = 'members')`,
+                      and (${viewer}::text is null or p.account_id = ${viewer} or p.visibility = 'members')
+                    for share`,
             );
     }
 }

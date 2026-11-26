@@ -145,7 +145,8 @@ export const ticketsContract = defineContract({
         effect: "read",
         input: z.strictObject({ ticketId: TicketId }),
         output: StaffTicketSummary.extend({
-            accountStatus: z.enum(["active", "suspended"]),
+            // "deleted": the owner deleted their account (no deleted owner exists before this web).
+            accountStatus: z.enum(["active", "suspended", "deleted"]),
             messages: z
                 .array(
                     TicketMessage.extend({

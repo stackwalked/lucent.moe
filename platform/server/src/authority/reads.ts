@@ -473,7 +473,7 @@ export async function readAccount(
             q,
             DeletionRowSchema,
             sql`select deletion_requested_at as requested_at, deletion_due_at as due_at,
-                       deleted_at, status = 'suspended' as suspended,
+                       deleted_at, coalesce(suspended_at_deletion, false) as suspended,
                        email_hash is not null as hash_kept
                 from account where id = ${params.accountId}`,
         );

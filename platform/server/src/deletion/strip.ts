@@ -2,10 +2,18 @@ import { err, ok, type Result } from "@lucent/core/result";
 import { AccountId, EpochMs } from "@lucent/core/scalars";
 import { z } from "zod";
 import { revokeAccess } from "../auth/revoke-access.ts";
-import { lockCallerWith } from "../authority/standing.ts";
 import { forgetAvatars } from "../community/avatars.ts";
 import { appendAudit } from "../db/audit.ts";
-import { type Db, type DbFailure, execute, queryAll, queryOne, sql, type Tx } from "../db/pool.ts";
+import {
+    type Db,
+    type DbFailure,
+    execute,
+    type Queryable,
+    queryAll,
+    queryOne,
+    sql,
+    type Tx,
+} from "../db/pool.ts";
 import { withTx } from "../db/tx.ts";
 import { type DeletionRefusal, decideDeletion } from "./deletion.rules.ts";
 import type { EmailHasher } from "./email-hash.ts";
@@ -19,9 +27,16 @@ import type { EmailHasher } from "./email-hash.ts";
 
 export const DELETION_ACTOR = "job:deletion";
 
+// Any current grant holds a deletion, whatever the role carries: staff are demoted first.
+export const holdsRoleSql = (accountId: AccountId) =>
+    sql`exists (select 1 from account_role ar where ar.account_id = ${accountId}
+                and (ar.expires_at is null or ar.expires_at > now()))`;
+
 const AccountRow = z.object({
     email: z.string().nullable(),
     status: z.enum(["active", "suspended"]),
+    is_root: z.boolean(),
+    holds_role: z.boolean(),
     deletion_due_at: EpochMs.nullable(),
     deleted_at: EpochMs.nullable(),
 });
@@ -39,21 +54,13 @@ export async function completeDeletion(
     accountId: AccountId,
 ): Promise<Result<Completed, CompleteRefusal | DbFailure>> {
     return await withTx(deps.db, async (tx, txNow) => {
-        const locked = await lockCallerWith(tx, {
-            caller: { accountId, stepUpAt: null, client: null },
-            targets: [],
-            txNow,
-        });
-        if (!locked.ok) {
-            return locked.error.code === "FORBIDDEN" || locked.error.code === "STEP_UP_REQUIRED"
-                ? err({ code: "NOT_FOUND" } as const)
-                : err(locked.error);
-        }
-        const standing = locked.value.subject;
+        // Locked directly rather than through lockCallerWith, which leaves tombstones out.
         const row = await queryOne(
             tx,
             AccountRow,
-            sql`select email, status, deletion_due_at, deleted_at from account where id = ${accountId}`,
+            sql`select email, status, is_root, ${holdsRoleSql(accountId)} as holds_role,
+                       deletion_due_at, deleted_at
+                from account where id = ${accountId} for update`,
         );
         if (!row.ok) return row;
         if (row.value === null) return err({ code: "NOT_FOUND" } as const);
@@ -67,8 +74,8 @@ export async function completeDeletion(
                       : { kind: "none" },
             event: "complete",
             facts: {
-                isRoot: standing.isRoot,
-                holdsRole: standing.maxRank > 0 || standing.permissions.size > 0,
+                isRoot: account.is_root,
+                holdsRole: account.holds_role,
                 lastProofAt: null,
                 now: txNow,
             },
@@ -86,6 +93,7 @@ export async function completeDeletion(
             tx,
             sql`update account set email = null, username = null, reset_lock = false,
                     deletion_requested_at = null, deletion_due_at = null, deleted_at = now(),
+                    suspended_at_deletion = ${suspended},
                     email_hash = ${emailDigest?.digest ?? null}, email_hash_kid = ${emailDigest?.kid ?? null}
                 where id = ${accountId}`,
         );
@@ -132,6 +140,11 @@ async function all(tx: Tx, statements: readonly ReturnType<typeof sql>[]) {
     return ok(undefined);
 }
 
+async function ids(tx: Tx, statement: ReturnType<typeof sql>) {
+    const rows = await queryAll(tx, Id, statement);
+    return rows.ok ? ok(rows.value.map((row) => row.id)) : rows;
+}
+
 async function strip(
     tx: Tx,
     params: { readonly accountId: AccountId; readonly email: string | null },
@@ -161,15 +174,13 @@ async function strip(
 
     // Licences end now and their rows stay as history. No entitlement writer revokes yet; this is
     // the one, audited in the completion row.
-    const entitlements = await queryAll(
+    const entitlements = await execute(
         tx,
-        Id,
-        sql`select id from entitlement where account_id = ${id} order by id for update`,
+        sql`select 1 from entitlement where account_id = ${id} order by id for update`,
     );
     if (!entitlements.ok) return entitlements;
-    const revoked = await queryAll(
+    const revoked = await ids(
         tx,
-        Id,
         sql`update entitlement set status = 'revoked'
             where account_id = ${id} and status <> 'revoked' returning id`,
     );
@@ -182,10 +193,12 @@ async function strip(
 
     // Cloud: every scope locked (the account lock already serializes this account's cloud
     // writers, so taking all of them in product order can't deadlock), then items with their
-    // versions and share links.
-    const scopes = await execute(
+    // versions and share links. The products name the cloud receipts deleted below.
+    const scopes = await queryAll(
         tx,
-        sql`select 1 from cloud_scope where account_id = ${id} order by product_id for update`,
+        z.object({ product_id: z.string() }),
+        sql`select product_id from cloud_scope where account_id = ${id}
+            order by product_id for update`,
     );
     if (!scopes.ok) return scopes;
     const cloud = await all(tx, [
@@ -207,42 +220,17 @@ async function strip(
     ]);
     if (!credentials.ok) return credentials;
 
-    // Community. Guides go with every comment under them, whoever wrote it. Open reports about
-    // what goes would wait in no queue (it joins the content), so they go too; decided ones are
-    // staff's record and stay.
-    const avatars = await queryAll(
-        tx,
-        z.object({ digest: z.string() }),
-        sql`select unnest(array[avatar_large, avatar_small]) as digest
-            from profile where account_id = ${id} and avatar_large is not null`,
-    );
-    if (!avatars.ok) return avatars;
-    const community = await all(tx, [
-        sql`delete from report r where r.state = 'open' and (
-                (r.target_kind = 'comment' and r.target_id in (
-                    select c.id from comment c
-                    where c.author_id = ${id}
-                       or c.guide_id in (select g.id from guide g where g.author_id = ${id})))
-                or (r.target_kind = 'guide' and r.target_id in (
-                    select g.id from guide g where g.author_id = ${id}))
-                or (r.target_kind = 'shout' and r.target_id in (
-                    select s.id from shout s where s.author_id = ${id}))
-                or (r.target_kind = 'profile' and r.target_id in (
-                    select p.id from profile p where p.account_id = ${id})))`,
-        sql`delete from report where reporter_id = ${id}`,
-        sql`delete from comment where author_id = ${id}
-                or guide_id in (select g.id from guide g where g.author_id = ${id})`,
-        sql`delete from guide where author_id = ${id}`,
-        sql`delete from shout where author_id = ${id}`,
-        sql`delete from profile where account_id = ${id}`,
-        sql`delete from account_block where blocker_id = ${id} or blocked_id = ${id}`,
-    ]);
+    const community = await stripCommunity(tx, id);
     if (!community.ok) return community;
-    const images = await forgetAvatars(
+
+    // Support keeps the threads for staff; the member's open ones close without a notice, so they
+    // leave the open queue (their text goes 30 days on, jobs/retention.ts).
+    const tickets = await execute(
         tx,
-        avatars.value.map((row) => row.digest),
+        sql`update ticket set state = 'closed', closed_at = now()
+            where account_id = ${id} and state <> 'closed'`,
     );
-    if (!images.ok) return images;
+    if (!tickets.ok) return tickets;
 
     // Notices and what was waiting to be sent. A reset or setup mail went with its link above.
     const notify = await all(tx, [
@@ -263,52 +251,139 @@ async function strip(
     if (!discord.ok) return discord;
 
     // Admission: the account's own application and any other naming its address hold the
-    // address and what the applicant wrote. Invites it issued that are still open vouch for
-    // nobody now; redeemed ones are the invite tree and stay.
+    // address and what the applicant wrote; another applicant naming the member's username as
+    // who knows them keeps nothing of it (matched folded, as claims compare names). Invites it
+    // issued that are still open vouch for nobody now; redeemed ones are the invite tree and stay.
     const admission = await all(tx, [
         sql`delete from application where account_id = ${id} or email = ${params.email}`,
+        sql`update application set known_by = null
+            where known_by is not null
+              and replace(translate(replace(lower(ltrim(trim(known_by), '@')), '_', ''),
+                                    '01i', 'oll'), 'm', 'rn')
+                  in (select skeleton from username_claim where account_id = ${id})`,
         sql`update invite set revoked_at = now(), token_hash = null
             where inviter_id = ${id} and token_hash is not null`,
     ]);
     if (!admission.ok) return admission;
 
-    // The username: every name the account ever claimed stays taken, as a digest with nothing
-    // beside it (migration 0036). Audit rows keep their ids, without the names they recorded.
-    // Replay caches of the member's own requests can hold what they sent.
-    const names = await all(tx, [
+    // Replay caches: the member's own requests (account and cloud principals) can hold what they
+    // sent; staff's create receipt is keyed on a digest of the address and its result names the
+    // account; staff's rename receipts hold the names.
+    const principals = [
+        `account:${id}`,
+        ...scopes.value.map((scope) => `${id}/${scope.product_id}`),
+    ];
+    const receipts = await all(tx, [
+        sql`delete from receipt where principal = any(${principals}::text[])`,
+        sql`delete from receipt where endpoint = 'accounts.create' and result ->> 'accountId' = ${id}`,
         sql`delete from receipt where endpoint = 'accounts.rename'
                 and result ->> 'username' in (
                     select username from username_claim where account_id = ${id})`,
+    ]);
+    if (!receipts.ok) return receipts;
+
+    // The username: every name the account ever claimed stays taken, as a digest with nothing
+    // beside it (migration 0036).
+    //
+    // This is the one writer that changes audit rows, and only to take out the usernames two kinds
+    // of row recorded. The rows stay with their ids, operations and times; a name kept there would
+    // be the member's name kept forever in a table nothing prunes. Left for the human to confirm.
+    const names = await all(tx, [
         sql`insert into retired_username (skeleton_digest)
             select sha256(convert_to(skeleton, 'UTF8')) from username_claim where account_id = ${id}
             on conflict do nothing`,
         sql`delete from username_claim where account_id = ${id}`,
         sql`select set_config('lucent.username_rename', 'on', true)`,
         sql`update audit set target = target - 'username'
-            where operation = 'account.username_chosen' and target ->> 'accountId' = ${id}`,
+            where target ->> 'accountId' = ${id} and operation = 'account.username_chosen'`,
         sql`update audit set target = target || '{"from": null, "to": null}'::jsonb
-            where operation = 'account.rename' and target ->> 'accountId' = ${id}`,
-        sql`delete from receipt where principal = ${`account:${id}`}
-                or starts_with(principal, ${`${id}/`})`,
+            where target ->> 'accountId' = ${id} and operation = 'account.rename'`,
     ]);
     if (!names.ok) return names;
 
     return ok({
-        entitlementsRevoked: revoked.value.map((row) => row.id),
+        entitlementsRevoked: revoked.value,
         discordUsers: discord.value.map((row) => row.discord_user_id),
     });
 }
 
-// Accounts whose grace period has ended, oldest first.
-export async function listDueDeletions(
-    db: Db,
-    limit: number,
-): Promise<Result<readonly AccountId[], DbFailure>> {
-    const rows = await queryAll(
-        db,
-        z.object({ id: AccountId }),
-        sql`select id from account where deletion_due_at <= now()
-            order by deletion_due_at, id limit ${limit}`,
+// Guides go with every comment under them, whoever wrote it. The member's guides are locked first,
+// so a comment on one can't be added between the comment and guide deletes (its insert takes a key
+// share on the guide), then every row that goes is locked: a report filed meanwhile locks its
+// target too (moderation/reports.ts), so it either finds the row gone or commits first and is
+// closed with the rest. Open reports about what goes would wait in no queue (it joins the
+// content), so they go; decided ones are staff's record and stay.
+async function stripCommunity(tx: Tx, id: AccountId) {
+    const guides = await ids(
+        tx,
+        sql`select id::text as id from guide where author_id = ${id} order by id for update`,
     );
-    return rows.ok ? ok(rows.value.map((row) => row.id)) : rows;
+    if (!guides.ok) return guides;
+    const comments = await ids(
+        tx,
+        sql`select id::text as id from comment
+            where author_id = ${id} or guide_id = any(${guides.value}::uuid[])
+            order by id for update`,
+    );
+    if (!comments.ok) return comments;
+    const shouts = await ids(
+        tx,
+        sql`select id::text as id from shout where author_id = ${id} order by id for update`,
+    );
+    if (!shouts.ok) return shouts;
+    const profile = await queryAll(
+        tx,
+        z.object({ id: z.string(), large: z.string().nullable(), small: z.string().nullable() }),
+        sql`select id::text as id, avatar_large as large, avatar_small as small
+            from profile where account_id = ${id} for update`,
+    );
+    if (!profile.ok) return profile;
+    const profiles = profile.value.map((row) => row.id);
+    const deleted = await all(tx, [
+        sql`delete from comment where id = any(${comments.value}::uuid[])`,
+        sql`delete from guide where id = any(${guides.value}::uuid[])`,
+        sql`delete from shout where id = any(${shouts.value}::uuid[])`,
+        sql`delete from profile where account_id = ${id}`,
+        sql`delete from report r where r.state = 'open' and (
+                (r.target_kind = 'comment' and r.target_id = any(${comments.value}::uuid[]))
+                or (r.target_kind = 'guide' and r.target_id = any(${guides.value}::uuid[]))
+                or (r.target_kind = 'shout' and r.target_id = any(${shouts.value}::uuid[]))
+                or (r.target_kind = 'profile' and r.target_id = any(${profiles}::uuid[])))`,
+        sql`delete from report where reporter_id = ${id}`,
+        sql`delete from account_block where blocker_id = ${id} or blocked_id = ${id}`,
+    ]);
+    if (!deleted.ok) return deleted;
+    const images = await forgetAvatars(
+        tx,
+        profile.value.flatMap((row) => [row.large, row.small]).filter((d) => d !== null),
+    );
+    return images.ok ? ok(undefined) : images;
+}
+
+// Accounts whose grace period has ended, oldest first. Ones held by a role are counted apart, so a
+// held one never takes a place in the batch.
+export async function listDueDeletions(
+    q: Queryable,
+    limit: number,
+): Promise<Result<{ readonly due: readonly AccountId[]; readonly held: number }, DbFailure>> {
+    const rows = await queryAll(
+        q,
+        z.object({ id: AccountId }),
+        sql`select a.id from account a
+            where a.deletion_due_at <= now() and not a.is_root
+              and not exists (select 1 from account_role ar where ar.account_id = a.id
+                              and (ar.expires_at is null or ar.expires_at > now()))
+            order by a.deletion_due_at, a.id limit ${limit}`,
+    );
+    if (!rows.ok) return rows;
+    const held = await queryOne(
+        q,
+        z.object({ held: z.coerce.number().int() }),
+        sql`select count(*) as held from account a
+            where a.deletion_due_at <= now()
+              and (a.is_root or exists (select 1 from account_role ar where ar.account_id = a.id
+                                        and (ar.expires_at is null or ar.expires_at > now())))`,
+    );
+    if (!held.ok) return held;
+    return ok({ due: rows.value.map((row) => row.id), held: held.value?.held ?? 0 });
 }

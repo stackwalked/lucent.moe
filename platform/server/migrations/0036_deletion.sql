@@ -5,8 +5,10 @@
 -- Global, on the account row. A deletion is its own fact beside `status`, never a third status:
 -- a suspended account may delete, and staff (and admission) must still see that it was suspended.
 -- Pending: requested_at and due_at both set, the account working as before. Completed: deleted_at
--- set and the request cleared. A tombstone has no address and no username; when it was suspended
--- it keeps `email_hash`, an HMAC of the address under a key derived from a server secret
+-- set and the request cleared. `suspended_at_deletion` is the standing it went with, fixed at that
+-- moment: staff writers refuse a tombstone (authority/standing.ts), and nothing reads "was it
+-- suspended" from the mutable status. A tombstone has no address and no username; when it was
+-- suspended it keeps `email_hash`, an HMAC of the address under a key derived from a server secret
 -- (deletion/email-hash.ts), which only recognises that address applying again.
 alter table account
     add column deletion_requested_at timestamptz,
@@ -14,6 +16,7 @@ alter table account
     add column deleted_at timestamptz,
     add column email_hash bytea check (email_hash is null or length(email_hash) = 32),
     add column email_hash_kid text,
+    add column suspended_at_deletion boolean,
     alter column email drop not null,
     add constraint account_deletion_request check (
         (deletion_requested_at is null) = (deletion_due_at is null)
@@ -25,6 +28,8 @@ alter table account
         and (deleted_at is null or username is null)
         and (email_hash is null or deleted_at is not null)
         and ((email_hash is null) = (email_hash_kid is null))
+        and ((deleted_at is null) = (suspended_at_deletion is null))
+        and (email_hash is null or suspended_at_deletion)
     ),
     add constraint account_root_never_deleted check (
         not is_root or (deleted_at is null and deletion_requested_at is null)
@@ -33,6 +38,18 @@ alter table account
 -- The grace-period job's queue.
 create index account_deletion_due_idx on account (deletion_due_at) where deletion_due_at is not null;
 create index account_email_hash_idx on account (email_hash) where email_hash is not null;
+
+-- What the strip (deletion/strip.ts) finds under the account lock without scanning: the audit rows
+-- naming the account (never pruned; also what the admin account page reads), the mail still waiting
+-- for its address, and the staff receipts that name it.
+create index audit_target_account_idx on audit ((target ->> 'accountId'), operation);
+create index mail_outbox_waiting_recipient_idx on mail_outbox (recipient)
+    where state in ('pending', 'sending');
+create index receipt_created_account_idx on receipt ((result ->> 'accountId'))
+    where endpoint = 'accounts.create';
+create index receipt_renamed_username_idx on receipt ((result ->> 'username'))
+    where endpoint = 'accounts.rename';
+create index username_claim_account_idx on username_claim (account_id);
 
 -- Global: the skeletons (authority/usernames.ts) of deleted accounts' usernames, as SHA-256, so the
 -- names stay taken for good without a readable name or an account id next to them. Unkeyed on

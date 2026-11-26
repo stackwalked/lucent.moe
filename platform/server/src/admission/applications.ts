@@ -106,7 +106,7 @@ export async function findSuspendedTombstone(
         z.object({ id: AccountId }),
         sql`select id from account
             where email_hash = any(${digests}::bytea[]) and deleted_at is not null
-              and status = 'suspended'
+              and suspended_at_deletion
             order by deleted_at desc, id limit 1`,
     );
     return row.ok ? ok(row.value?.id ?? null) : row;
