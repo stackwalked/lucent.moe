@@ -1,0 +1,24 @@
+@layer components {
+    .columns {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) var(--aside);
+        column-gap: var(--s-7);
+        align-items: start;
+    }
+
+    .column {
+        display: flex;
+        flex-direction: column;
+        gap: var(--s-6);
+        min-inline-size: 0;
+    }
+
+    /* Measured on the page's column (Page is the container), so a side nav beside the page
+       counts. 900px leaves the wide column 400px beside the 444px one. */
+    @container (max-width: 900px) {
+        .columns {
+            grid-template-columns: minmax(0, 1fr);
+            row-gap: var(--s-6);
+        }
+    }
+}

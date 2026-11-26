@@ -9,30 +9,39 @@
         position: sticky;
         inset-block-start: 0;
         z-index: var(--z-nav);
-        display: flex;
-        align-items: center;
-        gap: var(--s-5);
         block-size: var(--nav-h);
-        padding-inline: var(--gutter);
         border-block-end: 1px solid var(--line);
         background: var(--ground);
     }
 
-    .wordmark {
+    /* The page's column. Stretching puts a tab's own underline on the bar's hairline. */
+    .column {
+        display: flex;
+        align-items: stretch;
+        gap: var(--s-5);
+        block-size: 100%;
+        max-inline-size: var(--page);
+        margin-inline: auto;
+        padding-inline: var(--gutter);
+    }
+
+    .brand {
+        display: flex;
+        align-items: center;
+        gap: var(--s-2);
         font-weight: var(--w-medium);
         color: var(--ink);
     }
 
     .places {
         display: flex;
-        gap: var(--s-1);
-        flex: 1;
+        gap: var(--s-5);
     }
 
     .account {
         display: flex;
         align-items: center;
-        gap: var(--s-1);
+        gap: var(--s-4);
         margin-inline-start: auto;
     }
 
@@ -73,30 +82,33 @@
     }
 
     /* Where the places no longer fit beside the wordmark they take a row of their own, which
-       scrolls sideways by itself: the page never does. */
+       scrolls sideways by itself: the page never does. The tabs' focus ring sits inside them
+       (the scroller clips). */
     @media (max-width: 760px) {
         .bar {
-            flex-wrap: wrap;
-            row-gap: 0;
             block-size: auto;
             min-block-size: var(--nav-h);
         }
 
-        .wordmark {
-            display: flex;
-            align-items: center;
-            block-size: var(--nav-h);
+        .column {
+            flex-wrap: wrap;
+            row-gap: 0;
+            block-size: auto;
+        }
+
+        .brand,
+        .account {
+            block-size: calc(var(--nav-h) - 1px);
         }
 
         .places {
             order: 1;
             flex-basis: 100%;
             min-inline-size: 0;
+            block-size: var(--row2-h);
             overflow-x: auto;
-            scrollbar-width: thin;
-            /* Room for the 2px focus ring and its 2px offset inside the scroller, which clips. */
-            padding: var(--s-1);
-            padding-block-end: var(--s-2);
+            /* No bar over the current tab's underline; touch and focus still scroll it. */
+            scrollbar-width: none;
         }
     }
 

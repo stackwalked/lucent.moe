@@ -5,12 +5,15 @@
         gap: var(--s-4);
     }
 
+    /* The head row's height, so a section that opens a column puts its hairline where a page's
+       title row would. */
     .caption {
         display: flex;
-        align-items: center;
+        align-items: flex-end;
         justify-content: space-between;
         gap: var(--s-3);
-        block-size: var(--caption-h);
+        min-block-size: var(--caption-h);
+        padding-block-end: var(--s-2);
         border-block-end: 1px solid var(--line);
     }
 
@@ -21,6 +24,7 @@
 
     .actions {
         display: flex;
+        align-items: center;
         gap: var(--s-2);
     }
 }

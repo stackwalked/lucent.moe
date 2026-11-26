@@ -1,0 +1,23 @@
+@layer components {
+    .bar,
+    .landing {
+        flex: none;
+        block-size: auto;
+    }
+
+    .bar {
+        inline-size: calc(var(--s-5) + var(--s-1));
+    }
+
+    .landing {
+        inline-size: calc(var(--s-8) * 3);
+    }
+
+    .ring {
+        fill: var(--ink);
+    }
+
+    .glint {
+        fill: var(--pink-ink);
+    }
+}

@@ -1,4 +1,5 @@
 import { type KeyboardEvent, useRef } from "react";
+import { Avatar } from "../Avatar/Avatar.tsx";
 import { Icon, type IconName } from "../Icon/Icon.tsx";
 import { IconButton } from "../IconButton/IconButton.tsx";
 import { Popover } from "../Popover/Popover.tsx";
@@ -21,12 +22,15 @@ export function Dropdown({
     label,
     icon = "ellipsis",
     align = "end",
+    picture = null,
     items,
 }: {
     // What the button is called for screen readers.
     readonly label: string;
     readonly icon?: IconName;
     readonly align?: "start" | "end";
+    // A member's 64 px picture (its digest) in place of the icon.
+    readonly picture?: string | null;
     readonly items: readonly DropdownItem[];
 }) {
     const menu = useRef<HTMLDivElement>(null);
@@ -60,9 +64,21 @@ export function Dropdown({
         <Popover
             align={align}
             flush
-            trigger={(popoverTarget) => (
-                <IconButton icon={icon} label={label} popoverTarget={popoverTarget} />
-            )}
+            trigger={(popoverTarget) =>
+                picture === null ? (
+                    <IconButton icon={icon} label={label} popoverTarget={popoverTarget} />
+                ) : (
+                    <button
+                        type="button"
+                        className={styles.picture}
+                        aria-label={label}
+                        title={label}
+                        popoverTarget={popoverTarget}
+                    >
+                        <Avatar digest={picture} size="small" />
+                    </button>
+                )
+            }
             onOpen={() => entries()[0]?.focus()}
         >
             <div

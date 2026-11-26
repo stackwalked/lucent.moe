@@ -5,6 +5,7 @@ import { Button } from "../../ui/Button/Button.tsx";
 import { Check } from "../../ui/Check/Check.tsx";
 import { Code } from "../../ui/Code/Code.tsx";
 import { CodeInput } from "../../ui/CodeInput/CodeInput.tsx";
+import { Columns } from "../../ui/Columns/Columns.tsx";
 import { Dialog } from "../../ui/Dialog/Dialog.tsx";
 import { Dropdown } from "../../ui/Dropdown/Dropdown.tsx";
 import { Empty } from "../../ui/Empty/Empty.tsx";
@@ -13,6 +14,7 @@ import { Icon } from "../../ui/Icon/Icon.tsx";
 import { ICON_NAMES } from "../../ui/Icon/names.ts";
 import { IconButton } from "../../ui/IconButton/IconButton.tsx";
 import { Ident } from "../../ui/Ident/Ident.tsx";
+import { Logo } from "../../ui/Logo/Logo.tsx";
 import { NewPassword } from "../../ui/NewPassword/NewPassword.tsx";
 import { Page } from "../../ui/Page/Page.tsx";
 import { Pager } from "../../ui/Pager/Pager.tsx";
@@ -245,6 +247,31 @@ function Icons() {
     );
 }
 
+function Frame() {
+    return (
+        <Stack gap={6}>
+            <Section caption="logo">
+                <Stack direction="row" gap={5}>
+                    <Logo />
+                    <Logo size="landing" />
+                </Stack>
+            </Section>
+            <Columns
+                main={
+                    <Section caption="wide column">
+                        <p>the head row above and these captions share one height.</p>
+                    </Section>
+                }
+                aside={
+                    <Section caption="444px column">
+                        <p>both start at the same height; no hairline crosses the gap.</p>
+                    </Section>
+                }
+            />
+        </Stack>
+    );
+}
+
 function Themed({ children }: { readonly children: ReactNode }) {
     return (
         <div className={styles.themes}>
@@ -271,6 +298,7 @@ export function Kit({ now }: { readonly now: EpochMs }) {
                             <Icons />
                         </Stack>
                     </Themed>
+                    <Frame />
                 </Page>
             </ToastProvider>
         </TimeProvider>
