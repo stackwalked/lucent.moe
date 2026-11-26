@@ -12,7 +12,7 @@ import { ROLES_COPY } from "./copy.ts";
 import { type Role, RoleEditor } from "./RoleEditor.tsx";
 import styles from "./RolesPage.module.css";
 
-const route = getRouteApi("/_admin/admin/roles");
+const route = getRouteApi("/_admin/admin/members/roles");
 
 // What the editor is open on: a role, a new one, or nothing.
 type Editing = { readonly role: Role | null } | null;

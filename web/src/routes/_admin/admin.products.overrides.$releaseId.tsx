@@ -6,7 +6,7 @@ import { listOverrides } from "../../features/admin/overrides/server.ts";
 import { guardSection } from "../../features/admin/sections.ts";
 import { toNotFound } from "../../server/route-control.ts";
 
-export const Route = createFileRoute("/_admin/admin/overrides/$releaseId")({
+export const Route = createFileRoute("/_admin/admin/products/overrides/$releaseId")({
     beforeLoad: ({ context }) => guardSection(context.session, "overrides"),
     loader: ({ params }) =>
         /^[0-9a-f]{32}$/.test(params.releaseId)

@@ -24,7 +24,7 @@ import { STAFF_RESOURCES_COPY as C, STAFF_RESOURCES_TITLE } from "./copy.ts";
 import { deleteResource, publishResource, updateResource } from "./server.ts";
 import { uploadFile } from "./upload.ts";
 
-const route = getRouteApi("/_admin/admin/resources");
+const route = getRouteApi("/_admin/admin/cloud/resources");
 
 const MAX_BYTES = 64 * 1024 * 1024;
 

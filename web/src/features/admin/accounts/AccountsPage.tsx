@@ -18,7 +18,7 @@ import { ACCOUNTS_COPY } from "./copy.ts";
 import { readAccountQuery } from "./query.ts";
 import { AccountStatusBadge } from "./status.tsx";
 
-const route = getRouteApi("/_admin/admin/accounts/");
+const route = getRouteApi("/_admin/admin/members/accounts/");
 
 type Listed = Extract<ReturnType<typeof route.useLoaderData>, { ok: true }>["value"];
 type Row = Listed["items"][number];
@@ -133,7 +133,7 @@ function Accounts({ page }: { readonly page: Listed }) {
                     rowKey={(row) => row.accountId}
                     rowLink={(row, content) => (
                         <Link
-                            to="/admin/accounts/$accountId"
+                            to="/admin/members/accounts/$accountId"
                             params={{ accountId: row.accountId }}
                             aria-label={row.username ?? row.email}
                         >

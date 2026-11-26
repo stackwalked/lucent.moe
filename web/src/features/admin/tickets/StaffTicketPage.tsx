@@ -14,7 +14,7 @@ import { ADMIN_COPY } from "../copy.ts";
 import { STAFF_TICKETS_COPY, STAFF_TICKETS_TITLE } from "./copy.ts";
 import { answerTicket, closeStaffTicket } from "./server.ts";
 
-const route = getRouteApi("/_admin/admin/tickets/$ticketId");
+const route = getRouteApi("/_admin/admin/queue/tickets/$ticketId");
 
 // One ticket or appeal as staff answer it. An appeal shows the suspension as staff recorded it;
 // reinstating is the account page's own action.
@@ -22,7 +22,7 @@ export function StaffTicketPage() {
     const { ticketId } = route.useParams();
     const { ticket, catalog } = route.useLoaderData();
     const nameOf = productNamer(catalog);
-    const back = <Link to="/admin/tickets">{STAFF_TICKETS_COPY.back}</Link>;
+    const back = <Link to="/admin/queue/tickets">{STAFF_TICKETS_COPY.back}</Link>;
     if (!ticket.ok) {
         return (
             <Page title={STAFF_TICKETS_TITLE} trail={back}>
@@ -118,7 +118,7 @@ export function StaffTicketPage() {
                                 ]}
                             />
                             <Link
-                                to="/admin/accounts/$accountId"
+                                to="/admin/members/accounts/$accountId"
                                 params={{ accountId: value.account.id }}
                             >
                                 {STAFF_TICKETS_COPY.reinstate}

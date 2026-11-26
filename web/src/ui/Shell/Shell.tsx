@@ -6,20 +6,21 @@ import { SkipLink } from "../SkipLink/SkipLink.tsx";
 import styles from "./Shell.module.css";
 
 // The frame of every page with the site's bar: the mark and wordmark, the places as tabs, and the
-// account's corner; below it, the section's side nav when there is one, and the page. The bar's
+// account's corner; below it, the page. The bar's
 // hairline spans the window; what sits on it shares the page's column. Sign-in and setup use
 // "bare": the page alone, as a centred card.
 export function Shell({
     layout = "app",
     places,
     account,
-    side,
+    badge,
     children,
 }: {
     readonly layout?: "app" | "bare";
     readonly places?: ReactNode;
     readonly account?: ReactNode;
-    readonly side?: ReactNode;
+    // Beside the wordmark, for a bar that says which area it is (the staff area's "staff").
+    readonly badge?: ReactNode;
     readonly children: ReactNode;
 }) {
     if (layout === "bare") {
@@ -43,6 +44,7 @@ export function Shell({
                     <Link to="/" className={styles.brand}>
                         <Logo />
                         lucent
+                        {badge}
                     </Link>
                     {places === undefined ? null : (
                         <nav className={styles.places} aria-label={UI_COPY.places}>
@@ -52,8 +54,7 @@ export function Shell({
                     {account === undefined ? null : <div className={styles.account}>{account}</div>}
                 </div>
             </header>
-            <div className={styles.frame} data-side={side === undefined ? "none" : "nav"}>
-                {side === undefined ? null : <div className={styles.side}>{side}</div>}
+            <div className={styles.frame}>
                 <div className={styles.content}>{children}</div>
             </div>
         </div>

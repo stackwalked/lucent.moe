@@ -16,7 +16,7 @@ import { AccountAction } from "../accounts/AccountAction.tsx";
 import { DISCORD_RULES_COPY as C, DISCORD_RULES_TITLE } from "./copy.ts";
 import { addDiscordRule, removeDiscordRule } from "./server.ts";
 
-const route = getRouteApi("/_admin/admin/discord");
+const route = getRouteApi("/_admin/admin/system/discord");
 
 type Listed = Extract<ReturnType<typeof route.useLoaderData>, { ok: true }>["value"];
 type Rule = Listed["rules"][number];

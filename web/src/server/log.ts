@@ -6,8 +6,8 @@ import type { AccountId } from "@lucent/core/scalars";
 const LOGGABLE: readonly RegExp[] = [
     /^\/$/,
     /^\/(sign-in|setup|account\/security|_health|_report)$/,
-    /^\/admin\/(accounts|roles|audit)$/,
-    /^\/admin\/accounts\/acc_[A-Za-z0-9_-]{22}$/,
+    /^\/admin\/(members\/accounts|members\/roles|system\/audit)$/,
+    /^\/admin\/members\/accounts\/acc_[A-Za-z0-9_-]{22}$/,
     /^\/legal\/[a-z-]{1,32}$/,
     /^\/assets\/[A-Za-z0-9._-]{1,128}$/,
 ];

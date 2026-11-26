@@ -5,7 +5,7 @@ import { RecordPage } from "../../features/admin/record/RecordPage.tsx";
 import { listRecord } from "../../features/admin/record/server.ts";
 import { guardSection } from "../../features/admin/sections.ts";
 
-export const Route = createFileRoute("/_admin/admin/record")({
+export const Route = createFileRoute("/_admin/admin/products/status")({
     beforeLoad: ({ context }) => guardSection(context.session, "record"),
     loader: () => listRecord(),
     head: () => ({

@@ -18,7 +18,7 @@ export function Who({
     }
     return (
         <Link
-            to="/admin/accounts/$accountId"
+            to="/admin/members/accounts/$accountId"
             params={{ accountId }}
             className={styles.link}
             // `pending` is a mark, not a name; the id is what tells two such accounts apart.

@@ -14,7 +14,7 @@ import { ADMIN_COPY } from "../copy.ts";
 import { REVIEW_COPY } from "./copy.ts";
 import { decideReview } from "./decide.ts";
 
-const route = getRouteApi("/_admin/admin/review");
+const route = getRouteApi("/_admin/admin/queue/flags");
 
 type Listed = Extract<ReturnType<typeof route.useLoaderData>, { ok: true }>["value"];
 type Item = Listed["open"][number];

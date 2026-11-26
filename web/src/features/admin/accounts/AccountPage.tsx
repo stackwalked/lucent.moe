@@ -44,7 +44,7 @@ import {
 import { AccountStatusBadge } from "./status.tsx";
 import { untilFrom } from "./until.ts";
 
-const route = getRouteApi("/_admin/admin/accounts/$accountId");
+const route = getRouteApi("/_admin/admin/members/accounts/$accountId");
 
 type Data = ReturnType<typeof route.useLoaderData>;
 type Account = Data["account"];
@@ -321,7 +321,7 @@ export function AccountPage() {
         <Page
             title={name}
             width="narrow"
-            trail={<Link to="/admin/accounts">{ACCOUNTS_COPY.title}</Link>}
+            trail={<Link to="/admin/members/accounts">{ACCOUNTS_COPY.title}</Link>}
         >
             <Section caption={ACCOUNTS_COPY.details}>
                 <Pairs
@@ -430,7 +430,7 @@ export function AccountPage() {
                     caption={ACCOUNTS_COPY.recent}
                     actions={
                         <Link
-                            to="/admin/audit"
+                            to="/admin/system/audit"
                             search={{ q: `target:${account.accountId}` }}
                             className={styles.more}
                         >

@@ -9,7 +9,7 @@ import { ADMIN_COPY } from "../copy.ts";
 import { INVITE_TREE_COPY } from "./copy.ts";
 import styles from "./InviteTreePage.module.css";
 
-const route = getRouteApi("/_admin/admin/invites");
+const route = getRouteApi("/_admin/admin/members/invites");
 
 type Tree = Extract<ReturnType<typeof route.useLoaderData>, { ok: true }>["value"];
 type Member = Tree["members"][number];

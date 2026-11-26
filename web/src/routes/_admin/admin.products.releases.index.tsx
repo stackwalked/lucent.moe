@@ -5,7 +5,7 @@ import { ReleasesPage } from "../../features/admin/releases/ReleasesPage.tsx";
 import { listReleases } from "../../features/admin/releases/server.ts";
 import { guardSection } from "../../features/admin/sections.ts";
 
-export const Route = createFileRoute("/_admin/admin/releases/")({
+export const Route = createFileRoute("/_admin/admin/products/releases/")({
     beforeLoad: ({ context }) => guardSection(context.session, "releases"),
     loader: () => listReleases(),
     head: () => ({ meta: [{ title: SITE_COPY.pageTitle(ADMIN_COPY.releases) }] }),

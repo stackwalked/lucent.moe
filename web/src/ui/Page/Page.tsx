@@ -1,7 +1,11 @@
-import type { ReactNode } from "react";
+import { createContext, type ReactNode, useContext } from "react";
 import { HeadRow } from "../HeadRow/HeadRow.tsx";
 import { MAIN_ID } from "../SkipLink/SkipLink.tsx";
 import styles from "./Page.module.css";
+
+// A frame that has its own sub-tabs (the staff area) provides them here: a page without a trail
+// of its own then opens its head row with them, its title kept for screen readers.
+export const PageTabsContext = createContext<ReactNode>(null);
 
 // Every page's anatomy, and the one place the page's geometry is decided: a gap, then a head row
 // whose bottom edge is the first hairline, 80px under the bar. A one-column page's head row
@@ -28,11 +32,12 @@ export function Page({
     readonly width?: "wide" | "narrow";
     readonly children: ReactNode;
 }) {
-    const headed = !hideTitle || tabs !== undefined || actions !== undefined;
+    const framed = useContext(PageTabsContext);
+    const subTabs = tabs ?? (trail === undefined && framed !== null ? framed : undefined);
+    const hidden = hideTitle || (tabs === undefined && subTabs !== undefined);
+    const headed = !hidden || subTabs !== undefined || actions !== undefined;
     const heading =
-        title === null ? null : (
-            <h1 className={hideTitle ? styles.hidden : styles.title}>{title}</h1>
-        );
+        title === null ? null : <h1 className={hidden ? styles.hidden : styles.title}>{title}</h1>;
     return (
         <main id={MAIN_ID} className={styles.page} data-width={width} tabIndex={-1}>
             {headed ? (
@@ -43,7 +48,7 @@ export function Page({
                                 <nav className={styles.trail}>{trail}</nav>
                             )}
                             {heading}
-                            {tabs}
+                            {subTabs}
                         </>
                     }
                     {...(actions === undefined ? {} : { actions })}

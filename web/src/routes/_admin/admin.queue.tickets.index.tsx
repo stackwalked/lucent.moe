@@ -8,7 +8,7 @@ import { ticketsSearch } from "../../features/admin/tickets/search.ts";
 import { listTickets } from "../../features/admin/tickets/server.ts";
 import { fetchPublicProducts } from "../../features/products/server.ts";
 
-export const Route = createFileRoute("/_admin/admin/tickets/")({
+export const Route = createFileRoute("/_admin/admin/queue/tickets/")({
     beforeLoad: ({ context }) => guardSection(context.session, "tickets"),
     validateSearch: ticketsSearch,
     loaderDeps: ({ search }) => ({ view: search.state ?? "open" }),

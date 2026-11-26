@@ -28,7 +28,7 @@ import {
     updateIssue,
 } from "./server.ts";
 
-const route = getRouteApi("/_admin/admin/record");
+const route = getRouteApi("/_admin/admin/products/status");
 
 const ISSUE_BODY_MAX = 2_000;
 const ENTRY_BODY_MAX = 4_000;

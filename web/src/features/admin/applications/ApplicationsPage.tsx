@@ -8,7 +8,7 @@ import { Time } from "../../../ui/Time/Time.tsx";
 import { RefusalNote } from "../../auth/RefusalNote.tsx";
 import { APPLICATIONS_COPY } from "./copy.ts";
 
-const route = getRouteApi("/_admin/admin/applications/");
+const route = getRouteApi("/_admin/admin/queue/applications/");
 
 type Listed = Extract<ReturnType<typeof route.useLoaderData>, { ok: true }>["value"];
 type Half = Listed["pending"];
@@ -81,7 +81,7 @@ function Applications({
                             header: APPLICATIONS_COPY.email,
                             cell: (item: Item) => (
                                 <Link
-                                    to="/admin/applications/$applicationId"
+                                    to="/admin/queue/applications/$applicationId"
                                     params={{ applicationId: item.applicationId }}
                                 >
                                     {item.email}

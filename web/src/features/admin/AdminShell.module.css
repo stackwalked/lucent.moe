@@ -1,0 +1,6 @@
+@layer features {
+    .badge {
+        color: var(--pink-ink);
+        font-weight: var(--w-regular);
+    }
+}

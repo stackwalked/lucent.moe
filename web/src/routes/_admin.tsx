@@ -1,7 +1,6 @@
-import { createFileRoute, Outlet, useRouteContext } from "@tanstack/react-router";
-import { AdminNav } from "../features/admin/AdminNav.tsx";
+import { createFileRoute, Outlet } from "@tanstack/react-router";
+import { AdminShell } from "../features/admin/AdminShell.tsx";
 import { isStaff } from "../features/admin/sections.ts";
-import { SiteShell } from "../features/shell/SiteShell.tsx";
 import { toNotFound, toUnavailable } from "../server/route-control.ts";
 import { memberOf } from "../viewer.ts";
 
@@ -14,15 +13,9 @@ export const Route = createFileRoute("/_admin")({
         const viewer = memberOf(session);
         if (viewer === null || !isStaff(viewer)) toNotFound();
     },
-    component: AdminFrame,
-});
-
-function AdminFrame() {
-    const { session } = useRouteContext({ from: "__root__" });
-    const viewer = memberOf(session);
-    return (
-        <SiteShell {...(viewer === null ? {} : { side: <AdminNav viewer={viewer} /> })}>
+    component: () => (
+        <AdminShell>
             <Outlet />
-        </SiteShell>
-    );
-}
+        </AdminShell>
+    ),
+});

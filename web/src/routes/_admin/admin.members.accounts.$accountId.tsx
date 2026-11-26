@@ -8,7 +8,7 @@ import { fetchInviteStanding } from "../../features/admin/invites/server.ts";
 import { guardSection } from "../../features/admin/sections.ts";
 import { toNotFound } from "../../server/route-control.ts";
 
-export const Route = createFileRoute("/_admin/admin/accounts/$accountId")({
+export const Route = createFileRoute("/_admin/admin/members/accounts/$accountId")({
     beforeLoad: ({ context }) => guardSection(context.session, "accounts"),
     loader: async ({ params }) => {
         const { accountId } = params;

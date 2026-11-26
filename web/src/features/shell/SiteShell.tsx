@@ -24,7 +24,7 @@ const PLACES = [
 
 // Account, staff's admin, the theme, and sign out: everything of the member's own that isn't a
 // place, behind their picture.
-function AccountMenu({
+export function AccountMenu({
     viewer,
     avatar,
 }: {
@@ -81,13 +81,7 @@ function AccountMenu({
 
 // The frame of every page with the site's bar: the places and the account's corner when signed
 // in, only "sign in" when not.
-export function SiteShell({
-    side,
-    children,
-}: {
-    readonly side?: ReactNode;
-    readonly children: ReactNode;
-}) {
+export function SiteShell({ children }: { readonly children: ReactNode }) {
     const { session, unreadCount, avatar } = useRouteContext({ from: "__root__" });
     const viewer = memberOf(session);
     const { pathname } = useLocation();
@@ -129,7 +123,6 @@ export function SiteShell({
                           </>
                       ),
                   })}
-            {...(side === undefined ? {} : { side })}
         >
             {children}
         </Shell>

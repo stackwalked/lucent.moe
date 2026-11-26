@@ -14,7 +14,7 @@ import { AccountAction } from "../accounts/AccountAction.tsx";
 import { RELEASES_COPY } from "./copy.ts";
 import { promoteRelease } from "./promote.ts";
 
-const route = getRouteApi("/_admin/admin/releases/");
+const route = getRouteApi("/_admin/admin/products/releases/");
 
 type Listed = Extract<ReturnType<typeof route.useLoaderData>, { ok: true }>["value"];
 type Line = Listed[number];
@@ -84,7 +84,7 @@ function Seals({ line, mayPromote }: { readonly line: Line; readonly mayPromote:
                         <Stack direction="row" gap={2} align="center">
                             {line.kind === "module" ? (
                                 <Link
-                                    to="/admin/releases/$releaseId"
+                                    to="/admin/products/releases/$releaseId"
                                     params={{ releaseId: seal.releaseId }}
                                 >
                                     {RELEASES_COPY.factSets}

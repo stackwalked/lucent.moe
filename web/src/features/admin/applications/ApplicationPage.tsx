@@ -13,7 +13,7 @@ import styles from "./ApplicationPage.module.css";
 import { APPLICATIONS_COPY } from "./copy.ts";
 import { approveApplication, declineApplication } from "./server.ts";
 
-const route = getRouteApi("/_admin/admin/applications/$applicationId");
+const route = getRouteApi("/_admin/admin/queue/applications/$applicationId");
 
 type Read = Extract<ReturnType<typeof route.useLoaderData>, { ok: true }>["value"];
 
@@ -21,7 +21,7 @@ type Read = Extract<ReturnType<typeof route.useLoaderData>, { ok: true }>["value
 // they named and their Discord handle are what they claim, nothing checked.
 export function ApplicationPage() {
     const read = route.useLoaderData();
-    const trail = <Link to="/admin/applications">{APPLICATIONS_COPY.title}</Link>;
+    const trail = <Link to="/admin/queue/applications">{APPLICATIONS_COPY.title}</Link>;
     if (!read.ok) {
         return (
             <Page title={APPLICATIONS_COPY.title} width="narrow" trail={trail}>
@@ -133,7 +133,7 @@ function Decide({ application }: { readonly application: Read }) {
                 <p>
                     {APPLICATIONS_COPY.returningBody}{" "}
                     <Link
-                        to="/admin/accounts/$accountId"
+                        to="/admin/members/accounts/$accountId"
                         params={{ accountId: application.returningAccountId }}
                     >
                         {APPLICATIONS_COPY.returningLink}

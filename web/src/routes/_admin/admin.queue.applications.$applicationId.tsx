@@ -6,7 +6,7 @@ import { ADMIN_COPY } from "../../features/admin/copy.ts";
 import { guardSection } from "../../features/admin/sections.ts";
 import { toNotFound } from "../../server/route-control.ts";
 
-export const Route = createFileRoute("/_admin/admin/applications/$applicationId")({
+export const Route = createFileRoute("/_admin/admin/queue/applications/$applicationId")({
     beforeLoad: ({ context }) => guardSection(context.session, "applications"),
     loader: ({ params }) =>
         /^[1-9][0-9]{0,18}$/.test(params.applicationId)

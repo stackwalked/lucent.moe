@@ -6,7 +6,7 @@ import { listUpdates } from "../../features/admin/updates/server.ts";
 import { UpdatesPage } from "../../features/admin/updates/UpdatesPage.tsx";
 import { fetchPublicProducts } from "../../features/products/server.ts";
 
-export const Route = createFileRoute("/_admin/admin/updates")({
+export const Route = createFileRoute("/_admin/admin/products/updates")({
     beforeLoad: ({ context }) => guardSection(context.session, "updates"),
     loader: async () => {
         const [listed, catalog] = await Promise.all([listUpdates(), fetchPublicProducts()]);

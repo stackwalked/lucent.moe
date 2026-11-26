@@ -8,7 +8,7 @@ import { fetchPublicProducts } from "../../features/products/server.ts";
 import { isUuid } from "../../formats.ts";
 import { toNotFound } from "../../server/route-control.ts";
 
-export const Route = createFileRoute("/_admin/admin/tickets/$ticketId")({
+export const Route = createFileRoute("/_admin/admin/queue/tickets/$ticketId")({
     beforeLoad: ({ context }) => guardSection(context.session, "tickets"),
     loader: async ({ params }) => {
         if (!isUuid(params.ticketId)) return toNotFound();

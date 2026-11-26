@@ -15,7 +15,7 @@ import { CRASHES_COPY } from "./copy.ts";
 import { readCrashesQuery } from "./filter.ts";
 import type { listCrashes } from "./server.ts";
 
-const route = getRouteApi("/_admin/admin/crashes");
+const route = getRouteApi("/_admin/admin/products/crashes");
 
 type Listed = Extract<Awaited<ReturnType<typeof listCrashes>>, { ok: true }>["value"];
 type Summary = Listed["items"][number];
@@ -25,7 +25,7 @@ const COLUMNS: readonly Column<Summary>[] = [
         key: "release",
         header: CRASHES_COPY.release,
         cell: (summary) => (
-            <Link to="/admin/crashes" search={{ q: `release:${summary.releaseId}` }}>
+            <Link to="/admin/products/crashes" search={{ q: `release:${summary.releaseId}` }}>
                 {CRASHES_COPY.releaseName(summary.productId, summary.channel, summary.sealNumber)}
             </Link>
         ),

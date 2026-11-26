@@ -5,7 +5,7 @@ import { OverrideReleasesPage } from "../../features/admin/overrides/OverrideRel
 import { listReleases } from "../../features/admin/releases/server.ts";
 import { guardSection } from "../../features/admin/sections.ts";
 
-export const Route = createFileRoute("/_admin/admin/overrides/")({
+export const Route = createFileRoute("/_admin/admin/products/overrides/")({
     beforeLoad: ({ context }) => guardSection(context.session, "overrides"),
     loader: () => listReleases(),
     head: () => ({ meta: [{ title: SITE_COPY.pageTitle(ADMIN_COPY.overrides) }] }),

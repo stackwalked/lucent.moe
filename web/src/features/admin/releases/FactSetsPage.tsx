@@ -14,7 +14,7 @@ import { RELEASES_COPY } from "./copy.ts";
 import { promoteFactSet } from "./promote.ts";
 import { type BuildKey, buildLabel, setStanding } from "./standing.ts";
 
-const route = getRouteApi("/_admin/admin/releases/$releaseId");
+const route = getRouteApi("/_admin/admin/products/releases/$releaseId");
 
 type Listed = Extract<ReturnType<typeof route.useLoaderData>, { ok: true }>["value"];
 type BuildRow = Listed["builds"][number];
@@ -28,7 +28,7 @@ export function FactSetsPage() {
     const { session } = useRouteContext({ from: "__root__" });
     const viewer = memberOf(session);
     if (viewer === null) return null;
-    const trail = <Link to="/admin/releases">{RELEASES_COPY.title}</Link>;
+    const trail = <Link to="/admin/products/releases">{RELEASES_COPY.title}</Link>;
     if (!listed.ok) {
         return (
             <Page title={RELEASES_COPY.factSets} trail={trail}>

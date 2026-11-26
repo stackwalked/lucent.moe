@@ -14,7 +14,7 @@ import { ADMIN_CLOUD_COPY as C } from "./copy.ts";
 import { approveListing, removeListing } from "./server.ts";
 import { ADMIN_CLOUD_TITLE } from "./title.ts";
 
-const route = getRouteApi("/_admin/admin/cloud");
+const route = getRouteApi("/_admin/admin/cloud/listings");
 
 // Bare for now: what waits for approval, oldest first, with approve and remove. Reported
 // listings are in moderation with everything else reported.

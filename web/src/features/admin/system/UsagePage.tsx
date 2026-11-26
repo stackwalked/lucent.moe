@@ -9,7 +9,7 @@ import { RefusalNote } from "../../auth/RefusalNote.tsx";
 import { productNamer } from "../../products/view.ts";
 import { USAGE_COPY } from "./copy.ts";
 
-const route = getRouteApi("/_admin/admin/usage");
+const route = getRouteApi("/_admin/admin/products/usage");
 
 type Read = Extract<ReturnType<typeof route.useLoaderData>["read"], { ok: true }>["value"];
 type Week = Read["weeks"][number];

@@ -6,7 +6,7 @@ import { listFactSets } from "../../features/admin/releases/server.ts";
 import { guardSection } from "../../features/admin/sections.ts";
 import { toNotFound } from "../../server/route-control.ts";
 
-export const Route = createFileRoute("/_admin/admin/releases/$releaseId")({
+export const Route = createFileRoute("/_admin/admin/products/releases/$releaseId")({
     beforeLoad: ({ context }) => guardSection(context.session, "releases"),
     loader: ({ params }) =>
         /^[0-9a-f]{32}$/.test(params.releaseId)

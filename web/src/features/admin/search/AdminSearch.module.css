@@ -1,0 +1,109 @@
+@layer features {
+    .search {
+        display: flex;
+        align-items: center;
+        anchor-name: --staff-search;
+    }
+
+    .input {
+        inline-size: 14rem;
+        block-size: var(--control-sm);
+        padding-inline: var(--s-3);
+        border: 1px solid var(--line-2);
+        border-radius: var(--r);
+        background: var(--raised);
+        color: var(--ink);
+        font-size: var(--size-13);
+    }
+
+    .input::placeholder {
+        color: var(--ink-2);
+    }
+
+    .opener {
+        display: none;
+        align-items: center;
+        justify-content: center;
+        inline-size: var(--control-sm);
+        block-size: var(--control-sm);
+        border: 0;
+        background: none;
+        color: var(--ink-2);
+        cursor: pointer;
+    }
+
+    .panel {
+        position: fixed;
+        inset: auto;
+        margin: 0;
+        margin-block-start: var(--s-1);
+        position-anchor: --staff-search;
+        position-area: block-end span-inline-start;
+        min-inline-size: 16rem;
+        max-inline-size: calc(100vw - 2 * var(--s-4));
+        max-block-size: 60dvh;
+        block-size: max-content;
+        overflow: auto;
+        padding: var(--s-2);
+        border: 1px solid var(--floating-edge);
+        border-radius: var(--r);
+        background: var(--floating);
+        box-shadow: 0 var(--s-2) var(--s-5) var(--shadow);
+        color: var(--ink);
+    }
+
+    .group {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .kind {
+        padding: var(--s-1) var(--s-2);
+        color: var(--ink-2);
+        font-size: var(--size-12);
+    }
+
+    .hit {
+        display: block;
+        padding: var(--s-2);
+        border: 0;
+        border-radius: var(--r);
+        background: none;
+        color: var(--ink);
+        font: inherit;
+        font-size: var(--size-13);
+        text-align: start;
+        overflow-wrap: anywhere;
+        cursor: pointer;
+    }
+
+    .hit:hover,
+    .hit[aria-selected="true"] {
+        background: var(--hover);
+    }
+
+    .none {
+        padding: var(--s-2);
+        color: var(--ink-2);
+        font-size: var(--size-13);
+    }
+
+    /* Where the bar has no room the box is an icon that opens it. */
+    @media (width <= 760px) {
+        .input {
+            inline-size: 10rem;
+        }
+
+        .opener {
+            display: inline-flex;
+        }
+
+        .search[data-collapsed="true"] .input {
+            display: none;
+        }
+
+        .search[data-collapsed="false"] .opener {
+            display: none;
+        }
+    }
+}

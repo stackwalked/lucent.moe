@@ -10,7 +10,7 @@ import { Time } from "../../../ui/Time/Time.tsx";
 import { RefusalNote } from "../../auth/RefusalNote.tsx";
 import { SYSTEM_COPY } from "./copy.ts";
 
-const route = getRouteApi("/_admin/admin/system");
+const route = getRouteApi("/_admin/admin/system/jobs");
 
 type Read = Extract<ReturnType<typeof route.useLoaderData>, { ok: true }>["value"];
 type Job = Read["jobs"][number];

@@ -13,7 +13,7 @@ import { useListNavigation } from "../list.ts";
 import { STAFF_TICKETS_COPY, STAFF_TICKETS_TITLE } from "./copy.ts";
 import type { TicketView } from "./search.ts";
 
-const route = getRouteApi("/_admin/admin/tickets/");
+const route = getRouteApi("/_admin/admin/queue/tickets/");
 
 const VIEWS: readonly TicketView[] = ["open", "answered", "closed"];
 
@@ -29,7 +29,7 @@ export function StaffTicketsPage() {
             actions={
                 <Stack direction="row" gap={3}>
                     {VIEWS.filter((other) => other !== view).map((other) => (
-                        <Link key={other} to="/admin/tickets" search={{ state: other }}>
+                        <Link key={other} to="/admin/queue/tickets" search={{ state: other }}>
                             {STAFF_TICKETS_COPY.views[other]}
                         </Link>
                     ))}
@@ -52,7 +52,7 @@ export function StaffTicketsPage() {
                                 header: STAFF_TICKETS_COPY.subject,
                                 cell: (ticket) => (
                                     <Link
-                                        to="/admin/tickets/$ticketId"
+                                        to="/admin/queue/tickets/$ticketId"
                                         params={{ ticketId: ticket.id }}
                                     >
                                         {ticket.subject ??

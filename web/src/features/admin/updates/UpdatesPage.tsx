@@ -11,7 +11,7 @@ import { productNamer } from "../../products/view.ts";
 import { buildLabel } from "../releases/standing.ts";
 import { UPDATES_COPY } from "./copy.ts";
 
-const route = getRouteApi("/_admin/admin/updates");
+const route = getRouteApi("/_admin/admin/products/updates");
 
 type Listed = Extract<ReturnType<typeof route.useLoaderData>["listed"], { ok: true }>["value"];
 type Day = Listed["builds"][number];

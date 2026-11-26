@@ -114,7 +114,7 @@ export function ProfilePage() {
                                     ) : null}
                                     {staff ? (
                                         <Link
-                                            to="/admin/accounts"
+                                            to="/admin/members/accounts"
                                             search={{ q: profile.username }}
                                             className={styles.act}
                                         >

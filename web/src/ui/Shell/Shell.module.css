@@ -51,16 +51,6 @@
         grid-template-columns: minmax(0, 1fr);
     }
 
-    .frame[data-side="nav"] {
-        grid-template-columns: var(--side-w) minmax(0, 1fr);
-    }
-
-    .side {
-        padding: var(--s-5) var(--s-3);
-        border-inline-end: 1px solid var(--line);
-        background: var(--side);
-    }
-
     .content {
         min-inline-size: 0;
     }
@@ -113,19 +103,6 @@
             overflow-x: auto;
             /* No bar over the current tab's underline; touch and focus still scroll it. */
             scrollbar-width: none;
-        }
-    }
-
-    @media (max-width: 640px) {
-        .frame[data-side="nav"] {
-            grid-template-columns: minmax(0, 1fr);
-            grid-template-rows: auto 1fr;
-        }
-
-        .side {
-            padding: var(--s-2) var(--gutter);
-            border-inline-end: 0;
-            border-block-end: 1px solid var(--line);
         }
     }
 }

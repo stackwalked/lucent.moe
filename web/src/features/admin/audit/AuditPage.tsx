@@ -18,7 +18,7 @@ import { AUDIT_COPY } from "./copy.ts";
 import { type AuditDetail, readAuditQuery } from "./filter.ts";
 import type { listAudit } from "./server.ts";
 
-const route = getRouteApi("/_admin/admin/audit");
+const route = getRouteApi("/_admin/admin/system/audit");
 
 type Listed = Extract<Awaited<ReturnType<typeof listAudit>>, { ok: true }>["value"];
 type Entry = Listed["items"][number];

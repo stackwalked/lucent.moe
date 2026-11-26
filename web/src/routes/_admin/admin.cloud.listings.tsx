@@ -6,7 +6,7 @@ import { ADMIN_CLOUD_TITLE } from "../../features/admin/cloud/title.ts";
 import { listState } from "../../features/admin/list.ts";
 import { guardSection } from "../../features/admin/sections.ts";
 
-export const Route = createFileRoute("/_admin/admin/cloud")({
+export const Route = createFileRoute("/_admin/admin/cloud/listings")({
     beforeLoad: ({ context }) => guardSection(context.session, "cloud"),
     loader: ({ location }) => listPendingListings({ data: { cursor: listState(location).cursor } }),
     head: () => ({ meta: [{ title: SITE_COPY.pageTitle(ADMIN_CLOUD_TITLE) }] }),

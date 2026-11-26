@@ -13,7 +13,7 @@ import { ADMIN_COPY } from "../copy.ts";
 import { OVERRIDES_COPY } from "./copy.ts";
 import { setOverride } from "./switch.ts";
 
-const route = getRouteApi("/_admin/admin/overrides/$releaseId");
+const route = getRouteApi("/_admin/admin/products/overrides/$releaseId");
 
 type Listed = Extract<ReturnType<typeof route.useLoaderData>, { ok: true }>["value"];
 type Feature = Listed["features"][number];
@@ -25,7 +25,7 @@ type Switch = Listed["switches"][number];
 export function OverridesPage() {
     const listed = route.useLoaderData();
     const { releaseId } = route.useParams();
-    const trail = <Link to="/admin/overrides">{OVERRIDES_COPY.title}</Link>;
+    const trail = <Link to="/admin/products/overrides">{OVERRIDES_COPY.title}</Link>;
     if (!listed.ok) {
         return (
             <Page title={OVERRIDES_COPY.title} trail={trail}>

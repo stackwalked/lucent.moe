@@ -10,7 +10,7 @@ import { productName } from "../../products/view.ts";
 import { RELEASES_COPY } from "../releases/copy.ts";
 import { OVERRIDES_COPY } from "./copy.ts";
 
-const route = getRouteApi("/_admin/admin/overrides/");
+const route = getRouteApi("/_admin/admin/products/overrides/");
 
 type Listed = Extract<ReturnType<typeof route.useLoaderData>, { ok: true }>["value"];
 type Line = Listed[number];
@@ -64,7 +64,7 @@ export function OverrideReleasesPage() {
                                     align: "end",
                                     cell: (seal) => (
                                         <Link
-                                            to="/admin/overrides/$releaseId"
+                                            to="/admin/products/overrides/$releaseId"
                                             params={{ releaseId: seal.releaseId }}
                                         >
                                             {OVERRIDES_COPY.open}

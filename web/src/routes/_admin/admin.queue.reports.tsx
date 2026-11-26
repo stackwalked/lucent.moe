@@ -17,7 +17,7 @@ async function restrictionsWithProducts(data: { readonly cursor: string | null }
     return { outcome, products };
 }
 
-export const Route = createFileRoute("/_admin/admin/moderation")({
+export const Route = createFileRoute("/_admin/admin/queue/reports")({
     beforeLoad: ({ context }) => guardSection(context.session, "moderation"),
     validateSearch: moderationSearch,
     loaderDeps: ({ search }) => ({ view: search.view ?? "reports" }),

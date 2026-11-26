@@ -5,7 +5,7 @@ import { InviteTreePage } from "../../features/admin/invites/InviteTreePage.tsx"
 import { fetchInviteTree } from "../../features/admin/invites/server.ts";
 import { guardSection } from "../../features/admin/sections.ts";
 
-export const Route = createFileRoute("/_admin/admin/invites")({
+export const Route = createFileRoute("/_admin/admin/members/invites")({
     beforeLoad: ({ context }) => guardSection(context.session, "invites"),
     loader: () => fetchInviteTree(),
     head: () => ({ meta: [{ title: SITE_COPY.pageTitle(ADMIN_COPY.invites) }] }),

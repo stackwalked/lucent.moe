@@ -8,7 +8,7 @@ import { listState } from "../../features/admin/list.ts";
 import { guardSection } from "../../features/admin/sections.ts";
 import { listSearch } from "../../search.ts";
 
-export const Route = createFileRoute("/_admin/admin/accounts/")({
+export const Route = createFileRoute("/_admin/admin/members/accounts/")({
     beforeLoad: ({ context }) => guardSection(context.session, "accounts"),
     validateSearch: listSearch,
     loaderDeps: ({ search }) => ({ q: search.q }),
