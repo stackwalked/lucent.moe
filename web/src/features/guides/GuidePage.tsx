@@ -1,5 +1,5 @@
 import { getRouteApi, Link, useRouter } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Refused } from "../../server/outcome.ts";
 import { Named } from "../../ui/Avatar/Avatar.tsx";
 import { Button } from "../../ui/Button/Button.tsx";
@@ -26,6 +26,23 @@ export function GuidePage() {
     const router = useRouter();
     const [refused, setRefused] = useState<Refused | null>(null);
     const [editing, setEditing] = useState(false);
+    const editArea = useRef<HTMLDivElement>(null);
+    const editToggle = useRef<HTMLSpanElement>(null);
+    const hasOpened = useRef(false);
+    // Focus follows the form: into its title as it opens, back to "edit" as it closes (not on
+    // the first render, when nothing was open).
+    useEffect(() => {
+        if (editing) {
+            hasOpened.current = true;
+            editArea.current?.querySelector<HTMLInputElement>('input[name="title"]')?.focus();
+        } else if (hasOpened.current) {
+            editToggle.current?.querySelector("button")?.focus();
+        }
+    }, [editing]);
+    const close = () => {
+        setEditing(false);
+        setRefused(null);
+    };
     const save = async (form: FormData) => {
         const reply = await saveGuide({
             data: {
@@ -34,9 +51,8 @@ export function GuidePage() {
                 body: String(form.get("body") ?? ""),
             },
         });
-        setRefused(reply.ok ? null : reply.refused);
-        if (!reply.ok) return;
-        setEditing(false);
+        if (!reply.ok) return setRefused(reply.refused);
+        close();
         await router.invalidate();
     };
     if (!guide.ok) {
@@ -56,10 +72,17 @@ export function GuidePage() {
                 </Link>
             }
             actions={
-                guide.value.isMine && !editing ? (
-                    <Button size="sm" icon="pencil" onClick={() => setEditing(true)}>
-                        {GUIDES_COPY.edit}
-                    </Button>
+                guide.value.isMine ? (
+                    <span ref={editToggle}>
+                        <Button
+                            size="sm"
+                            icon="pencil"
+                            pressed={editing}
+                            onClick={() => (editing ? close() : setEditing(true))}
+                        >
+                            {GUIDES_COPY.edit}
+                        </Button>
+                    </span>
                 ) : null
             }
         >
@@ -74,34 +97,36 @@ export function GuidePage() {
                 {guide.value.isMine ? null : <ReportButton kind="guide" targetId={guideId} />}
                 {editing ? (
                     <Section caption={GUIDES_COPY.edit}>
-                        <form action={save} key={guide.value.updatedAt}>
-                            <Stack gap={3}>
-                                <RefusalNote
-                                    refused={refused}
-                                    {...(note === undefined ? {} : { extra: note })}
-                                />
-                                <TextField
-                                    name="title"
-                                    label={GUIDES_COPY.titleField}
-                                    required
-                                    maxLength={120}
-                                    defaultValue={guide.value.title}
-                                />
-                                <TextArea
-                                    name="body"
-                                    label={GUIDES_COPY.bodyField}
-                                    maxLength={20000}
-                                    required
-                                    defaultValue={guide.value.body}
-                                />
-                                <Stack direction="row" gap={2}>
-                                    <Button type="submit">{GUIDES_COPY.save}</Button>
-                                    <Button tone="ghost" onClick={() => setEditing(false)}>
-                                        {GUIDES_COPY.cancel}
-                                    </Button>
+                        <div ref={editArea}>
+                            <form action={save} key={guide.value.updatedAt}>
+                                <Stack gap={3}>
+                                    <RefusalNote
+                                        refused={refused}
+                                        {...(note === undefined ? {} : { extra: note })}
+                                    />
+                                    <TextField
+                                        name="title"
+                                        label={GUIDES_COPY.titleField}
+                                        required
+                                        maxLength={120}
+                                        defaultValue={guide.value.title}
+                                    />
+                                    <TextArea
+                                        name="body"
+                                        label={GUIDES_COPY.bodyField}
+                                        maxLength={20000}
+                                        required
+                                        defaultValue={guide.value.body}
+                                    />
+                                    <Stack direction="row" gap={2}>
+                                        <Button type="submit">{GUIDES_COPY.save}</Button>
+                                        <Button tone="ghost" onClick={close}>
+                                            {GUIDES_COPY.cancel}
+                                        </Button>
+                                    </Stack>
                                 </Stack>
-                            </Stack>
-                        </form>
+                            </form>
+                        </div>
                     </Section>
                 ) : null}
                 <Comments
