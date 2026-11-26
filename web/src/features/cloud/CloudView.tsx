@@ -253,6 +253,9 @@ export function CloudView() {
     if (!data.ok || data.view !== "items") return null;
     const { productId, pick, access, kind, find, listings, items, mine, files } = data;
     const current = pick.find((p) => p.productId === productId);
+    const staffFiles = files?.ok
+        ? files.value.filter((file) => file.productId === null || file.productId === productId)
+        : [];
     const kinds: readonly (readonly [Kind | undefined, string])[] = [
         [undefined, C.all],
         ["config", C.configs],
@@ -347,45 +350,29 @@ export function CloudView() {
                             {data.canAppend ? (
                                 <NewItem key={productId} productId={productId} />
                             ) : null}
-                            <Section caption={C.fromStaff}>
-                                {!files.ok ? (
-                                    <RefusalNote refused={files.refused} />
-                                ) : (
-                                    (() => {
-                                        const shown = files.value.filter(
-                                            (file) =>
-                                                file.productId === null ||
-                                                file.productId === productId,
-                                        );
-                                        return shown.length === 0 ? (
-                                            <Empty>{C.noFiles}</Empty>
-                                        ) : (
-                                            <ul className={styles.items}>
-                                                {shown.map((file) => (
-                                                    <li key={file.id} className={styles.itemRow}>
-                                                        <span className={styles.itemName}>
-                                                            {file.title}
-                                                        </span>
-                                                        <form
-                                                            method="get"
-                                                            action={downloadPath(file.id)}
-                                                        >
-                                                            <Button
-                                                                size="sm"
-                                                                tone="ghost"
-                                                                type="submit"
-                                                                label={C.downloadTitle(file.title)}
-                                                            >
-                                                                {C.download}
-                                                            </Button>
-                                                        </form>
-                                                    </li>
-                                                ))}
-                                            </ul>
-                                        );
-                                    })()
-                                )}
-                            </Section>
+                            {staffFiles.length === 0 ? null : (
+                                <Section caption={C.fromStaff}>
+                                    <ul className={styles.items}>
+                                        {staffFiles.map((file) => (
+                                            <li key={file.id} className={styles.itemRow}>
+                                                <span className={styles.itemName}>
+                                                    {file.title}
+                                                </span>
+                                                <form method="get" action={downloadPath(file.id)}>
+                                                    <Button
+                                                        size="sm"
+                                                        tone="ghost"
+                                                        type="submit"
+                                                        label={C.downloadTitle(file.title)}
+                                                    >
+                                                        {C.download}
+                                                    </Button>
+                                                </form>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </Section>
+                            )}
                         </Stack>
                     ) : null
                 }

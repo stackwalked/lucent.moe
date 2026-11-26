@@ -15,6 +15,7 @@ import styles from "./SiteShell.module.css";
 // `also` names a path prefix that belongs to the place without being under its own address:
 // profiles are part of community.
 const PLACES = [
+    { to: "/", label: SHELL_COPY.home, also: null },
     { to: "/products", label: SHELL_COPY.products, also: null },
     { to: "/cloud", label: SHELL_COPY.cloud, also: null },
     { to: "/community", label: SHELL_COPY.community, also: "/members/" },
@@ -110,6 +111,7 @@ export function SiteShell({
                                   ? { "aria-current": "page" as const }
                                   : {})}
                               activeProps={{ "aria-current": "page" }}
+                              activeOptions={{ exact: to === "/" }}
                           >
                               {label}
                           </Link>

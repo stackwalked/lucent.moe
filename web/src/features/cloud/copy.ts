@@ -37,7 +37,6 @@ export const CLOUD_COPY = {
     noAccess: "no access",
     inYourCloud: "in your cloud",
     fromStaff: "from staff",
-    noFiles: "no files",
     download: "download",
     newInCloud: "new in cloud",
     shared: "shared",

@@ -1,0 +1,17 @@
+export const HOME_COPY = {
+    title: "home",
+    shouts: "shouts",
+    products: "products",
+    loader: "loader",
+    download: "download",
+    changes: "changes",
+    all: "all",
+    newInCloud: "new in cloud",
+    here: "here",
+    members: "members",
+    newest: "newest",
+    lucent: "lucent",
+    here_n: (n: number) => `${n} here`,
+    membersN: (n: number) => `members ${n}`,
+    newestName: (name: string) => `newest ${name}`,
+} as const;

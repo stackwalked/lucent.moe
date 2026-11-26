@@ -5,8 +5,8 @@
         display: flex;
         flex-direction: column;
         gap: var(--s-4);
-        block-size: max(24rem, calc(100dvh - 17rem));
-        min-block-size: 0;
+        block-size: 100%;
+        min-block-size: 16rem;
     }
 
     .scroll {
@@ -32,7 +32,7 @@
         display: grid;
         grid-template-columns: var(--s-5) minmax(0, 1fr);
         gap: var(--s-3);
-        padding-block: var(--s-3);
+        padding-block: var(--s-2);
         border-block-end: 1px solid var(--line);
     }
 
@@ -66,6 +66,7 @@
     .when {
         color: var(--ink-2);
         font-size: var(--size-12);
+        white-space: nowrap;
     }
 
     .acts {
@@ -73,6 +74,21 @@
         align-items: center;
         gap: var(--s-1);
         margin-inline-start: auto;
+    }
+
+    .input {
+        inline-size: 100%;
+        block-size: var(--control-h);
+        padding-inline: var(--s-3);
+        border: 1px solid var(--line-2);
+        border-radius: var(--r);
+        background: var(--raised);
+        color: var(--ink);
+        font-size: var(--size-14);
+    }
+
+    .input::placeholder {
+        color: var(--ink-2);
     }
 
     .body {

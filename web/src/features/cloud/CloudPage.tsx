@@ -230,9 +230,5 @@ export function CloudPage() {
                 <Empty>{C.emptyProducts}</Empty>
             </Page>
         );
-    return (
-        <>
-            <CloudView />
-        </>
-    );
+    return <CloudView />;
 }

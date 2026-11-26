@@ -1,0 +1,105 @@
+@layer features {
+    /* The page and its strip: the strip sits at the window's foot on a short page and at the
+       page's end on a long one. */
+    .frame {
+        display: flex;
+        flex-direction: column;
+        min-block-size: calc(100dvh - var(--s-7));
+    }
+
+    .frame > main {
+        flex: 1;
+    }
+
+    .title {
+        color: var(--ink-2);
+        font-size: var(--size-13);
+        font-weight: var(--w-medium);
+    }
+
+    /* The feed fills the viewport under the head row, down to the strip. */
+    .feedBox {
+        block-size: max(16rem, calc(100dvh - 22rem));
+    }
+
+    .rows {
+        display: flex;
+        flex-direction: column;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+    }
+
+    .row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--s-3);
+        min-block-size: var(--row2-h);
+    }
+
+    .line {
+        min-inline-size: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .end {
+        flex: none;
+        color: var(--ink-2);
+        font-size: var(--size-13);
+    }
+
+    .end[data-tone="ok"] {
+        color: var(--ok-ink);
+    }
+
+    .end[data-tone="wait"] {
+        color: var(--wait-ink);
+    }
+
+    .end[data-tone="shu"] {
+        color: var(--shu-ink);
+    }
+
+    .download {
+        padding: 0;
+        border: 0;
+        background: none;
+        color: var(--pink-ink);
+        font: inherit;
+        font-size: var(--size-13);
+        cursor: pointer;
+    }
+
+    .strip {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--s-4);
+        margin-inline: auto;
+        inline-size: 100%;
+        max-inline-size: var(--page);
+        padding: var(--s-4) var(--gutter);
+        color: var(--ink-2);
+        font-size: var(--size-13);
+    }
+
+    .here {
+        display: flex;
+        align-items: center;
+        gap: var(--s-2);
+    }
+
+    .faces {
+        display: flex;
+        gap: var(--s-1);
+    }
+
+    .facts {
+        display: flex;
+        gap: var(--s-4);
+    }
+}

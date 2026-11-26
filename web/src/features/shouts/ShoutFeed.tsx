@@ -10,7 +10,6 @@ import { Time } from "../../ui/Time/Time.tsx";
 import { RefusalNote } from "../auth/RefusalNote.tsx";
 import { postingNote } from "../comments/posting.ts";
 import { ReportButton } from "../comments/ReportButton.tsx";
-import { TextArea } from "../comments/TextArea.tsx";
 import { type PurgeTarget, readShoutInput } from "./command.ts";
 import { SHOUTS_COPY as C } from "./copy.ts";
 import styles from "./ShoutFeed.module.css";
@@ -53,9 +52,6 @@ function Row({
                             {author.username}
                         </Link>
                     )}
-                    <span className={styles.when}>
-                        <Time at={shout.createdAt} format="relative" />
-                    </span>
                     <span className={styles.acts}>
                         {shout.canDelete ? (
                             <Button size="sm" tone="ghost" onClick={() => onDelete(shout.id)}>
@@ -63,6 +59,9 @@ function Row({
                             </Button>
                         ) : null}
                         {shout.isMine ? null : <ReportButton kind="shout" targetId={shout.id} />}
+                    </span>
+                    <span className={styles.when}>
+                        <Time at={shout.createdAt} format="relative" />
                     </span>
                 </div>
                 <p className={styles.body}>{shout.body}</p>
@@ -189,11 +188,16 @@ export function ShoutFeed({
             </div>
             <form action={send} key={formKey} className={styles.form}>
                 <RefusalNote refused={refused} {...(note === undefined ? {} : { extra: note })} />
-                <TextArea name="body" label={C.body} maxLength={280} required />
+                <input
+                    className={styles.input}
+                    name="body"
+                    aria-label={C.body}
+                    placeholder={C.body}
+                    maxLength={280}
+                    required
+                    autoComplete="off"
+                />
                 {usage ? <p className={styles.usage}>{C.usage}</p> : null}
-                <div>
-                    <Button type="submit">{C.post}</Button>
-                </div>
             </form>
             <Dialog
                 open={purge !== null}
@@ -211,7 +215,7 @@ export function ShoutFeed({
                     </>
                 }
             >
-                <p>{C.purgeBody}</p>
+                {null}
             </Dialog>
         </div>
     );

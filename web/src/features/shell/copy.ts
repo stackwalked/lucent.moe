@@ -1,6 +1,7 @@
 export const SHELL_COPY = {
     cloud: "cloud",
     account: "account",
+    home: "home",
     products: "products",
     community: "community",
     support: "support",
