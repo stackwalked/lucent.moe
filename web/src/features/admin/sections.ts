@@ -1,6 +1,7 @@
 import { toNotFound, toPage } from "../../server/route-control.ts";
 import type { Session, Viewer } from "../../viewer.ts";
 import { memberOf, viewerCan } from "../../viewer.ts";
+import { queueKinds } from "./queue/merge.ts";
 
 export type AdminSection =
     | "accounts"
@@ -20,7 +21,8 @@ export type AdminSection =
     | "usage"
     | "discord"
     | "applications"
-    | "invites";
+    | "invites"
+    | "queue";
 
 export type AdminTab = "queue" | "members" | "products" | "cloud" | "system";
 
@@ -31,6 +33,7 @@ export const ADMIN_TABS = [
     {
         tab: "queue",
         subs: [
+            { section: "queue", to: "/admin" },
             { section: "tickets", to: "/admin/queue/tickets" },
             { section: "applications", to: "/admin/queue/applications" },
             { section: "moderation", to: "/admin/queue/reports" },
@@ -102,6 +105,7 @@ export function adminSections(viewer: Viewer): Readonly<Record<AdminSection, boo
         moderation: viewerCan(viewer, "moderation:remove"),
         cloud: viewerCan(viewer, "moderation:remove"),
         tickets: viewerCan(viewer, "tickets:reply"),
+        queue: queueKinds((action) => viewerCan(viewer, action)).length > 0,
         resources: viewerCan(viewer, "releases:promote"),
         record: viewerCan(viewer, "releases:promote"),
         audit: viewerCan(viewer, "audit:read"),

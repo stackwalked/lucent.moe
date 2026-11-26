@@ -3,10 +3,12 @@ import { SITE_COPY } from "../../copy/site.ts";
 import { ApplicationPage } from "../../features/admin/applications/ApplicationPage.tsx";
 import { fetchApplication } from "../../features/admin/applications/server.ts";
 import { ADMIN_COPY } from "../../features/admin/copy.ts";
+import { fromSearch } from "../../features/admin/queue/from.ts";
 import { guardSection } from "../../features/admin/sections.ts";
 import { toNotFound } from "../../server/route-control.ts";
 
 export const Route = createFileRoute("/_admin/admin/queue/applications/$applicationId")({
+    validateSearch: fromSearch,
     beforeLoad: ({ context }) => guardSection(context.session, "applications"),
     loader: ({ params }) =>
         /^[1-9][0-9]{0,18}$/.test(params.applicationId)

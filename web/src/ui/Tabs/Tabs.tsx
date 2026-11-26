@@ -6,7 +6,7 @@ export type Tab = {
     readonly params?: LinkProps["params"];
     readonly search?: LinkProps["search"];
     readonly label: string;
-    readonly count?: number;
+    readonly count?: number | string;
     // Where the route cannot say which tab is current (tabs that differ only in search), the
     // caller does.
     readonly current?: boolean;

@@ -33,7 +33,11 @@ export function Page({
     readonly children: ReactNode;
 }) {
     const framed = useContext(PageTabsContext);
-    const subTabs = tabs ?? (trail === undefined && framed !== null ? framed : undefined);
+    // `tabs={null}` is a page that says it wants none from the frame.
+    const subTabs =
+        tabs === null
+            ? undefined
+            : (tabs ?? (trail === undefined && framed !== null ? framed : undefined));
     const hidden = hideTitle || (tabs === undefined && subTabs !== undefined);
     const headed = !hidden || subTabs !== undefined || actions !== undefined;
     const heading =

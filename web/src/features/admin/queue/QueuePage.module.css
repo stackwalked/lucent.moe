@@ -1,0 +1,144 @@
+@layer features {
+    .rows,
+    .side {
+        display: flex;
+        flex-direction: column;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+    }
+
+    .row {
+        position: relative;
+        display: grid;
+        grid-template-columns: 5.5rem minmax(0, 1fr) auto auto;
+        align-items: center;
+        gap: var(--s-4);
+        padding-block: var(--s-3);
+        border-block-end: 1px solid var(--line);
+    }
+
+    .row:last-child {
+        border-block-end: 0;
+    }
+
+    .row:hover {
+        background: var(--hover);
+    }
+
+    .kind {
+        color: var(--ink-2);
+        font-size: var(--size-12);
+    }
+
+    /* The whole row opens the item: the title's link stretches over it, the account link sits above. */
+    .open {
+        display: flex;
+        flex-direction: column;
+        gap: var(--s-1);
+        min-inline-size: 0;
+    }
+
+    .open::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+    }
+
+    .title {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: var(--ink);
+    }
+
+    .context {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: var(--ink-2);
+        font-size: var(--size-13);
+    }
+
+    .who {
+        position: relative;
+        z-index: 1;
+        font-size: var(--size-13);
+    }
+
+    .account {
+        color: var(--ink-2);
+    }
+
+    .age {
+        color: var(--ink-2);
+        font-size: var(--size-12);
+        white-space: nowrap;
+    }
+
+    .age[data-long="true"] {
+        color: var(--wait-ink);
+    }
+
+    .sideRow {
+        display: flex;
+        align-items: center;
+        gap: var(--s-3);
+        min-block-size: var(--row2-h);
+    }
+
+    .sideRow > :first-child {
+        flex: 1;
+        min-inline-size: 0;
+    }
+
+    .line {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .word {
+        color: var(--ink-2);
+        font-size: var(--size-13);
+        white-space: nowrap;
+    }
+
+    .word[data-tone="ok"] {
+        color: var(--ok-ink);
+    }
+
+    .word[data-tone="wait"] {
+        color: var(--wait-ink);
+    }
+
+    .word[data-tone="shu"] {
+        color: var(--shu-ink);
+    }
+
+    .set {
+        color: var(--pink-ink);
+        font-size: var(--size-13);
+    }
+
+    @media (width <= 640px) {
+        .row {
+            grid-template-columns: minmax(0, 1fr) auto;
+            row-gap: var(--s-1);
+        }
+
+        .kind,
+        .who {
+            grid-column: 1;
+        }
+
+        .open {
+            grid-column: 1;
+        }
+
+        .age {
+            grid-column: 2;
+            grid-row: 1;
+        }
+    }
+}

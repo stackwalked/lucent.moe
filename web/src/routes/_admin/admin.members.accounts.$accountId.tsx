@@ -5,10 +5,12 @@ import { AccountPage } from "../../features/admin/accounts/AccountPage.tsx";
 import { ACCOUNTS_COPY } from "../../features/admin/accounts/copy.ts";
 import { fetchAccount, fetchCatalog, fetchRoles } from "../../features/admin/accounts/server.ts";
 import { fetchInviteStanding } from "../../features/admin/invites/server.ts";
+import { fromSearch } from "../../features/admin/queue/from.ts";
 import { guardSection } from "../../features/admin/sections.ts";
 import { toNotFound } from "../../server/route-control.ts";
 
 export const Route = createFileRoute("/_admin/admin/members/accounts/$accountId")({
+    validateSearch: fromSearch,
     beforeLoad: ({ context }) => guardSection(context.session, "accounts"),
     loader: async ({ params }) => {
         const { accountId } = params;

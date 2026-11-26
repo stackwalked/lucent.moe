@@ -1,4 +1,10 @@
 @layer features {
+    .count {
+        margin-inline-start: var(--s-1);
+        color: var(--ink-2);
+        font-size: var(--size-12);
+    }
+
     .badge {
         color: var(--pink-ink);
         font-weight: var(--w-regular);

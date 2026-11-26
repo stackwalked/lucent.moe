@@ -11,19 +11,18 @@ import { UI_COPY } from "../../../ui/copy.ts";
 import { Empty } from "../../../ui/Empty/Empty.tsx";
 import { Field } from "../../../ui/Field/Field.tsx";
 import { Ident } from "../../../ui/Ident/Ident.tsx";
-import { Page } from "../../../ui/Page/Page.tsx";
 import { Pairs } from "../../../ui/Pairs/Pairs.tsx";
 import { Section } from "../../../ui/Section/Section.tsx";
 import { Select } from "../../../ui/Select/Select.tsx";
 import { Stack } from "../../../ui/Stack/Stack.tsx";
-import { Table } from "../../../ui/Table/Table.tsx";
 import { TextField } from "../../../ui/TextField/TextField.tsx";
 import { Time } from "../../../ui/Time/Time.tsx";
 import { Who } from "../../../ui/Who/Who.tsx";
 import { memberOf, subjectOf } from "../../../viewer.ts";
+import { Rows } from "../../account/Rows.tsx";
 import { RefusalNote } from "../../auth/RefusalNote.tsx";
-import { AUDIT_COPY } from "../audit/copy.ts";
 import { ADMIN_COPY, operationLabel } from "../copy.ts";
+import { DetailPage } from "../DetailPage.tsx";
 import { AccountInvites } from "../invites/AccountInvites.tsx";
 import { useStaffAction } from "../staff.ts";
 import { AccountAction } from "./AccountAction.tsx";
@@ -171,6 +170,7 @@ export function AccountPage() {
     const staff = useStaffAction();
     const { account, roles: listedRoles, catalog, invites } = route.useLoaderData();
     const roles = listedRoles.ok ? listedRoles.value : [];
+    const { from } = route.useSearch();
     const { session } = useRouteContext({ from: "__root__" });
     const viewer = memberOf(session);
     const subject = viewer === null ? null : subjectOf(viewer);
@@ -318,170 +318,164 @@ export function AccountPage() {
     ].filter((action) => action !== null);
 
     return (
-        <Page
+        <DetailPage
+            from={from}
+            back={{ to: "/admin/members/accounts", label: ACCOUNTS_COPY.title }}
             title={name}
-            width="narrow"
-            trail={<Link to="/admin/members/accounts">{ACCOUNTS_COPY.title}</Link>}
-        >
-            <Section caption={ACCOUNTS_COPY.details}>
-                <Pairs
-                    items={[
-                        {
-                            label: ACCOUNTS_COPY.username,
-                            value: account.username ?? ADMIN_COPY.pending,
-                        },
-                        { label: ACCOUNTS_COPY.email, value: account.email ?? ACCOUNTS_COPY.gone },
-                        { label: ACCOUNTS_COPY.id, value: <Ident value={account.accountId} /> },
-                        {
-                            label: ACCOUNTS_COPY.status,
-                            value: <AccountStatusBadge status={account.status} />,
-                        },
-                        { label: ACCOUNTS_COPY.signIn, value: signInSummary(account.signIn) },
-                        { label: ACCOUNTS_COPY.created, value: <Time at={account.createdAt} /> },
-                        {
-                            label: ACCOUNTS_COPY.lastSeen,
-                            value:
-                                account.lastSeenAt === null ? (
-                                    ACCOUNTS_COPY.never
-                                ) : (
-                                    <Time at={account.lastSeenAt} format="relative" />
-                                ),
-                        },
-                    ]}
-                />
-            </Section>
-            {account.deletion == null ? null : <DeletionPanel deletion={account.deletion} />}
-            <Section caption={ACCOUNTS_COPY.heldRoles}>
-                {account.heldRoles.length === 0 ? (
-                    <Empty>{ACCOUNTS_COPY.noRoles}</Empty>
-                ) : (
-                    <Table
-                        caption={ACCOUNTS_COPY.heldRoles}
-                        columns={[
-                            {
-                                key: "name",
-                                header: ACCOUNTS_COPY.role,
-                                cell: (role: Account["heldRoles"][number]) => role.name,
-                            },
-                            {
-                                key: "until",
-                                header: ACCOUNTS_COPY.until,
-                                cell: (role) =>
-                                    role.expiresAt === null ? (
-                                        ACCOUNTS_COPY.noExpiry
-                                    ) : (
-                                        <Time at={role.expiresAt} />
-                                    ),
-                            },
-                            {
-                                key: "take",
-                                header: "",
-                                align: "end",
-                                cell: (role) =>
-                                    subject !== null &&
-                                    can(subject, "roles:assign", {
-                                        kind: "role",
-                                        rank: role.rank,
-                                        permissions: knownActions(role.permissions),
-                                    }) &&
-                                    allowed("roles:assign") ? (
-                                        <Button
-                                            size="sm"
-                                            tone="ghost"
-                                            label={ACCOUNTS_COPY.takeRole(role.name)}
-                                            pending={taking === role.roleId}
-                                            onClick={() => void take(role.roleId)}
-                                        >
-                                            {ACCOUNTS_COPY.take}
-                                        </Button>
-                                    ) : null,
-                            },
-                        ]}
-                        rows={account.heldRoles}
-                        rowKey={(role) => role.roleId}
+            main={
+                <>
+                    <Section caption={ACCOUNTS_COPY.heldRoles}>
+                        {account.heldRoles.length === 0 ? (
+                            <Empty>{ACCOUNTS_COPY.noRoles}</Empty>
+                        ) : (
+                            <Rows
+                                label={ACCOUNTS_COPY.heldRoles}
+                                items={account.heldRoles.map((role) => ({
+                                    key: role.roleId,
+                                    main: role.name,
+                                    meta:
+                                        role.expiresAt === null ? (
+                                            ACCOUNTS_COPY.noExpiry
+                                        ) : (
+                                            <>
+                                                {ACCOUNTS_COPY.until} <Time at={role.expiresAt} />
+                                            </>
+                                        ),
+                                    action:
+                                        subject !== null &&
+                                        can(subject, "roles:assign", {
+                                            kind: "role",
+                                            rank: role.rank,
+                                            permissions: knownActions(role.permissions),
+                                        }) &&
+                                        allowed("roles:assign") ? (
+                                            <Button
+                                                size="sm"
+                                                tone="danger"
+                                                label={ACCOUNTS_COPY.takeRole(role.name)}
+                                                pending={taking === role.roleId}
+                                                onClick={() => void take(role.roleId)}
+                                            >
+                                                {ACCOUNTS_COPY.take}
+                                            </Button>
+                                        ) : undefined,
+                                }))}
+                            />
+                        )}
+                        <RefusalNote
+                            refused={takeRefused}
+                            overrides={{ NO_PASSKEY: ADMIN_COPY.needsPasskey }}
+                        />
+                        {allowed("roles:assign") ? (
+                            listedRoles.ok ? (
+                                <GiveRole account={account} roles={assignable} />
+                            ) : (
+                                <RefusalNote refused={listedRoles.refused} />
+                            )
+                        ) : null}
+                    </Section>
+                    <Entitlements
+                        account={account}
+                        catalog={catalog}
+                        canIssue={allowed("entitlements:issue")}
                     />
-                )}
-                <RefusalNote
-                    refused={takeRefused}
-                    overrides={{ NO_PASSKEY: ADMIN_COPY.needsPasskey }}
-                />
-                {allowed("roles:assign") ? (
-                    listedRoles.ok ? (
-                        <GiveRole account={account} roles={assignable} />
-                    ) : (
-                        <RefusalNote refused={listedRoles.refused} />
-                    )
-                ) : null}
-            </Section>
-            <Entitlements
-                account={account}
-                catalog={catalog}
-                canIssue={allowed("entitlements:issue")}
-            />
-            <AccountInvites
-                accountId={account.accountId}
-                name={name}
-                standing={invites}
-                canGrant={allowed("accounts:create")}
-            />
-            <AccountDevices account={account} />
-            {account.recentAudit === null ? null : (
-                <Section
-                    caption={ACCOUNTS_COPY.recent}
-                    actions={
-                        <Link
-                            to="/admin/system/audit"
-                            search={{ q: `target:${account.accountId}` }}
-                            className={styles.more}
-                        >
-                            {ACCOUNTS_COPY.allActivity}
-                        </Link>
-                    }
-                >
-                    {account.recentAudit.length === 0 ? (
-                        <Empty>{ACCOUNTS_COPY.noActivity}</Empty>
-                    ) : (
-                        <Table
+                    <AccountInvites
+                        accountId={account.accountId}
+                        name={name}
+                        standing={invites}
+                        canGrant={allowed("accounts:create")}
+                    />
+                    <AccountDevices account={account} />
+                    {account.recentAudit === null ? null : (
+                        <Section
                             caption={ACCOUNTS_COPY.recent}
-                            columns={[
+                            actions={
+                                <Link
+                                    to="/admin/system/audit"
+                                    search={{ q: `target:${account.accountId}` }}
+                                    className={styles.more}
+                                >
+                                    {ACCOUNTS_COPY.allActivity}
+                                </Link>
+                            }
+                        >
+                            {account.recentAudit.length === 0 ? (
+                                <Empty>{ACCOUNTS_COPY.noActivity}</Empty>
+                            ) : (
+                                <Rows
+                                    label={ACCOUNTS_COPY.recent}
+                                    items={account.recentAudit.map((entry) => ({
+                                        key: String(entry.id),
+                                        main: operationLabel(entry.operation),
+                                        meta: <Time at={entry.at} format="relative" />,
+                                        action: (
+                                            <Who
+                                                accountId={entry.actor.id}
+                                                username={entry.actor.username}
+                                                pending={ADMIN_COPY.pending}
+                                            />
+                                        ),
+                                    }))}
+                                />
+                            )}
+                        </Section>
+                    )}
+                </>
+            }
+            aside={
+                <>
+                    <Section caption={ACCOUNTS_COPY.details}>
+                        <Pairs
+                            align="end"
+                            items={[
                                 {
-                                    key: "at",
-                                    header: AUDIT_COPY.time,
-                                    cell: (entry: NonNullable<Account["recentAudit"]>[number]) => (
-                                        <Time at={entry.at} format="relative" />
-                                    ),
+                                    label: ACCOUNTS_COPY.username,
+                                    value: account.username ?? ADMIN_COPY.pending,
                                 },
                                 {
-                                    key: "op",
-                                    header: AUDIT_COPY.operation,
-                                    cell: (entry) => operationLabel(entry.operation),
+                                    label: ACCOUNTS_COPY.email,
+                                    value: account.email ?? ACCOUNTS_COPY.gone,
                                 },
                                 {
-                                    key: "actor",
-                                    header: AUDIT_COPY.actor,
-                                    align: "end",
-                                    cell: (entry) => (
-                                        <Who
-                                            accountId={entry.actor.id}
-                                            username={entry.actor.username}
-                                            pending={ADMIN_COPY.pending}
-                                        />
-                                    ),
+                                    label: ACCOUNTS_COPY.id,
+                                    value: <Ident value={account.accountId} />,
+                                },
+                                {
+                                    label: ACCOUNTS_COPY.status,
+                                    value: <AccountStatusBadge status={account.status} />,
+                                },
+                                {
+                                    label: ACCOUNTS_COPY.signIn,
+                                    value: signInSummary(account.signIn),
+                                },
+                                {
+                                    label: ACCOUNTS_COPY.created,
+                                    value: <Time at={account.createdAt} />,
+                                },
+                                {
+                                    label: ACCOUNTS_COPY.lastSeen,
+                                    value:
+                                        account.lastSeenAt === null ? (
+                                            ACCOUNTS_COPY.never
+                                        ) : (
+                                            <Time at={account.lastSeenAt} format="relative" />
+                                        ),
                                 },
                             ]}
-                            rows={account.recentAudit}
-                            rowKey={(entry) => entry.id}
                         />
+                    </Section>
+                    {account.deletion == null ? null : (
+                        <DeletionPanel deletion={account.deletion} />
                     )}
-                </Section>
-            )}
-            {danger.length === 0 ? null : (
-                <Section caption={ACCOUNTS_COPY.danger}>
-                    <Stack direction="row" gap={2}>
-                        {danger}
-                    </Stack>
-                </Section>
-            )}
-        </Page>
+                    {danger.length === 0 ? null : (
+                        <Section caption={ACCOUNTS_COPY.danger}>
+                            <Stack direction="row" gap={2}>
+                                {danger}
+                            </Stack>
+                        </Section>
+                    )}
+                </>
+            }
+        />
     );
 }

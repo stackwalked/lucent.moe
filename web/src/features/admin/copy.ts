@@ -31,6 +31,7 @@ export const ADMIN_COPY = {
         system: "system",
     },
     subs: {
+        queue: "all",
         tickets: "tickets",
         applications: "applications",
         moderation: "reports",

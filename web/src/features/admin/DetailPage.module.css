@@ -1,0 +1,15 @@
+@layer features {
+    .back {
+        color: var(--ink-2);
+        font-size: var(--size-13);
+        white-space: nowrap;
+    }
+
+    .title {
+        min-inline-size: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: var(--size-20);
+    }
+}
