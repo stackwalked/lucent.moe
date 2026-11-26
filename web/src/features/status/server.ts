@@ -1,3 +1,4 @@
+import { systemClock } from "@lucent/core/clock";
 import type { WebContract } from "@lucent/rpc/web";
 import { createServerFn } from "@tanstack/react-start";
 import type { z } from "zod";
@@ -10,22 +11,22 @@ import { createSnapshot } from "./snapshot.ts";
 type Status = z.output<WebContract["record.status.get"]["output"]>;
 type Changelog = z.output<WebContract["record.changelog.list"]["output"]>;
 
-const readStatus = () => callPlatform("record.status.get", {});
-const readChangelog = () => callPlatform("record.changelog.list", {});
-
-const statusSnapshot = createSnapshot<Status>();
-const changelogSnapshot = createSnapshot<Changelog>();
-
-export const fetchStatus = createServerFn({ method: "GET" }).handler(() =>
-    statusSnapshot(async () => {
-        const reply = await readStatus();
+const status = createSnapshot<Status>({
+    clock: systemClock,
+    read: async () => {
+        const reply = await callPlatform("record.status.get", {});
         return reply.ok ? { ok: true, value: reply.value, at: reply.value.at } : { ok: false };
-    }),
-);
+    },
+});
 
-export const fetchChangelog = createServerFn({ method: "GET" }).handler(() =>
-    changelogSnapshot(async () => {
-        const reply = await readChangelog();
+const changelog = createSnapshot<Changelog>({
+    clock: systemClock,
+    read: async () => {
+        const reply = await callPlatform("record.changelog.list", {});
         return reply.ok ? { ok: true, value: reply.value, at: reply.value.at } : { ok: false };
-    }),
-);
+    },
+});
+
+export const fetchStatus = createServerFn({ method: "GET" }).handler(() => status());
+
+export const fetchChangelog = createServerFn({ method: "GET" }).handler(() => changelog());

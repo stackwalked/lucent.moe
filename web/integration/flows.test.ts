@@ -640,6 +640,8 @@ describe("web against a real platform", () => {
         expect(await text("/changelog")).toContain('<meta name="robots" content="noindex"');
 
         await platform.stop();
+        // Past the snapshot's 15 seconds, so the pages ask platform again and find it gone.
+        await Bun.sleep(15_500);
         for (const path of ["/status", "/changelog"]) {
             const shown = await text(path);
             expect(shown).toContain("reach the server. this is how things stood at");
@@ -670,5 +672,5 @@ describe("web against a real platform", () => {
         for (const shown of unavailable) {
             expect(shown).toContain("status is unavailable until the server is back.");
         }
-    }, 30_000);
+    }, 60_000);
 });
