@@ -1,158 +1,41 @@
-import { isProductId } from "@lucent/core/brands";
-import { getRouteApi, Link, useRouter } from "@tanstack/react-router";
-import { useState } from "react";
-import type { Refused } from "../../server/outcome.ts";
-import { Named } from "../../ui/Avatar/Avatar.tsx";
-import { Button } from "../../ui/Button/Button.tsx";
-import { Empty } from "../../ui/Empty/Empty.tsx";
-import { Messages } from "../../ui/Messages/Messages.tsx";
+import { can } from "@lucent/policy/policy";
+import { getRouteApi, Link, useRouteContext } from "@tanstack/react-router";
 import { Page } from "../../ui/Page/Page.tsx";
-import { Pager } from "../../ui/Pager/Pager.tsx";
-import { Section } from "../../ui/Section/Section.tsx";
-import { Stack } from "../../ui/Stack/Stack.tsx";
-import { RefusalNote } from "../auth/RefusalNote.tsx";
-import { postingNote } from "../comments/posting.ts";
-import { ReportButton } from "../comments/ReportButton.tsx";
-import { TextArea } from "../comments/TextArea.tsx";
-import { ProductSelect } from "../products/ProductSelect.tsx";
+import { memberOf, subjectOf } from "../../viewer.ts";
 import { productName } from "../products/view.ts";
 import { SHOUTS_COPY } from "./copy.ts";
-import { postShout } from "./server.ts";
+import { ShoutFeed } from "./ShoutFeed.tsx";
 import { SHOUTS_TITLE } from "./title.ts";
 
 const route = getRouteApi("/_member/shouts");
 
+// The shout feed on a page of its own, until home carries it.
 export function ShoutsPage() {
-    const { shouts: outcome, products } = route.useLoaderData();
+    const { shouts, products } = route.useLoaderData();
     const { product } = route.useSearch();
-    const router = useRouter();
-    const [refused, setRefused] = useState<Refused | null>(null);
-    const visible = products.ok ? products.value : [];
-    const nameOf = (productId: string) => {
-        const found = visible.find((p) => p.productId === productId);
-        return found === undefined ? productId : productName(found.name);
-    };
-    const post = async (form: FormData) => {
-        const named = String(form.get("product") ?? "");
-        const reply = await postShout({
-            data: {
-                productId: isProductId(named) ? named : null,
-                body: String(form.get("body") ?? ""),
-            },
-        });
-        setRefused(reply.ok ? null : reply.refused);
-        if (reply.ok) await router.invalidate();
-    };
-    const shown = outcome.ok ? refused : outcome.refused;
-    const note = postingNote(shown);
+    const { session } = useRouteContext({ from: "__root__" });
+    const viewer = memberOf(session);
+    const canPurge = viewer !== null && can(subjectOf(viewer), "moderation:remove");
+    const named = products.ok ? products.value.find((p) => p.productId === product) : undefined;
     return (
         <Page
-            title={product === undefined ? SHOUTS_TITLE : SHOUTS_COPY.forProduct(nameOf(product))}
+            title={
+                product === undefined
+                    ? SHOUTS_TITLE
+                    : SHOUTS_COPY.forProduct(
+                          named === undefined ? product : productName(named.name),
+                      )
+            }
             actions={
                 product === undefined ? null : <Link to="/shouts">{SHOUTS_COPY.allShouts}</Link>
             }
         >
-            <Stack gap={6}>
-                <RefusalNote refused={shown} {...(note === undefined ? {} : { extra: note })} />
-                {outcome.ok ? (
-                    <>
-                        <Section caption={SHOUTS_COPY.post}>
-                            <form action={post} key={outcome.value.items[0]?.id ?? ""}>
-                                <Stack gap={3}>
-                                    <TextArea
-                                        name="body"
-                                        label={SHOUTS_COPY.body}
-                                        maxLength={280}
-                                        required
-                                    />
-                                    {products.ok ? (
-                                        <ProductSelect
-                                            name="product"
-                                            label={SHOUTS_COPY.productField}
-                                            none={SHOUTS_COPY.noProduct}
-                                            products={visible}
-                                            defaultValue={product ?? ""}
-                                        />
-                                    ) : (
-                                        <>
-                                            <RefusalNote refused={products.refused} />
-                                            {product === undefined ? null : (
-                                                <input
-                                                    type="hidden"
-                                                    name="product"
-                                                    value={product}
-                                                />
-                                            )}
-                                        </>
-                                    )}
-                                    <div>
-                                        <Button type="submit">{SHOUTS_COPY.post}</Button>
-                                    </div>
-                                </Stack>
-                            </form>
-                        </Section>
-                        {outcome.value.items.length === 0 ? (
-                            <Empty>{SHOUTS_COPY.none}</Empty>
-                        ) : (
-                            <>
-                                <Messages
-                                    label={SHOUTS_COPY.table}
-                                    messages={outcome.value.items.map((row) => ({
-                                        key: row.id,
-                                        at: row.createdAt,
-                                        body: row.body,
-                                        author: (
-                                            <Named avatar={row.author.avatar}>
-                                                {row.isMine ? (
-                                                    SHOUTS_COPY.you
-                                                ) : row.author.username === null ? (
-                                                    "—"
-                                                ) : (
-                                                    <Link
-                                                        to="/members/$username"
-                                                        params={{
-                                                            username: row.author.username,
-                                                        }}
-                                                    >
-                                                        {row.author.username}
-                                                    </Link>
-                                                )}
-                                            </Named>
-                                        ),
-                                        aside: (
-                                            <>
-                                                {row.productId === null ? null : (
-                                                    <Link
-                                                        to="/shouts"
-                                                        search={{ product: row.productId }}
-                                                    >
-                                                        {nameOf(row.productId)}
-                                                    </Link>
-                                                )}
-                                                {row.isMine ? null : (
-                                                    <ReportButton kind="shout" targetId={row.id} />
-                                                )}
-                                            </>
-                                        ),
-                                    }))}
-                                />
-                                <Pager
-                                    nextCursor={outcome.value.nextCursor}
-                                    onNext={(cursor) =>
-                                        void router.navigate({
-                                            to: "/shouts",
-                                            search: {
-                                                cursor,
-                                                ...(product === undefined ? {} : { product }),
-                                            },
-                                        })
-                                    }
-                                />
-                            </>
-                        )}
-                    </>
-                ) : null}
-            </Stack>
+            <ShoutFeed
+                key={product ?? ""}
+                first={shouts}
+                productId={product ?? null}
+                canPurge={canPurge}
+            />
         </Page>
     );
 }

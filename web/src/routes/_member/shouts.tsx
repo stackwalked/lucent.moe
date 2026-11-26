@@ -8,13 +8,10 @@ import { SHOUTS_TITLE } from "../../features/shouts/title.ts";
 
 export const Route = createFileRoute("/_member/shouts")({
     validateSearch: shoutsSearch,
-    loaderDeps: ({ search }) => ({
-        cursor: search.cursor ?? null,
-        product: search.product ?? null,
-    }),
+    loaderDeps: ({ search }) => ({ product: search.product ?? null }),
     loader: async ({ deps }) => {
         const [shouts, products] = await Promise.all([
-            fetchShouts({ data: { productId: deps.product, cursor: deps.cursor } }),
+            fetchShouts({ data: { productId: deps.product, cursor: null } }),
             fetchProducts(),
         ]);
         return { shouts, products };

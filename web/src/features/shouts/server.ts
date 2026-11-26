@@ -25,3 +25,25 @@ export const postShout = createServerFn({ method: "POST" })
         const reply = await callPlatform("shouts.create", data);
         return reply.ok ? done(null) : refuse(reply.error);
     });
+
+export const removeShout = createServerFn({ method: "POST" })
+    .validator((data: unknown) => z.strictObject({ id: ContentId }).parse(data))
+    .handler(async ({ data }) => {
+        const reply = await callPlatform("shouts.delete", data);
+        return reply.ok ? done(null) : refuse(reply.error);
+    });
+
+// Staff's purge: every shout of one account, or the newest N. How many went is not shown.
+export const purgeShouts = createServerFn({ method: "POST" })
+    .validator((data: unknown) =>
+        z
+            .union([
+                z.strictObject({ username: z.string().min(1).max(64) }),
+                z.strictObject({ last: z.number().int().min(1).max(100) }),
+            ])
+            .parse(data),
+    )
+    .handler(async ({ data }) => {
+        const reply = await callPlatform("admin.shouts.purge", data);
+        return reply.ok ? done(null) : refuse(reply.error);
+    });

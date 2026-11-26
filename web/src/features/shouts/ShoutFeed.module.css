@@ -1,0 +1,115 @@
+@layer features {
+    /* The feed fills the viewport under its page's head row: the list scrolls, the input stays
+       under the newest. */
+    .feed {
+        display: flex;
+        flex-direction: column;
+        gap: var(--s-4);
+        block-size: max(24rem, calc(100dvh - 17rem));
+        min-block-size: 0;
+    }
+
+    .scroll {
+        flex: 1;
+        min-block-size: 0;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+    }
+
+    .moreRow {
+        padding-block-end: var(--s-3);
+    }
+
+    .list {
+        display: flex;
+        flex-direction: column;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+    }
+
+    .shout {
+        display: grid;
+        grid-template-columns: var(--s-5) minmax(0, 1fr);
+        gap: var(--s-3);
+        padding-block: var(--s-3);
+        border-block-end: 1px solid var(--line);
+    }
+
+    .shout:last-child {
+        border-block-end: 0;
+    }
+
+    .pic {
+        display: inline-flex;
+        inline-size: var(--s-5);
+        block-size: var(--s-5);
+        margin-block-start: var(--s-1);
+        border-radius: 50%;
+        background: var(--floating);
+    }
+
+    .text {
+        min-inline-size: 0;
+    }
+
+    .who {
+        display: flex;
+        align-items: center;
+        gap: var(--s-3);
+    }
+
+    .name {
+        font-weight: var(--w-medium);
+    }
+
+    .when {
+        color: var(--ink-2);
+        font-size: var(--size-12);
+    }
+
+    .acts {
+        display: flex;
+        align-items: center;
+        gap: var(--s-1);
+        margin-inline-start: auto;
+    }
+
+    .body {
+        max-inline-size: 72ch;
+        margin-block-start: var(--s-1);
+        color: var(--ink-2);
+        line-height: var(--lh-body);
+        overflow-wrap: anywhere;
+        white-space: pre-wrap;
+    }
+
+    .form {
+        display: flex;
+        flex-direction: column;
+        gap: var(--s-3);
+    }
+
+    .usage {
+        color: var(--ink-2);
+        font-size: var(--size-13);
+    }
+
+    /* Delete and report show on hover or focus; with no hover (touch) or little room they are
+       always there. */
+    .acts button {
+        opacity: 0;
+        transition: opacity var(--t-hover) var(--ease);
+    }
+
+    .shout:hover .acts button,
+    .shout:focus-within .acts button {
+        opacity: 1;
+    }
+
+    @media (hover: none), (width <= 640px) {
+        .acts button {
+            opacity: 1;
+        }
+    }
+}

@@ -1,0 +1,83 @@
+@layer features {
+    .list {
+        display: flex;
+        flex-direction: column;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+    }
+
+    .comment {
+        display: grid;
+        grid-template-columns: var(--s-5) minmax(0, 1fr);
+        gap: var(--s-3);
+        padding-block: var(--s-3);
+        border-block-end: 1px solid var(--line);
+    }
+
+    .comment:last-child {
+        border-block-end: 0;
+    }
+
+    .pic {
+        display: inline-flex;
+        inline-size: var(--s-5);
+        block-size: var(--s-5);
+        margin-block-start: var(--s-1);
+        border-radius: 50%;
+        background: var(--floating);
+    }
+
+    .text {
+        min-inline-size: 0;
+    }
+
+    .who {
+        display: flex;
+        align-items: center;
+        gap: var(--s-3);
+    }
+
+    .name {
+        font-weight: var(--w-medium);
+    }
+
+    .end {
+        display: flex;
+        align-items: center;
+        gap: var(--s-2);
+        margin-inline-start: auto;
+    }
+
+    .when {
+        color: var(--ink-2);
+        font-size: var(--size-12);
+    }
+
+    .body {
+        max-inline-size: 72ch;
+        margin-block-start: var(--s-1);
+        color: var(--ink-2);
+        line-height: var(--lh-body);
+        overflow-wrap: anywhere;
+        white-space: pre-wrap;
+    }
+
+    /* The delete control shows on hover or focus; where there is no hover (touch) or little
+       room, it is always there. */
+    .end button {
+        opacity: 0;
+        transition: opacity var(--t-hover) var(--ease);
+    }
+
+    .comment:hover .end button,
+    .comment:focus-within .end button {
+        opacity: 1;
+    }
+
+    @media (hover: none), (width <= 640px) {
+        .end button {
+            opacity: 1;
+        }
+    }
+}
