@@ -36,6 +36,8 @@ export const REFUSALS: Readonly<Record<RefusalCode, string>> = {
     SIZE_LIMIT: "this version is too large.",
     STORAGE_LIMIT: "storage full",
     SHARE_LIMIT: "this item can't hold more links. revoke one first.",
+    ALREADY_LISTED: "this item is already listed.",
+    ALREADY_ADDED: "you already added this.",
     SERVICE_UNAVAILABLE: "can't reach the server. try again shortly.",
     AUTH_REQUIRED: "something went wrong on our side.",
     INVALID_REQUEST: "something went wrong on our side.",

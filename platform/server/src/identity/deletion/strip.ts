@@ -334,6 +334,12 @@ async function stripCommunity(tx: Tx, id: AccountId) {
         sql`select id::text as id from shout where author_id = ${id} order by id for update`,
     );
     if (!shouts.ok) return shouts;
+    // Listings go with the items they list (cloud strip); copies others made keep their content.
+    const listings = await ids(
+        tx,
+        sql`select id::text as id from cloud_listing where owner_id = ${id} order by id for update`,
+    );
+    if (!listings.ok) return listings;
     const profile = await queryAll(
         tx,
         z.object({ id: z.string(), large: z.string().nullable(), small: z.string().nullable() }),
@@ -351,6 +357,7 @@ async function stripCommunity(tx: Tx, id: AccountId) {
                 (r.target_kind = 'comment' and r.target_id = any(${comments.value}::uuid[]))
                 or (r.target_kind = 'guide' and r.target_id = any(${guides.value}::uuid[]))
                 or (r.target_kind = 'shout' and r.target_id = any(${shouts.value}::uuid[]))
+                or (r.target_kind = 'listing' and r.target_id = any(${listings.value}::uuid[]))
                 or (r.target_kind = 'profile' and r.target_id = any(${profiles}::uuid[])))`,
         sql`delete from report where reporter_id = ${id}`,
         sql`delete from account_block where blocker_id = ${id} or blocked_id = ${id}`,

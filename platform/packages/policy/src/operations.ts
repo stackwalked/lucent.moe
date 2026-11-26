@@ -40,6 +40,8 @@ export const AUDIT_OPERATIONS = [
     "community.dismiss_report",
     "shout.remove",
     "shout.purge",
+    "cloud.listing.approve",
+    "cloud.listing.remove",
     "ticket.reply",
     "ticket.close",
     "resource.publish",

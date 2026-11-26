@@ -76,6 +76,8 @@ export const ACCOUNT_REFERENCES: Readonly<Record<string, Fate>> = {
     "comment.profile_account_id": goes("the member's wall goes with them"),
     "comment.removed_by": stays(STAFF),
     "shout.author_id": goes("what the member wrote"),
+    "cloud_listing.owner_id": goes("with the items it lists; copies keep their content"),
+    "cloud_listing.removed_by": stays(STAFF),
     "shout.removed_by": stays(STAFF),
     "report.reporter_id": goes("reports the member made, with their notes"),
     "report.resolved_by": stays(STAFF),

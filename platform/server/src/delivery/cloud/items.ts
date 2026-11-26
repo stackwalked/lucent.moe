@@ -124,6 +124,10 @@ async function gatherAppend(scope: LockedScope, itemId: string | null) {
             and not exists (select 1 from cloud_share s
                 where (s.account_id, s.product_id, s.item_id, s.revision) =
                     (v.account_id, v.product_id, v.item_id, v.revision))
+            and not exists (select 1 from cloud_listing l
+                where (l.owner_id, l.product_id, l.item_id) =
+                    (v.account_id, v.product_id, v.item_id)
+                  and v.revision in (l.revision, l.pending_revision))
             order by revision limit 1`,
     );
     if (!droppable.ok) return droppable;
@@ -174,6 +178,8 @@ type NewItem = CloudScope &
     Content & {
         readonly kind: z.output<typeof ItemKind>;
         readonly limits: CloudLimits;
+        // The listing this is a copy of; the copy does not follow it.
+        readonly sourceListingId?: string;
     };
 
 export async function createItem(tx: Tx, params: NewItem) {
@@ -195,8 +201,9 @@ export async function createLockedItem(
     const item = await queryOne(
         tx,
         z.object({ itemId: z.string() }),
-        sql`insert into cloud_item (account_id, product_id, kind)
-            values (${scope.accountId}, ${scope.productId}, ${params.kind}) returning item_id::text as "itemId"`,
+        sql`insert into cloud_item (account_id, product_id, kind, source_listing_id)
+            values (${scope.accountId}, ${scope.productId}, ${params.kind},
+                    ${params.sourceListingId ?? null}::uuid) returning item_id::text as "itemId"`,
     );
     if (!item.ok) return item;
     invariant(item.value !== null, "cloud item insert returned no id");

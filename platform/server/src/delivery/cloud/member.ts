@@ -22,7 +22,7 @@ import {
 import { type CloudOperation, decideCloudAccess } from "./member.rules.ts";
 import { listShares } from "./shares.ts";
 
-function withCloudMember<S extends Result<unknown, unknown>>(
+export function withCloudMember<S extends Result<unknown, unknown>>(
     db: Db,
     token: BearerToken,
     work: (tx: Tx, accountId: AccountId) => Promise<S>,

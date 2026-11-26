@@ -125,7 +125,15 @@ test("cloud RPCs derive ownership from the member and import only with current p
             products.set(cs2.id, { ...cs2, state });
             expect(await copy()).toEqual(missing);
             expect(await client.call("cloud.items.list", p, bob)).toEqual(
-                ok([{ itemId: ownCopy.itemId, revision: 3, name: "opaque", kind: "script" }]),
+                ok([
+                    {
+                        itemId: ownCopy.itemId,
+                        revision: 3,
+                        name: "opaque",
+                        kind: "script",
+                        source: null,
+                    },
+                ]),
             );
         }
         products.set(cs2.id, cs2);
@@ -265,7 +273,7 @@ test("a member keeps their items when the product retires or the entitlement lap
         );
         await refusedWrites();
         expect(await client.call("cloud.items.list", p, alice)).toEqual(
-            ok([{ itemId: kept.itemId, revision: 1, name: "kept", kind: "script" }]),
+            ok([{ itemId: kept.itemId, revision: 1, name: "kept", kind: "script", source: null }]),
         );
         expect(await client.call("cloud.items.delete", kept, alice)).toEqual(ok({}));
         expect(await client.call("cloud.items.list", p, alice)).toEqual(missing);

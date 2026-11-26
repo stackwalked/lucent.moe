@@ -1,9 +1,10 @@
-import { BearerToken, OperationId, ProductId } from "@lucent/core/scalars";
+import { AccountId, BearerToken, EpochMs, OperationId, ProductId } from "@lucent/core/scalars";
 import { z } from "zod";
 import { CloudId, ItemKind } from "../cloud-item.ts";
 import { isCloudItemName } from "../cloud-item-guards.ts";
 import { defineContract } from "../contract.ts";
-import { Done, refusal, Unavailable } from "./shared.ts";
+import { Author, PostingRestricted } from "./community.ts";
+import { Done, refusal, StaffRefusals, Unavailable } from "./shared.ts";
 
 const Revision = z.int32().positive();
 export const CloudProduct = z.strictObject({ productId: ProductId });
@@ -25,6 +26,16 @@ const Item = z.object({
     kind: ItemKind,
 });
 const Change = z.object({ revision: Revision, conflict: z.boolean() });
+// Where a copy came from: the listing, and its owner when they still have a name.
+const ItemSource = z.object({ listingId: z.uuid(), owner: z.string().nullable() });
+const ListingId = z.uuid();
+// One line.
+export const ListingSummary = z
+    .string()
+    .trim()
+    .max(140)
+    .regex(/^[^\r\n]*$/);
+const ListingState = z.enum(["pending", "listed"]);
 const read = {
     session: "member",
     effect: "read",
@@ -64,7 +75,11 @@ export const cloudContract = defineContract({
             canAppend: z.boolean(),
         }),
     },
-    "cloud.items.list": { ...read, input: CloudProduct, output: z.array(Item).readonly() },
+    "cloud.items.list": {
+        ...read,
+        input: CloudProduct,
+        output: z.array(Item.extend({ source: ItemSource.nullable() })).readonly(),
+    },
     "cloud.items.create": { ...append, input: CreateItem, output: z.object({ itemId: CloudId }) },
     "cloud.items.history": {
         ...read,
@@ -85,4 +100,129 @@ export const cloudContract = defineContract({
     },
     "cloud.shares.revoke": { ...write, input: Revoke, output: Done },
     "cloud.shares.import": { ...append, input: Import, output: z.object({ itemId: CloudId }) },
+    // Listings: a member offers one of their items to everyone who holds the product. Configs
+    // and inventories are listed at once; a script waits for staff (`pending`) and an update of
+    // a listed script waits too, while its last approved snapshot stays visible.
+    // Without `productId` the list spans every product the viewer holds an active entitlement
+    // to; with it and no entitlement the answer is NOT_FOUND. `owner` narrows to one account's
+    // listings, empty when that account is blocked, private or gone.
+    "cloud.listings.list": {
+        ...read,
+        input: z.strictObject({
+            productId: ProductId.optional(),
+            owner: z.string().max(64).optional(),
+            kind: ItemKind.optional(),
+            text: z.string().min(1).max(64).optional(),
+            cursor: ListingId.optional(),
+        }),
+        output: z.object({
+            items: z
+                .array(
+                    z.object({
+                        id: ListingId,
+                        productId: ProductId,
+                        name: z.string(),
+                        kind: ItemKind,
+                        summary: z.string(),
+                        owner: Author,
+                        updatedAt: EpochMs,
+                        // The viewer already holds a copy.
+                        added: z.boolean(),
+                    }),
+                )
+                .readonly(),
+            nextCursor: ListingId.nullable(),
+        }),
+    },
+    // The viewer's own listings of the product, in any state but removed.
+    "cloud.listings.mine": {
+        ...read,
+        input: CloudProduct,
+        output: z
+            .array(
+                z.object({
+                    id: ListingId,
+                    itemId: CloudId,
+                    name: z.string(),
+                    kind: ItemKind,
+                    summary: z.string(),
+                    state: ListingState,
+                    // A newer snapshot waits for staff (a script's update).
+                    pending: z.boolean(),
+                    updatedAt: EpochMs,
+                }),
+            )
+            .readonly(),
+    },
+    "cloud.listings.create": {
+        ...write,
+        error: z.discriminatedUnion("code", [
+            ...write.error.options,
+            PostingRestricted,
+            refusal("ALREADY_LISTED"),
+        ]),
+        input: CloudItem.extend({ summary: ListingSummary }),
+        output: z.object({ listingId: ListingId }),
+    },
+    "cloud.listings.update": {
+        ...write,
+        error: z.discriminatedUnion("code", [...write.error.options, PostingRestricted]),
+        input: z.strictObject({ listingId: ListingId, summary: ListingSummary.optional() }),
+        output: Done,
+    },
+    "cloud.listings.remove": {
+        ...write,
+        input: z.strictObject({ listingId: ListingId }),
+        output: Done,
+    },
+    // Copies the listed snapshot into the viewer's cloud as a share import does: same limits,
+    // same refusals. Adding the same listing twice is ALREADY_ADDED.
+    "cloud.listings.add": {
+        ...append,
+        error: z.object({
+            code: z.enum([...append.error.shape.code.options, "ALREADY_ADDED"]),
+        }),
+        input: z.strictObject({ listingId: ListingId }),
+        output: z.object({ itemId: CloudId }),
+    },
+    // Staff with `moderation:remove`: what waits for approval, oldest first; approve it; take a
+    // listing down.
+    "admin.cloud.listings.list": {
+        session: "member",
+        effect: "read",
+        input: z.strictObject({ state: z.literal("pending"), cursor: ListingId.nullable() }),
+        output: z.object({
+            items: z
+                .array(
+                    z.object({
+                        id: ListingId,
+                        productId: ProductId,
+                        kind: ItemKind,
+                        name: z.string(),
+                        summary: z.string(),
+                        owner: z.object({ accountId: AccountId, username: z.string().nullable() }),
+                        // A first listing, not an update of one already visible.
+                        first: z.boolean(),
+                        updatedAt: EpochMs,
+                    }),
+                )
+                .readonly(),
+            nextCursor: ListingId.nullable(),
+        }),
+        error: z.discriminatedUnion("code", [...StaffRefusals]),
+    },
+    "admin.cloud.listings.approve": {
+        session: "member",
+        effect: "write",
+        input: z.strictObject({ listingId: ListingId }),
+        output: Done,
+        error: z.discriminatedUnion("code", [...StaffRefusals, refusal("NOT_FOUND")]),
+    },
+    "admin.cloud.listings.remove": {
+        session: "member",
+        effect: "write",
+        input: z.strictObject({ listingId: ListingId }),
+        output: Done,
+        error: z.discriminatedUnion("code", [...StaffRefusals, refusal("NOT_FOUND")]),
+    },
 });

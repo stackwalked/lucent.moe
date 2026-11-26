@@ -4,7 +4,7 @@ import type { EpochMs, ProductId } from "@lucent/core/scalars";
 export const RESTRICTION_KINDS = ["muted", "barred"] as const;
 export type RestrictionKind = (typeof RESTRICTION_KINDS)[number];
 
-export const POSTING_SURFACES = ["profile", "comment", "shout", "guide"] as const;
+export const POSTING_SURFACES = ["profile", "comment", "shout", "guide", "listing"] as const;
 export type PostingSurface = (typeof POSTING_SURFACES)[number];
 
 export type Restriction = {
@@ -20,10 +20,11 @@ export type PostingRefusal = {
     readonly endsAt: EpochMs | null;
 };
 
-// Muted keeps the voice in conversation off (comments, shouts); barred closes every surface a
+// Muted keeps the voice in conversation off (comments, shouts) and offers to others (cloud
+// listings); barred closes every surface a
 // member writes on. Neither says anything about licences, which this file never sees.
 const CLOSED_BY: Readonly<Record<RestrictionKind, ReadonlySet<PostingSurface>>> = {
-    muted: new Set<PostingSurface>(["comment", "shout"]),
+    muted: new Set<PostingSurface>(["comment", "shout", "listing"]),
     barred: new Set<PostingSurface>(POSTING_SURFACES),
 };
 

@@ -73,7 +73,7 @@ export const ExportData = z.object({
     reportsMade: z
         .array(
             z.object({
-                kind: z.enum(["comment", "shout", "guide", "profile"]),
+                kind: z.enum(["comment", "shout", "guide", "profile", "listing"]),
                 targetId: z.uuid(),
                 reason: z.enum(["spam", "abuse", "other"]),
                 note: z.string(),

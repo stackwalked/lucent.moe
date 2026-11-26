@@ -15,6 +15,7 @@ import {
     type Tx,
 } from "../../base/db/pool.ts";
 import { withTx } from "../../base/db/tx.ts";
+import { takeDown } from "../../delivery/cloud/listings.ts";
 import { lockCallerWith } from "../../identity/authority/standing.ts";
 import { clearRemovedAvatar } from "../community/avatars.ts";
 import { guideReadable, notBlockedWith } from "../community/blocks.ts";
@@ -101,6 +102,20 @@ function findTarget(tx: Tx, kind: Kind, id: string, viewer: AccountId | null) {
                       and (${viewer}::text is null or p.account_id = ${viewer} or p.visibility = 'members')
                     for share`,
             );
+        case "listing":
+            // A listing is reportable while others can see it; staff see what waits as well.
+            return queryOne(
+                tx,
+                Target,
+                sql`select l.owner_id as "authorId", l.product_id as "productId",
+                           left(l.name || ' - ' || l.summary, 280) as excerpt
+                    from cloud_listing l join account o on o.id = l.owner_id
+                    where l.id = ${id}::uuid and l.state <> 'removed'
+                      and ${unblocked(sql`l.owner_id`)}
+                      and (${viewer}::text is null
+                           or (l.state = 'listed' and o.username is not null and o.status = 'active'))
+                    for share of l`,
+            );
     }
 }
 
@@ -182,10 +197,10 @@ export function listReports(
             QueueRow,
             sql`select r.id, r.target_kind as kind, r.target_id as "targetId", r.reason, r.note,
                        rep.username as "reporterUsername",
-                       coalesce(c.author_id, s.author_id, g.author_id, pr.account_id) as "authorId",
+                       coalesce(c.author_id, s.author_id, g.author_id, pr.account_id, cl.owner_id) as "authorId",
                        au.username as "authorUsername",
-                       coalesce(cg.product_id, s.product_id, g.product_id) as "productId",
-                       left(coalesce(c.body, s.body, g.title, pr.bio), 280) as excerpt,
+                       coalesce(cg.product_id, s.product_id, g.product_id, cl.product_id) as "productId",
+                       left(coalesce(c.body, s.body, g.title, pr.bio, cl.name), 280) as excerpt,
                        r.created_at as "createdAt"
                 from report r
                 join account rep on rep.id = r.reporter_id
@@ -194,7 +209,8 @@ export function listReports(
                 left join shout s on r.target_kind = 'shout' and s.id = r.target_id
                 left join guide g on r.target_kind = 'guide' and g.id = r.target_id
                 left join profile pr on r.target_kind = 'profile' and pr.id = r.target_id
-                join account au on au.id = coalesce(c.author_id, s.author_id, g.author_id, pr.account_id)
+                left join cloud_listing cl on r.target_kind = 'listing' and cl.id = r.target_id
+                join account au on au.id = coalesce(c.author_id, s.author_id, g.author_id, pr.account_id, cl.owner_id)
                 where r.state = 'open' ${after}
                 order by r.created_at, r.id limit ${QUEUE_PAGE_SIZE + 1}`,
         );
@@ -249,6 +265,8 @@ function hide(tx: Tx, kind: Kind, id: string, by: AccountId) {
                 sql`update guide set removed_at = now(), removed_by = ${by}
                     where id = ${id}::uuid and removed_at is null returning id`,
             );
+        case "listing":
+            return queryOne(tx, hidden, sql`${takeDown(id, by)} returning id`);
     }
 }
 

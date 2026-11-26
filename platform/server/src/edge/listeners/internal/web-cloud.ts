@@ -4,12 +4,20 @@ import type { Handlers } from "@lucent/rpc/mount";
 import type { cloudContract } from "@lucent/rpc/web/cloud";
 import type { DbFailure, Tx } from "../../../base/db/pool.ts";
 import type { CloudLimits } from "../../../delivery/cloud/items.rules.ts";
+import { type CloudScope, changeItem, deleteItem } from "../../../delivery/cloud/items.ts";
 import {
-    type CloudScope,
-    changeItem,
-    deleteItem,
-    listItems,
-} from "../../../delivery/cloud/items.ts";
+    addListing,
+    approveListing,
+    createListing,
+    listItemsWithSource,
+    listingProduct,
+    listListings,
+    listMine,
+    listPending,
+    removeListingAsStaff,
+    removeOwnListing,
+    updateListing,
+} from "../../../delivery/cloud/listings.ts";
 import type { CloudOperation } from "../../../delivery/cloud/member.rules.ts";
 import {
     createEmptyItem,
@@ -18,7 +26,7 @@ import {
     withCloudScope,
 } from "../../../delivery/cloud/member.ts";
 import { createShare, importShare, revokeShare } from "../../../delivery/cloud/shares.ts";
-import { done, mapOk, served, type WebRpcContext } from "./web-shared.ts";
+import { asStaff, done, mapOk, served, type WebRpcContext } from "./web-shared.ts";
 
 type RequestScope = { readonly productId: ProductId; readonly session: BearerToken };
 type Appending = Extract<CloudOperation, "create" | "rename" | "restore" | "import">;
@@ -54,7 +62,7 @@ export const cloudHandlers = {
             })),
         ),
     "cloud.items.list": (ctx, { productId }, { session }) =>
-        scoped(ctx, { session, productId, operation: "list" }, listItems),
+        scoped(ctx, { session, productId, operation: "list" }, listItemsWithSource),
     "cloud.items.create": (ctx, { productId, operationId, name, kind }, { session }) =>
         append(ctx, { session, productId, operation: "create" }, (tx, scope, limits) =>
             createEmptyItem(tx, { ...scope, operationId, name, kind, limits }),
@@ -92,5 +100,60 @@ export const cloudHandlers = {
     "cloud.shares.import": (ctx, { productId, token }, { session }) =>
         append(ctx, { session, productId, operation: "import" }, (tx, scope, limits) =>
             importShare(tx, { ...scope, limits, token }),
+        ),
+    "cloud.listings.list": async (ctx, input, { session }) =>
+        served(
+            await listListings(ctx.auth.db, session, {
+                catalog: ctx.catalog,
+                productId: input.productId,
+                owner: input.owner,
+                kind: input.kind,
+                text: input.text,
+                cursor: input.cursor,
+            }),
+        ),
+    "cloud.listings.mine": (ctx, { productId }, { session }) =>
+        scoped(ctx, { session, productId, operation: "list" }, listMine),
+    "cloud.listings.create": (ctx, { productId, itemId, summary }, { session }) =>
+        scoped(ctx, { session, productId, operation: "share" }, (tx, scope) =>
+            createListing(tx, scope, { itemId, summary }),
+        ),
+    "cloud.listings.update": async (ctx, { listingId, summary }, { session }) => {
+        const productId = await listingProduct(ctx.auth.db, session, listingId);
+        if (!productId.ok) return served(err(productId.error));
+        return scoped(
+            ctx,
+            { session, productId: productId.value, operation: "share" },
+            async (tx, scope) =>
+                mapOk(await updateListing(tx, scope, { listingId, summary }), () => ({})),
+        );
+    },
+    "cloud.listings.remove": async (ctx, { listingId }, { session }) => {
+        const productId = await listingProduct(ctx.auth.db, session, listingId);
+        if (!productId.ok) return served(err(productId.error));
+        return scoped(
+            ctx,
+            { session, productId: productId.value, operation: "revoke" },
+            async (tx, scope) => mapOk(await removeOwnListing(tx, scope, listingId), () => ({})),
+        );
+    },
+    "cloud.listings.add": async (ctx, { listingId }, { session }) => {
+        const productId = await listingProduct(ctx.auth.db, session, listingId);
+        if (!productId.ok) return served(err(productId.error));
+        return append(
+            ctx,
+            { session, productId: productId.value, operation: "import" },
+            (tx, scope, limits) => addListing(tx, scope, { listingId, limits }),
+        );
+    },
+    "admin.cloud.listings.list": (ctx, input, call) =>
+        asStaff(ctx, call, (caller) => listPending(ctx.auth.db, { caller, cursor: input.cursor })),
+    "admin.cloud.listings.approve": (ctx, input, call) =>
+        asStaff(ctx, call, async (caller) =>
+            done(await approveListing(ctx.auth.db, { caller, listingId: input.listingId })),
+        ),
+    "admin.cloud.listings.remove": (ctx, input, call) =>
+        asStaff(ctx, call, async (caller) =>
+            done(await removeListingAsStaff(ctx.auth.db, { caller, listingId: input.listingId })),
         ),
 } satisfies Handlers<WebRpcContext, typeof cloudContract>;
