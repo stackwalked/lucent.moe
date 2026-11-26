@@ -5,6 +5,7 @@ import { Button } from "../../../ui/Button/Button.tsx";
 import { Empty } from "../../../ui/Empty/Empty.tsx";
 import { Page } from "../../../ui/Page/Page.tsx";
 import { Section } from "../../../ui/Section/Section.tsx";
+import { Select } from "../../../ui/Select/Select.tsx";
 import { Stack } from "../../../ui/Stack/Stack.tsx";
 import { Status } from "../../../ui/Status/Status.tsx";
 import { Table } from "../../../ui/Table/Table.tsx";
@@ -12,7 +13,7 @@ import { TextField } from "../../../ui/TextField/TextField.tsx";
 import { Time } from "../../../ui/Time/Time.tsx";
 import { RefusalNote } from "../../auth/RefusalNote.tsx";
 import { TextArea } from "../../comments/TextArea.tsx";
-import styles from "../../tickets/Thread.module.css";
+import { productName } from "../../products/view.ts";
 import { AccountAction } from "../accounts/AccountAction.tsx";
 import { ADMIN_COPY } from "../copy.ts";
 import { useStaffAction } from "../staff.ts";
@@ -68,21 +69,18 @@ function NoteFields({
                 maxLength={bodyMax}
                 {...(current === null ? {} : { defaultValue: current.body })}
             />
-            <label className={styles.field}>
-                <span className={styles.label}>{C.product}</span>
-                <select
-                    name="productId"
-                    className={styles.control}
-                    defaultValue={current?.productId ?? ""}
-                >
-                    <option value="">{C.service}</option>
-                    {products.map((product) => (
-                        <option key={product.id} value={product.id}>
-                            {product.name.toLowerCase()}
-                        </option>
-                    ))}
-                </select>
-            </label>
+            <Select
+                name="productId"
+                label={C.product}
+                defaultValue={current?.productId ?? ""}
+                options={[
+                    { value: "", label: C.service },
+                    ...products.map((product) => ({
+                        value: product.id,
+                        label: productName(product.name),
+                    })),
+                ]}
+            />
         </>
     );
 }
@@ -146,10 +144,11 @@ export function RecordPage() {
         );
     }
     const { issues, changelog, truncated, products } = outcome.value;
-    const about = (productId: string | null) =>
-        productId === null
-            ? C.service
-            : (products.find((p) => p.id === productId)?.name.toLowerCase() ?? productId);
+    const about = (productId: string | null) => {
+        if (productId === null) return C.service;
+        const product = products.find((p) => p.id === productId);
+        return product === undefined ? productId : productName(product.name);
+    };
     return (
         <Page title={C.title}>
             <Stack gap={6}>
