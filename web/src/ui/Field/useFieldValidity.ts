@@ -4,7 +4,15 @@ import { UI_COPY } from "../copy.ts";
 // One submit event is checked once for the whole form, however many fields listen to it.
 const submits = new WeakMap<HTMLFormElement, { readonly event: Event; focusPending: boolean }>();
 
-function firstFailure(input: HTMLInputElement): string | undefined {
+type Control = HTMLInputElement | HTMLTextAreaElement;
+
+// The browser's `required` is satisfied by spaces alone, and the server trims before it checks:
+// a field of only spaces would pass here, be refused there, and take the page down with it.
+function blank(input: Control): boolean {
+    return input.required && input.value !== "" && input.value.trim() === "";
+}
+
+function firstFailure(input: Control): string | undefined {
     const v = input.validity;
     if (v.valid) return undefined;
     if (v.valueMissing) return UI_COPY.required;
@@ -23,8 +31,11 @@ function firstFailure(input: HTMLInputElement): string | undefined {
 export function useFieldValidity(customCheck?: (value: string) => string | undefined) {
     const [message, setMessage] = useState<string | undefined>(undefined);
     const ref = useCallback(
-        (input: HTMLInputElement) => {
-            const sync = () => input.setCustomValidity(customCheck?.(input.value) ?? "");
+        (input: Control) => {
+            const sync = () =>
+                input.setCustomValidity(
+                    blank(input) ? UI_COPY.required : (customCheck?.(input.value) ?? ""),
+                );
             const show = () => {
                 sync();
                 setMessage(firstFailure(input));
