@@ -1,12 +1,31 @@
 import { err, ok } from "@lucent/core/result";
 import { AccountId, type BearerToken, EpochMs } from "@lucent/core/scalars";
 import { z } from "zod";
-import { type Db, execute, queryAll, queryOne, sql, sqlIdent } from "../../base/db/pool.ts";
+import {
+    type Db,
+    execute,
+    queryAll,
+    queryOne,
+    type SqlFragment,
+    sql,
+    sqlIdent,
+} from "../../base/db/pool.ts";
 import { withMember } from "../notify/account.ts";
 import { notBlockedWith } from "./blocks.ts";
 import { withMemberAt } from "./member.ts";
 import type { NotFound } from "./page.ts";
 import { mayPostHere } from "./standing.ts";
+
+// The role label of an account, as the shared FROM/WHERE body of its query: the first role (by
+// rank, the roles' order) that carries a colour; an expired assignment is none. Callers select
+// `r.name, r.label_color as color` over it — profiles one account at a time, the directory as a
+// lateral join per row.
+export function roleLabelRows(accountExpr: SqlFragment): SqlFragment {
+    return sql`from account_role ar join role r on r.id = ar.role_id
+        where ar.account_id = ${accountExpr} and r.label_color is not null
+          and (ar.expires_at is null or ar.expires_at > now())
+        order by r.rank asc, r.name asc limit 1`;
+}
 
 export const PROFILE_VISIBILITIES = ["members", "private"] as const;
 
@@ -109,11 +128,7 @@ export function readProfile(
                 name: z.string(),
                 color: z.enum(["pink", "shu", "ok", "wait", "violet", "aqua"]),
             }),
-            sql`select r.name, r.label_color as color
-                from account_role ar join role r on r.id = ar.role_id
-                where ar.account_id = ${ownerId} and r.label_color is not null
-                  and (ar.expires_at is null or ar.expires_at > now())
-                order by r.rank asc, r.name asc limit 1`,
+            sql`select r.name, r.label_color as color ${roleLabelRows(sql`${ownerId}`)}`,
         );
         if (!roleRow.ok) return roleRow;
 

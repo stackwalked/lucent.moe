@@ -17,6 +17,7 @@ import { guidesContract } from "./web/guides.ts";
 import { healthContract } from "./web/health.ts";
 import { inboxContract } from "./web/inbox.ts";
 import { invitesContract } from "./web/invites.ts";
+import { membersContract } from "./web/members.ts";
 import { moderationContract } from "./web/moderation.ts";
 import { overridesContract } from "./web/overrides.ts";
 import { preferencesContract } from "./web/preferences.ts";
@@ -80,6 +81,7 @@ function composeWebContract() {
         ...preferencesContract,
         ...privacyContract,
         ...moderationContract,
+        ...membersContract,
         ...profileContract,
         ...guidesContract,
         ...commentsContract,

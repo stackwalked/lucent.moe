@@ -1,11 +1,18 @@
-import { trySync } from "@lucent/core/contain";
+import { tryAsync, trySync } from "@lucent/core/contain";
 import { err, ok, type Result } from "@lucent/core/result";
 import type { AccountId } from "@lucent/core/scalars";
-import { decideStreamAdmission, type StreamRefusal } from "./events.rules.ts";
+import { decideStreamAdmission, type RosterEntry, type StreamRefusal } from "./events.rules.ts";
 
 // A stream carries presence and nothing else. Content pings were left out: they would go to every
 // stream whatever its reader may see (blocks, product listing), and nothing consumed them.
-export type PresenceEvent = { readonly kind: "presence"; readonly online: number };
+// `roster` names at most 50 of the accounts online (community/presence.ts decides who is named);
+// it is one broadcast for everyone, so a block never hides a roster entry from the blockee —
+// hiding there is the reader's own work.
+export type PresenceEvent = {
+    readonly kind: "presence";
+    readonly online: number;
+    readonly roster: readonly RosterEntry[];
+};
 
 export type StreamEnd = {
     // False when the stream cannot take the event (its reader is not keeping up, or it is gone):
@@ -34,6 +41,10 @@ export type EventHub = {
 // only holder of presence. Online counts accounts: two tabs are one.
 export function createEventHub(options?: {
     readonly schedule?: (run: () => void) => void;
+    // Reads the roster for the connected accounts (community/presence.ts). When given, events
+    // are delivered once it answers — asynchronously; without it the roster is empty and
+    // delivery stays synchronous, which is what the hub's own tests hold it to.
+    readonly roster?: (accountIds: readonly AccountId[]) => Promise<readonly RosterEntry[]>;
 }): EventHub {
     const schedule =
         options?.schedule ??
@@ -71,10 +82,36 @@ export function createEventHub(options?: {
         stream.close();
     };
 
+    // One event built per flush or join: the roster read happens once however many streams take
+    // it. A roster that cannot be read is an empty one, never a dropped presence count.
+    const buildEvent = async (): Promise<PresenceEvent> => {
+        const online = perAccount.size;
+        if (options?.roster === undefined) return { kind: "presence", online, roster: [] };
+        const roster = await tryAsync(
+            () => options.roster?.([...perAccount.keys()]) ?? Promise.resolve([]),
+            (): readonly RosterEntry[] => [],
+        );
+        return { kind: "presence", online, roster: roster.ok ? roster.value : [] };
+    };
+
+    const emit = (id: symbol) => {
+        if (options?.roster === undefined) {
+            deliver(id, { kind: "presence", online: perAccount.size, roster: [] });
+            return;
+        }
+        void buildEvent().then((event) => deliver(id, event));
+    };
+
     const flush = () => {
         pending = false;
-        const event: PresenceEvent = { kind: "presence", online: perAccount.size };
-        for (const id of [...streams.keys()]) deliver(id, event);
+        if (options?.roster === undefined) {
+            const event: PresenceEvent = { kind: "presence", online: perAccount.size, roster: [] };
+            for (const id of [...streams.keys()]) deliver(id, event);
+            return;
+        }
+        void buildEvent().then((event) => {
+            for (const id of [...streams.keys()]) deliver(id, event);
+        });
     };
     function changed() {
         if (pending || closed) return;
@@ -95,7 +132,7 @@ export function createEventHub(options?: {
             const first = !perAccount.has(accountId);
             perAccount.set(accountId, (perAccount.get(accountId) ?? 0) + 1);
             if (first) changed();
-            deliver(id, { kind: "presence", online: perAccount.size });
+            emit(id);
             return ok(() => drop(id));
         },
         online: () => perAccount.size,

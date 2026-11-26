@@ -287,6 +287,7 @@ const inputs: SinglePurpose = {
         id: "00000000-0000-4000-8000-000000000001",
         outcome: "remove",
     },
+    "members.list": {},
     "profile.get": { username: "someone" },
     "profile.bio.set": { bio: "hello" },
     "profile.tagline.set": { tagline: "hi" },

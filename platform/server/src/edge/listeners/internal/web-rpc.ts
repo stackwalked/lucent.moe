@@ -16,6 +16,7 @@ import { factsHandlers } from "./web-facts.ts";
 import { guidesHandlers } from "./web-guides.ts";
 import { healthHandlers } from "./web-health.ts";
 import { inboxHandlers } from "./web-inbox.ts";
+import { membersHandlers } from "./web-members.ts";
 import { moderationHandlers } from "./web-moderation.ts";
 import { overridesHandlers } from "./web-overrides.ts";
 import { preferencesHandlers } from "./web-preferences.ts";
@@ -48,6 +49,7 @@ export const webProcedures = implement<WebRpcContext, WebContract>(webContract, 
     ...inboxHandlers,
     ...preferencesHandlers,
     ...privacyHandlers,
+    ...membersHandlers,
     ...moderationHandlers,
     ...profileHandlers,
     ...guidesHandlers,

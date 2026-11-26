@@ -168,7 +168,7 @@ test("a member's stream carries presence, ends with its session or a superseded 
         expect(response.headers.get("content-type")).toBe("text/event-stream");
         const reader = response.body?.getReader();
         invariant(reader !== undefined, "expected a stream");
-        expect(await readUntil(reader, "event: presence")).toContain('data: {"online":1}');
+        expect(await readUntil(reader, "event: presence")).toContain('data: {"online":1,"roster":');
         expect(hub.online()).toBe(1);
 
         // The session ends: the next heartbeat closes the stream and the account goes offline.

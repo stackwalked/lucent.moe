@@ -17,3 +17,33 @@ export function decideStreamAdmission(params: {
     if (params.totalStreams >= MAX_STREAMS) return err({ code: "SERVICE_UNAVAILABLE" });
     return ok(null);
 }
+
+// The roster is the people part of presence: who is online, capped, so a crowded night costs the
+// same frame as a quiet one. Rows arrive with every fact the filter needs; the decision is pure
+// so the cap and the hiding are table-tested. `online` in the event stays the true count of
+// everyone connected, whoever the roster leaves out.
+export const ROSTER_CAP = 50;
+
+export type RosterRow = {
+    readonly username: string;
+    readonly avatar: string | null;
+    readonly inGame: boolean;
+    // False when the account hides its last seen or its profile is private: it is never named.
+    readonly shown: boolean;
+};
+
+export type RosterEntry = {
+    readonly username: string;
+    readonly avatar: string | null;
+    readonly inGame: boolean;
+};
+
+export function decideRoster(
+    rows: readonly RosterRow[],
+    cap: number = ROSTER_CAP,
+): readonly RosterEntry[] {
+    return rows
+        .filter((row) => row.shown)
+        .slice(0, cap)
+        .map(({ username, avatar, inGame }) => ({ username, avatar, inGame }));
+}

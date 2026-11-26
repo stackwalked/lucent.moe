@@ -31,6 +31,7 @@ import { createArgon2idHasher, type PasswordHasher } from "./identity/auth/passw
 import { createTotpKeyring } from "./identity/auth/totp.ts";
 import { createEmailHasher } from "./identity/deletion/email-hash.ts";
 import { createEventHub } from "./members/community/events.ts";
+import { createRosterProvider } from "./members/community/presence.ts";
 import { restrictionExpiryJob } from "./members/moderation/restrictions.ts";
 import { mailDeliveryJob } from "./members/notify/mail.ts";
 import { followerNoticeJob } from "./members/record/followers.ts";
@@ -208,7 +209,7 @@ export async function startServer(params: {
             detail: "LUCENT_DEV_PASSWORD_ONLY: no second factor, no step-up",
         });
     }
-    const events = createEventHub();
+    const events = createEventHub({ roster: createRosterProvider(db, systemClock) });
     const web = createInternalWebApp({
         events,
         cloudLimits,
