@@ -1,0 +1,111 @@
+@layer features {
+    .grid {
+        display: grid;
+        grid-template-columns: var(--docs-contents) minmax(0, 1fr) var(--side-w);
+        column-gap: var(--s-7);
+        align-items: start;
+    }
+
+    .side,
+    .main,
+    .toc {
+        min-inline-size: 0;
+    }
+
+    .wide {
+        display: flex;
+        flex-direction: column;
+        gap: var(--s-4);
+    }
+
+    .narrow {
+        display: none;
+    }
+
+    .contents {
+        display: flex;
+        flex-direction: column;
+        gap: var(--s-4);
+    }
+
+    .group {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .caption {
+        padding-block: var(--s-1);
+        color: var(--ink-2);
+        font-size: var(--size-13);
+    }
+
+    .link {
+        display: block;
+        padding-block: var(--s-1);
+        color: var(--ink-2);
+        font-size: var(--size-14);
+    }
+
+    .link:hover {
+        color: var(--ink);
+    }
+
+    .link[aria-current="page"] {
+        color: var(--pink-ink);
+    }
+
+    /* The crumb takes the head row's height, so the title starts level with the first rows
+       of the other columns. */
+    .crumb {
+        display: flex;
+        align-items: center;
+        block-size: var(--caption-h);
+        margin: 0 0 var(--s-4);
+        color: var(--ink-2);
+        font-size: var(--size-13);
+    }
+
+    .toc .link {
+        padding-block: var(--s-1);
+    }
+
+    @container (max-width: 1100px) {
+        .grid {
+            grid-template-columns: var(--docs-contents) minmax(0, 1fr);
+        }
+
+        .toc {
+            display: none;
+        }
+    }
+
+    @container (max-width: 760px) {
+        .grid {
+            grid-template-columns: minmax(0, 1fr);
+            row-gap: var(--s-4);
+        }
+
+        .wide {
+            display: none;
+        }
+
+        .narrow {
+            display: flex;
+            flex-direction: column;
+            gap: var(--s-3);
+            border-block-end: 1px solid var(--line);
+        }
+
+        .narrow summary {
+            display: flex;
+            align-items: center;
+            block-size: calc(var(--caption-h) - 1px);
+            color: var(--ink);
+            cursor: pointer;
+        }
+
+        .crumb {
+            block-size: auto;
+        }
+    }
+}

@@ -12,6 +12,8 @@ import { Time } from "../../ui/Time/Time.tsx";
 import { Entries } from "../changes/Entries.tsx";
 import { CLOUD_COPY } from "../cloud/copy.ts";
 import { ListingRow } from "../cloud/ListingRow.tsx";
+import { DOCS_COPY } from "../docs/copy.ts";
+import { hasDocs } from "../docs/has.ts";
 import { PRODUCTS_COPY as C } from "./copy.ts";
 import { noteLastProduct } from "./lastProduct.ts";
 import styles from "./ProductPage.module.css";
@@ -89,6 +91,15 @@ export function ProductPage() {
                                         search: { product: product.productId },
                                         label: C.cloudTab,
                                     },
+                                    ...(hasDocs(product.productId)
+                                        ? [
+                                              {
+                                                  to: "/docs/$scope" as const,
+                                                  params: { scope: product.productId },
+                                                  label: DOCS_COPY.title,
+                                              },
+                                          ]
+                                        : []),
                                 ]}
                             />
                         </>

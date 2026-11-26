@@ -36,6 +36,7 @@ import { TimeProvider } from "../../ui/Time/TimeProvider.tsx";
 import { ToastProvider, useToast } from "../../ui/Toast/Toast.tsx";
 import { Tooltip } from "../../ui/Tooltip/Tooltip.tsx";
 import { THEME_NAMES } from "../../ui/tokens.ts";
+import { Article, Note } from "../docs/Article.tsx";
 import styles from "./Kit.module.css";
 
 // Every building block in every state, in both themes side by side: where design review
@@ -310,6 +311,46 @@ function Frame() {
                     <Logo />
                     <Logo size="landing" />
                 </Stack>
+            </Section>
+            <Section caption="docs article">
+                <Article>
+                    <h1>your first extension</h1>
+                    <p>
+                        An extension is one file, with <code>inline code</code> and a plain
+                        paragraph of text.
+                    </p>
+                    <h2>a second heading</h2>
+                    <ul>
+                        <li>a list item</li>
+                        <li>another item</li>
+                    </ul>
+                    <ol>
+                        <li>first step</li>
+                        <li>second step</li>
+                    </ol>
+                    <Code>{"local size = 12\nprint(size)"}</Code>
+                    <Note>A note has a pink edge and the text beside it.</Note>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>name</th>
+                                <th>value</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>size</td>
+                                <td>12</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <img
+                        alt="a specimen"
+                        width={320}
+                        height={80}
+                        src="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27320%27 height=%2780%27%3E%3Crect width=%27320%27 height=%2780%27 fill=%27%23333%27/%3E%3C/svg%3E"
+                    />
+                </Article>
             </Section>
             <Columns
                 head={{

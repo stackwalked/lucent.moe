@@ -252,6 +252,8 @@ const SCALES: Readonly<Record<string, string>> = {
     "nav-h": "44px",
     "row2-h": "36px",
     "side-w": "220px",
+    "docs-contents": "250px",
+    "docs-article": "760px",
     "font-sans": '"IBM Plex Sans", "IBM Plex Sans Fallback", system-ui, sans-serif',
     "font-mono": '"Geist Mono", "Geist Mono Fallback", ui-monospace, monospace',
 };

@@ -9,6 +9,7 @@ import {
 import { type ReactNode, useEffect } from "react";
 import { SITE_COPY } from "../copy/site.ts";
 import { isUnavailable } from "../failure.ts";
+import { fetchDocScopes } from "../features/docs/server.ts";
 import { fetchUnread } from "../features/inbox/unread.ts";
 import { SiteShell } from "../features/shell/SiteShell.tsx";
 import { fetchOwnAvatar } from "../features/shell/server.ts";
@@ -88,10 +89,13 @@ export const Route = createRootRoute({
                           ? null
                           : fetchOwnAvatar({ data: { username: viewer.username } }),
                   ]);
+        // The bar's "docs" tab: only when a page exists for a scope this member can open.
+        const docs = viewer !== null && (await fetchDocScopes()).length > 0;
         return {
             session,
             unreadCount,
             avatar,
+            docs,
             now: systemClock.now(),
             timeZone: currentTimeZone(),
         };

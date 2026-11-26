@@ -1,4 +1,5 @@
 import { join, relative } from "node:path";
+import mdx from "@mdx-js/rollup";
 import babel from "@rolldown/plugin-babel";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
 import react from "@vitejs/plugin-react";
@@ -35,6 +36,7 @@ export default defineConfig({
     plugins: [
         tokensPlugin(),
         layerOrderPlugin(),
+        { enforce: "pre", ...mdx({ include: /\.mdx$/ }) },
         tanstackStart({ serverFns: { generateFunctionId: readableFunctionId } }),
         react(),
         babel({

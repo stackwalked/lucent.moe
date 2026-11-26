@@ -7,6 +7,7 @@ import { forgetSession, memberOf, type Viewer } from "../../viewer.ts";
 import { ADMIN_COPY } from "../admin/copy.ts";
 import { isStaff } from "../admin/sections.ts";
 import { signOut } from "../auth/session.ts";
+import { DOCS_COPY } from "../docs/copy.ts";
 import { inboxLabel } from "../inbox/copy.ts";
 import { SHELL_COPY } from "./copy.ts";
 import styles from "./SiteShell.module.css";
@@ -21,6 +22,8 @@ const PLACES = [
     { to: "/community", label: SHELL_COPY.community, also: "/members/" },
     { to: "/support", label: SHELL_COPY.support, also: null },
 ] as const;
+
+const DOCS_PLACE = { to: "/docs", label: DOCS_COPY.title, also: null } as const;
 
 // Account, staff's admin, the theme, and sign out: everything of the member's own that isn't a
 // place, behind their picture.
@@ -82,7 +85,7 @@ export function AccountMenu({
 // The frame of every page with the site's bar: the places and the account's corner when signed
 // in, only "sign in" when not.
 export function SiteShell({ children }: { readonly children: ReactNode }) {
-    const { session, unreadCount, avatar } = useRouteContext({ from: "__root__" });
+    const { session, unreadCount, avatar, docs } = useRouteContext({ from: "__root__" });
     const viewer = memberOf(session);
     const { pathname } = useLocation();
     return (
@@ -96,20 +99,22 @@ export function SiteShell({ children }: { readonly children: ReactNode }) {
                       ),
                   }
                 : {
-                      places: PLACES.map(({ to, label, also }) => (
-                          <Link
-                              key={to}
-                              to={to}
-                              className={styles.place}
-                              {...(also !== null && pathname.startsWith(also)
-                                  ? { "aria-current": "page" as const }
-                                  : {})}
-                              activeProps={{ "aria-current": "page" }}
-                              activeOptions={{ exact: to === "/" }}
-                          >
-                              {label}
-                          </Link>
-                      )),
+                      places: (docs ? [...PLACES, DOCS_PLACE] : PLACES).map(
+                          ({ to, label, also }) => (
+                              <Link
+                                  key={to}
+                                  to={to}
+                                  className={styles.place}
+                                  {...(also !== null && pathname.startsWith(also)
+                                      ? { "aria-current": "page" as const }
+                                      : {})}
+                                  activeProps={{ "aria-current": "page" }}
+                                  activeOptions={{ exact: to === "/" }}
+                              >
+                                  {label}
+                              </Link>
+                          ),
+                      ),
                       account: (
                           <>
                               <Link
