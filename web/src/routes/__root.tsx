@@ -11,6 +11,7 @@ import { SITE_COPY } from "../copy/site.ts";
 import { isUnavailable } from "../failure.ts";
 import { fetchUnread } from "../features/inbox/unread.ts";
 import { SiteShell } from "../features/shell/SiteShell.tsx";
+import { fetchOwnAvatar } from "../features/shell/server.ts";
 import { StepUpProvider } from "../features/step-up/StepUp.tsx";
 import { currentTheme } from "../theme.ts";
 import { currentTimeZone, reportTimeZone } from "../time-zone.ts";
@@ -77,9 +78,20 @@ function Failure({ error }: ErrorComponentProps) {
 export const Route = createRootRoute({
     beforeLoad: async () => {
         const session = await loadSession();
+        const viewer = memberOf(session);
+        const [unreadCount, avatar] =
+            viewer === null
+                ? [null, null]
+                : await Promise.all([
+                      fetchUnread(),
+                      viewer.username === null
+                          ? null
+                          : fetchOwnAvatar({ data: { username: viewer.username } }),
+                  ]);
         return {
             session,
-            unreadCount: memberOf(session) === null ? null : await fetchUnread(),
+            unreadCount,
+            avatar,
             now: systemClock.now(),
             timeZone: currentTimeZone(),
         };

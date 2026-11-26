@@ -71,9 +71,6 @@ const LOOPBACK = "http://127.0.0.1:53682/callback";
 
 let platform: RunningPlatform;
 let web: ChildServer;
-// A second web the public record test starts against a stopped platform; afterAll stops it, so a
-// failed assertion leaves no process behind.
-let webWithoutSnapshot: ChildServer | null = null;
 let origin: string;
 let socket: string;
 let artifactDir: string;
@@ -117,7 +114,6 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
-    await webWithoutSnapshot?.stop();
     await web.stop();
     await platform.stop();
     await rm(artifactDir, { recursive: true, force: true });
@@ -125,21 +121,15 @@ afterAll(async () => {
 });
 
 describe("web against a real platform", () => {
-    test("the signed-out home lists the live loader and not the seed game", async () => {
+    test("the signed-out home is the landing: the mark, apply and sign in, and no bar", async () => {
         const home = await browser().get("/");
         expect(home.status).toBe(200);
-        const cells: string[] = [];
-        await new HTMLRewriter()
-            .on("main tbody td", {
-                text: (chunk) => {
-                    cells.push(chunk.text);
-                },
-            })
-            .transform(home)
-            .text();
-        const text = cells.join("").toLowerCase();
-        expect(text).toContain("lucent loader");
-        expect(text).not.toContain("counter-strike 2");
+        const html = await home.text();
+        // The bar's wordmark is the only link home.
+        expect(html).not.toContain('href="/"');
+        expect(html).toContain('href="/apply"');
+        expect(html).toContain('href="/sign-in"');
+        expect(html).toContain("<svg");
     });
 
     test("a setup link is stored and redirected, redeemed once, and ends with every credential", async () => {
@@ -630,51 +620,17 @@ describe("web against a real platform", () => {
         expect(web.output()).not.toContain(link.token);
     });
 
-    // Last: it stops platform.
-    test("the public record pages answer from web's snapshot while platform is down, and say status is unavailable when web never had one", async () => {
-        const text = async (path: string, from = browser()) => {
-            const page = await from.get(path);
-            expect(page.status).toBe(200);
-            return (await page.text()).toLowerCase();
-        };
-        const status = await text("/status");
-        expect(status).toContain('<meta name="robots" content="noindex"');
-        expect(status).toContain("lucent loader");
-        expect(status).not.toContain("counter-strike 2");
-        expect(await text("/changelog")).toContain('<meta name="robots" content="noindex"');
-
-        await platform.stop();
-        // Past the snapshot's 15 seconds, so the pages ask platform again and find it gone.
-        await Bun.sleep(15_500);
+    test("status and changelog are for members: a signed-out visitor is sent to sign in, a member reads them unindexed", async () => {
         for (const path of ["/status", "/changelog"]) {
-            const shown = await text(path);
-            expect(shown).toContain(">as of");
-            expect(shown).toContain("<time");
+            const stranger = await browser().get(path);
+            expect(stranger.status).toBe(303);
+            expect(stranger.headers.get("location")).toEndWith("/sign-in");
+            const page = await member.get(path);
+            expect(page.status).toBe(200);
+            expect(await page.text()).toContain('<meta name="robots" content="noindex"');
         }
-        expect(await text("/status")).toContain("lucent loader");
-
-        const port = allocateEphemeralPort();
-        const fresh = spawnServer({
-            command: [process.execPath, "src/main.ts"],
-            cwd: WEB_DIR,
-            env: {
-                LUCENT_WEB_LISTEN: `127.0.0.1:${port}`,
-                LUCENT_PUBLIC_ORIGIN: `http://localhost:${port}`,
-                LUCENT_PLATFORM_INTERNAL_URL: platform.internalUrl,
-                LUCENT_WEB_INTERNAL_KEY: platform.peerKey,
-            },
-        });
-        webWithoutSnapshot = fresh;
-        await fresh.waitFor(/"msg":"listening"/);
-        const restarted = createTestBrowser({
-            socket: `http://127.0.0.1:${port}`,
-            origin: `http://localhost:${port}`,
-        });
-        const unavailable = await Promise.all(
-            ["/status", "/changelog"].map((path) => text(path, restarted)),
+        expect((await (await member.get("/status")).text()).toLowerCase()).toContain(
+            "lucent loader",
         );
-        for (const shown of unavailable) {
-            expect(shown).toContain("status unavailable");
-        }
-    }, 60_000);
+    });
 });

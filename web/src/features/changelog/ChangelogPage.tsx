@@ -7,7 +7,7 @@ import { productName } from "../products/view.ts";
 import { Notes, SnapshotPage } from "../status/Record.tsx";
 import { CHANGELOG_COPY as C } from "./copy.ts";
 
-const route = getRouteApi("/_public/changelog");
+const route = getRouteApi("/_member/changelog");
 
 // What changed, newest first: the service's entries and every listed product's.
 export function ChangelogPage() {

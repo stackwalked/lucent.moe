@@ -4,7 +4,7 @@ import { ChangelogPage } from "../../features/changelog/ChangelogPage.tsx";
 import { CHANGELOG_COPY } from "../../features/changelog/copy.ts";
 import { fetchChangelog } from "../../features/status/server.ts";
 
-export const Route = createFileRoute("/_public/changelog")({
+export const Route = createFileRoute("/_member/changelog")({
     loader: () => fetchChangelog(),
     head: () => ({
         meta: [

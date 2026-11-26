@@ -14,7 +14,7 @@ import { productName } from "../products/view.ts";
 import { STATUS_COPY as C } from "./copy.ts";
 import { Notes, SnapshotPage } from "./Record.tsx";
 
-const route = getRouteApi("/_public/status");
+const route = getRouteApi("/_member/status");
 
 type PublicRecord = z.output<WebContract["record.status.get"]["output"]>;
 type Product = PublicRecord["products"][number];

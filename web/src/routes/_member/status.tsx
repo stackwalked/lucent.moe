@@ -4,7 +4,7 @@ import { STATUS_COPY } from "../../features/status/copy.ts";
 import { StatusPage } from "../../features/status/StatusPage.tsx";
 import { fetchStatus } from "../../features/status/server.ts";
 
-export const Route = createFileRoute("/_public/status")({
+export const Route = createFileRoute("/_member/status")({
     loader: () => fetchStatus(),
     head: () => ({
         meta: [

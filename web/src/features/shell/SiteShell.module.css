@@ -1,26 +1,41 @@
 @layer features {
+    /* A tab: ink-2, ink and a pink underline on the bar's hairline when current. No fill. */
     .place {
         display: inline-flex;
         align-items: center;
-        block-size: var(--control-h);
-        padding-inline: var(--s-3);
-        border-radius: var(--r);
+        border-block-end: 1px solid transparent;
         color: var(--ink-2);
-        font-size: var(--size-13);
-        font-weight: var(--w-medium);
+        font-size: var(--size-14);
         white-space: nowrap;
-        transition:
-            background-color var(--t-hover) var(--ease),
-            color var(--t-hover) var(--ease);
+        transition: color var(--t-hover) var(--ease);
     }
 
     .place:hover {
-        background: var(--hover);
         color: var(--ink);
     }
 
+    .place:focus-visible {
+        outline-offset: -2px;
+    }
+
     .place[aria-current="page"] {
-        background: var(--chosen);
+        border-block-end-color: var(--pink);
+        color: var(--ink);
+    }
+
+    /* Beside the avatar: text, no underline. */
+    .corner {
+        display: inline-flex;
+        align-items: center;
+        min-block-size: var(--control-sm);
+        color: var(--ink-2);
+        font-size: var(--size-14);
+        white-space: nowrap;
+        transition: color var(--t-hover) var(--ease);
+    }
+
+    .corner:hover,
+    .corner[aria-current="page"] {
         color: var(--ink);
     }
 }

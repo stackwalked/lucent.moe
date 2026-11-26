@@ -1,7 +1,7 @@
-import { Link, useMatchRoute, useRouteContext, useRouter } from "@tanstack/react-router";
+import { Link, useRouteContext, useRouter } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { chooseTheme } from "../../theme.ts";
-import { Dropdown } from "../../ui/Dropdown/Dropdown.tsx";
+import { Dropdown, type DropdownItem } from "../../ui/Dropdown/Dropdown.tsx";
 import { Shell } from "../../ui/Shell/Shell.tsx";
 import { forgetSession, memberOf, type Viewer } from "../../viewer.ts";
 import { ADMIN_COPY } from "../admin/copy.ts";
@@ -11,72 +11,74 @@ import { inboxLabel } from "../inbox/copy.ts";
 import { SHELL_COPY } from "./copy.ts";
 import styles from "./SiteShell.module.css";
 
-function AccountMenu({ viewer }: { readonly viewer: Viewer }) {
+// What a signed-in member reaches from the bar, tab by tab.
+const PLACES = [
+    { to: "/products", label: SHELL_COPY.products },
+    { to: "/cloud", label: SHELL_COPY.cloud },
+    { to: "/download", label: SHELL_COPY.download },
+    { to: "/resources", label: SHELL_COPY.resources },
+    { to: "/tickets", label: SHELL_COPY.support },
+] as const;
+
+// Account, staff's admin, the theme, and sign out: everything of the member's own that isn't a
+// place, behind their picture.
+function AccountMenu({
+    viewer,
+    avatar,
+}: {
+    readonly viewer: Viewer;
+    readonly avatar: string | null;
+}) {
     const router = useRouter();
+    const items: DropdownItem[] = [
+        {
+            label: SHELL_COPY.account,
+            icon: "user",
+            onSelect: () => void router.navigate({ to: "/account" }),
+        },
+    ];
+    if (isStaff(viewer)) {
+        items.push({
+            label: ADMIN_COPY.admin,
+            icon: "shield",
+            onSelect: () => void router.navigate({ to: "/admin" }),
+        });
+    }
+    items.push(
+        {
+            label: SHELL_COPY.graphite,
+            icon: "moon",
+            onSelect: () => void chooseTheme("graphite"),
+        },
+        { label: SHELL_COPY.washi, icon: "sun", onSelect: () => void chooseTheme("washi") },
+        {
+            label: SHELL_COPY.systemTheme,
+            icon: "monitor",
+            onSelect: () => void chooseTheme("system"),
+        },
+        {
+            label: SHELL_COPY.signOut,
+            icon: "log-out",
+            onSelect: async () => {
+                await signOut();
+                forgetSession();
+                await router.navigate({ to: "/" });
+                await router.invalidate();
+            },
+        },
+    );
     return (
         <Dropdown
             label={SHELL_COPY.menu(viewer.username ?? "")}
             icon="user"
-            items={[
-                {
-                    label: SHELL_COPY.graphite,
-                    icon: "moon",
-                    onSelect: () => void chooseTheme("graphite"),
-                },
-                { label: SHELL_COPY.washi, icon: "sun", onSelect: () => void chooseTheme("washi") },
-                {
-                    label: SHELL_COPY.systemTheme,
-                    icon: "monitor",
-                    onSelect: () => void chooseTheme("system"),
-                },
-                {
-                    label: SHELL_COPY.signOut,
-                    icon: "log-out",
-                    onSelect: async () => {
-                        await signOut();
-                        forgetSession();
-                        await router.navigate({ to: "/" });
-                        await router.invalidate();
-                    },
-                },
-            ]}
+            picture={avatar}
+            items={items}
         />
     );
 }
 
-// The account's corner of the bar: its pages, unread notifications while there are any, and the
-// menu. It stays beside the wordmark at every width; the places move to a row of their own. On
-// the account's own pages the side nav carries the unread count, so the bar doesn't repeat it.
-function AccountCorner({
-    viewer,
-    unreadCount,
-}: {
-    readonly viewer: Viewer;
-    readonly unreadCount: number | null;
-}) {
-    const matchRoute = useMatchRoute();
-    const onAccount = matchRoute({ to: "/account", fuzzy: true }) !== false;
-    return (
-        <>
-            {onAccount || unreadCount === null || unreadCount === 0 ? null : (
-                <Link
-                    to="/account/inbox"
-                    className={styles.place}
-                    activeProps={{ "aria-current": "page" }}
-                >
-                    {inboxLabel(unreadCount)}
-                </Link>
-            )}
-            <Link to="/account" className={styles.place} activeProps={{ "aria-current": "page" }}>
-                {SHELL_COPY.account}
-            </Link>
-            <AccountMenu viewer={viewer} />
-        </>
-    );
-}
-
-// The frame of every page with the site's bar: the account's places and menu when signed in,
-// "Sign in" when not.
+// The frame of every page with the site's bar: the places and the account's corner when signed
+// in, only "sign in" when not.
 export function SiteShell({
     side,
     children,
@@ -84,90 +86,42 @@ export function SiteShell({
     readonly side?: ReactNode;
     readonly children: ReactNode;
 }) {
-    const { session, unreadCount } = useRouteContext({ from: "__root__" });
+    const { session, unreadCount, avatar } = useRouteContext({ from: "__root__" });
     const viewer = memberOf(session);
     return (
         <Shell
-            places={
-                viewer === null ? (
-                    <>
-                        <Link
-                            to="/status"
-                            className={styles.place}
-                            activeProps={{ "aria-current": "page" }}
-                        >
-                            {SHELL_COPY.status}
-                        </Link>
-                        <Link
-                            to="/apply"
-                            className={styles.place}
-                            activeProps={{ "aria-current": "page" }}
-                        >
-                            {SHELL_COPY.apply}
-                        </Link>
-                        <Link to="/sign-in" className={styles.place}>
-                            {SHELL_COPY.signIn}
-                        </Link>
-                    </>
-                ) : (
-                    <>
-                        <Link
-                            to="/products"
-                            className={styles.place}
-                            activeProps={{ "aria-current": "page" }}
-                        >
-                            {SHELL_COPY.products}
-                        </Link>
-                        <Link
-                            to="/cloud"
-                            className={styles.place}
-                            activeProps={{ "aria-current": "page" }}
-                        >
-                            {SHELL_COPY.cloud}
-                        </Link>
-                        <Link
-                            to="/download"
-                            className={styles.place}
-                            activeProps={{ "aria-current": "page" }}
-                        >
-                            {SHELL_COPY.download}
-                        </Link>
-                        <Link
-                            to="/resources"
-                            className={styles.place}
-                            activeProps={{ "aria-current": "page" }}
-                        >
-                            {SHELL_COPY.resources}
-                        </Link>
-                        <Link
-                            to="/tickets"
-                            className={styles.place}
-                            activeProps={{ "aria-current": "page" }}
-                        >
-                            {SHELL_COPY.support}
-                        </Link>
-                        <Link
-                            to="/status"
-                            className={styles.place}
-                            activeProps={{ "aria-current": "page" }}
-                        >
-                            {SHELL_COPY.status}
-                        </Link>
-                        {isStaff(viewer) ? (
-                            <Link
-                                to="/admin"
-                                className={styles.place}
-                                activeProps={{ "aria-current": "page" }}
-                            >
-                                {ADMIN_COPY.admin}
-                            </Link>
-                        ) : null}
-                    </>
-                )
-            }
             {...(viewer === null
-                ? {}
-                : { account: <AccountCorner viewer={viewer} unreadCount={unreadCount} /> })}
+                ? {
+                      account: (
+                          <Link to="/sign-in" className={styles.corner}>
+                              {SHELL_COPY.signIn}
+                          </Link>
+                      ),
+                  }
+                : {
+                      places: PLACES.map(({ to, label }) => (
+                          <Link
+                              key={to}
+                              to={to}
+                              className={styles.place}
+                              activeProps={{ "aria-current": "page" }}
+                          >
+                              {label}
+                          </Link>
+                      )),
+                      account: (
+                          <>
+                              <Link
+                                  to="/account/inbox"
+                                  className={styles.corner}
+                                  activeProps={{ "aria-current": "page" }}
+                              >
+                                  {inboxLabel(unreadCount)}
+                              </Link>
+                              <AccountMenu viewer={viewer} avatar={avatar} />
+                          </>
+                      ),
+                  })}
             {...(side === undefined ? {} : { side })}
         >
             {children}

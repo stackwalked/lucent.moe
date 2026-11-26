@@ -7,7 +7,6 @@ export const PRODUCTS_COPY = {
     },
     title: "products",
     none: "no products",
-    noneListed: "no products",
     product: "product",
     channels: "channels",
     channel: "channel",
