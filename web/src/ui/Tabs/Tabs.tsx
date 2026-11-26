@@ -7,6 +7,9 @@ export type Tab = {
     readonly search?: LinkProps["search"];
     readonly label: string;
     readonly count?: number;
+    // Where the route cannot say which tab is current (tabs that differ only in search), the
+    // caller does.
+    readonly current?: boolean;
 };
 
 // A page's sub-tabs in its head row: links, the current one ink with a pink underline sitting on
@@ -22,8 +25,12 @@ export function Tabs({ tabs }: { readonly tabs: readonly Tab[] }) {
                     {...(tab.params === undefined ? {} : { params: tab.params })}
                     {...(tab.search === undefined ? {} : { search: tab.search })}
                     className={styles.tab}
-                    activeProps={{ "aria-current": "page" }}
-                    activeOptions={{ exact: true, includeSearch: false }}
+                    {...(tab.current === undefined
+                        ? {
+                              activeProps: { "aria-current": "page" as const },
+                              activeOptions: { exact: true, includeSearch: false },
+                          }
+                        : { "aria-current": tab.current ? ("page" as const) : undefined })}
                 >
                     {tab.label}
                     {tab.count === undefined ? null : (

@@ -21,5 +21,6 @@ export const PRODUCTS_COPY = {
     download: "download the loader",
     loaderUnavailable: "loader not released yet",
     changesTab: "changes",
+    cloudTab: "cloud",
     guides: "guides",
 } as const;

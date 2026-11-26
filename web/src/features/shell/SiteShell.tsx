@@ -17,7 +17,6 @@ import styles from "./SiteShell.module.css";
 const PLACES = [
     { to: "/products", label: SHELL_COPY.products, also: null },
     { to: "/cloud", label: SHELL_COPY.cloud, also: null },
-    { to: "/resources", label: SHELL_COPY.resources, also: null },
     { to: "/community", label: SHELL_COPY.community, also: "/members/" },
     { to: "/support", label: SHELL_COPY.support, also: null },
 ] as const;

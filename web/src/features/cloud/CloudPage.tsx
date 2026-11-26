@@ -1,29 +1,19 @@
-import { newOperationId } from "@lucent/core/brands";
-import { systemCryptoRng } from "@lucent/core/rng";
-import { ITEM_KINDS, isItemKind } from "@lucent/rpc/cloud-item-guards";
 import { getRouteApi, Link, useRouter } from "@tanstack/react-router";
-import { useActionState, useState } from "react";
+import { useState } from "react";
 import type { Outcome, Refused } from "../../server/outcome.ts";
 import { Button } from "../../ui/Button/Button.tsx";
 import { Copy } from "../../ui/Copy/Copy.tsx";
 import { Dialog } from "../../ui/Dialog/Dialog.tsx";
+import { Empty } from "../../ui/Empty/Empty.tsx";
 import { Page } from "../../ui/Page/Page.tsx";
 import { Section } from "../../ui/Section/Section.tsx";
-import { Select } from "../../ui/Select/Select.tsx";
 import { Stack } from "../../ui/Stack/Stack.tsx";
 import { TextField } from "../../ui/TextField/TextField.tsx";
 import { RefusalNote } from "../auth/RefusalNote.tsx";
-import { productName } from "../products/view.ts";
+import { CloudView } from "./CloudView.tsx";
 import { CLOUD_COPY as C } from "./copy.ts";
 import type { fetchHistory } from "./server.ts";
-import {
-    createEmptyItem,
-    createShare,
-    deleteItem,
-    renameItem,
-    restoreItem,
-    revokeShare,
-} from "./server.ts";
+import { createShare, deleteItem, renameItem, restoreItem, revokeShare } from "./server.ts";
 
 const route = getRouteApi("/_member/cloud");
 type Detail = {
@@ -140,7 +130,7 @@ function History({ detail }: { readonly detail: Detail }) {
                                 )
                             }
                         >
-                            {C.share}
+                            {C.shareLink}
                         </Button>
                     )}
                     {link && history.shares.some((s) => s.shareId === link.id) && (
@@ -224,43 +214,6 @@ function History({ detail }: { readonly detail: Detail }) {
     );
 }
 
-function NewItem({ productId }: { readonly productId: string }) {
-    const router = useRouter();
-    const [operationId] = useState(() => newOperationId(systemCryptoRng));
-    const [refused, submit, pending] = useActionState(async (_: Refused | null, form: FormData) => {
-        const kind = form.get("kind");
-        const name = String(form.get("name") ?? "").trim();
-        if (!isItemKind(kind) || !name) return null;
-        const reply = await createEmptyItem({
-            data: { productId, operationId, kind, name },
-        });
-        if (!reply.ok) return reply.refused;
-        await router.navigate({
-            to: "/cloud",
-            search: { product: productId, item: reply.value.itemId },
-        });
-        return null;
-    }, null);
-    return (
-        <Section caption={C.create}>
-            <form action={submit}>
-                <Stack gap={2}>
-                    <TextField name="name" label={C.name} required maxLength={64} />
-                    <Select
-                        name="kind"
-                        label={C.kind}
-                        options={ITEM_KINDS.map((kind) => ({ value: kind, label: kind }))}
-                    />
-                    <RefusalNote refused={refused} />
-                    <Button type="submit" pending={pending}>
-                        {C.create}
-                    </Button>
-                </Stack>
-            </form>
-        </Section>
-    );
-}
-
 export function CloudPage() {
     const loaded = route.useLoaderData();
     if (!loaded.ok)
@@ -271,46 +224,15 @@ export function CloudPage() {
         );
     if (loaded.view === "history")
         return <History key={`${loaded.productId}/${loaded.itemId}`} detail={loaded} />;
-    if (loaded.view === "products")
+    if (loaded.view === "none")
         return (
-            <Page title={C.title} width="narrow">
-                <Section caption={C.products}>
-                    {loaded.catalog.products.length === 0 ? (
-                        <p>{C.emptyProducts}</p>
-                    ) : (
-                        <ul>
-                            {loaded.catalog.products.map((p) => (
-                                <li key={p.id}>
-                                    <Link to="/cloud" search={{ product: p.id }}>
-                                        {productName(p.name)}
-                                    </Link>
-                                </li>
-                            ))}
-                        </ul>
-                    )}
-                </Section>
+            <Page title={C.title}>
+                <Empty>{C.emptyProducts}</Empty>
             </Page>
         );
     return (
-        <Page title={loaded.productId} width="narrow" trail={<Link to="/cloud">{C.title}</Link>}>
-            {loaded.canAppend && <NewItem key={loaded.productId} productId={loaded.productId} />}
-            {loaded.items.length === 0 ? (
-                <p>{C.emptyItems}</p>
-            ) : (
-                <ul>
-                    {loaded.items.map((i) => (
-                        <li key={i.itemId}>
-                            <Link
-                                to="/cloud"
-                                search={{ product: loaded.productId, item: i.itemId }}
-                            >
-                                {i.name}
-                            </Link>{" "}
-                            · {i.kind} · {C.revision(i.revision)}
-                        </li>
-                    ))}
-                </ul>
-            )}
-        </Page>
+        <>
+            <CloudView />
+        </>
     );
 }

@@ -3,6 +3,14 @@
         font-size: var(--size-20);
     }
 
+    .names {
+        display: flex;
+        flex-direction: column;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+    }
+
     .note {
         color: var(--ink-2);
     }

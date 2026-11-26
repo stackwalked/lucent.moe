@@ -10,6 +10,8 @@ import { Stack } from "../../ui/Stack/Stack.tsx";
 import { Tabs } from "../../ui/Tabs/Tabs.tsx";
 import { Time } from "../../ui/Time/Time.tsx";
 import { Entries } from "../changes/Entries.tsx";
+import { CLOUD_COPY } from "../cloud/copy.ts";
+import { ListingRow } from "../cloud/ListingRow.tsx";
 import { PRODUCTS_COPY as C } from "./copy.ts";
 import { noteLastProduct } from "./lastProduct.ts";
 import styles from "./ProductPage.module.css";
@@ -23,7 +25,7 @@ const route = getRouteApi("/_member/products/$productId");
 // rows anywhere: releases carry no version string, only a seal number.
 export function ProductPage() {
     const data = route.useLoaderData();
-    const { product, access, status, issues, changes, loader } = data;
+    const { product, access, status, issues, changes, loader, cloud } = data;
 
     useEffect(() => {
         void noteLastProduct(product.productId);
@@ -82,6 +84,11 @@ export function ProductPage() {
                                         params: { productId: product.productId },
                                         label: C.changesTab,
                                     },
+                                    {
+                                        to: "/cloud",
+                                        search: { product: product.productId },
+                                        label: C.cloudTab,
+                                    },
                                 ]}
                             />
                         </>
@@ -127,6 +134,26 @@ export function ProductPage() {
                                 <p className={styles.note}>{C.loaderUnavailable}</p>
                             ) : null}
                         </Section>
+                        {cloud === null || !cloud.ok || cloud.value.items.length === 0 ? null : (
+                            <Section
+                                caption={CLOUD_COPY.newInCloud}
+                                actions={
+                                    <Link to="/cloud" search={{ product: product.productId }}>
+                                        {CLOUD_COPY.all}
+                                    </Link>
+                                }
+                            >
+                                <ul className={styles.names}>
+                                    {cloud.value.items.slice(0, 3).map((listing) => (
+                                        <ListingRow
+                                            key={listing.id}
+                                            listing={listing}
+                                            variant="brief"
+                                        />
+                                    ))}
+                                </ul>
+                            </Section>
+                        )}
                     </Stack>
                 }
             />

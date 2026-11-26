@@ -1,0 +1,108 @@
+@layer features {
+    .title {
+        flex: none;
+        font-size: var(--size-20);
+        white-space: nowrap;
+    }
+
+    .find {
+        display: block;
+        inline-size: var(--side-w);
+        max-inline-size: 100%;
+    }
+
+    .findForm {
+        display: flex;
+        align-items: center;
+        gap: var(--s-1);
+    }
+
+    .findInput {
+        flex: 1;
+        min-inline-size: 0;
+        block-size: calc(var(--caption-h) - var(--s-2) - 1px);
+        padding-inline: var(--s-3);
+        border: 1px solid var(--line-2);
+        border-radius: var(--r);
+        background: var(--raised);
+        color: var(--ink);
+        font-size: var(--size-14);
+    }
+
+    .findInput::placeholder {
+        color: var(--ink-2);
+    }
+
+    .list,
+    .items {
+        display: flex;
+        flex-direction: column;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+    }
+
+    .item {
+        border-block-end: 1px solid var(--line);
+        padding-block: var(--s-2);
+    }
+
+    .item:last-child {
+        border-block-end: 0;
+    }
+
+    .itemRow {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--s-3);
+        min-block-size: var(--row2-h);
+    }
+
+    .itemText {
+        display: flex;
+        flex-direction: column;
+        min-inline-size: 0;
+    }
+
+    .itemName {
+        overflow-wrap: anywhere;
+        font-weight: var(--w-medium);
+    }
+
+    .small {
+        color: var(--ink-2);
+        font-size: var(--size-12);
+    }
+
+    .state {
+        display: flex;
+        align-items: center;
+        gap: var(--s-2);
+        color: var(--ink-2);
+        font-size: var(--size-13);
+    }
+
+    .state [data-waiting="true"] {
+        color: var(--wait-ink);
+    }
+
+    .shareForm,
+    .importForm {
+        display: flex;
+        flex-direction: column;
+        gap: var(--s-2);
+        padding-block: var(--s-2);
+    }
+
+    .importForm {
+        padding-block-start: var(--s-4);
+    }
+
+    /* The head row has no room for it beside the picker and the filters; ?find= still works. */
+    @media (width <= 640px) {
+        .find {
+            display: none;
+        }
+    }
+}

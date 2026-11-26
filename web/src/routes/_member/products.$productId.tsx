@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { SITE_COPY } from "../../copy/site.ts";
 import { fetchChangelog, fetchRecordStatus } from "../../features/changes/server.ts";
+import { fetchListings } from "../../features/cloud/server.ts";
 import { PRODUCTS_COPY } from "../../features/products/copy.ts";
 import { ProductPage } from "../../features/products/ProductPage.tsx";
 import { fetchLoaderOffer, fetchProducts } from "../../features/products/server.ts";
@@ -18,10 +19,13 @@ export const Route = createFileRoute("/_member/products/$productId")({
             (p) => p.productId === params.productId && p.productId !== LOADER_PRODUCT_ID,
         );
         if (product === undefined) return toNotFound();
-        const [status, changes, loader] = await Promise.all([
+        const [status, changes, loader, cloud] = await Promise.all([
             fetchRecordStatus(),
             fetchChangelog({ data: { productId: product.productId } }),
             fetchLoaderOffer(),
+            product.access === null
+                ? null
+                : fetchListings({ data: { productId: product.productId } }),
         ]);
         if (!status.ok) return toUnavailable(status.refused.reference ?? "");
         return {
@@ -38,6 +42,7 @@ export const Route = createFileRoute("/_member/products/$productId")({
             ),
             changes,
             loader,
+            cloud,
         };
     },
     head: ({ loaderData }) => ({

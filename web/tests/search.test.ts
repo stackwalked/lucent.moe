@@ -10,7 +10,15 @@ import { cloudSearch, inboxSearch, listSearch } from "../src/search.ts";
 const SCHEMAS = [
     [listSearch, z.object({ q: z.string().max(200).optional() })],
     [inboxSearch, z.object({ cursor: z.uuid().optional() })],
-    [cloudSearch, z.object({ product: ProductId.optional(), item: CloudId.optional() })],
+    [
+        cloudSearch,
+        z.object({
+            product: ProductId.optional(),
+            item: CloudId.optional(),
+            kind: z.enum(["config", "inventory", "script"]).optional(),
+            find: z.string().max(64).optional(),
+        }),
+    ],
 ] as const;
 
 const UUID = "123e4567-e89b-12d3-a456-426614174000";
@@ -28,6 +36,10 @@ const CANDIDATES: readonly unknown[] = [
     { q: "x", page: 2 },
     { cursor: UUID },
     { cursor: "not-a-uuid" },
+    { kind: "script" },
+    { kind: "models" },
+    { find: "overlay" },
+    { find: "a".repeat(65) },
     { cursor: 1 },
     { cursor: UUID, q: "x" },
     { product: "cs2" },

@@ -7,6 +7,7 @@ export const ADMIN_COPY = {
     roles: "roles",
     releases: "releases",
     moderation: "moderation",
+    cloud: "cloud listings",
     tickets: "tickets",
     resources: "resources",
     record: "public record",

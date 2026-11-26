@@ -13,9 +13,11 @@
         border-block-end: 1px solid var(--line);
     }
 
+    /* One line: tabs that outgrow it scroll inside themselves, so the hairline stays where it is. */
     .lead {
         display: flex;
-        flex-wrap: wrap;
+        flex: 1 1 0;
+        flex-wrap: nowrap;
         align-items: baseline;
         gap: var(--s-3);
         min-inline-size: 0;

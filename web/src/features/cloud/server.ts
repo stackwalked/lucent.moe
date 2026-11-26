@@ -1,3 +1,5 @@
+import { ProductId } from "@lucent/core/scalars";
+import { ItemKind } from "@lucent/rpc/cloud-item";
 import {
     CloudItem,
     CloudProduct,
@@ -8,6 +10,7 @@ import {
     Revoke,
 } from "@lucent/rpc/web/cloud";
 import { createServerFn } from "@tanstack/react-start";
+import { z } from "zod";
 import { done, refuse } from "../../server/outcome.ts";
 import { callPlatform, readPlatform } from "../../server/platform.ts";
 
@@ -73,3 +76,61 @@ export const importShare = createServerFn({ method: "POST" })
         const reply = await callPlatform("cloud.shares.import", data);
         return reply.ok ? done(reply.value) : refuse(reply.error);
     });
+
+const ListingId = z.uuid();
+const Summary = z
+    .string()
+    .trim()
+    .max(140)
+    .regex(/^[^\r\n]*$/);
+
+export const fetchListings = createServerFn({ method: "GET" })
+    .validator((data: unknown) =>
+        z
+            .strictObject({
+                productId: ProductId.optional(),
+                owner: z.string().max(64).optional(),
+                kind: ItemKind.optional(),
+                text: z.string().min(1).max(64).optional(),
+                cursor: ListingId.optional(),
+            })
+            .parse(data),
+    )
+    .handler(async ({ data }) => {
+        const reply = await callPlatform("cloud.listings.list", data);
+        return reply.ok ? done(reply.value) : refuse(reply.error);
+    });
+
+export const fetchMine = createServerFn({ method: "GET" })
+    .validator((data: unknown) => CloudProduct.parse(data))
+    .handler(async ({ data }) => {
+        const reply = await callPlatform("cloud.listings.mine", data);
+        return reply.ok ? done(reply.value) : refuse(reply.error);
+    });
+
+export const listItem = createServerFn({ method: "POST" })
+    .validator((data: unknown) => CloudItem.extend({ summary: Summary }).parse(data))
+    .handler(async ({ data }) => {
+        const reply = await callPlatform("cloud.listings.create", data);
+        return reply.ok ? done(reply.value) : refuse(reply.error);
+    });
+
+export const unlistItem = createServerFn({ method: "POST" })
+    .validator((data: unknown) => z.strictObject({ listingId: ListingId }).parse(data))
+    .handler(async ({ data }) => {
+        const reply = await callPlatform("cloud.listings.remove", data);
+        return reply.ok ? done(null) : refuse(reply.error);
+    });
+
+export const addListing = createServerFn({ method: "POST" })
+    .validator((data: unknown) => z.strictObject({ listingId: ListingId }).parse(data))
+    .handler(async ({ data }) => {
+        const reply = await callPlatform("cloud.listings.add", data);
+        return reply.ok ? done(reply.value) : refuse(reply.error);
+    });
+
+// What staff published, for the products the member holds and for everyone.
+export const fetchStaffFiles = createServerFn({ method: "GET" }).handler(async () => {
+    const reply = await readPlatform("resources.list", {});
+    return reply.ok ? done(reply.value.items) : refuse(reply.error);
+});

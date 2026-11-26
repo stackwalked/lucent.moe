@@ -12,6 +12,8 @@ import { Section } from "../../ui/Section/Section.tsx";
 import { Time } from "../../ui/Time/Time.tsx";
 import { memberOf, subjectOf } from "../../viewer.ts";
 import { RefusalNote } from "../auth/RefusalNote.tsx";
+import { CLOUD_COPY } from "../cloud/copy.ts";
+import { ListingRow } from "../cloud/ListingRow.tsx";
 import { ReportButton } from "../comments/ReportButton.tsx";
 import { blockAccount } from "../privacy/server.ts";
 import { productName } from "../products/view.ts";
@@ -27,7 +29,7 @@ const route = getRouteApi("/_member/members/$username");
 // owner shows it. The banner block has no hairline, so the aside's first caption is the page's
 // first hairline, 80px under the bar, and the main column's first hairline is "about"'s.
 export function ProfilePage() {
-    const { profile: outcome, wall } = route.useLoaderData();
+    const { profile: outcome, wall, shared } = route.useLoaderData();
     const router = useRouter();
     const { session } = useRouteContext({ from: "__root__" });
     const viewer = memberOf(session);
@@ -151,6 +153,20 @@ export function ProfilePage() {
                                 <p className={styles.about}>{profile.bio}</p>
                             </Section>
                         ) : null}
+                        {shared === null || !shared.ok || shared.value.items.length === 0 ? null : (
+                            <Section caption={CLOUD_COPY.shared}>
+                                <ul className={styles.names}>
+                                    {shared.value.items.map((listing) => (
+                                        <ListingRow
+                                            key={listing.id}
+                                            listing={listing}
+                                            variant="brief"
+                                            after={productName(listing.productId)}
+                                        />
+                                    ))}
+                                </ul>
+                            </Section>
+                        )}
                         {profile.wall && wall !== null ? (
                             <Wall key={profile.username} username={profile.username} first={wall} />
                         ) : null}

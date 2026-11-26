@@ -1,0 +1,18 @@
+export const ADMIN_CLOUD_COPY = {
+    none: "nothing waits for approval",
+    table: "listings waiting for approval",
+    owner: "owner",
+    product: "product",
+    kind: "kind",
+    name: "name",
+    summary: "summary",
+    what: "waiting",
+    first: "first",
+    update: "update",
+    approve: "approve",
+    approveTitle: "approve this listing?",
+    approveBody: "it becomes visible to members who hold the product.",
+    remove: "remove",
+    removeTitle: "remove this listing?",
+    removeBody: "members can no longer see or add it. copies stay.",
+} as const;

@@ -234,7 +234,7 @@ function attachmentFor(name: string): string {
 // have it is platform's to decide; anything but the bytes sends the browser back to the list.
 export async function downloadResource(resourceId: string, signal: AbortSignal): Promise<Response> {
     const web = currentRequest();
-    const back = new Response(null, { status: 303, headers: { location: "/resources" } });
+    const back = new Response(null, { status: 303, headers: { location: "/cloud" } });
     const session = readSessionToken();
     if (session === null || !/^[0-9a-f-]{36}$/.test(resourceId)) return back;
     const startedAt = systemClock.now();
