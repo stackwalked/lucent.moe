@@ -7,6 +7,7 @@ import { Table } from "../../../ui/Table/Table.tsx";
 import { Time } from "../../../ui/Time/Time.tsx";
 import { Who } from "../../../ui/Who/Who.tsx";
 import { RefusalNote } from "../../auth/RefusalNote.tsx";
+import { productNamer } from "../../products/view.ts";
 import { ADMIN_COPY } from "../copy.ts";
 import { useListNavigation } from "../list.ts";
 import { STAFF_TICKETS_COPY, STAFF_TICKETS_TITLE } from "./copy.ts";
@@ -19,7 +20,8 @@ const VIEWS: readonly TicketView[] = ["open", "answered", "closed"];
 // Help tickets and appeals as staff work them: those waiting on staff longest first, then those
 // waiting on the member, then the closed ones.
 export function StaffTicketsPage() {
-    const { view, outcome } = route.useLoaderData();
+    const { view, outcome, catalog } = route.useLoaderData();
+    const nameOf = productNamer(catalog);
     const navigation = useListNavigation();
     return (
         <Page
@@ -71,7 +73,10 @@ export function StaffTicketsPage() {
                             {
                                 key: "product",
                                 header: STAFF_TICKETS_COPY.product,
-                                cell: (ticket) => ticket.productId ?? STAFF_TICKETS_COPY.noProduct,
+                                cell: (ticket) =>
+                                    ticket.productId === null
+                                        ? STAFF_TICKETS_COPY.noProduct
+                                        : nameOf(ticket.productId),
                             },
                             {
                                 key: "activity",

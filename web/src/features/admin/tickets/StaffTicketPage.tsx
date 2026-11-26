@@ -7,6 +7,7 @@ import { Status } from "../../../ui/Status/Status.tsx";
 import { Time } from "../../../ui/Time/Time.tsx";
 import { Who } from "../../../ui/Who/Who.tsx";
 import { RefusalNote } from "../../auth/RefusalNote.tsx";
+import { productNamer } from "../../products/view.ts";
 import { Reply, Thread, type ThreadMessage } from "../../tickets/Thread.tsx";
 import { AccountAction } from "../accounts/AccountAction.tsx";
 import { ADMIN_COPY } from "../copy.ts";
@@ -19,7 +20,8 @@ const route = getRouteApi("/_admin/admin/tickets/$ticketId");
 // reinstating is the account page's own action.
 export function StaffTicketPage() {
     const { ticketId } = route.useParams();
-    const ticket = route.useLoaderData();
+    const { ticket, catalog } = route.useLoaderData();
+    const nameOf = productNamer(catalog);
     const back = <Link to="/admin/tickets">{STAFF_TICKETS_COPY.back}</Link>;
     if (!ticket.ok) {
         return (
@@ -74,7 +76,10 @@ export function StaffTicketPage() {
                         },
                         {
                             label: STAFF_TICKETS_COPY.product,
-                            value: value.productId ?? STAFF_TICKETS_COPY.noProduct,
+                            value:
+                                value.productId === null
+                                    ? STAFF_TICKETS_COPY.noProduct
+                                    : nameOf(value.productId),
                         },
                         {
                             label: STAFF_TICKETS_COPY.configs,

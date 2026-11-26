@@ -6,18 +6,20 @@ import { Section } from "../../../ui/Section/Section.tsx";
 import { Table } from "../../../ui/Table/Table.tsx";
 import { Time } from "../../../ui/Time/Time.tsx";
 import { RefusalNote } from "../../auth/RefusalNote.tsx";
+import { productNamer } from "../../products/view.ts";
 import { USAGE_COPY } from "./copy.ts";
 
 const route = getRouteApi("/_admin/admin/usage");
 
-type Read = Extract<ReturnType<typeof route.useLoaderData>, { ok: true }>["value"];
+type Read = Extract<ReturnType<typeof route.useLoaderData>["read"], { ok: true }>["value"];
 type Week = Read["weeks"][number];
 type Release = Read["releases"][number];
 
 // Who used what, from the sessions the native path already records: active accounts per product
 // per week, and the sessions each release and channel served.
 export function UsagePage() {
-    const read = route.useLoaderData();
+    const { read, catalog } = route.useLoaderData();
+    const nameOf = productNamer(catalog);
     if (!read.ok) {
         return (
             <Page title={USAGE_COPY.title}>
@@ -53,7 +55,7 @@ export function UsagePage() {
                             {
                                 key: "product",
                                 header: USAGE_COPY.product,
-                                cell: (week) => week.productId,
+                                cell: (week) => nameOf(week.productId),
                             },
                             {
                                 key: "accounts",
@@ -77,7 +79,7 @@ export function UsagePage() {
                             {
                                 key: "product",
                                 header: USAGE_COPY.product,
-                                cell: (release: Release) => release.productId,
+                                cell: (release: Release) => nameOf(release.productId),
                             },
                             {
                                 key: "channel",

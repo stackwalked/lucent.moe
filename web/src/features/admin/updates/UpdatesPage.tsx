@@ -7,18 +7,20 @@ import { Status } from "../../../ui/Status/Status.tsx";
 import { Table } from "../../../ui/Table/Table.tsx";
 import { Time } from "../../../ui/Time/Time.tsx";
 import { RefusalNote } from "../../auth/RefusalNote.tsx";
+import { productNamer } from "../../products/view.ts";
 import { buildLabel } from "../releases/standing.ts";
 import { UPDATES_COPY } from "./copy.ts";
 
 const route = getRouteApi("/_admin/admin/updates");
 
-type Listed = Extract<ReturnType<typeof route.useLoaderData>, { ok: true }>["value"];
+type Listed = Extract<ReturnType<typeof route.useLoaderData>["listed"], { ok: true }>["value"];
 type Day = Listed["builds"][number];
 
 // Update-day latency per game module build: how long after a start first reported it a fact set
 // covering it went current, or how long it has waited.
 export function UpdatesPage() {
-    const listed = route.useLoaderData();
+    const { listed, catalog } = route.useLoaderData();
+    const nameOf = productNamer(catalog);
     if (!listed.ok) {
         return (
             <Page title={UPDATES_COPY.title}>
@@ -40,7 +42,7 @@ export function UpdatesPage() {
                             {
                                 key: "product",
                                 header: UPDATES_COPY.product,
-                                cell: (day: Day) => day.productId,
+                                cell: (day: Day) => nameOf(day.productId),
                             },
                             {
                                 key: "build",

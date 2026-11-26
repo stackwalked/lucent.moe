@@ -95,7 +95,7 @@ export function ProductPage() {
                             ]}
                             rows={product.channels}
                             rowKey={(c) => c.channel}
-                        />{" "}
+                        />
                     </Stack>
                 </Section>
             ) : null}
