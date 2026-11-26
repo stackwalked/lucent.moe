@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { invariant } from "@lucent/core/contain";
 import { createSeededRng, type SeededRng } from "@lucent/core/rng";
 import type { AccountId } from "@lucent/core/scalars";
 import { z } from "zod";
@@ -199,5 +200,57 @@ test("a second game update after a recovery is a second drop, and only the drops
         expect(await tell()).toEqual({ ok: true, value: 1 });
         expect(await changesOf(browserDb)).toBe("drop rise drop");
         expect(await inboxOf(browserDb, alice)).toBe(2);
+    });
+});
+
+// Inserting an inbox entry for an account listed here fails, as a broken row or a full disk
+// would: what a batch wrote before it stays only if that batch committed.
+async function refuseInboxFor(db: Db, ids: readonly AccountId[]) {
+    for (const statement of [
+        sql`create table refused_inbox (account_id text primary key)`,
+        sql`create function refuse_inbox() returns trigger language plpgsql as $$
+            begin
+                if exists (select 1 from refused_inbox where account_id = new.account_id) then
+                    raise exception 'refused';
+                end if;
+                return new;
+            end $$`,
+        sql`create trigger refuse_inbox before insert on inbox_entry
+            for each row execute function refuse_inbox()`,
+    ]) {
+        expect((await execute(db, statement)).ok).toBe(true);
+    }
+    for (const id of ids) {
+        await execute(db, sql`insert into refused_inbox (account_id) values (${id})`);
+    }
+}
+
+test("followers are told ten to a transaction, so a failure keeps the batches before it", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ nativeDb, browserDb }) => {
+        const rng = createSeededRng(11_106);
+        const products = liveCatalog();
+        const world = await supportWorld(nativeDb, rng, products);
+        const followers: AccountId[] = [];
+        for (let n = 0; n < 12; n += 1) {
+            followers.push(
+                await follower(browserDb, rng, {
+                    email: `f${n}@lucent.test`,
+                    follows: true,
+                    mail: false,
+                }),
+            );
+        }
+        followers.sort();
+        const last = followers.at(-1);
+        invariant(last !== undefined, "there are followers");
+        await refuseInboxFor(browserDb, [last]);
+        await world.support(GAME);
+        expect(await world.start(GAME)).toBe("NOT_A_REFUSAL");
+        expect(await world.start(UPDATED)).toBe("GAME_BUILD_UNSUPPORTED");
+
+        expect((await tellFollowers(browserDb, { catalog: products, mail: true })).ok).toBe(false);
+        const told = await Promise.all(followers.map((id) => inboxOf(browserDb, id)));
+        expect(told.filter((n) => n === 1)).toHaveLength(10);
     });
 });

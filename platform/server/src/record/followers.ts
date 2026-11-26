@@ -19,8 +19,10 @@ import { recordNotification } from "../notify/inbox.ts";
 // A drop that is no longer the product's latest change, or whose product is no longer live, is
 // marked done without telling anyone: the news is already stale.
 
-const FOLLOWERS_PER_BATCH = 100;
-const BATCHES_PER_RUN = 50;
+// A batch holds its followers' account locks until it commits, so it stays small: their starts and
+// sign-ins wait on it.
+const FOLLOWERS_PER_BATCH = 10;
+const BATCHES_PER_RUN = 500;
 
 const PendingRow = z.object({
     id: z.string(),
