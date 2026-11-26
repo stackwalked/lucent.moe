@@ -14,7 +14,7 @@ import {
     toTimestamptz,
 } from "../db/pool.ts";
 import { withTx } from "../db/tx.ts";
-import { recordSupportAfterPromotion } from "../record/support.ts";
+import { recordSupportAfterFactPromotion } from "../record/support.ts";
 import { bumpDataRevisions } from "../runtime/revisions.ts";
 import { lockBuildCoverage } from "./coverage-lock.ts";
 
@@ -247,7 +247,7 @@ export async function promoteFactSet(
                   and b.size_of_image = m.size_of_image and b.first_covered_at is null`,
         );
         if (!covered.ok) return covered;
-        const support = await recordSupportAfterPromotion(tx, {
+        const support = await recordSupportAfterFactPromotion(tx, {
             productId: release.value.product_id,
             txNow,
         });

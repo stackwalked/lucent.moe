@@ -5,7 +5,7 @@ import { z } from "zod";
 import { type Db, execute, sql } from "../src/db/pool.ts";
 import { tellFollowers } from "../src/record/followers.ts";
 import { scalar, seedAccount } from "./authority-fixtures.ts";
-import { GAME } from "./fact-set-fixtures.ts";
+import { GAME, OTHER_GAME } from "./fact-set-fixtures.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 import { liveCatalog, supportWorld, UPDATED } from "./record-fixtures.ts";
 
@@ -124,5 +124,80 @@ test("a drop already recovered from before anyone was told tells nobody", async 
                 sql`select count(*) as value from product_support_change where notified_at is null`,
             ),
         ).toBe(0);
+    });
+});
+
+const changesOf = (db: Db) =>
+    scalar(
+        db,
+        z.string(),
+        sql`select coalesce(string_agg(case when supported then 'rise' else 'drop' end, ' '
+                                       order by id), '') as value
+            from product_support_change`,
+    );
+
+test("members on the old and the new build taking turns record one drop and tell each follower once", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ nativeDb, browserDb }) => {
+        const rng = createSeededRng(11_103);
+        const products = liveCatalog();
+        const world = await supportWorld(nativeDb, rng, products);
+        const alice = await follower(browserDb, rng, {
+            email: "alice@lucent.test",
+            follows: true,
+            mail: false,
+        });
+        const tell = () => tellFollowers(browserDb, { catalog: products, mail: true });
+
+        await world.support(GAME);
+        expect(await world.start(GAME, "first")).toBe("NOT_A_REFUSAL");
+        for (let turn = 0; turn < 3; turn += 1) {
+            expect(await world.start(UPDATED, "second")).toBe("GAME_BUILD_UNSUPPORTED");
+            expect(await tell()).toMatchObject({ ok: true });
+            expect(await world.start(GAME, "first")).toBe("NOT_A_REFUSAL");
+            expect(await tell()).toMatchObject({ ok: true });
+        }
+        expect(await changesOf(browserDb)).toBe("drop");
+        expect(await inboxOf(browserDb, alice)).toBe(1);
+    });
+});
+
+test("a start reporting only some of the game's modules records nothing", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ nativeDb, browserDb }) => {
+        const world = await supportWorld(nativeDb, createSeededRng(11_104), liveCatalog());
+        await world.support(GAME);
+        expect(await world.start(GAME)).toBe("NOT_A_REFUSAL");
+        expect(await world.start(OTHER_GAME)).toBe("NOT_A_REFUSAL");
+        expect(await world.start(UPDATED, "second")).toBe("GAME_BUILD_UNSUPPORTED");
+        expect(await world.start(OTHER_GAME)).toBe("NOT_A_REFUSAL");
+        expect(await changesOf(browserDb)).toBe("drop");
+    });
+});
+
+test("a second game update after a recovery is a second drop, and only the drops tell followers", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ nativeDb, browserDb }) => {
+        const rng = createSeededRng(11_105);
+        const products = liveCatalog();
+        const world = await supportWorld(nativeDb, rng, products);
+        const alice = await follower(browserDb, rng, {
+            email: "alice@lucent.test",
+            follows: true,
+            mail: false,
+        });
+        const tell = () => tellFollowers(browserDb, { catalog: products, mail: true });
+        const later = { ...GAME, timeDateStamp: GAME.timeDateStamp + 2 };
+
+        await world.support(GAME);
+        expect(await world.start(GAME)).toBe("NOT_A_REFUSAL");
+        expect(await world.start(UPDATED)).toBe("GAME_BUILD_UNSUPPORTED");
+        expect(await tell()).toEqual({ ok: true, value: 1 });
+        await world.support(UPDATED);
+        expect(await tell()).toEqual({ ok: true, value: 0 });
+        expect(await world.start(later)).toBe("GAME_BUILD_UNSUPPORTED");
+        expect(await tell()).toEqual({ ok: true, value: 1 });
+        expect(await changesOf(browserDb)).toBe("drop rise drop");
+        expect(await inboxOf(browserDb, alice)).toBe(2);
     });
 });

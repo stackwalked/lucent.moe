@@ -58,14 +58,23 @@ export async function supportWorld(db: Db, rng: SeededRng, products: ProductCata
     const loader = createTestLoader(harness, await createTestDevice(rng));
     await signIn(harness, loader, member.browserSession);
     await enroll(harness, loader, member.browserSession);
+    // A second member, so two PCs on different game builds can take turns.
+    const second = await entitledMember(harness, {
+        email: "second@lucent.test",
+        channels: ["alpha"],
+    });
+    const secondLoader = createTestLoader(harness, await createTestDevice(rng));
+    await signIn(harness, secondLoader, second.browserSession);
+    await enroll(harness, secondLoader, second.browserSession);
     let revision = 0;
     return {
         caller,
         harness,
         member,
-        start: async (build: ModuleKey) =>
+        release,
+        start: async (build: ModuleKey, by: "first" | "second" = "first") =>
             refusalCodeOf(
-                await loader.send({
+                await (by === "first" ? loader : secondLoader).send({
                     method: "POST",
                     path: "/v1/starts",
                     body: startBody({ loaderRelease: loaderRelease.id, modules: [build] }),

@@ -14,8 +14,8 @@ import {
     toTimestamptz,
 } from "../db/pool.ts";
 import { findCurrentRelease } from "../releases/reads.ts";
-import { coversCoreFacts, StartModules } from "../runtime/starts.ts";
-import { decideSupportWrite } from "./support.rules.ts";
+import { coversCoreFacts, StartModules, toModulesJson } from "../runtime/starts.ts";
+import { decideSupportMove } from "./support.rules.ts";
 
 // Whether a product works today: the one rule the member product page, the Discord status feed
 // and the public status page share. A start passes core coverage when the release's current fact
@@ -94,99 +94,145 @@ export async function readProductSupport(
     return ok(release.value === null ? null : true);
 }
 
-// Records a change of a module product's support state on its channel, once: the stored row is
-// read unlocked and written only when the state moved, with a where clause on the state read, so
-// of two writers seeing the same move one records it and the other finds nothing to write. A
-// start that changes nothing takes no row lock. Called under the build coverage lock, by the
-// start that reports builds and the promotion that covers them.
-async function recordChannelSupport(
+// The recorded state moves only on events, never on whichever build the last start happened to
+// report (game_build_report is one row per product that every start overwrites, so members on
+// the old and the new build would flip it back and forth). A drop: a start reports a build no
+// start reported before and the first channel's release doesn't cover the start's builds, or a
+// release promoted on the first channel doesn't cover the game's builds. A rise: a promotion
+// after which the first channel's release covers the builds the open drop was recorded on.
+//
+// Lock order: under the build coverage lock (facts/coverage-lock.ts), then the product_support
+// row, written guarded by the state it held so two writers seeing the same move record it once;
+// the change row is append-only.
+
+async function readOpenDrop(tx: Tx, productId: string) {
+    return await queryOne(
+        tx,
+        // Built here, not at load: runtime/starts.ts imports this module.
+        z.object({ channel: z.string(), builds: StartModules }),
+        sql`select channel, builds from product_support
+            where product_id = ${productId} and not supported`,
+    );
+}
+
+async function appendChange(
+    tx: Tx,
+    params: { readonly productId: string; readonly supported: boolean; readonly at: string },
+): Promise<Result<void, DbFailure>> {
+    const changed = await execute(
+        tx,
+        sql`insert into product_support_change (product_id, supported, changed_at, notified_at)
+            values (${params.productId}, ${params.supported}, ${params.at}::timestamptz,
+                    ${params.supported ? params.at : null}::timestamptz)`,
+    );
+    return changed.ok ? ok(undefined) : changed;
+}
+
+async function recordDrop(
     tx: Tx,
     params: {
         readonly productId: string;
         readonly channel: string;
-        readonly recorded: boolean | null;
+        readonly builds: readonly ModuleKey[];
         readonly txNow: EpochMs;
     },
 ): Promise<Result<void, DbFailure>> {
-    const now = await readChannelSupported(tx, params);
-    if (!now.ok) return now;
-    const write = decideSupportWrite({ recorded: params.recorded, now: now.value });
-    if (write.value === null) return ok(undefined);
     const at = toTimestamptz(params.txNow);
-    const { supported } = write.value;
     const stored = await queryAll(
         tx,
         z.object({ product_id: z.string() }),
-        params.recorded === null
-            ? sql`insert into product_support (product_id, channel, supported, changed_at)
-                  values (${params.productId}, ${params.channel}, ${supported},
-                          ${at}::timestamptz)
-                  on conflict (product_id) do nothing
-                  returning product_id`
-            : sql`update product_support
-                  set channel = ${params.channel}, supported = ${supported},
-                      changed_at = ${at}::timestamptz
-                  where product_id = ${params.productId} and supported = ${params.recorded}
-                  returning product_id`,
+        sql`insert into product_support (product_id, channel, supported, builds, changed_at)
+            values (${params.productId}, ${params.channel}, false,
+                    ${toModulesJson(params.builds)}::jsonb, ${at}::timestamptz)
+            on conflict (product_id) do update
+            set channel = excluded.channel, supported = false, builds = excluded.builds,
+                changed_at = excluded.changed_at
+            where product_support.supported
+            returning product_id`,
     );
     if (!stored.ok) return stored;
-    if (stored.value.length === 0 || !write.value.change) return ok(undefined);
-    const changed = await execute(
-        tx,
-        sql`insert into product_support_change (product_id, supported, changed_at, notified_at)
-            values (${params.productId}, ${supported}, ${at}::timestamptz,
-                    ${supported ? at : null}::timestamptz)`,
-    );
-    if (!changed.ok) return changed;
-    return ok(undefined);
+    if (stored.value.length === 0) return ok(undefined);
+    return await appendChange(tx, { productId: params.productId, supported: false, at });
 }
 
-const RecordedRow = z.object({ channel: z.string(), supported: z.boolean() });
-
-// After a start recorded the builds it reported: a live module product's support on its first
-// channel, which the builds may have moved.
-export async function recordSupportAfterReport(
-    tx: Tx,
-    params: { readonly product: ProductDefinition; readonly txNow: EpochMs },
-): Promise<Result<void, DbFailure>> {
-    const { product } = params;
-    const [channel] = product.channels;
-    if (product.state !== "live" || product.kind !== "module" || channel === undefined) {
-        return ok(undefined);
-    }
-    const recorded = await queryOne(
-        tx,
-        RecordedRow,
-        sql`select channel, supported from product_support where product_id = ${product.id}`,
-    );
-    if (!recorded.ok) return recorded;
-    // A product whose first channel changed is judged on the new one from here.
-    return await recordChannelSupport(tx, {
-        productId: product.id,
-        channel,
-        recorded: recorded.value?.supported ?? null,
-        txNow: params.txNow,
-    });
-}
-
-// After a promotion made sets current: the product's support on the channel its state was
-// recorded on. A product no start has recorded is left for its next start, which brings the
-// catalog's word on whether it is live.
-export async function recordSupportAfterPromotion(
+async function recordRise(
     tx: Tx,
     params: { readonly productId: string; readonly txNow: EpochMs },
 ): Promise<Result<void, DbFailure>> {
-    const recorded = await queryOne(
+    const at = toTimestamptz(params.txNow);
+    const stored = await queryAll(
         tx,
-        RecordedRow,
-        sql`select channel, supported from product_support where product_id = ${params.productId}`,
+        z.object({ product_id: z.string() }),
+        sql`update product_support set supported = true, builds = null, changed_at = ${at}::timestamptz
+            where product_id = ${params.productId} and not supported
+            returning product_id`,
     );
-    if (!recorded.ok) return recorded;
-    if (recorded.value === null) return ok(undefined);
-    return await recordChannelSupport(tx, {
-        productId: params.productId,
-        channel: recorded.value.channel,
-        recorded: recorded.value.supported,
+    if (!stored.ok) return stored;
+    if (stored.value.length === 0) return ok(undefined);
+    return await appendChange(tx, { productId: params.productId, supported: true, at });
+}
+
+// After a start recorded its builds. `newlySeen`: how many of them no start had reported before;
+// with none, nothing here runs a query. `covered` is the start's own coverage result, reused when
+// it started on the first channel.
+export async function recordSupportAfterReport(
+    tx: Tx,
+    params: {
+        readonly product: ProductDefinition;
+        readonly channel: string;
+        readonly newlySeen: number;
+        readonly covered: boolean;
+        readonly modules: readonly ModuleKey[];
+        readonly txNow: EpochMs;
+    },
+): Promise<Result<void, DbFailure>> {
+    const { product } = params;
+    const [first] = product.channels;
+    if (params.newlySeen === 0 || product.state !== "live" || product.kind !== "module") {
+        return ok(undefined);
+    }
+    if (first === undefined) return ok(undefined);
+    let covered = params.covered;
+    if (params.channel !== first) {
+        const release = await findCurrentRelease(tx, { productId: product.id, channel: first });
+        if (!release.ok) return release;
+        if (release.value === null) return ok(undefined);
+        const judged = await coversCoreFacts(tx, release.value.id, params.modules);
+        if (!judged.ok) return judged;
+        covered = judged.value;
+    }
+    const move = decideSupportMove({ down: false, event: "first_report", covered });
+    if (move.value !== "drop") return ok(undefined);
+    return await recordDrop(tx, {
+        productId: product.id,
+        channel: first,
+        builds: params.modules,
         txNow: params.txNow,
     });
+}
+
+// After a fact set promotion: a rise when the open drop's builds are now covered on its channel.
+// A product with no open drop costs one indexed read.
+export async function recordSupportAfterFactPromotion(
+    tx: Tx,
+    params: { readonly productId: string; readonly txNow: EpochMs },
+): Promise<Result<void, DbFailure>> {
+    const open = await readOpenDrop(tx, params.productId);
+    if (!open.ok) return open;
+    if (open.value === null) return ok(undefined);
+    const release = await findCurrentRelease(tx, {
+        productId: params.productId,
+        channel: open.value.channel,
+    });
+    if (!release.ok) return release;
+    if (release.value === null) return ok(undefined);
+    const covered = await coversCoreFacts(tx, release.value.id, open.value.builds);
+    if (!covered.ok) return covered;
+    const move = decideSupportMove({
+        down: true,
+        event: "fact_promotion",
+        covered: covered.value,
+    });
+    if (move.value !== "rise") return ok(undefined);
+    return await recordRise(tx, params);
 }

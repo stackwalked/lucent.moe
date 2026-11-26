@@ -190,10 +190,17 @@ export async function createStart(
             txNow,
         });
         if (!seen.ok) return seen;
-        const support = await recordSupportAfterReport(tx, { product, txNow });
-        if (!support.ok) return support;
         const covered = await coversCoreFacts(tx, release.value.id, request.modules);
         if (!covered.ok) return covered;
+        const support = await recordSupportAfterReport(tx, {
+            product,
+            channel,
+            newlySeen: seen.value,
+            covered: covered.value,
+            modules: request.modules,
+            txNow,
+        });
+        if (!support.ok) return support;
         // Committed with the report: the builds a refused start brought are what the product page
         // checks, so it says "not yet supported" after a game update.
         const plan = decideStart({ coreFacts: covered.value }, txNow, START_TTL_MS);
@@ -260,7 +267,7 @@ export function toModulesJson(builds: readonly ModuleKey[]): string {
 // The first report of each build, for update-day latency. A build some release of the product
 // already runs a current set for was covered before anyone reported it: its promotion time is the
 // earliest still on record, and the latency reads as none. The request's modules are sorted, so
-// concurrent starts insert in the same order.
+// concurrent starts insert in the same order. Answers how many builds no start had reported.
 async function recordBuildsSeen(
     tx: Queryable,
     params: {
@@ -268,8 +275,8 @@ async function recordBuildsSeen(
         readonly modules: readonly ModuleKey[];
         readonly txNow: EpochMs;
     },
-): Promise<Result<void, DbFailure>> {
-    if (params.modules.length === 0) return ok(undefined);
+): Promise<Result<number, DbFailure>> {
+    if (params.modules.length === 0) return ok(0);
     const inserted = await execute(
         tx,
         sql`insert into module_build_seen
@@ -291,7 +298,7 @@ async function recordBuildsSeen(
             on conflict do nothing`,
     );
     if (!inserted.ok) return inserted;
-    return ok(undefined);
+    return ok(inserted.value);
 }
 
 export type StartContainer = {

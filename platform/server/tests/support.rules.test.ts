@@ -1,24 +1,52 @@
 import { expect, test } from "bun:test";
 import { invariant } from "@lucent/core/contain";
 import { EpochMs } from "@lucent/core/scalars";
-import { decideRecoveries, decideSupportWrite } from "../src/record/support.rules.ts";
+import { decideRecoveries, decideSupportMove } from "../src/record/support.rules.ts";
 
 test.each([
-    ["a product with no status writes nothing", null, null, null],
-    ["a recorded product with no status now keeps its state", false, null, null],
-    ["an unchanged state writes nothing", true, true, null],
-    ["an unchanged drop writes nothing", false, false, null],
+    ["a newly seen build the release covers moves nothing", false, "first_report", true, null],
     [
-        "a first supported state is stored without a change",
-        null,
-        true,
-        { supported: true, change: false },
+        "a newly seen build the release doesn't cover is a drop",
+        false,
+        "first_report",
+        false,
+        "drop",
     ],
-    ["a first unsupported state is a drop", null, false, { supported: false, change: true }],
-    ["supported to not supported is a drop", true, false, { supported: false, change: true }],
-    ["not supported to supported is a rise", false, true, { supported: true, change: true }],
-] as const)("%s", (_name, recorded, now, expected) => {
-    expect(decideSupportWrite({ recorded, now }).value).toEqual(expected);
+    ["a start never records a rise", true, "first_report", true, null],
+    ["a start during a drop records nothing more", true, "first_report", false, null],
+    [
+        "a fact set promotion covering the drop's builds is a rise",
+        true,
+        "fact_promotion",
+        true,
+        "rise",
+    ],
+    [
+        "a fact set promotion that doesn't cover them leaves the drop",
+        true,
+        "fact_promotion",
+        false,
+        null,
+    ],
+    ["a fact set promotion never records a drop", false, "fact_promotion", false, null],
+    ["a release covering the drop's builds is a rise", true, "release_promotion", true, "rise"],
+    [
+        "a release not covering the drop's builds leaves the drop",
+        true,
+        "release_promotion",
+        false,
+        null,
+    ],
+    [
+        "a release not covering the game's builds is a drop",
+        false,
+        "release_promotion",
+        false,
+        "drop",
+    ],
+    ["a release covering the game's builds moves nothing", false, "release_promotion", true, null],
+] as const)("%s", (_name, down, event, covered, expected) => {
+    expect(decideSupportMove({ down, event, covered }).value).toBe(expected);
 });
 
 const at = (ms: number) => EpochMs.parse(ms);

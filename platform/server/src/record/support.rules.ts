@@ -2,20 +2,22 @@ import { type Ok, ok, type Result } from "@lucent/core/result";
 import type { EpochMs } from "@lucent/core/scalars";
 import { decideUpdateDayLatency, type UpdateDayLatency } from "../facts/updates.rules.ts";
 
-// What a writer that may have moved a product's support state records. `recorded` is the stored
-// state (null: none yet), `now` what the shared rule says now (null: the product has no status,
-// so there is nothing to compare). A product never recorded counts as supported: its first state
-// is a change only when it is a drop. `change` says a state-change row is written.
-export type SupportWrite = { readonly supported: boolean; readonly change: boolean };
+// How an event moves a product's recorded support state. `down`: a drop is open. `covered`: for
+// a first report, whether the first channel's release covers the start's builds; for a
+// promotion with a drop open, whether it now covers the drop's builds; for a release promotion
+// with none open, whether it covers the game's builds. A start never records a rise, and a fact
+// set promotion never a drop: only what is newly reported or newly promoted moves the state.
+export type SupportEvent = "first_report" | "fact_promotion" | "release_promotion";
 
-export function decideSupportWrite(params: {
-    readonly recorded: boolean | null;
-    readonly now: boolean | null;
-}): Ok<SupportWrite | null> {
-    const { recorded, now } = params;
-    if (now === null || recorded === now) return ok(null);
-    if (recorded === null) return ok({ supported: now, change: !now });
-    return ok({ supported: now, change: true });
+export function decideSupportMove(params: {
+    readonly down: boolean;
+    readonly event: SupportEvent;
+    readonly covered: boolean;
+}): Ok<"drop" | "rise" | null> {
+    const { down, event, covered } = params;
+    if (down) return ok(event !== "first_report" && covered ? "rise" : null);
+    if (covered || event === "fact_promotion") return ok(null);
+    return ok("drop");
 }
 
 export type SupportChange = {
