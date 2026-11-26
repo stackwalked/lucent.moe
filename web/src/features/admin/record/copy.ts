@@ -10,7 +10,6 @@ export const RECORD_COPY = {
     truncated: "showing the 200 latest of each.",
     titleField: "title",
     body: "details",
-    bodyHint: "optional.",
     product: "about",
     service: "the whole site",
     opened: "opened",

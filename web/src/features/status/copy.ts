@@ -9,7 +9,6 @@ export const STATUS_COPY = {
     noProducts: "no products are listed.",
     issues: "known issues",
     noIssues: "no known issues.",
-    about: "about",
     since: "since",
     changes: "recent changes",
     noChanges: "no changes yet.",
