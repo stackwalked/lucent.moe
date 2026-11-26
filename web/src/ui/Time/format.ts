@@ -38,6 +38,30 @@ export function formatDate(at: EpochMs, timeZone: string): string {
     return `${part("day")} ${part("month").toLowerCase()} ${part("year")}`;
 }
 
+// "mar 2025": a join date at the granularity a directory shows.
+export function formatMonth(at: EpochMs, timeZone: string): string {
+    const parts = new Intl.DateTimeFormat("en-US", {
+        timeZone,
+        month: "short",
+        year: "numeric",
+    }).formatToParts(at);
+    const part = (type: Intl.DateTimeFormatPartTypes): string =>
+        parts.find((p) => p.type === type)?.value ?? "";
+    return `${part("month").toLowerCase()} ${part("year")}`;
+}
+
+// "24 nov": the day and month, for a list of what is recent.
+export function formatDay(at: EpochMs, timeZone: string): string {
+    const parts = new Intl.DateTimeFormat("en-US", {
+        timeZone,
+        day: "numeric",
+        month: "short",
+    }).formatToParts(at);
+    const part = (type: Intl.DateTimeFormatPartTypes): string =>
+        parts.find((p) => p.type === type)?.value ?? "";
+    return `${part("day")} ${part("month").toLowerCase()}`;
+}
+
 // Whole units, rounded down, so "1h ago" never shows before an hour has passed. A time ahead of
 // `now` (clock skew between server and browser) reads as just now.
 export function formatRelative(at: EpochMs, now: EpochMs): string {

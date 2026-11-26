@@ -1,4 +1,4 @@
-import { Link, useRouteContext, useRouter } from "@tanstack/react-router";
+import { Link, useLocation, useRouteContext, useRouter } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import { chooseTheme } from "../../theme.ts";
 import { Dropdown, type DropdownItem } from "../../ui/Dropdown/Dropdown.tsx";
@@ -12,11 +12,14 @@ import { SHELL_COPY } from "./copy.ts";
 import styles from "./SiteShell.module.css";
 
 // What a signed-in member reaches from the bar, tab by tab.
+// `also` names a path prefix that belongs to the place without being under its own address:
+// profiles are part of community.
 const PLACES = [
-    { to: "/products", label: SHELL_COPY.products },
-    { to: "/cloud", label: SHELL_COPY.cloud },
-    { to: "/resources", label: SHELL_COPY.resources },
-    { to: "/support", label: SHELL_COPY.support },
+    { to: "/products", label: SHELL_COPY.products, also: null },
+    { to: "/cloud", label: SHELL_COPY.cloud, also: null },
+    { to: "/resources", label: SHELL_COPY.resources, also: null },
+    { to: "/community", label: SHELL_COPY.community, also: "/members/" },
+    { to: "/support", label: SHELL_COPY.support, also: null },
 ] as const;
 
 // Account, staff's admin, the theme, and sign out: everything of the member's own that isn't a
@@ -87,6 +90,7 @@ export function SiteShell({
 }) {
     const { session, unreadCount, avatar } = useRouteContext({ from: "__root__" });
     const viewer = memberOf(session);
+    const { pathname } = useLocation();
     return (
         <Shell
             {...(viewer === null
@@ -98,11 +102,14 @@ export function SiteShell({
                       ),
                   }
                 : {
-                      places: PLACES.map(({ to, label }) => (
+                      places: PLACES.map(({ to, label, also }) => (
                           <Link
                               key={to}
                               to={to}
                               className={styles.place}
+                              {...(also !== null && pathname.startsWith(also)
+                                  ? { "aria-current": "page" as const }
+                                  : {})}
                               activeProps={{ "aria-current": "page" }}
                           >
                               {label}

@@ -1,0 +1,46 @@
+@layer features {
+    .list {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .guide {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto auto;
+        align-items: center;
+        gap: var(--s-4);
+        min-block-size: var(--row2-h);
+        padding-block: var(--s-2);
+        border-block-end: 1px solid var(--line);
+    }
+
+    .guide:last-child {
+        border-block-end: 0;
+    }
+
+    .title {
+        overflow-wrap: anywhere;
+    }
+
+    .author {
+        color: var(--ink-2);
+        font-size: var(--size-13);
+    }
+
+    .updated {
+        color: var(--ink-2);
+        font-size: var(--size-13);
+        text-align: end;
+        white-space: nowrap;
+    }
+
+    @media (width <= 640px) {
+        .guide {
+            grid-template-columns: minmax(0, 1fr) auto;
+        }
+
+        .title {
+            grid-column: 1 / -1;
+        }
+    }
+}

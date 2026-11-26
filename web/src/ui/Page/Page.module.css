@@ -15,28 +15,6 @@
         max-inline-size: var(--page-narrow);
     }
 
-    /* The head row is --caption-h tall with the hairline as its bottom edge, so the first
-       hairline of every page is --page-gap + --caption-h under the bar. Section captions are the
-       same height for the pages that start with them. */
-    .head {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: flex-end;
-        justify-content: space-between;
-        gap: var(--s-3);
-        min-block-size: var(--caption-h);
-        padding-block-end: var(--s-2);
-        border-block-end: 1px solid var(--line);
-    }
-
-    .lead {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: baseline;
-        gap: var(--s-3);
-        min-inline-size: 0;
-    }
-
     .trail {
         color: var(--ink-2);
         font-size: var(--size-13);
@@ -49,13 +27,6 @@
 
     .title {
         font-size: var(--size-20);
-    }
-
-    .actions {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        gap: var(--s-2);
     }
 
     .hidden {

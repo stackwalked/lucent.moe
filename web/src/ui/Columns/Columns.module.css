@@ -13,6 +13,14 @@
         min-inline-size: 0;
     }
 
+    /* A head row and what follows it, as far apart as a Section's caption is from its content,
+       so the first rows of both columns start level. */
+    .headed {
+        display: flex;
+        flex-direction: column;
+        gap: var(--s-4);
+    }
+
     /* Measured on the page's column (Page is the container), so a side nav beside the page
        counts. 900px leaves the wide column 400px beside the 444px one. */
     @container (max-width: 900px) {

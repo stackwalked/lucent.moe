@@ -10,6 +10,7 @@ import {
     AVATAR_IMAGE_PATH,
     AVATAR_UPLOAD_PATH,
     BANNER_UPLOAD_PATH,
+    COMMUNITY_EVENTS_PATH,
     LOADER_DOWNLOAD_PATH,
     RESOURCE_DOWNLOAD_PATH,
     RESOURCE_UPLOAD_PATH,
@@ -449,6 +450,49 @@ export async function serveAvatar(digest: string, signal: AbortSignal): Promise<
     }
     await res?.body?.cancel();
     return missing;
+}
+
+// The community event stream for the signed-in member, passed on as it arrives. It lives as long
+// as the browser keeps it open, so the deadline is only a ceiling: EventSource reconnects by
+// itself, and a reconnect re-reads the session. Signed out (or a session platform no longer
+// takes) is a bare 401, which ends EventSource's retries.
+const EVENTS_DEADLINE_MS = 60 * 60 * 1_000;
+
+export async function streamCommunityEvents(signal: AbortSignal): Promise<Response> {
+    const web = currentRequest();
+    const refused = (status: 401 | 503) =>
+        new Response(null, { status, headers: { "cache-control": "no-store" } });
+    const session = readSessionToken();
+    if (session === null) return refused(401);
+    const reply = await tryAsync(
+        () =>
+            platformStreams()(
+                COMMUNITY_EVENTS_PATH,
+                {
+                    [RPC_HEADERS.session]: session,
+                    [RPC_HEADERS.client]: toClientHeader(web.client),
+                    [RPC_HEADERS.request]: web.requestId,
+                },
+                AbortSignal.any([signal, AbortSignal.timeout(EVENTS_DEADLINE_MS)]),
+            ),
+        () => null,
+    );
+    const res = reply.ok ? reply.value : null;
+    if (res?.status === 200 && res.body !== null) {
+        return new Response(res.body, {
+            headers: {
+                "content-type": "text/event-stream",
+                "cache-control": "no-store",
+                "x-accel-buffering": "no",
+            },
+        });
+    }
+    await res?.body?.cancel();
+    if (res?.status === 401) {
+        clearSessionToken();
+        return refused(401);
+    }
+    return refused(503);
 }
 
 // A staff upload can take a while on a slow line; the browser leaving ends it sooner.

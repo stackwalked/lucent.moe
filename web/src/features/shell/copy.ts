@@ -3,6 +3,7 @@ export const SHELL_COPY = {
     account: "account",
     products: "products",
     resources: "resources",
+    community: "community",
     support: "support",
     signIn: "sign in",
     apply: "apply",

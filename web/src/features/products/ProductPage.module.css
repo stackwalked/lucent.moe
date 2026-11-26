@@ -1,4 +1,8 @@
 @layer features {
+    .title {
+        font-size: var(--size-20);
+    }
+
     .note {
         color: var(--ink-2);
     }

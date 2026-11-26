@@ -192,6 +192,8 @@ function Data({ now }: { readonly now: EpochMs }) {
                     { label: "id", value: <Ident value="acc_7Qm2Lx9PZt4Wv0yHcR1kSa" /> },
                     { label: "status", value: <Status icon="check">active</Status> },
                     { label: "created", value: <Time at={rows[2]?.at ?? now} /> },
+                    { label: "joined", value: <Time at={rows[2]?.at ?? now} format="month" /> },
+                    { label: "joined day", value: <Time at={rows[2]?.at ?? now} format="day" /> },
                     {
                         label: "docs",
                         value: <ExternalLink href="https://lucide.dev">lucide.dev</ExternalLink>,
@@ -310,11 +312,11 @@ function Frame() {
                 </Stack>
             </Section>
             <Columns
-                main={
-                    <Section caption="wide column">
-                        <p>the head row above and these captions share one height.</p>
-                    </Section>
-                }
+                head={{
+                    lead: <Tabs tabs={[{ to: "/dev/kit", label: "wide column head" }]} />,
+                    actions: <Button size="sm">head action</Button>,
+                }}
+                main={<p>the column's head row and the aside's first caption share one line.</p>}
                 aside={
                     <Section caption="444px column">
                         <p>both start at the same height; no hairline crosses the gap.</p>
@@ -342,7 +344,12 @@ export function Kit({ now }: { readonly now: EpochMs }) {
     return (
         <TimeProvider now={now} timeZone="Europe/Berlin">
             <ToastProvider>
-                <Page title="kit">
+                <Page
+                    title="kit"
+                    hideTitle
+                    tabs={<Tabs tabs={[{ to: "/dev/kit", label: "kit" }]} />}
+                    actions={<Button size="sm">head row action</Button>}
+                >
                     <Themed>
                         <Stack gap={6}>
                             <Actions />

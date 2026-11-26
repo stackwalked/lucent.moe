@@ -10,7 +10,6 @@ import { Stack } from "../../ui/Stack/Stack.tsx";
 import { Tabs } from "../../ui/Tabs/Tabs.tsx";
 import { Time } from "../../ui/Time/Time.tsx";
 import { Entries } from "../changes/Entries.tsx";
-import { GuidesSection } from "../guides/GuidesSection.tsx";
 import { PRODUCTS_COPY as C } from "./copy.ts";
 import { noteLastProduct } from "./lastProduct.ts";
 import styles from "./ProductPage.module.css";
@@ -19,12 +18,12 @@ import { productName, statusWord } from "./view.ts";
 const route = getRouteApi("/_member/products/$productId");
 
 // One product as the member holds it: its changes on the left; on the right whether it runs
-// today and until when theirs lasts, what is known broken, the loader, and its guides. The head
+// today and until when theirs lasts, what is known broken, and the loader. The head
 // row's title is the product picker, the tabs the page's own (only changes so far). No version
 // rows anywhere: releases carry no version string, only a seal number.
 export function ProductPage() {
     const data = route.useLoaderData();
-    const { product, access, status, issues, changes, loader, guides } = data;
+    const { product, access, status, issues, changes, loader } = data;
 
     useEffect(() => {
         void noteLastProduct(product.productId);
@@ -59,33 +58,35 @@ export function ProductPage() {
     ].filter((item) => item !== null);
 
     return (
-        <Page
-            title={
-                <ProductPick
-                    label={productName(product.name)}
-                    rows={rows}
-                    current={product.productId}
-                    linkFor={(id, children) => (
-                        <Link to="/products/$productId" params={{ productId: id }}>
-                            {children}
-                        </Link>
-                    )}
-                />
-            }
-            width="wide"
-            tabs={
-                <Tabs
-                    tabs={[
-                        {
-                            to: "/products/$productId",
-                            params: { productId: product.productId },
-                            label: C.changesTab,
-                        },
-                    ]}
-                />
-            }
-        >
+        <Page title={null} hideTitle width="wide">
             <Columns
+                head={{
+                    lead: (
+                        <>
+                            <h1 className={styles.title}>
+                                <ProductPick
+                                    label={productName(product.name)}
+                                    rows={rows}
+                                    current={product.productId}
+                                    linkFor={(id, children) => (
+                                        <Link to="/products/$productId" params={{ productId: id }}>
+                                            {children}
+                                        </Link>
+                                    )}
+                                />
+                            </h1>
+                            <Tabs
+                                tabs={[
+                                    {
+                                        to: "/products/$productId",
+                                        params: { productId: product.productId },
+                                        label: C.changesTab,
+                                    },
+                                ]}
+                            />
+                        </>
+                    ),
+                }}
                 main={
                     <Entries
                         first={changes}
@@ -126,7 +127,6 @@ export function ProductPage() {
                                 <p className={styles.note}>{C.loaderUnavailable}</p>
                             ) : null}
                         </Section>
-                        <GuidesSection productId={product.productId} outcome={guides} />
                     </Stack>
                 }
             />

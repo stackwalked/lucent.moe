@@ -23,7 +23,7 @@ export function Tabs({ tabs }: { readonly tabs: readonly Tab[] }) {
                     {...(tab.search === undefined ? {} : { search: tab.search })}
                     className={styles.tab}
                     activeProps={{ "aria-current": "page" }}
-                    activeOptions={{ exact: true }}
+                    activeOptions={{ exact: true, includeSearch: false }}
                 >
                     {tab.label}
                     {tab.count === undefined ? null : (

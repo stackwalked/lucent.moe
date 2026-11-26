@@ -1,0 +1,146 @@
+@layer features {
+    .find {
+        display: block;
+        inline-size: var(--side-w);
+        max-inline-size: 100%;
+    }
+
+    .findForm {
+        display: flex;
+        align-items: center;
+        gap: var(--s-1);
+    }
+
+    .findInput {
+        flex: 1;
+        min-inline-size: 0;
+        /* What the head row has room for under its padding and hairline, so "find" does not
+           push the first hairline off 80px. */
+        block-size: calc(var(--caption-h) - var(--s-2) - 1px);
+        padding-inline: var(--s-3);
+        border: 1px solid var(--line-2);
+        border-radius: var(--r);
+        background: var(--raised);
+        color: var(--ink);
+        font-size: var(--size-14);
+    }
+
+    .findInput::placeholder {
+        color: var(--ink-2);
+    }
+
+    .findInput:hover {
+        background: var(--floating);
+    }
+
+    .list {
+        display: flex;
+        flex-direction: column;
+    }
+
+    /* Picture, then name, role label and tagline in one flexible cell, then number and joined
+       at the row's end. The tagline follows the name and gives up to an ellipsis, and goes
+       altogether where the row has no room. */
+    .member {
+        display: grid;
+        grid-template-columns: var(--s-5) minmax(0, 1fr) minmax(3rem, auto) minmax(4.5rem, auto);
+        align-items: center;
+        gap: var(--s-4);
+        min-block-size: var(--s-7);
+        border-block-end: 1px solid var(--line);
+        transition: background-color var(--t-hover) var(--ease);
+    }
+
+    .member:last-child {
+        border-block-end: 0;
+    }
+
+    .member:hover {
+        background: var(--hover);
+    }
+
+    .pic {
+        display: inline-flex;
+        flex: none;
+        inline-size: var(--s-5);
+        block-size: var(--s-5);
+        border-radius: 50%;
+        background: var(--floating);
+    }
+
+    .text {
+        display: flex;
+        align-items: baseline;
+        gap: var(--s-3);
+        min-inline-size: 0;
+    }
+
+    .name {
+        flex: 0 1 auto;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-weight: var(--w-medium);
+    }
+
+    .tagline {
+        flex: 1 1 0;
+        min-inline-size: 0;
+        overflow: hidden;
+        color: var(--ink-2);
+        font-size: var(--size-13);
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .number {
+        color: var(--ink-2);
+        font-family: var(--font-mono);
+        font-size: var(--size-12);
+        text-align: end;
+    }
+
+    .joined {
+        color: var(--ink-2);
+        font-size: var(--size-13);
+        text-align: end;
+        white-space: nowrap;
+    }
+
+    .moreRow {
+        padding-block-start: var(--s-4);
+    }
+
+    .sideList {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .side {
+        display: flex;
+        align-items: center;
+        gap: var(--s-3);
+        min-block-size: var(--row2-h);
+        transition: background-color var(--t-hover) var(--ease);
+    }
+
+    .side:hover {
+        background: var(--hover);
+    }
+
+    .end {
+        margin-inline-start: auto;
+        color: var(--ink-2);
+        font-size: var(--size-13);
+    }
+
+    @media (width <= 640px) {
+        .find {
+            inline-size: 9rem;
+        }
+
+        .tagline {
+            display: none;
+        }
+    }
+}
