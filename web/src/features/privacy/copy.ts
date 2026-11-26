@@ -31,15 +31,14 @@ export const PRIVACY_COPY = {
         "everything you wrote here, who you blocked, what you reported, and your notification choices, as one file.",
     download: "download your data",
     exportName: "lucent-export.json",
-    deletion: "delete your account",
-    deletionBody:
-        "your account is deleted 7 days after you ask. until then it works as before, and you can keep it.",
+    deletion: "delete account",
+    deletionBody: "deleted 7 days after you ask, unless you keep it",
     deleteAccount: "delete account",
     confirmTitle: "delete your account?",
     confirmBody:
-        "in 7 days your sign-in, profile, guides, comments, shouts, cloud items, licences and discord link go for good, and nobody can use your username again. download your data first if you want it.",
+        "in 7 days your sign-in, profile, guides, comments, shouts, cloud items, licences and discord link go for good, and your username can't be used again.",
     cancel: "cancel",
-    pending: "your account will be deleted on",
+    pending: "deletion pending:",
     keep: "keep my account",
-    signInAgain: "sign in again first, then ask within 5 minutes.",
+    signInAgain: "sign in again, then ask within 5 minutes.",
 } as const;

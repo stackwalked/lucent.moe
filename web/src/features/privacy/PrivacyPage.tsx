@@ -5,13 +5,13 @@ import { Button } from "../../ui/Button/Button.tsx";
 import { Empty } from "../../ui/Empty/Empty.tsx";
 import { Page } from "../../ui/Page/Page.tsx";
 import { Section } from "../../ui/Section/Section.tsx";
+import { Select } from "../../ui/Select/Select.tsx";
 import { Stack } from "../../ui/Stack/Stack.tsx";
 import { Table } from "../../ui/Table/Table.tsx";
 import { TextField } from "../../ui/TextField/TextField.tsx";
 import { Time } from "../../ui/Time/Time.tsx";
 import { memberOf } from "../../viewer.ts";
 import { RefusalNote } from "../auth/RefusalNote.tsx";
-import styles from "../comments/TextArea.module.css";
 import { PRIVACY_COPY } from "./copy.ts";
 import { DeletionSection } from "./DeletionSection.tsx";
 import { blockAccount, fetchExport, saveVisibility } from "./server.ts";
@@ -117,19 +117,15 @@ export function PrivacyPage() {
                             }
                         >
                             <Stack direction="row" gap={3} align="end">
-                                <label className={styles.field}>
-                                    <span className={styles.label}>
-                                        {PRIVACY_COPY.visibilityField}
-                                    </span>
-                                    <select
-                                        name="visibility"
-                                        className={styles.control}
-                                        defaultValue={outcome.value.visibility}
-                                    >
-                                        <option value="members">{PRIVACY_COPY.members}</option>
-                                        <option value="private">{PRIVACY_COPY.private}</option>
-                                    </select>
-                                </label>
+                                <Select
+                                    name="visibility"
+                                    label={PRIVACY_COPY.visibilityField}
+                                    defaultValue={outcome.value.visibility}
+                                    options={[
+                                        { value: "members", label: PRIVACY_COPY.members },
+                                        { value: "private", label: PRIVACY_COPY.private },
+                                    ]}
+                                />
                                 <Button type="submit">{PRIVACY_COPY.save}</Button>
                             </Stack>
                         </form>

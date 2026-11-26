@@ -39,7 +39,10 @@ export function StaffTicketPage() {
     };
     return (
         <Page
-            title={value.subject ?? STAFF_TICKETS_COPY.appeal}
+            title={
+                value.subject ??
+                (value.kind === "appeal" ? STAFF_TICKETS_COPY.appeal : STAFF_TICKETS_COPY.help)
+            }
             trail={back}
             actions={
                 closed ? null : (
@@ -89,6 +92,9 @@ export function StaffTicketPage() {
                         },
                     ]}
                 />
+                {value.accountStatus === "deleted" ? (
+                    <p>{STAFF_TICKETS_COPY.ownerDeleted}</p>
+                ) : null}
                 {value.kind === "appeal" ? (
                     <Section caption={STAFF_TICKETS_COPY.appeal}>
                         <Stack gap={2}>
@@ -121,7 +127,12 @@ export function StaffTicketPage() {
                     </Section>
                 ) : null}
                 <Thread
-                    caption={value.subject ?? STAFF_TICKETS_COPY.appeal}
+                    caption={
+                        value.subject ??
+                        (value.kind === "appeal"
+                            ? STAFF_TICKETS_COPY.appeal
+                            : STAFF_TICKETS_COPY.help)
+                    }
                     messages={value.messages}
                     authorOf={authorOf}
                 />

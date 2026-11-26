@@ -7,6 +7,8 @@ export const STAFF_TICKETS_COPY = {
     none: { open: "none waiting", answered: "none answered", closed: "none closed" },
     subject: "subject",
     appeal: "appeal",
+    help: "help ticket",
+    ownerDeleted: "account deleted",
     account: "account",
     product: "product",
     noProduct: "none",

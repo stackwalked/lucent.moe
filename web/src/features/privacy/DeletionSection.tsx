@@ -8,6 +8,7 @@ import { Dialog } from "../../ui/Dialog/Dialog.tsx";
 import { Section } from "../../ui/Section/Section.tsx";
 import { Stack } from "../../ui/Stack/Stack.tsx";
 import { Time } from "../../ui/Time/Time.tsx";
+import { forgetSession } from "../../viewer.ts";
 import { RefusalNote } from "../auth/RefusalNote.tsx";
 import { useStepUp } from "../step-up/StepUp.tsx";
 import { PRIVACY_COPY } from "./copy.ts";
@@ -40,6 +41,8 @@ export function DeletionSection({
         setRefused(reply.ok ? null : reply.refused);
         if (reply.ok) {
             setConfirming(false);
+            // The shell's pending line reads the session, which is remembered until forgotten.
+            forgetSession();
             await router.invalidate();
         }
     };
@@ -49,7 +52,7 @@ export function DeletionSection({
             <Section caption={PRIVACY_COPY.deletion}>
                 <Stack gap={3}>
                     <p>
-                        {PRIVACY_COPY.pending} <Time at={status.dueAt} />.
+                        {PRIVACY_COPY.pending} <Time at={status.dueAt} />
                     </p>
                     <RefusalNote refused={refused} overrides={overrides} />
                     <div>

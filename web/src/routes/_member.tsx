@@ -1,6 +1,7 @@
-import { createFileRoute, Outlet, useMatchRoute } from "@tanstack/react-router";
+import { createFileRoute, Outlet, useMatchRoute, useRouteContext } from "@tanstack/react-router";
 import { APPEAL_PATH } from "../features/appeal/path.ts";
 import { rememberReturnTo } from "../features/auth/session.ts";
+import { DeletionPending } from "../features/privacy/DeletionPending.tsx";
 import { AccountNav } from "../features/shell/AccountNav.tsx";
 import { SiteShell } from "../features/shell/SiteShell.tsx";
 import { toPage, toSignIn, toUnavailable } from "../server/route-control.ts";
@@ -26,8 +27,11 @@ export const Route = createFileRoute("/_member")({
 function MemberFrame() {
     const matchRoute = useMatchRoute();
     const onAccount = matchRoute({ to: "/account", fuzzy: true }) !== false;
+    const { session } = useRouteContext({ from: "__root__" });
+    const dueAt = memberOf(session)?.deletionDueAt ?? null;
     return (
         <SiteShell {...(onAccount ? { side: <AccountNav /> } : {})}>
+            {dueAt === null ? null : <DeletionPending dueAt={dueAt} />}
             <Outlet />
         </SiteShell>
     );

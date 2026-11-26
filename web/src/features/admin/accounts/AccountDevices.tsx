@@ -60,14 +60,16 @@ export function AccountDevices({ account }: { readonly account: Account }) {
                         rowKey={(d) => d.deviceId}
                     />
                 )}
-                <p>
-                    {ACCOUNTS_COPY.nextChange}{" "}
-                    {account.replaceableFrom === null ? (
-                        ACCOUNTS_COPY.now
-                    ) : (
-                        <Time at={account.replaceableFrom} />
-                    )}
-                </p>
+                {account.status === "deleted" ? null : (
+                    <p>
+                        {ACCOUNTS_COPY.nextChange}{" "}
+                        {account.replaceableFrom === null ? (
+                            ACCOUNTS_COPY.now
+                        ) : (
+                            <Time at={account.replaceableFrom} />
+                        )}
+                    </p>
+                )}
             </Stack>
         </Section>
     );

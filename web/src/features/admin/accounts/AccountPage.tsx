@@ -189,7 +189,9 @@ export function AccountPage() {
             permissions: new Set<Action>(),
         },
     } as const;
-    const allowed = (action: Action) => subject !== null && can(subject, action, target);
+    // A deleted account takes no staff action: platform refuses every one as NOT_FOUND.
+    const allowed = (action: Action) =>
+        !deleted && subject !== null && can(subject, action, target);
     const assignable = roles.filter(
         (role) =>
             subject !== null &&
@@ -313,7 +315,7 @@ export function AccountPage() {
                 shown={(token) => <SetupLink token={token} />}
             />
         ) : null,
-    ].filter((action) => action !== null && !deleted);
+    ].filter((action) => action !== null);
 
     return (
         <Page

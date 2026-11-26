@@ -55,7 +55,10 @@ export function StaffTicketsPage() {
                                         to="/admin/tickets/$ticketId"
                                         params={{ ticketId: ticket.id }}
                                     >
-                                        {ticket.subject ?? STAFF_TICKETS_COPY.appeal}
+                                        {ticket.subject ??
+                                            (ticket.kind === "appeal"
+                                                ? STAFF_TICKETS_COPY.appeal
+                                                : STAFF_TICKETS_COPY.help)}
                                     </Link>
                                 ),
                             },
