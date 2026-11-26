@@ -71,6 +71,9 @@ const LOOPBACK = "http://127.0.0.1:53682/callback";
 
 let platform: RunningPlatform;
 let web: ChildServer;
+// A second web the public record test starts against a stopped platform; afterAll stops it, so a
+// failed assertion leaves no process behind.
+let webWithoutSnapshot: ChildServer | null = null;
 let origin: string;
 let socket: string;
 let artifactDir: string;
@@ -114,6 +117,7 @@ beforeAll(async () => {
 }, 60_000);
 
 afterAll(async () => {
+    await webWithoutSnapshot?.stop();
     await web.stop();
     await platform.stop();
     await rm(artifactDir, { recursive: true, force: true });
@@ -660,6 +664,7 @@ describe("web against a real platform", () => {
                 LUCENT_WEB_INTERNAL_KEY: platform.peerKey,
             },
         });
+        webWithoutSnapshot = fresh;
         await fresh.waitFor(/"msg":"listening"/);
         const restarted = createTestBrowser({
             socket: `http://127.0.0.1:${port}`,
@@ -668,7 +673,6 @@ describe("web against a real platform", () => {
         const unavailable = await Promise.all(
             ["/status", "/changelog"].map((path) => text(path, restarted)),
         );
-        await fresh.stop();
         for (const shown of unavailable) {
             expect(shown).toContain("status is unavailable until the server is back.");
         }
