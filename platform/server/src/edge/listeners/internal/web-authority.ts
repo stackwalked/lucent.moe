@@ -8,6 +8,7 @@ import {
     readAccount,
     readRoleSummary,
 } from "../../../identity/authority/reads.ts";
+import { searchStaff } from "../../../identity/authority/search.ts";
 import {
     assignAccountRole,
     createAccount,
@@ -95,6 +96,8 @@ function asIssued<T>(result: Result<T, WriterFailure>): Result<T, IssueRefusal> 
 }
 
 export const authorityHandlers = {
+    "admin.search": (ctx, input, call) =>
+        asStaff(ctx, call, (caller) => searchStaff(ctx.auth.db, { caller, text: input.text })),
     "admin.accounts.list": (ctx, input, call) =>
         asStaff(ctx, call, (caller) => listAccounts(ctx.auth.db, { caller, ...input })),
     "admin.accounts.get": (ctx, input, call) =>

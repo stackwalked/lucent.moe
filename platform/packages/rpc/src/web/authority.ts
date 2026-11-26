@@ -20,6 +20,7 @@ import {
     DeviceWindow,
     Done,
     Features,
+    MatchCode,
     pageOf,
     ReadRefusal,
     Reused,
@@ -87,6 +88,56 @@ export const authorityContract = defineContract({
             cursor: Cursor.nullable(),
         }),
         output: pageOf(AccountSummary),
+        error: ReadRefusal,
+    },
+    // The staff search box: what starts with, or exactly is, what was typed, at most five of each
+    // kind the caller may read. Accounts by username or email prefix and pcs by match code or
+    // device id (accounts:read, as are invites by their link), tickets by id or subject prefix
+    // (tickets:reply). A kind the caller lacks the permission for comes back empty.
+    "admin.search": {
+        session: "member",
+        effect: "read",
+        input: z.strictObject({ text: z.string().trim().min(1).max(120) }),
+        output: z.object({
+            accounts: z
+                .array(
+                    z.object({
+                        id: AccountId,
+                        username: z.string().nullable(),
+                        email: z.string(),
+                    }),
+                )
+                .readonly(),
+            pcs: z
+                .array(
+                    z.object({
+                        id: MatchCode,
+                        accountId: AccountId,
+                        username: z.string().nullable(),
+                    }),
+                )
+                .readonly(),
+            invites: z
+                .array(
+                    z.object({
+                        code: z.string(),
+                        inviterId: AccountId,
+                        inviterUsername: z.string().nullable(),
+                    }),
+                )
+                .readonly(),
+            tickets: z
+                .array(
+                    z.object({
+                        id: z.uuid(),
+                        // Null for an appeal, which has no subject.
+                        subject: z.string().nullable(),
+                        accountId: AccountId,
+                        username: z.string().nullable(),
+                    }),
+                )
+                .readonly(),
+        }),
         error: ReadRefusal,
     },
     "admin.accounts.get": {

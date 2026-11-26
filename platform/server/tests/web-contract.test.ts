@@ -175,6 +175,7 @@ const inputs: SinglePurpose = {
     "record.changelog.list": {},
     "admin.entitlements.listProducts": {},
     "download.loader": {},
+    "admin.search": { text: "ana" },
     "admin.accounts.list": {
         filter: { status: null, roleId: null, text: null },
         sort: "newest",

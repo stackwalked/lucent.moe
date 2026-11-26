@@ -86,7 +86,7 @@ async function readSubject(
     return ok({ ...standing.value, stepUpAt: caller.stepUpAt });
 }
 
-async function readAs<T>(
+export async function readAs<T>(
     db: Db,
     params: { readonly caller: Caller; readonly allowed: (subject: Subject) => boolean },
     read: (q: Queryable, txNow: EpochMs, subject: Subject) => Promise<Result<T, ReadRefusal>>,
