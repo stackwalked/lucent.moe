@@ -55,7 +55,7 @@ export function InboxPage() {
                                         case "ticket_reply":
                                             return (
                                                 <Link
-                                                    to="/tickets/$ticketId"
+                                                    to="/support/$ticketId"
                                                     params={{ ticketId: item.ticketId }}
                                                 >
                                                     {INBOX_COPY.ticketReply}

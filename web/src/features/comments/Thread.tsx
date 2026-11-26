@@ -6,8 +6,8 @@ import { Button } from "../../ui/Button/Button.tsx";
 import { Messages } from "../../ui/Messages/Messages.tsx";
 import { Stack } from "../../ui/Stack/Stack.tsx";
 import { RefusalNote } from "../auth/RefusalNote.tsx";
-import { TextArea } from "../comments/TextArea.tsx";
-import { TICKETS_COPY } from "./copy.ts";
+import { COMMENTS_COPY } from "./copy.ts";
+import { TextArea } from "./TextArea.tsx";
 
 export type ThreadMessage = {
     readonly id: string;
@@ -29,7 +29,7 @@ export function Thread({
 }) {
     const author =
         authorOf ??
-        ((message: ThreadMessage) => (message.fromStaff ? TICKETS_COPY.staff : TICKETS_COPY.you));
+        ((message: ThreadMessage) => (message.fromStaff ? COMMENTS_COPY.staff : COMMENTS_COPY.you));
     return (
         <Messages
             label={caption}

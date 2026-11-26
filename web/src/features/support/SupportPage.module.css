@@ -1,0 +1,131 @@
+@layer features {
+    /* The left column's own head row: the section caption's height and hairline, so both
+       columns open level, 80px under the bar. */
+    .head {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: var(--s-4);
+        min-block-size: var(--caption-h);
+        padding-block-end: var(--s-2);
+        border-block-end: 1px solid var(--line);
+    }
+
+    .subject {
+        overflow-wrap: anywhere;
+        font-size: var(--size-15);
+        font-weight: var(--w-medium);
+    }
+
+    .headEnd {
+        flex-shrink: 0;
+        color: var(--ink-2);
+        font-size: var(--size-13);
+    }
+
+    .word[data-tone="ink"] {
+        color: var(--ink);
+    }
+
+    .word[data-tone="wait"] {
+        color: var(--wait-ink);
+    }
+
+    .word[data-tone="dim"] {
+        color: var(--ink-2);
+    }
+
+    .messages {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .message {
+        display: grid;
+        grid-template-columns: var(--control-sm) minmax(0, 1fr);
+        gap: var(--s-3);
+        padding-block: var(--s-4);
+        border-block-end: 1px solid var(--line);
+    }
+
+    .avatarBox {
+        display: inline-flex;
+        padding-block-start: var(--s-1);
+    }
+
+    .who {
+        display: flex;
+        align-items: baseline;
+        gap: var(--s-3);
+    }
+
+    .name {
+        font-weight: var(--w-medium);
+    }
+
+    .name[data-staff="true"] {
+        color: var(--pink-ink);
+    }
+
+    .when {
+        margin-inline-start: auto;
+        color: var(--ink-2);
+        font-size: var(--size-12);
+    }
+
+    .msgBody {
+        max-inline-size: 72ch;
+        margin-block-start: var(--s-2);
+        color: var(--ink-2);
+        line-height: var(--lh-body);
+        white-space: pre-wrap;
+    }
+
+    .replyActs {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--s-3);
+    }
+
+    .ticket {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: var(--s-1) var(--s-3);
+        padding-block: var(--s-3);
+        border-block-end: 1px solid var(--line);
+    }
+
+    .ticket:last-child {
+        border-block-end: 0;
+    }
+
+    .ticketSubject {
+        overflow-wrap: anywhere;
+        color: var(--ink);
+        font-weight: var(--w-medium);
+    }
+
+    .ticket[aria-current="page"] .ticketSubject {
+        color: var(--pink-ink);
+    }
+
+    .ticketState {
+        grid-row: span 2;
+        align-self: center;
+        font-size: var(--size-13);
+    }
+
+    .ticketMeta {
+        color: var(--ink-2);
+        font-size: var(--size-12);
+    }
+
+    .moreRow {
+        padding-block-start: var(--s-4);
+    }
+
+    .ticket:focus-visible {
+        outline-offset: -2px;
+    }
+}

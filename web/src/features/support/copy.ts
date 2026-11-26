@@ -1,27 +1,24 @@
-export const TICKETS_TITLE = "support";
+export const SUPPORT_TITLE = "support";
 
-export const TICKETS_COPY = {
-    open: "ask for help",
+export const SUPPORT_COPY = {
+    newTicket: "new ticket",
     subject: "subject",
     product: "product",
     noProduct: "none",
     body: "message",
     send: "send",
+    reply: "reply",
     list: "your tickets",
     none: "no tickets",
-    state: "state",
-    lastActivity: "last activity",
+    more: "more",
     states: {
-        open: "waiting for staff",
-        answered: "staff answered",
+        open: "open",
+        answered: "staff replied",
         closed: "closed",
     },
-    you: "you",
     staff: "staff",
-    reply: "write",
-    replyHint: "writing reopens this ticket.",
+    you: "you",
     close: "close ticket",
-    back: "all tickets",
     consent: "config access",
     consentGranted: "staff can read your configs while this ticket is open.",
     consentNone: "staff can't read your configs.",

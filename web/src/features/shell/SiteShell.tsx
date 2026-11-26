@@ -16,7 +16,7 @@ const PLACES = [
     { to: "/products", label: SHELL_COPY.products },
     { to: "/cloud", label: SHELL_COPY.cloud },
     { to: "/resources", label: SHELL_COPY.resources },
-    { to: "/tickets", label: SHELL_COPY.support },
+    { to: "/support", label: SHELL_COPY.support },
 ] as const;
 
 // Account, staff's admin, the theme, and sign out: everything of the member's own that isn't a

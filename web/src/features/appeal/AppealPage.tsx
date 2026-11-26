@@ -10,8 +10,8 @@ import { Time } from "../../ui/Time/Time.tsx";
 import { forgetSession } from "../../viewer.ts";
 import { RefusalNote } from "../auth/RefusalNote.tsx";
 import { signOut } from "../auth/session.ts";
+import { Reply, Thread } from "../comments/Thread.tsx";
 import { DeletionSection } from "../privacy/DeletionSection.tsx";
-import { Reply, Thread } from "../tickets/Thread.tsx";
 import { APPEAL_COPY, APPEAL_TITLE } from "./copy.ts";
 import { sendAppeal } from "./server.ts";
 

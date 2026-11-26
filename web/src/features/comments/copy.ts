@@ -4,6 +4,7 @@ export const COMMENTS_COPY = {
     body: "comment",
     post: "post",
     you: "you",
+    staff: "staff",
     report: "report",
     reported: "reported",
     reportTitle: "report this",
