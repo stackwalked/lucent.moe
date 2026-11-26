@@ -1,7 +1,11 @@
 import { Select } from "../../ui/Select/Select.tsx";
 import { productName } from "./view.ts";
 
-// Choosing one of the products the member can see (fetchProducts), or none.
+type Listed = { readonly productId: string; readonly name: string };
+
+// Choosing one of the listed products, or none. A chosen product the list doesn't hold (one
+// named in the address, retired or out of reach since) stays an option under its id, so the
+// form never quietly sends without it.
 export function ProductSelect({
     name,
     label,
@@ -12,9 +16,13 @@ export function ProductSelect({
     readonly name: string;
     readonly label: string;
     readonly none: string;
-    readonly products: readonly { readonly productId: string; readonly name: string }[];
+    readonly products: readonly Listed[];
     readonly defaultValue?: string;
 }) {
+    const unlisted =
+        defaultValue !== "" && !products.some((p) => p.productId === defaultValue)
+            ? [{ value: defaultValue, label: defaultValue }]
+            : [];
     return (
         <Select
             name={name}
@@ -23,6 +31,7 @@ export function ProductSelect({
             options={[
                 { value: "", label: none },
                 ...products.map((p) => ({ value: p.productId, label: productName(p.name) })),
+                ...unlisted,
             ]}
         />
     );

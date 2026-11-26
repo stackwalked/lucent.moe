@@ -14,6 +14,7 @@ import { Ident } from "../../../ui/Ident/Ident.tsx";
 import { Page } from "../../../ui/Page/Page.tsx";
 import { Pairs } from "../../../ui/Pairs/Pairs.tsx";
 import { Section } from "../../../ui/Section/Section.tsx";
+import { Select } from "../../../ui/Select/Select.tsx";
 import { Stack } from "../../../ui/Stack/Stack.tsx";
 import { Table } from "../../../ui/Table/Table.tsx";
 import { TextField } from "../../../ui/TextField/TextField.tsx";
@@ -100,16 +101,12 @@ function GiveRole({
         <form action={submit} noValidate className={styles.give}>
             <fieldset disabled={pending}>
                 <Stack direction="row" gap={3} align="end">
-                    <label className={styles.select}>
-                        <span className={styles.label}>{ACCOUNTS_COPY.role}</span>
-                        <select name="roleId" required className={styles.control}>
-                            {roles.map((role) => (
-                                <option key={role.roleId} value={role.roleId}>
-                                    {role.name}
-                                </option>
-                            ))}
-                        </select>
-                    </label>
+                    <Select
+                        name="roleId"
+                        label={ACCOUNTS_COPY.role}
+                        required
+                        options={roles.map((role) => ({ value: role.roleId, label: role.name }))}
+                    />
                     <Field label={ACCOUNTS_COPY.untilOptional} customCheck={afterToday}>
                         {(control) => <input {...control} type="date" name="until" />}
                     </Field>

@@ -6,6 +6,16 @@ import { moderationSearch } from "../../features/admin/moderation/search.ts";
 import { listReports, listRestrictions } from "../../features/admin/moderation/server.ts";
 import { MODERATION_TITLE } from "../../features/admin/moderation/title.ts";
 import { guardSection } from "../../features/admin/sections.ts";
+import { fetchPublicProducts } from "../../features/products/server.ts";
+
+// The restrict form picks from the public catalog: a restriction can name any product.
+async function restrictionsWithProducts(data: { readonly cursor: string | null }) {
+    const [outcome, products] = await Promise.all([
+        listRestrictions({ data }),
+        fetchPublicProducts(),
+    ]);
+    return { outcome, products };
+}
 
 export const Route = createFileRoute("/_admin/admin/moderation")({
     beforeLoad: ({ context }) => guardSection(context.session, "moderation"),
@@ -18,7 +28,7 @@ export const Route = createFileRoute("/_admin/admin/moderation")({
             : {
                   list: {
                       kind: "restrictions" as const,
-                      outcome: await listRestrictions({ data }),
+                      ...(await restrictionsWithProducts(data)),
                   },
               };
     },

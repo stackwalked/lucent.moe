@@ -26,7 +26,7 @@ export function ModerationPage() {
             {list.kind === "reports" ? (
                 <ReportsSection outcome={list.outcome} />
             ) : (
-                <RestrictionsSection outcome={list.outcome} />
+                <RestrictionsSection outcome={list.outcome} products={list.products} />
             )}
         </Page>
     );

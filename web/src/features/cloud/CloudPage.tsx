@@ -9,6 +9,7 @@ import { Copy } from "../../ui/Copy/Copy.tsx";
 import { Dialog } from "../../ui/Dialog/Dialog.tsx";
 import { Page } from "../../ui/Page/Page.tsx";
 import { Section } from "../../ui/Section/Section.tsx";
+import { Select } from "../../ui/Select/Select.tsx";
 import { Stack } from "../../ui/Stack/Stack.tsx";
 import { TextField } from "../../ui/TextField/TextField.tsx";
 import { RefusalNote } from "../auth/RefusalNote.tsx";
@@ -245,14 +246,11 @@ function NewItem({ productId }: { readonly productId: string }) {
             <form action={submit}>
                 <Stack gap={2}>
                     <TextField name="name" label={C.name} required maxLength={64} />
-                    <label>
-                        {C.kind}{" "}
-                        <select name="kind">
-                            {ITEM_KINDS.map((kind) => (
-                                <option key={kind}>{kind}</option>
-                            ))}
-                        </select>
-                    </label>
+                    <Select
+                        name="kind"
+                        label={C.kind}
+                        options={ITEM_KINDS.map((kind) => ({ value: kind, label: kind }))}
+                    />
                     <RefusalNote refused={refused} />
                     <Button type="submit" pending={pending}>
                         {C.create}

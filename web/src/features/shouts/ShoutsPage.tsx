@@ -65,13 +65,26 @@ export function ShoutsPage() {
                                         maxLength={280}
                                         required
                                     />
-                                    <ProductSelect
-                                        name="product"
-                                        label={SHOUTS_COPY.productField}
-                                        none={SHOUTS_COPY.noProduct}
-                                        products={visible}
-                                        defaultValue={product ?? ""}
-                                    />
+                                    {products.ok ? (
+                                        <ProductSelect
+                                            name="product"
+                                            label={SHOUTS_COPY.productField}
+                                            none={SHOUTS_COPY.noProduct}
+                                            products={visible}
+                                            defaultValue={product ?? ""}
+                                        />
+                                    ) : (
+                                        <>
+                                            <RefusalNote refused={products.refused} />
+                                            {product === undefined ? null : (
+                                                <input
+                                                    type="hidden"
+                                                    name="product"
+                                                    value={product}
+                                                />
+                                            )}
+                                        </>
+                                    )}
                                     <div>
                                         <Button type="submit">{SHOUTS_COPY.post}</Button>
                                     </div>

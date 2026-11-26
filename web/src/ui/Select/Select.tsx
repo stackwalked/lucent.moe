@@ -10,12 +10,17 @@ export function Select({
     label,
     options,
     defaultValue,
+    value,
+    onChange,
     required = false,
 }: {
     readonly name: string;
     readonly label: string;
     readonly options: readonly SelectOption[];
     readonly defaultValue?: string;
+    // Controlled, for a form whose other fields follow the choice.
+    readonly value?: string;
+    readonly onChange?: (value: string) => void;
     readonly required?: boolean;
 }) {
     const id = useId();
@@ -30,6 +35,10 @@ export function Select({
                 required={required}
                 className={styles.control}
                 {...(defaultValue === undefined ? {} : { defaultValue })}
+                {...(value === undefined ? {} : { value })}
+                {...(onChange === undefined
+                    ? {}
+                    : { onChange: (event) => onChange(event.currentTarget.value) })}
             >
                 {options.map((option) => (
                     <option key={option.value} value={option.value}>

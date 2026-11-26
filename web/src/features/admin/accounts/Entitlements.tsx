@@ -5,6 +5,7 @@ import { Check } from "../../../ui/Check/Check.tsx";
 import { Empty } from "../../../ui/Empty/Empty.tsx";
 import { Field } from "../../../ui/Field/Field.tsx";
 import { Section } from "../../../ui/Section/Section.tsx";
+import { Select } from "../../../ui/Select/Select.tsx";
 import { Stack } from "../../../ui/Stack/Stack.tsx";
 import { Status } from "../../../ui/Status/Status.tsx";
 import { Table } from "../../../ui/Table/Table.tsx";
@@ -39,22 +40,14 @@ function GrantFields({ products }: { readonly products: readonly Product[] }) {
     const product = products.find((p) => p.id === productId);
     return (
         <Stack gap={4}>
-            <label className={styles.select}>
-                <span className={styles.label}>{ACCOUNTS_COPY.product}</span>
-                <select
-                    name="productId"
-                    required
-                    className={styles.control}
-                    value={productId}
-                    onChange={(event) => setProductId(event.currentTarget.value)}
-                >
-                    {products.map((p) => (
-                        <option key={p.id} value={p.id}>
-                            {productName(p.name)}
-                        </option>
-                    ))}
-                </select>
-            </label>
+            <Select
+                name="productId"
+                label={ACCOUNTS_COPY.product}
+                required
+                value={productId}
+                onChange={setProductId}
+                options={products.map((p) => ({ value: p.id, label: productName(p.name) }))}
+            />
             <fieldset key={productId} className={styles.channels}>
                 <legend className={styles.label}>{ACCOUNTS_COPY.channels}</legend>
                 <Stack direction="row" gap={3}>

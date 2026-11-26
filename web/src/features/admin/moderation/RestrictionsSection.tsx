@@ -4,55 +4,77 @@ import { Empty } from "../../../ui/Empty/Empty.tsx";
 import { Field } from "../../../ui/Field/Field.tsx";
 import { Pager } from "../../../ui/Pager/Pager.tsx";
 import { Section } from "../../../ui/Section/Section.tsx";
+import { Select } from "../../../ui/Select/Select.tsx";
 import { Stack } from "../../../ui/Stack/Stack.tsx";
 import { Table } from "../../../ui/Table/Table.tsx";
 import { TextField } from "../../../ui/TextField/TextField.tsx";
 import { Time } from "../../../ui/Time/Time.tsx";
 import { Who } from "../../../ui/Who/Who.tsx";
+import { RefusalNote } from "../../auth/RefusalNote.tsx";
+import { ProductSelect } from "../../products/ProductSelect.tsx";
+import type { fetchPublicProducts } from "../../products/server.ts";
+import { productName } from "../../products/view.ts";
 import { AccountAction } from "../accounts/AccountAction.tsx";
 import { untilFrom } from "../accounts/until.ts";
 import { ADMIN_COPY } from "../copy.ts";
 import { ListRefusal } from "../ListRefusal.tsx";
 import { useListNavigation } from "../list.ts";
 import { MODERATION_COPY } from "./copy.ts";
-import styles from "./ModerationPage.module.css";
 import type { listRestrictions } from "./server.ts";
 import { liftRestriction, restrictAccount } from "./server.ts";
 
 type Listed = Extract<Awaited<ReturnType<typeof listRestrictions>>, { ok: true }>["value"];
+type Products = Awaited<ReturnType<typeof fetchPublicProducts>>;
 
-function RestrictForm() {
+function RestrictForm({ products }: { readonly products: Products }) {
     return (
         <>
             <TextField name="username" label={MODERATION_COPY.username} required maxLength={64} />
-            <label className={styles.select}>
-                <span className={styles.label}>{MODERATION_COPY.kind}</span>
-                <select name="kind" required className={styles.control}>
-                    <option value="muted">{MODERATION_COPY.muted}</option>
-                    <option value="barred">{MODERATION_COPY.barred}</option>
-                </select>
-            </label>
-            <TextField
-                name="product"
-                label={MODERATION_COPY.product}
-                hint={MODERATION_COPY.productHint}
-                maxLength={32}
-                customCheck={(value) =>
-                    value.trim() === "" || isProductId(value.trim())
-                        ? undefined
-                        : MODERATION_COPY.productFormat
-                }
+            <Select
+                name="kind"
+                label={MODERATION_COPY.kind}
+                required
+                options={[
+                    { value: "muted", label: MODERATION_COPY.muted },
+                    { value: "barred", label: MODERATION_COPY.barred },
+                ]}
             />
+            {products.ok ? (
+                <ProductSelect
+                    name="product"
+                    label={MODERATION_COPY.product}
+                    none={MODERATION_COPY.everywhere}
+                    products={products.value.map((p) => ({ productId: p.id, name: p.name }))}
+                />
+            ) : (
+                <RefusalNote refused={products.refused} />
+            )}
             <Field label={MODERATION_COPY.endsOptional}>
                 {(control) => <input {...control} type="date" name="until" />}
             </Field>
-            <TextField name="reason" label={MODERATION_COPY.reason} required maxLength={500} />
+            <TextField
+                name="reason"
+                label={MODERATION_COPY.reason}
+                hint={MODERATION_COPY.reasonHint}
+                required
+                maxLength={500}
+            />
         </>
     );
 }
 
-export function RestrictionsSection({ outcome }: { readonly outcome: Outcome<Listed> }) {
+export function RestrictionsSection({
+    outcome,
+    products,
+}: {
+    readonly outcome: Outcome<Listed>;
+    readonly products: Products;
+}) {
     const navigation = useListNavigation();
+    const nameOf = (productId: string) => {
+        const found = products.ok ? products.value.find((p) => p.id === productId) : undefined;
+        return found === undefined ? productId : productName(found.name);
+    };
     return (
         <Section
             caption={MODERATION_COPY.restrictions}
@@ -63,7 +85,7 @@ export function RestrictionsSection({ outcome }: { readonly outcome: Outcome<Lis
                     title={MODERATION_COPY.restrictTitle}
                     icon="ban"
                     tone="danger"
-                    fields={<RestrictForm />}
+                    fields={<RestrictForm products={products} />}
                     run={(form) => {
                         const product = String(form.get("product") ?? "").trim();
                         return restrictAccount({
@@ -109,7 +131,10 @@ export function RestrictionsSection({ outcome }: { readonly outcome: Outcome<Lis
                             {
                                 key: "scope",
                                 header: MODERATION_COPY.scope,
-                                cell: (row) => row.productId ?? MODERATION_COPY.everywhere,
+                                cell: (row) =>
+                                    row.productId === null
+                                        ? MODERATION_COPY.everywhere
+                                        : nameOf(row.productId),
                             },
                             {
                                 key: "reason",
