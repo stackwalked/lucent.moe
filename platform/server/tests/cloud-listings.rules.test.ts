@@ -139,6 +139,37 @@ test.each([
     });
 });
 
+const nested = (depth: number) => "[".repeat(depth) + "]".repeat(depth);
+
+test("JSON nested 32 deep is laid out and 33 deep is left as written", () => {
+    const at32 = decideListingContent({ kind: "config", bytes: bytes(nested(32)) });
+    expect(at32.text).not.toBe(nested(32));
+    expect(at32.text?.split("\n").length).toBe(63);
+    expect(decideListingContent({ kind: "config", bytes: bytes(nested(33)) }).text).toBe(
+        nested(33),
+    );
+});
+
+test("48 KB of brackets is returned as written, without laying it out", () => {
+    const input = nested(24000);
+    const started = performance.now();
+    const shown = decideListingContent({ kind: "inventory", bytes: bytes(input) });
+    expect(shown.text).toBe(input);
+    expect(performance.now() - started).toBeLessThan(1000);
+});
+
+test("brackets inside strings do not count as nesting", () => {
+    const text = JSON.stringify({ a: `${"[".repeat(100)}\\"${"{".repeat(100)}` });
+    expect(decideListingContent({ kind: "config", bytes: bytes(text) }).text).toContain('\n  "a"');
+});
+
+test("a laid-out form past 1 MiB is left as written", () => {
+    // 40000 numbers at the bottom of 31 arrays: 80 KB compact, each on its own 64-space line laid out.
+    const compact = `${"[".repeat(31)}[${"1,".repeat(39999)}1]${"]".repeat(31)}`;
+    expect(compact.length).toBeLessThan(CONTENT_SHOWN_MAX_BYTES);
+    expect(decideListingContent({ kind: "config", bytes: bytes(compact) }).text).toBe(compact);
+});
+
 test("above 256 KB nothing is shown, and the size still is", () => {
     const big = new Uint8Array(CONTENT_SHOWN_MAX_BYTES + 1).fill(0x61);
     expect(decideListingContent({ kind: "script", bytes: big })).toEqual({

@@ -93,12 +93,45 @@ export function decideListingContent(params: {
     );
     if (!decoded.ok || hasControl(decoded.value)) return { text: null, size };
     if (params.kind === "script") return { text: decoded.value, size };
-    const parsed = trySync(
-        (): unknown => JSON.parse(decoded.value),
+    // Indentation grows with depth squared: 48 KB of brackets would lay out to over a gigabyte.
+    // So deep input is not laid out, and neither is a result past what a page should carry.
+    if (jsonDepthExceeds(decoded.value, LAID_OUT_DEPTH_MAX)) return { text: decoded.value, size };
+    const laidOut = trySync(
+        (): string | null => {
+            const parsed: unknown = JSON.parse(decoded.value);
+            return JSON.stringify(parsed) === decoded.value
+                ? JSON.stringify(parsed, null, 2)
+                : null;
+        },
         () => null,
     );
-    if (parsed.ok && JSON.stringify(parsed.value) === decoded.value) {
-        return { text: JSON.stringify(parsed.value, null, 2), size };
+    if (!laidOut.ok || laidOut.value === null || laidOut.value.length > LAID_OUT_MAX_CHARS) {
+        return { text: decoded.value, size };
     }
-    return { text: decoded.value, size };
+    return { text: laidOut.value, size };
+}
+
+export const LAID_OUT_DEPTH_MAX = 32;
+export const LAID_OUT_MAX_CHARS = 1024 * 1024;
+
+// Nesting of brackets and braces outside strings, one pass, stopping as soon as `limit` is passed.
+function jsonDepthExceeds(text: string, limit: number): boolean {
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let at = 0; at < text.length; at++) {
+        const char = text.charCodeAt(at);
+        if (inString) {
+            if (escaped) escaped = false;
+            else if (char === 0x5c) escaped = true;
+            else if (char === 0x22) inString = false;
+            continue;
+        }
+        if (char === 0x22) inString = true;
+        else if (char === 0x5b || char === 0x7b) {
+            depth++;
+            if (depth > limit) return true;
+        } else if (char === 0x5d || char === 0x7d) depth--;
+    }
+    return false;
 }
