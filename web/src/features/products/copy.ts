@@ -15,7 +15,6 @@ export const PRODUCTS_COPY = {
     supported: "supported",
     updating: "updating",
     stopped: "stopped",
-    issues: "known issues",
     loader: "loader",
     loaderChanges: "changes",
     download: "download the loader",

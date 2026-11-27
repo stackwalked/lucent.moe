@@ -16,9 +16,4 @@
     .note {
         color: var(--ink-2);
     }
-
-    .issueBody {
-        color: var(--ink-2);
-        white-space: pre-wrap;
-    }
 }

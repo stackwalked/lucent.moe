@@ -19,14 +19,12 @@ import { decideRecoveries, type Recovery } from "./support.rules.ts";
 import { readProductSupport } from "./support.ts";
 
 // What a member may read of the record: the products listed for them (a seed product they hold
-// included), whether each works today, the open issues of those products and of the service, and
-// the changelog of everything they may see. The loader is not a product, so it is never in the
-// products list; its entries are their own subject. Every list is bounded and read through an
-// index.
+// included), whether each works today, and the changelog of everything they may see. The loader
+// is not a product, so it is never in the products list; its entries are their own subject. Every
+// list is bounded and read through an index.
 
 // The newest recoveries per product, each a drop and its rise.
 const RECOVERY_LIMIT = 20;
-const OPEN_ISSUE_LIMIT = 100;
 // The changelog page size.
 export const CHANGELOG_PAGE = 25;
 
@@ -40,15 +38,6 @@ export type ProductStatus = {
     readonly supported: boolean | null;
     readonly recoveries: readonly Recovery[];
 };
-
-const IssueRow = z.object({
-    id: z.string(),
-    productId: ProductId.nullable(),
-    title: z.string(),
-    body: z.string(),
-    openedAt: EpochMs,
-    updatedAt: EpochMs,
-});
 
 async function readMember(
     tx: Tx,
@@ -124,19 +113,7 @@ export async function readMemberStatus(
                     product.state === "live" ? recoveries.value.slice(0, RECOVERY_LIMIT) : [],
             });
         }
-        const ids = listed.value.map((p) => p.id);
-        const issues = await queryAll(
-            tx,
-            IssueRow,
-            sql`select id::text as id, product_id as "productId", title, body,
-                       opened_at as "openedAt", updated_at as "updatedAt"
-                from known_issue
-                where closed_at is null
-                  and (product_id is null or product_id = any(${ids}::text[]))
-                order by opened_at desc, id desc limit ${OPEN_ISSUE_LIMIT}`,
-        );
-        if (!issues.ok) return issues;
-        return ok({ products: statuses, issues: issues.value });
+        return ok({ products: statuses });
     });
 }
 

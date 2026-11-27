@@ -20,16 +20,13 @@ const parent = getRouteApi("/_member/products/$productId");
 const route = getRouteApi("/_member/products/$productId/");
 
 // One product as the member holds it: its changes on the left; on the right whether it runs
-// today and until when theirs lasts, what is known broken, and the loader. The head
+// today and until when theirs lasts, and the loader. The head
 // row is the product's own (ProductLead). No version
 // rows anywhere: releases carry no version string, only a seal number.
 export function ProductPage() {
     const { product, status } = parent.useLoaderData();
     const { changes, loader, cloud } = route.useLoaderData();
     const access = product.access;
-    const issues = status.issues.filter(
-        (issue) => issue.productId === null || issue.productId === product.productId,
-    );
 
     useEffect(() => {
         void noteLastProduct(product.productId);
@@ -69,20 +66,6 @@ export function ProductPage() {
                         <Section caption={C.status}>
                             <Pairs items={accessItems} align="end" />
                         </Section>
-                        {issues.length === 0 ? null : (
-                            <Section caption={C.issues}>
-                                <Stack gap={3}>
-                                    {issues.map((issue) => (
-                                        <div key={issue.id}>
-                                            <p>{issue.title}</p>
-                                            {issue.body === "" ? null : (
-                                                <p className={styles.issueBody}>{issue.body}</p>
-                                            )}
-                                        </div>
-                                    ))}
-                                </Stack>
-                            </Section>
-                        )}
                         <Section
                             caption={C.loader}
                             actions={<Link to="/changes/loader">{C.loaderChanges}</Link>}

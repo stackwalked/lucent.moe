@@ -4,11 +4,11 @@ import { z } from "zod";
 import { defineContract } from "../contract.ts";
 import { Cursor, Done, refusal, SessionRefusals, StaffRefusals, Unavailable } from "./shared.ts";
 
-// The record as members see it: per product whether it works today and what is known to be
-// broken, and the changelog of the service, the loader and every product the member may see.
-// Both reads take a member session and are scoped to what that member may see; a product the
-// catalog doesn't list for them is simply absent. Staff write issues and entries under
-// releases:promote; plain text, bounded, rendered as text.
+// The record as members see it: per product whether it works today, and the changelog of the
+// service, the loader and every product the member may see. Both reads take a member session
+// and are scoped to what that member may see; a product the catalog doesn't list for them is
+// simply absent. Staff write entries under releases:promote; plain text, bounded, rendered as
+// text.
 
 // No control characters but a body's line breaks and tabs, and no format characters (bidi
 // overrides, zero widths, tags): text that reads other than it is. The table checks the same.
@@ -42,17 +42,10 @@ const Line = z
     .refine((text) => !/[\p{Cc}\p{Cf}]/u.test(text));
 const Lines = z.array(Line).max(30);
 
-export const IssueId = z.uuid();
 export const ChangelogId = z.uuid();
 
 export const ChangelogSubject = z.enum(["product", "loader", "service"]);
 export type ChangelogSubject = z.output<typeof ChangelogSubject>;
-
-export const IssueFields = z.strictObject({
-    productId: ProductId.nullable(),
-    title: Title,
-    body: body(2_000),
-});
 
 // The cross-field rules (a productId exactly when the subject is a product, a version or a
 // title, and some content) are the server's, in members/record/notes.rules.ts.
@@ -65,16 +58,6 @@ export const ChangelogFields = z.strictObject({
     changed: Lines,
     fixed: Lines,
     body: body(4_000),
-});
-
-// `productId` null: the service as a whole.
-const Issue = z.object({
-    id: IssueId,
-    productId: ProductId.nullable(),
-    title: z.string(),
-    body: z.string(),
-    openedAt: EpochMs,
-    updatedAt: EpochMs,
 });
 
 const ChangelogEntry = z.object({
@@ -111,8 +94,7 @@ const StaffRefusal = z.discriminatedUnion("code", [
 
 export const recordContract = defineContract({
     // The products listed for this member but the loader: whether each works today (`supported`
-    // null: nothing to say yet), and the open issues of those products and of the service.
-    // `recoveries` is each product's update history, newest first.
+    // null: nothing to say yet). `recoveries` is each product's update history, newest first.
     "record.status.get": {
         session: "member",
         effect: "read",
@@ -129,7 +111,6 @@ export const recordContract = defineContract({
                     }),
                 )
                 .readonly(),
-            issues: z.array(Issue).readonly(),
         }),
         error: z.discriminatedUnion("code", [Unavailable, ...SessionRefusals]),
     },
@@ -156,48 +137,18 @@ export const recordContract = defineContract({
             refusal("INVALID_CURSOR"),
         ]),
     },
-    // Every issue (closed ones with `closedAt`) and entry, newest first, at most a fixed number
-    // of each; `truncated` says there were more. `products` is the catalog one may name.
+    // Every entry, newest first, at most a fixed number; `truncated` says there were more.
+    // `products` is the catalog one may name.
     "admin.record.list": {
         session: "member",
         effect: "read",
         input: z.strictObject({}),
         output: z.object({
-            issues: z.array(Issue.extend({ closedAt: EpochMs.nullable() })).readonly(),
             changelog: z.array(ChangelogEntry).readonly(),
             truncated: z.boolean(),
             products: z.array(z.object({ id: ProductId, name: z.string() })).readonly(),
         }),
         error: z.discriminatedUnion("code", [...StaffRefusals]),
-    },
-    "admin.issues.add": {
-        session: "member",
-        effect: "write",
-        input: IssueFields,
-        output: z.object({ issueId: IssueId }),
-        error: StaffRefusal,
-    },
-    "admin.issues.update": {
-        session: "member",
-        effect: "write",
-        input: IssueFields.extend({ issueId: IssueId }),
-        output: Done,
-        error: StaffRefusal,
-    },
-    // Closing a closed issue changes nothing.
-    "admin.issues.close": {
-        session: "member",
-        effect: "write",
-        input: z.strictObject({ issueId: IssueId }),
-        output: Done,
-        error: StaffRefusal,
-    },
-    "admin.issues.delete": {
-        session: "member",
-        effect: "write",
-        input: z.strictObject({ issueId: IssueId }),
-        output: Done,
-        error: StaffRefusal,
     },
     "admin.changelog.add": {
         session: "member",

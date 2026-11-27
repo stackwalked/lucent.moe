@@ -1,12 +1,6 @@
 import type { Handlers } from "@lucent/rpc/mount";
 import type { WebContract } from "@lucent/rpc/web";
-import {
-    addNote,
-    closeIssue,
-    deleteNote,
-    listStaffNotes,
-    updateNote,
-} from "../../../members/record/notes.ts";
+import { addNote, deleteNote, listStaffNotes, updateNote } from "../../../members/record/notes.ts";
 import { listMemberChangelog, readMemberStatus } from "../../../members/record/status.ts";
 import { asStaff, done, mapOk, served, type WebRpcContext } from "./web-shared.ts";
 
@@ -30,46 +24,12 @@ export const recordHandlers = {
                 products: [...ctx.catalog.values()].map(({ id, name }) => ({ id, name })),
             })),
         ),
-    "admin.issues.add": (ctx, input, call) =>
-        asStaff(ctx, call, async (caller) =>
-            mapOk(
-                await addNote(ctx.auth.db, {
-                    caller,
-                    catalog: ctx.catalog,
-                    kind: "issue",
-                    fields: input,
-                }),
-                ({ id }) => ({ issueId: id }),
-            ),
-        ),
-    "admin.issues.update": (ctx, input, call) =>
-        asStaff(ctx, call, async (caller) => {
-            const { issueId, ...fields } = input;
-            return done(
-                await updateNote(ctx.auth.db, {
-                    caller,
-                    catalog: ctx.catalog,
-                    kind: "issue",
-                    id: issueId,
-                    fields,
-                }),
-            );
-        }),
-    "admin.issues.close": (ctx, input, call) =>
-        asStaff(ctx, call, async (caller) =>
-            done(await closeIssue(ctx.auth.db, { caller, id: input.issueId })),
-        ),
-    "admin.issues.delete": (ctx, input, call) =>
-        asStaff(ctx, call, async (caller) =>
-            done(await deleteNote(ctx.auth.db, { caller, kind: "issue", id: input.issueId })),
-        ),
     "admin.changelog.add": (ctx, input, call) =>
         asStaff(ctx, call, async (caller) =>
             mapOk(
                 await addNote(ctx.auth.db, {
                     caller,
                     catalog: ctx.catalog,
-                    kind: "changelog",
                     fields: input,
                 }),
                 ({ id }) => ({ entryId: id }),
@@ -82,7 +42,6 @@ export const recordHandlers = {
                 await updateNote(ctx.auth.db, {
                     caller,
                     catalog: ctx.catalog,
-                    kind: "changelog",
                     id: entryId,
                     fields,
                 }),
@@ -90,6 +49,6 @@ export const recordHandlers = {
         }),
     "admin.changelog.delete": (ctx, input, call) =>
         asStaff(ctx, call, async (caller) =>
-            done(await deleteNote(ctx.auth.db, { caller, kind: "changelog", id: input.entryId })),
+            done(await deleteNote(ctx.auth.db, { caller, id: input.entryId })),
         ),
 } satisfies Partial<Handlers<WebRpcContext, WebContract>>;

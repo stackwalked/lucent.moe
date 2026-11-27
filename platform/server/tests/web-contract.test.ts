@@ -23,7 +23,7 @@ import { sharedTestCluster } from "./harness/pg-test.ts";
 const PEER_KEY = "test-peer-key-0123456789abcdefghijklmnopqrstuvwxyz";
 const SOMEONE = `acc_${"a".repeat(22)}`;
 const OPERATION = "op-0123456789abcdef";
-const SOMEONE_ISSUE = "00000000-0000-4000-8000-000000000001";
+const SOMEONE_ENTRY = "00000000-0000-4000-8000-000000000001";
 
 test("catalog RPCs separate public listings, grant options and a member's past holdings", async () => {
     const cluster = await sharedTestCluster();
@@ -193,10 +193,6 @@ const inputs: SinglePurpose = {
     "admin.invites.account": { accountId: SOMEONE },
     "admin.invites.tree": {},
     "admin.record.list": {},
-    "admin.issues.add": { productId: null, title: "one", body: "" },
-    "admin.issues.update": { issueId: SOMEONE_ISSUE, productId: null, title: "one", body: "" },
-    "admin.issues.close": { issueId: SOMEONE_ISSUE },
-    "admin.issues.delete": { issueId: SOMEONE_ISSUE },
     "admin.changelog.add": {
         subject: "service",
         productId: null,
@@ -208,7 +204,7 @@ const inputs: SinglePurpose = {
         body: "text",
     },
     "admin.changelog.update": {
-        entryId: SOMEONE_ISSUE,
+        entryId: SOMEONE_ENTRY,
         subject: "service",
         productId: null,
         version: null,
@@ -218,7 +214,7 @@ const inputs: SinglePurpose = {
         fixed: [],
         body: "text",
     },
-    "admin.changelog.delete": { entryId: SOMEONE_ISSUE },
+    "admin.changelog.delete": { entryId: SOMEONE_ENTRY },
     "admin.invites.grant": { accountId: SOMEONE, granted: 1 },
     "admin.applications.list": { state: "pending" },
     "admin.applications.get": { applicationId: "1" },
