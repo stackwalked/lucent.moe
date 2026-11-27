@@ -1,0 +1,7 @@
+@layer features {
+    /* The picker names the product and channel shown; it leads the column as a title would. */
+    .pick {
+        font-size: var(--size-17);
+        font-weight: var(--w-medium);
+    }
+}

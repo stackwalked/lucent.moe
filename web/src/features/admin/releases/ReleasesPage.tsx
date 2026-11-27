@@ -1,7 +1,10 @@
 import { getRouteApi, Link, useRouteContext } from "@tanstack/react-router";
+import { Columns } from "../../../ui/Columns/Columns.tsx";
 import { Empty } from "../../../ui/Empty/Empty.tsx";
 import { Ident } from "../../../ui/Ident/Ident.tsx";
 import { Page } from "../../../ui/Page/Page.tsx";
+import { Pairs } from "../../../ui/Pairs/Pairs.tsx";
+import { ProductPick } from "../../../ui/ProductPick/ProductPick.tsx";
 import { Section } from "../../../ui/Section/Section.tsx";
 import { Stack } from "../../../ui/Stack/Stack.tsx";
 import { Status } from "../../../ui/Status/Status.tsx";
@@ -13,6 +16,7 @@ import { productName } from "../../products/view.ts";
 import { AccountAction } from "../accounts/AccountAction.tsx";
 import { RELEASES_COPY } from "./copy.ts";
 import { promoteRelease } from "./promote.ts";
+import styles from "./ReleasesPage.module.css";
 
 const route = getRouteApi("/_admin/admin/products/releases/");
 
@@ -20,32 +24,83 @@ type Listed = Extract<ReturnType<typeof route.useLoaderData>, { ok: true }>["val
 type Line = Listed[number];
 type Seal = Line["seals"][number];
 
-// Each product and channel: its current seal and the staged ones above it. Only those can be
-// promoted; a seal below the current one is never listed, since clients would refuse it.
+const lineId = (line: Line) => `${line.productId}:${line.channel}`;
+
+// One product and channel at a time, chosen from the picker: its current seal and the staged ones
+// above it. Only those can be promoted; a seal below the current one is never listed, since
+// clients would refuse it. The list of lines grows with every product and channel, so the page
+// shows one and names the rest in the picker.
 export function ReleasesPage() {
     const listed = route.useLoaderData();
+    const { line: chosen } = route.useSearch();
     const { session } = useRouteContext({ from: "__root__" });
     const viewer = memberOf(session);
     if (viewer === null) return null;
     const mayPromote = viewerCan(viewer, "releases:promote");
+    if (!listed.ok) {
+        return (
+            <Page title={RELEASES_COPY.title}>
+                <RefusalNote refused={listed.refused} />
+            </Page>
+        );
+    }
+    const line = listed.value.find((each) => lineId(each) === chosen) ?? listed.value[0];
+    if (line === undefined) {
+        return (
+            <Page title={RELEASES_COPY.title}>
+                <Empty>{RELEASES_COPY.nothingStaged}</Empty>
+            </Page>
+        );
+    }
     return (
         <Page title={RELEASES_COPY.title}>
-            {listed.ok ? (
-                listed.value.map((line) => (
-                    <Section
-                        key={`${line.productId}:${line.channel}`}
-                        caption={RELEASES_COPY.line(productName(line.name), line.channel)}
-                    >
+            <Columns
+                main={
+                    <Stack gap={4}>
+                        <div className={styles.pick}>
+                            <ProductPick
+                                label={RELEASES_COPY.line(productName(line.name), line.channel)}
+                                rows={listed.value.map((each) => ({
+                                    id: lineId(each),
+                                    label: RELEASES_COPY.line(productName(each.name), each.channel),
+                                    status:
+                                        each.current === null
+                                            ? null
+                                            : { word: each.current.number, tone: "dim" as const },
+                                }))}
+                                current={lineId(line)}
+                                linkFor={(id, children) => (
+                                    <Link to="/admin/products/releases" search={{ line: id }}>
+                                        {children}
+                                    </Link>
+                                )}
+                            />
+                        </div>
                         <Seals line={line} mayPromote={mayPromote} />
+                    </Stack>
+                }
+                aside={
+                    <Section caption={RELEASES_COPY.current}>
+                        {line.current === null ? (
+                            <Empty>{RELEASES_COPY.none}</Empty>
+                        ) : (
+                            <Pairs
+                                align="end"
+                                items={[
+                                    { label: RELEASES_COPY.seal, value: line.current.number },
+                                    {
+                                        label: RELEASES_COPY.promoted,
+                                        value: <Time at={line.current.promotedAt} />,
+                                    },
+                                ]}
+                            />
+                        )}
                     </Section>
-                ))
-            ) : (
-                <RefusalNote refused={listed.refused} />
-            )}
+                }
+            />
         </Page>
     );
 }
-
 function Seals({ line, mayPromote }: { readonly line: Line; readonly mayPromote: boolean }) {
     if (line.seals.length === 0) return <Empty>{RELEASES_COPY.nothingStaged}</Empty>;
     const isCurrent = (seal: Seal) => line.current?.number === seal.number;
