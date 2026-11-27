@@ -1,27 +1,18 @@
 @layer features {
     .search {
         display: flex;
-        align-items: center;
+        align-items: stretch;
+        align-self: stretch;
         anchor-name: --staff-search;
     }
 
-    .input {
-        inline-size: 14rem;
-        block-size: var(--control-sm);
-        padding-inline: var(--s-3);
-        border: 1px solid var(--line-2);
-        border-radius: var(--r);
-        background: var(--raised);
-        color: var(--ink);
-        font-size: var(--size-13);
+    .box {
+        display: flex;
+        align-items: stretch;
     }
-
-    .input::placeholder {
-        color: var(--ink-2);
-    }
-
     .opener {
         display: none;
+        align-self: center;
         align-items: center;
         justify-content: center;
         inline-size: var(--control-sm);
@@ -90,15 +81,11 @@
 
     /* Where the bar has no room the box is an icon that opens it. */
     @media (width <= 760px) {
-        .input {
-            inline-size: 10rem;
-        }
-
         .opener {
             display: inline-flex;
         }
 
-        .search[data-collapsed="true"] .input {
+        .search[data-collapsed="true"] .box {
             display: none;
         }
 

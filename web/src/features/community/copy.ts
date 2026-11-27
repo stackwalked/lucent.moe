@@ -3,7 +3,6 @@ export const COMMUNITY_COPY = {
     members: "members",
     guides: "guides",
     find: "find",
-    clear: "clear",
     hereNow: "here now",
     newest: "newest",
     inGame: "in game",

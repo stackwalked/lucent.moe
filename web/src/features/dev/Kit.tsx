@@ -11,6 +11,7 @@ import { Dialog } from "../../ui/Dialog/Dialog.tsx";
 import { Dropdown } from "../../ui/Dropdown/Dropdown.tsx";
 import { Empty } from "../../ui/Empty/Empty.tsx";
 import { ExternalLink } from "../../ui/ExternalLink/ExternalLink.tsx";
+import { Find } from "../../ui/Find/Find.tsx";
 import { Icon } from "../../ui/Icon/Icon.tsx";
 import { ICON_NAMES } from "../../ui/Icon/names.ts";
 import { IconButton } from "../../ui/IconButton/IconButton.tsx";
@@ -388,7 +389,7 @@ function Frame() {
             <Columns
                 head={{
                     lead: <Tabs tabs={[{ to: "/dev/kit", label: "wide column head" }]} />,
-                    actions: <Button size="sm">head action</Button>,
+                    actions: <Find label="find" onFind={() => undefined} />,
                 }}
                 main={<p>the column's head row and the aside's first caption share one line.</p>}
                 aside={

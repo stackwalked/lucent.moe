@@ -1,6 +1,7 @@
 import { SEARCH_TEXT_MIN } from "@lucent/rpc/web/search-text";
 import { useRouter } from "@tanstack/react-router";
 import { useEffect, useId, useRef, useState } from "react";
+import { Find } from "../../../ui/Find/Find.tsx";
 import { Icon } from "../../../ui/Icon/Icon.tsx";
 import { ADMIN_COPY as C } from "../copy.ts";
 import styles from "./AdminSearch.module.css";
@@ -109,7 +110,7 @@ export function AdminSearch() {
     };
 
     return (
-        <search className={styles.search} data-collapsed={collapsed}>
+        <div className={styles.search} data-collapsed={collapsed}>
             <button
                 type="button"
                 className={styles.opener}
@@ -121,35 +122,35 @@ export function AdminSearch() {
             >
                 <Icon name="search" size={16} />
             </button>
-            <input
-                ref={input}
-                className={styles.input}
-                type="search"
-                role="combobox"
-                aria-label={C.search}
-                aria-expanded={found !== null && text.trim().length >= SEARCH_TEXT_MIN}
-                aria-controls={id}
-                placeholder={C.search}
-                autoComplete="off"
-                maxLength={120}
-                value={text}
-                onChange={(event) => change(event.currentTarget.value)}
-                onBlur={() => setCollapsed(true)}
-                onKeyDown={(event) => {
-                    if (event.key === "ArrowDown" && hits.length > 0) {
-                        event.preventDefault();
-                        setActive((at) => (at + 1) % hits.length);
-                    } else if (event.key === "ArrowUp" && hits.length > 0) {
-                        event.preventDefault();
-                        setActive((at) => (at - 1 + hits.length) % hits.length);
-                    } else if (event.key === "Enter") {
-                        event.preventDefault();
-                        choose(hits[active]);
-                    } else if (event.key === "Escape") {
-                        close();
-                    }
-                }}
-            />
+            <div className={styles.box}>
+                <Find
+                    place="bar"
+                    label={C.search}
+                    maxLength={120}
+                    text={text}
+                    onText={change}
+                    onFind={() => choose(hits[active])}
+                    onClear={close}
+                    inputRef={input}
+                    inputProps={{
+                        role: "combobox",
+                        "aria-expanded": found !== null && text.trim().length >= SEARCH_TEXT_MIN,
+                        "aria-controls": id,
+                        onBlur: () => setCollapsed(true),
+                        onKeyDown: (event) => {
+                            if (event.key === "ArrowDown" && hits.length > 0) {
+                                event.preventDefault();
+                                setActive((at) => (at + 1) % hits.length);
+                            } else if (event.key === "ArrowUp" && hits.length > 0) {
+                                event.preventDefault();
+                                setActive((at) => (at - 1 + hits.length) % hits.length);
+                            } else if (event.key === "Escape") {
+                                close();
+                            }
+                        },
+                    }}
+                />
+            </div>{" "}
             <div id={id} ref={panel} popover="manual" className={styles.panel} role="listbox">
                 {found !== null && hits.length === 0 ? (
                     <p className={styles.none}>{C.noResults}</p>
@@ -177,6 +178,6 @@ export function AdminSearch() {
                     })
                 )}
             </div>
-        </search>
+        </div>
     );
 }

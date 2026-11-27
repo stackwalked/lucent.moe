@@ -1,12 +1,11 @@
 import { getRouteApi } from "@tanstack/react-router";
 import type { Outcome } from "../../../server/outcome.ts";
-import { Button } from "../../../ui/Button/Button.tsx";
 import { Empty } from "../../../ui/Empty/Empty.tsx";
+import { Find } from "../../../ui/Find/Find.tsx";
 import { Page } from "../../../ui/Page/Page.tsx";
 import { Pager } from "../../../ui/Pager/Pager.tsx";
 import { Stack } from "../../../ui/Stack/Stack.tsx";
 import { type Column, Table } from "../../../ui/Table/Table.tsx";
-import { TextField } from "../../../ui/TextField/TextField.tsx";
 import { Time } from "../../../ui/Time/Time.tsx";
 import { Who } from "../../../ui/Who/Who.tsx";
 
@@ -118,30 +117,22 @@ export function AuditPage() {
     const outcome = route.useLoaderData();
     const { q } = route.useSearch();
     const navigation = useListNavigation();
-    const search = (form: FormData) => {
-        const value = form.get("q");
-        if (typeof value === "string") void navigation.filter(value);
-    };
     return (
-        <Page title={AUDIT_COPY.title}>
+        <Page
+            title={AUDIT_COPY.title}
+            actions={
+                <Find
+                    key={q ?? ""}
+                    label={AUDIT_COPY.search}
+                    placeholder={AUDIT_COPY.searchHint}
+                    value={q ?? null}
+                    maxLength={200}
+                    onFind={(text) => void navigation.filter(text)}
+                />
+            }
+        >
             <Stack gap={5}>
-                <search>
-                    <form action={search}>
-                        <Stack direction="row" gap={2} align="end">
-                            <TextField
-                                key={q ?? ""}
-                                name="q"
-                                type="search"
-                                label={AUDIT_COPY.search}
-                                hint={AUDIT_COPY.searchHint}
-                                defaultValue={q ?? ""}
-                                maxLength={200}
-                            />
-                            <Button type="submit">{AUDIT_COPY.search}</Button>
-                        </Stack>
-                    </form>
-                    <IgnoredTokens tokens={readAuditQuery(q).ignored} />
-                </search>
+                <IgnoredTokens tokens={readAuditQuery(q).ignored} />
                 <Entries outcome={outcome} />
             </Stack>
         </Page>

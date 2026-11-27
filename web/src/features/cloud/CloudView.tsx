@@ -4,7 +4,7 @@ import type { Outcome, Refused } from "../../server/outcome.ts";
 import { Button } from "../../ui/Button/Button.tsx";
 import { Columns } from "../../ui/Columns/Columns.tsx";
 import { Empty } from "../../ui/Empty/Empty.tsx";
-import { IconButton } from "../../ui/IconButton/IconButton.tsx";
+import { Find } from "../../ui/Find/Find.tsx";
 import { Page } from "../../ui/Page/Page.tsx";
 import { Section } from "../../ui/Section/Section.tsx";
 import { Stack } from "../../ui/Stack/Stack.tsx";
@@ -34,42 +34,34 @@ type Kind = "config" | "script" | "inventory";
 
 const SHARE_LINK = /#([a-z0-9][a-z0-9-]{1,31})\/([A-Za-z0-9_-]{43})/;
 
-function Find({ find, product, kind }: { find: string | null; product: string; kind?: Kind }) {
+function FindListings({
+    find,
+    product,
+    kind,
+}: {
+    find: string | null;
+    product: string;
+    kind?: Kind;
+}) {
     const router = useRouter();
-    const go = (text: string) =>
-        router.navigate({
-            to: "/products/$productId/cloud",
-            params: { productId: product },
-            search: {
-                ...(kind === undefined ? {} : { kind }),
-                ...(text === "" ? {} : { find: text }),
-            },
-        });
     return (
-        <search className={styles.find}>
-            <form
-                className={styles.findForm}
-                key={find ?? ""}
-                action={async (form) => go(String(form.get("find") ?? "").trim())}
-            >
-                <input
-                    className={styles.findInput}
-                    type="search"
-                    name="find"
-                    aria-label={C.find}
-                    placeholder={C.find}
-                    maxLength={64}
-                    autoComplete="off"
-                    defaultValue={find ?? ""}
-                />
-                {find === null ? null : (
-                    <IconButton icon="x" label={C.clear} size="sm" onClick={() => void go("")} />
-                )}
-            </form>
-        </search>
+        <Find
+            key={find ?? ""}
+            label={C.find}
+            value={find}
+            onFind={(text) =>
+                void router.navigate({
+                    to: "/products/$productId/cloud",
+                    params: { productId: product },
+                    search: {
+                        ...(kind === undefined ? {} : { kind }),
+                        ...(text === "" ? {} : { find: text }),
+                    },
+                })
+            }
+        />
     );
 }
-
 const KINDS: readonly (readonly [Kind | undefined, string])[] = [
     [undefined, C.all],
     ["config", C.configs],
@@ -293,7 +285,7 @@ export function CloudView() {
                     ...(access
                         ? {
                               actions: (
-                                  <Find
+                                  <FindListings
                                       find={find}
                                       product={productId}
                                       {...(kind === undefined ? {} : { kind })}

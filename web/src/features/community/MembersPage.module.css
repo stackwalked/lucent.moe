@@ -1,38 +1,4 @@
 @layer features {
-    .find {
-        display: block;
-        inline-size: var(--side-w);
-        max-inline-size: 100%;
-    }
-
-    .findForm {
-        display: flex;
-        align-items: center;
-        gap: var(--s-1);
-    }
-
-    .findInput {
-        flex: 1;
-        min-inline-size: 0;
-        /* What the head row has room for under its padding and hairline, so "find" does not
-           push the first hairline off 80px. */
-        block-size: calc(var(--caption-h) - var(--s-2) - 1px);
-        padding-inline: var(--s-3);
-        border: 1px solid var(--line-2);
-        border-radius: var(--r);
-        background: var(--raised);
-        color: var(--ink);
-        font-size: var(--size-14);
-    }
-
-    .findInput::placeholder {
-        color: var(--ink-2);
-    }
-
-    .findInput:hover {
-        background: var(--floating);
-    }
-
     .list {
         display: flex;
         flex-direction: column;
@@ -135,10 +101,6 @@
     }
 
     @media (width <= 640px) {
-        .find {
-            inline-size: 9rem;
-        }
-
         .tagline {
             display: none;
         }

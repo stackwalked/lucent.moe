@@ -1,12 +1,11 @@
 import { getRouteApi, Link } from "@tanstack/react-router";
 import type { Outcome } from "../../../server/outcome.ts";
-import { Button } from "../../../ui/Button/Button.tsx";
 import { Empty } from "../../../ui/Empty/Empty.tsx";
+import { Find } from "../../../ui/Find/Find.tsx";
 import { Page } from "../../../ui/Page/Page.tsx";
 import { Pager } from "../../../ui/Pager/Pager.tsx";
 import { Stack } from "../../../ui/Stack/Stack.tsx";
 import { type Column, Table } from "../../../ui/Table/Table.tsx";
-import { TextField } from "../../../ui/TextField/TextField.tsx";
 import { Time } from "../../../ui/Time/Time.tsx";
 import { IgnoredTokens } from "../IgnoredTokens.tsx";
 import { ListRefusal } from "../ListRefusal.tsx";
@@ -94,30 +93,22 @@ export function CrashesPage() {
     const outcome = route.useLoaderData();
     const { q } = route.useSearch();
     const navigation = useListNavigation();
-    const search = (form: FormData) => {
-        const value = form.get("q");
-        if (typeof value === "string") void navigation.filter(value);
-    };
     return (
-        <Page title={CRASHES_COPY.title}>
+        <Page
+            title={CRASHES_COPY.title}
+            actions={
+                <Find
+                    key={q ?? ""}
+                    label={CRASHES_COPY.search}
+                    placeholder={CRASHES_COPY.searchHint}
+                    value={q ?? null}
+                    maxLength={200}
+                    onFind={(text) => void navigation.filter(text)}
+                />
+            }
+        >
             <Stack gap={5}>
-                <search>
-                    <form action={search}>
-                        <Stack direction="row" gap={2} align="end">
-                            <TextField
-                                key={q ?? ""}
-                                name="q"
-                                type="search"
-                                label={CRASHES_COPY.search}
-                                hint={CRASHES_COPY.searchHint}
-                                defaultValue={q ?? ""}
-                                maxLength={200}
-                            />
-                            <Button type="submit">{CRASHES_COPY.search}</Button>
-                        </Stack>
-                    </form>
-                    <IgnoredTokens tokens={readCrashesQuery(q).ignored} />
-                </search>
+                <IgnoredTokens tokens={readCrashesQuery(q).ignored} />
                 <Summaries outcome={outcome} />
             </Stack>
         </Page>

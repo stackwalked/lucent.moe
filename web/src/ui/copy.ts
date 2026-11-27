@@ -5,6 +5,7 @@ export const UI_COPY = {
     places: "site",
     opensElsewhere: "opens in a new tab",
     close: "close",
+    clear: "clear",
     copy: "copy",
     copied: "copied",
     showPassword: "show password",

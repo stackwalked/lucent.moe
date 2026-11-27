@@ -5,7 +5,7 @@ import { Avatar } from "../../ui/Avatar/Avatar.tsx";
 import { Button } from "../../ui/Button/Button.tsx";
 import { Columns } from "../../ui/Columns/Columns.tsx";
 import { Empty } from "../../ui/Empty/Empty.tsx";
-import { IconButton } from "../../ui/IconButton/IconButton.tsx";
+import { Find } from "../../ui/Find/Find.tsx";
 import { Page } from "../../ui/Page/Page.tsx";
 import { RoleLabel } from "../../ui/RoleLabel/RoleLabel.tsx";
 import { Section } from "../../ui/Section/Section.tsx";
@@ -101,35 +101,22 @@ function MemberList({ first, find }: { readonly first: Listed; readonly find: st
     );
 }
 
-function Find({ find }: { readonly find: string | null }) {
+function FindMembers({ find }: { readonly find: string | null }) {
     const router = useRouter();
-    const go = (text: string) =>
-        router.navigate({ to: "/community", search: text === "" ? {} : { find: text } });
     return (
-        <search className={styles.find}>
-            <form
-                className={styles.findForm}
-                key={find ?? ""}
-                action={async (form) => go(String(form.get("find") ?? "").trim())}
-            >
-                <input
-                    className={styles.findInput}
-                    type="search"
-                    name="find"
-                    aria-label={C.find}
-                    placeholder={C.find}
-                    maxLength={64}
-                    autoComplete="off"
-                    defaultValue={find ?? ""}
-                />
-                {find === null ? null : (
-                    <IconButton icon="x" label={C.clear} size="sm" onClick={() => void go("")} />
-                )}
-            </form>
-        </search>
+        <Find
+            key={find ?? ""}
+            label={C.find}
+            value={find}
+            onFind={(text) =>
+                void router.navigate({
+                    to: "/community",
+                    search: text === "" ? {} : { find: text },
+                })
+            }
+        />
     );
 }
-
 function Row({
     username,
     avatar,
@@ -195,7 +182,7 @@ export function MembersPage({ data }: { readonly data: MembersData }) {
     return (
         <Page title={C.title} hideTitle>
             <Columns
-                head={{ lead: <CommunityTabs />, actions: <Find find={find} /> }}
+                head={{ lead: <CommunityTabs />, actions: <FindMembers find={find} /> }}
                 main={
                     members.ok ? (
                         <MemberList key={find ?? ""} first={members.value} find={find} />

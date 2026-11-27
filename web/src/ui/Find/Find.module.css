@@ -1,0 +1,94 @@
+@layer components {
+    /* Sized and placed like a tab: the text sits where a tab's does, and the box reaches down to
+       the hairline, so its border is the segment on it. */
+    .find {
+        display: flex;
+        align-self: stretch;
+        align-items: flex-end;
+        inline-size: calc(var(--s-8) * 4);
+        max-inline-size: 100%;
+        padding-block-end: var(--s-2);
+        /* The head row's bottom padding and its hairline, as under Tabs. */
+        margin-block-end: calc(-1 * (var(--s-2) + 1px));
+        border-block-end: 1px solid transparent;
+        color: var(--ink-2);
+        transition: border-color var(--t-hover) var(--ease);
+    }
+
+    .find[data-place="bar"] {
+        align-items: center;
+        inline-size: calc(var(--s-8) * 3);
+        padding-block-end: 0;
+        margin-block-end: 0;
+    }
+
+    .find:focus-within,
+    .find[data-filled="true"] {
+        border-block-end-color: var(--pink);
+    }
+
+    /* The focus ring is the segment, a hair thicker than a current tab's, not a box. */
+    .find:focus-within {
+        box-shadow: 0 1px 0 var(--pink);
+    }
+
+    .form {
+        display: flex;
+        flex: 1;
+        align-items: flex-end;
+        gap: var(--s-2);
+        min-inline-size: 0;
+    }
+
+    .find[data-place="bar"] .form {
+        align-items: center;
+    }
+
+    .form svg {
+        flex: none;
+        align-self: center;
+    }
+
+    .input {
+        flex: 1;
+        min-inline-size: 0;
+        padding: 0;
+        border: 0;
+        background: none;
+        color: var(--ink);
+        font-size: var(--size-14);
+        text-overflow: ellipsis;
+    }
+
+    .input:focus-visible {
+        outline: none;
+    }
+
+    .input::placeholder {
+        color: var(--ink-2);
+    }
+
+    .input::-webkit-search-cancel-button {
+        appearance: none;
+    }
+
+    .clear {
+        flex: none;
+        padding: 0;
+        border: 0;
+        background: none;
+        color: var(--ink-2);
+        font-size: var(--size-12);
+        transition: color var(--t-hover) var(--ease);
+    }
+
+    .clear:hover {
+        color: var(--ink);
+    }
+
+    @media (width <= 640px) {
+        .find {
+            inline-size: calc(var(--s-8) * 2);
+        }
+    }
+}

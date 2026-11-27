@@ -27,7 +27,6 @@ export const CLOUD_COPY = {
     scripts: "scripts",
     inventories: "inventory",
     find: "find",
-    clear: "clear",
     add: "add",
     added: "added",
     more: "more",

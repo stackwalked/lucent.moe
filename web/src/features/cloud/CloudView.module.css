@@ -5,34 +5,6 @@
         white-space: nowrap;
     }
 
-    .find {
-        display: block;
-        inline-size: calc(var(--s-8) * 2);
-        max-inline-size: 100%;
-    }
-
-    .findForm {
-        display: flex;
-        align-items: center;
-        gap: var(--s-1);
-    }
-
-    .findInput {
-        flex: 1;
-        min-inline-size: 0;
-        block-size: calc(var(--caption-h) - var(--s-2) - 1px);
-        padding-inline: var(--s-3);
-        border: 1px solid var(--line-2);
-        border-radius: var(--r);
-        background: var(--raised);
-        color: var(--ink);
-        font-size: var(--size-14);
-    }
-
-    .findInput::placeholder {
-        color: var(--ink-2);
-    }
-
     .kinds {
         display: flex;
         gap: var(--s-4);
@@ -113,12 +85,5 @@
 
     .importForm {
         padding-block-start: var(--s-4);
-    }
-
-    /* The head row has no room for it beside the picker and the filters; ?find= still works. */
-    @media (width <= 640px) {
-        .find {
-            display: none;
-        }
     }
 }
