@@ -187,19 +187,25 @@ export function setBanner(db: Db, token: BearerToken, image: Uint8Array) {
             sql`select banner from profile where account_id = ${accountId} for update`,
         );
         if (!previous.ok) return previous;
-        const written = await execute(
-            tx,
-            sql`insert into avatar_image (digest, bytes) values (${digest}, ${image})
-                on conflict (digest) do update set digest = excluded.digest`,
-        );
-        if (!written.ok) return written;
+        const old = previous.value?.banner ?? null;
+        // The new image and the old one are locked in digest order, as setAvatar does, so a
+        // banner swap and an avatar swap that share an image never wait on each other in a cycle.
+        for (const touched of [...new Set([digest, ...(old === null ? [] : [old])])].sort()) {
+            const locked = await execute(
+                tx,
+                touched === digest
+                    ? sql`insert into avatar_image (digest, bytes) values (${digest}, ${image})
+                          on conflict (digest) do update set digest = excluded.digest`
+                    : sql`select 1 from avatar_image where digest = ${touched} for update`,
+            );
+            if (!locked.ok) return locked;
+        }
         const named = await execute(
             tx,
             sql`insert into profile (account_id, bio, banner) values (${accountId}, '', ${digest})
                 on conflict (account_id) do update set banner = excluded.banner, updated_at = now()`,
         );
         if (!named.ok) return named;
-        const old = previous.value?.banner ?? null;
         if (old !== null && old !== digest) {
             const forgotten = await forgetAvatars(tx, [old]);
             if (!forgotten.ok) return forgotten;

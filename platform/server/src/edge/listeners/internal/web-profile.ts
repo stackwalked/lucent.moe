@@ -1,4 +1,3 @@
-import { ProductId } from "@lucent/core/scalars";
 import type { Handlers } from "@lucent/rpc/mount";
 import type { profileContract } from "@lucent/rpc/web/profile";
 import { clearAvatar, clearBanner } from "../../../members/community/avatars.ts";
@@ -12,7 +11,7 @@ export const profileHandlers = {
             await readProfile(ctx.auth.db, session, {
                 username: input.username,
                 present: ctx.presentOnline ?? (() => false),
-                productName: (id) => ctx.catalog.get(ProductId.parse(id))?.name ?? null,
+                catalog: ctx.catalog,
             }),
         ),
     "profile.comments.list": async (ctx, input, { session }) =>

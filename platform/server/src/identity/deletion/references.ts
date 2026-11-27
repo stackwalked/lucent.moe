@@ -68,7 +68,7 @@ export const ACCOUNT_REFERENCES: Readonly<Record<string, Fate>> = {
     "connector_discord_link_code.account_id": goes("a link code"),
 
     // Community.
-    "profile.account_id": goes("the bio and avatar"),
+    "profile.account_id": goes("the bio, avatar and banner"),
     "profile.removed_by": stays(STAFF),
     "guide.author_id": goes("with every comment under it"),
     "guide.removed_by": stays(STAFF),

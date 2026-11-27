@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { invariant } from "@lucent/core/contain";
 import { err, ok } from "@lucent/core/result";
 import { createSeededRng } from "@lucent/core/rng";
-import { EpochMs, newOperationId, ProductId, RoleId } from "@lucent/core/scalars";
+import { EpochMs, newOperationId, RoleId } from "@lucent/core/scalars";
 import { profileContract } from "@lucent/rpc/web/profile";
 import { z } from "zod";
 import { execute, queryOne, sql, toTimestamptz } from "../src/base/db/pool.ts";
@@ -29,14 +29,10 @@ import {
     seedStaff,
     steppedUp,
 } from "./authority-fixtures.ts";
-import { holdProduct, member, moderator } from "./community-fixtures.ts";
+import { holdProduct, member, moderator, sessionFor } from "./community-fixtures.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 
 const products = catalog();
-function productName(productId: string): string | null {
-    return products.get(ProductId.parse(productId))?.name ?? null;
-}
-
 async function readAs(
     db: Parameters<typeof readProfile>[0],
     token: Parameters<typeof readProfile>[1],
@@ -45,7 +41,7 @@ async function readAs(
     return await readProfile(db, token, {
         username,
         present: () => false,
-        productName,
+        catalog: products,
     });
 }
 
@@ -70,6 +66,7 @@ test("profile opt-outs hide only their own field from other members", async () =
         await addInviteEdge(db, inviter.id, owner.id);
         await addInviteEdge(db, owner.id, invitee.id);
         await holdProduct(db, rng, owner.id, "cs2");
+        await holdProduct(db, rng, viewer.id, "cs2");
         expect(
             await execute(
                 db,
@@ -442,5 +439,151 @@ test("discord role sync refreshes the stored username when the connector provide
         );
         invariant(unchanged.ok && unchanged.value !== null, "expected a discord link");
         expect(unchanged.value.username).toBe("newhandle");
+    });
+});
+
+async function suspend(db: Parameters<typeof execute>[0], accountId: string) {
+    expect(
+        await execute(db, sql`update account set status = 'suspended' where id = ${accountId}`),
+    ).toEqual({ ok: true, value: 1 });
+}
+
+test("invited by and invited name only accounts the viewer may meet: public, active and unblocked", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ browserDb: db }) => {
+        const rng = createSeededRng(18110);
+        const owner = await member(db, rng, "lineage-owner@lucent.test", "lineageowner");
+        const viewer = await member(db, rng, "lineage-viewer@lucent.test", "lineageviewer");
+        const inviter = await member(db, rng, "lineage-inviter@lucent.test", "lineageinviter");
+        const open = await member(db, rng, "lineage-open@lucent.test", "lineageopen");
+        const hidden = await member(db, rng, "lineage-hidden@lucent.test", "lineagehidden");
+        const blocked = await member(db, rng, "lineage-blocked@lucent.test", "lineageblocked");
+        const blocker = await member(db, rng, "lineage-blocker@lucent.test", "lineageblocker");
+        const away = await member(db, rng, "lineage-away@lucent.test", "lineageaway");
+        await addInviteEdge(db, inviter.id, owner.id);
+        for (const invitee of [open, hidden, blocked, blocker, away]) {
+            await addInviteEdge(db, owner.id, invitee.id);
+        }
+        const names = async () => {
+            const seen = await readAs(db, viewer.token, "lineageowner");
+            invariant(seen.ok, "expected the profile");
+            return { by: seen.value.invitedBy, invited: seen.value.invited };
+        };
+        expect((await names()).invited).toEqual([
+            "lineageopen",
+            "lineagehidden",
+            "lineageblocked",
+            "lineageblocker",
+            "lineageaway",
+        ]);
+
+        expect(await setVisibility(db, hidden.token, { visibility: "private" })).toEqual(
+            ok(undefined),
+        );
+        expect(
+            await setBlock(db, viewer.token, { username: "lineageblocked", blocked: true }),
+        ).toEqual(ok(undefined));
+        expect(
+            await setBlock(db, blocker.token, { username: "lineageviewer", blocked: true }),
+        ).toEqual(ok(undefined));
+        await suspend(db, away.id);
+        expect((await names()).invited).toEqual(["lineageopen"]);
+
+        expect((await names()).by).toBe("lineageinviter");
+        expect(await setVisibility(db, inviter.token, { visibility: "private" })).toEqual(
+            ok(undefined),
+        );
+        expect((await names()).by).toBeNull();
+        expect(await setVisibility(db, inviter.token, { visibility: "members" })).toEqual(
+            ok(undefined),
+        );
+        expect(
+            await setBlock(db, inviter.token, { username: "lineageviewer", blocked: true }),
+        ).toEqual(ok(undefined));
+        expect((await names()).by).toBeNull();
+        expect(
+            await setBlock(db, inviter.token, { username: "lineageviewer", blocked: false }),
+        ).toEqual(ok(undefined));
+        await suspend(db, inviter.id);
+        expect((await names()).by).toBeNull();
+    });
+});
+
+test("a suspended account's profile is missing to members, and shown to staff reading accounts", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ browserDb: db }) => {
+        const rng = createSeededRng(18111);
+        const target = await member(db, rng, "suspended@lucent.test", "suspendedone");
+        const viewer = await member(db, rng, "suspended-viewer@lucent.test", "suspendedviewer");
+        const reader = await seedRole(db, {
+            id: "role_reader",
+            rank: 5,
+            permissions: ["accounts:read"],
+        });
+        const staffId = await seedStaff(db, rng, { email: "reader@lucent.test", roleId: reader });
+        const staffToken = await sessionFor(db, rng, staffId);
+        expect(await setBio(db, target.token, { bio: "still here" })).toEqual(ok(undefined));
+        expect((await readAs(db, viewer.token, "suspendedone")).ok).toBe(true);
+
+        await suspend(db, target.id);
+        expect(await readAs(db, viewer.token, "suspendedone")).toEqual(err({ code: "NOT_FOUND" }));
+        expect((await readAs(db, staffToken, "suspendedone")).ok).toBe(true);
+    });
+});
+
+test("an unlisted product is not named on a profile to a member who cannot see it", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ browserDb: db }) => {
+        const rng = createSeededRng(18112);
+        const owner = await member(db, rng, "named-owner@lucent.test", "namedowner");
+        const holder = await member(db, rng, "named-holder@lucent.test", "namedholder");
+        const stranger = await member(db, rng, "named-stranger@lucent.test", "namedstranger");
+        await holdProduct(db, rng, owner.id, "cs2");
+        await holdProduct(db, rng, holder.id, "cs2");
+        const productsOf = async (token: Parameters<typeof readAs>[1]) => {
+            const seen = await readAs(db, token, "namedowner");
+            invariant(seen.ok, "expected the profile");
+            return seen.value.products;
+        };
+        // cs2 is a seed product: listed only to members who hold it.
+        expect(await productsOf(holder.token)).toEqual(["Counter-Strike 2"]);
+        expect(await productsOf(stranger.token)).toEqual([]);
+        expect(await productsOf(owner.token)).toEqual(["Counter-Strike 2"]);
+    });
+});
+
+test("a tagline set after staff removed the profile leaves it removed; a new bio lifts it", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ browserDb: db }) => {
+        const rng = createSeededRng(18113);
+        const mod = await moderator(db, rng, "removal-mod@lucent.test");
+        const owner = await member(db, rng, "removal-owner@lucent.test", "removalowner");
+        const viewer = await member(db, rng, "removal-viewer@lucent.test", "removalviewer");
+        expect(await setBio(db, owner.token, { bio: "rude" })).toEqual(ok(undefined));
+        expect(
+            await execute(
+                db,
+                sql`update profile set removed_at = now(), removed_by = ${mod.id}
+                    where account_id = ${owner.id}`,
+            ),
+        ).toEqual({ ok: true, value: 1 });
+        const removed = async () => {
+            const row = await queryOne(
+                db,
+                z.object({ removed: z.boolean() }),
+                sql`select removed_at is not null as removed from profile
+                    where account_id = ${owner.id}`,
+            );
+            invariant(row.ok && row.value !== null, "expected the profile row");
+            return row.value.removed;
+        };
+        expect(await setTagline(db, owner.token, { tagline: "still rude" })).toEqual(ok(undefined));
+        expect(await removed()).toBe(true);
+        const seen = await readAs(db, viewer.token, "removalowner");
+        invariant(seen.ok, "expected the profile");
+        expect(seen.value.tagline).toBe("");
+
+        expect(await setBio(db, owner.token, { bio: "sorry" })).toEqual(ok(undefined));
+        expect(await removed()).toBe(false);
     });
 });

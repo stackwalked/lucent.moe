@@ -3,15 +3,23 @@ import { systemClock } from "@lucent/core/clock";
 import { invariant } from "@lucent/core/contain";
 import { ok } from "@lucent/core/result";
 import { createSeededRng } from "@lucent/core/rng";
-import type { AccountId } from "@lucent/core/scalars";
+import { AccountId } from "@lucent/core/scalars";
 import { type Db, execute, sql } from "../src/base/db/pool.ts";
-import { decideRoster, ROSTER_CAP, type RosterRow } from "../src/members/community/events.rules.ts";
+import { setBlock } from "../src/members/community/blocks.ts";
+import {
+    decideRoster,
+    indexBlocks,
+    ROSTER_CAP,
+    type RosterRow,
+} from "../src/members/community/events.rules.ts";
+import { createEventHub, type EventHub } from "../src/members/community/events.ts";
 import { createRosterProvider } from "../src/members/community/presence.ts";
 import { setShows, setVisibility } from "../src/members/community/profiles.ts";
 import { member } from "./community-fixtures.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 
 const row = (username: string, over: Partial<RosterRow> = {}): RosterRow => ({
+    accountId: AccountId.parse(`acc_${username.padEnd(22, "x").slice(0, 22)}`),
     username,
     avatar: null,
     inGame: false,
@@ -120,7 +128,7 @@ test("the roster leaves out hidden and private accounts, caps at 50, and inGame 
 
         const provider = createRosterProvider(db, systemClock);
         const ids = [open.id, hidden.id, priv.id, gamer.id];
-        const roster = await provider(ids);
+        const roster = decideRoster((await provider(ids)).rows);
         const names = roster.map((entry) => entry.username);
         expect(names).toContain("open");
         expect(names).toContain("gamer");
@@ -132,7 +140,7 @@ test("the roster leaves out hidden and private accounts, caps at 50, and inGame 
         // after it expires — or read with a fresh provider, which is what a restart answers.
         const leaseId = await seedRuntimeSession(db, gamer.id, 5);
         void leaseId;
-        const live = await createRosterProvider(db, systemClock)(ids);
+        const live = decideRoster((await createRosterProvider(db, systemClock)(ids)).rows);
         expect(live.find((entry) => entry.username === "gamer")?.inGame).toBe(true);
 
         // An expired lease is not in game.
@@ -140,7 +148,7 @@ test("the roster leaves out hidden and private accounts, caps at 50, and inGame 
             db,
             sql`update runtime_session set lease_expires_at = now() - interval '1 minute'`,
         );
-        const expired = await createRosterProvider(db, systemClock)(ids);
+        const expired = decideRoster((await createRosterProvider(db, systemClock)(ids)).rows);
         expect(expired.find((entry) => entry.username === "gamer")?.inGame).toBe(false);
 
         // Cap: 60 visible accounts yield exactly 50 entries, all named.
@@ -151,7 +159,9 @@ test("the roster leaves out hidden and private accounts, caps at 50, and inGame 
                     .id,
             );
         }
-        const big = await createRosterProvider(db, systemClock)([...ids, ...crowd]);
+        const big = decideRoster(
+            (await createRosterProvider(db, systemClock)([...ids, ...crowd])).rows,
+        );
         expect(big.length).toBe(ROSTER_CAP);
         expect(big.every((entry) => entry.username !== "hidden" && entry.username !== "priv")).toBe(
             true,
@@ -200,4 +210,159 @@ test("the hub's event carries the roster once the provider answers, and online c
         expect(last?.roster).toEqual(["open2"]);
         hub.close();
     });
+});
+
+function watching(hub: EventHub, accountId: AccountId) {
+    const rosters: (readonly string[])[] = [];
+    const online: number[] = [];
+    const joined = hub.connect(accountId, {
+        send: (event) => {
+            rosters.push(event.roster.map((entry) => entry.username));
+            online.push(event.online);
+            return true;
+        },
+        close: () => {},
+    });
+    invariant(joined.ok, "expected a stream");
+    return { rosters, online };
+}
+
+// The hub answers once the roster is read, so a stream is given until its latest roster is the
+// expected one rather than a fixed wait.
+async function settled(
+    stream: { readonly rosters: readonly (readonly string[])[] },
+    expected: readonly string[],
+) {
+    for (let waited = 0; waited < 2_000; waited += 20) {
+        if (JSON.stringify(stream.rosters.at(-1)) === JSON.stringify(expected)) break;
+        await Bun.sleep(20);
+    }
+    return stream.rosters.at(-1);
+}
+
+test("each reader's roster leaves out accounts they share a block with, in either direction, and online stays the true count", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ browserDb: db }) => {
+        const rng = createSeededRng(18303);
+        const alice = await member(db, rng, "alice@lucent.test", "alice");
+        const bob = await member(db, rng, "bob@lucent.test", "bob");
+        const carol = await member(db, rng, "carol@lucent.test", "carol");
+        expect(await setBlock(db, alice.token, { username: "bob", blocked: true })).toEqual(
+            ok(undefined),
+        );
+
+        const queued: (() => void)[] = [];
+        const hub = createEventHub({
+            roster: createRosterProvider(db, systemClock),
+            schedule: (run) => queued.push(run),
+        });
+        const seen = [alice, bob, carol].map((who) => watching(hub, who.id));
+        for (const run of queued.splice(0)) run();
+        const [forAlice, forBob, forCarol] = seen;
+        invariant(forAlice && forBob && forCarol, "expected three streams");
+        expect(await settled(forAlice, ["alice", "carol"])).toEqual(["alice", "carol"]);
+        expect(await settled(forBob, ["bob", "carol"])).toEqual(["bob", "carol"]);
+        expect(await settled(forCarol, ["alice", "bob", "carol"])).toEqual([
+            "alice",
+            "bob",
+            "carol",
+        ]);
+        expect([forAlice, forBob, forCarol].map((stream) => stream.online.at(-1))).toEqual([
+            3, 3, 3,
+        ]);
+        hub.close();
+    });
+});
+
+test("a change to a block, last seen or visibility rebuilds the roster for the streams on the next flush", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ browserDb: db }) => {
+        const rng = createSeededRng(18304);
+        const alice = await member(db, rng, "alice@lucent.test", "alice");
+        const bob = await member(db, rng, "bob@lucent.test", "bob");
+        const carol = await member(db, rng, "carol@lucent.test", "carol");
+
+        const queued: (() => void)[] = [];
+        const hub = createEventHub({
+            roster: createRosterProvider(db, systemClock),
+            schedule: (run) => queued.push(run),
+        });
+        const [forAlice, forBob] = [alice, bob, carol].map((who) => watching(hub, who.id));
+        invariant(forAlice && forBob, "expected streams");
+        for (const run of queued.splice(0)) run();
+        expect(await settled(forAlice, ["alice", "bob", "carol"])).toEqual([
+            "alice",
+            "bob",
+            "carol",
+        ]);
+        expect(await settled(forAlice, ["alice", "bob", "carol"])).toEqual([
+            "alice",
+            "bob",
+            "carol",
+        ]);
+
+        const flush = async () => {
+            for (const run of queued.splice(0)) run();
+            await Bun.sleep(20);
+        };
+        // The connected set has not moved, so only the change's own notice makes a flush.
+        expect(await setShows(db, carol.token, { lastSeen: false })).toEqual(ok(undefined));
+        hub.rosterChanged();
+        await flush();
+        expect(await settled(forAlice, ["alice", "bob"])).toEqual(["alice", "bob"]);
+        expect(await settled(forBob, ["alice", "bob"])).toEqual(["alice", "bob"]);
+
+        expect(await setShows(db, carol.token, { lastSeen: true })).toEqual(ok(undefined));
+        expect(await setVisibility(db, bob.token, { visibility: "private" })).toEqual(
+            ok(undefined),
+        );
+        hub.rosterChanged();
+        await flush();
+        expect(await settled(forAlice, ["alice", "carol"])).toEqual(["alice", "carol"]);
+
+        expect(await setVisibility(db, bob.token, { visibility: "members" })).toEqual(
+            ok(undefined),
+        );
+        expect(await setBlock(db, alice.token, { username: "bob", blocked: true })).toEqual(
+            ok(undefined),
+        );
+        hub.rosterChanged();
+        await flush();
+        expect(await settled(forAlice, ["alice", "carol"])).toEqual(["alice", "carol"]);
+        expect(await settled(forBob, ["bob", "carol"])).toEqual(["bob", "carol"]);
+
+        expect(await setBlock(db, alice.token, { username: "bob", blocked: false })).toEqual(
+            ok(undefined),
+        );
+        hub.rosterChanged();
+        await flush();
+        expect(await settled(forAlice, ["alice", "bob", "carol"])).toEqual([
+            "alice",
+            "bob",
+            "carol",
+        ]);
+        expect(await settled(forBob, ["alice", "bob", "carol"])).toEqual(["alice", "bob", "carol"]);
+        hub.close();
+    });
+});
+
+test("decideRoster leaves out the accounts hidden from the reader and fills the cap with the rest", () => {
+    const rows = Array.from({ length: ROSTER_CAP + 2 }, (_, n) =>
+        row(`n${String(n).padStart(2, "0")}`),
+    );
+    const first = rows[0];
+    invariant(first !== undefined, "expected a row");
+    const named = decideRoster(rows, new Set([first.accountId]));
+    expect(named.length).toBe(ROSTER_CAP);
+    expect(named[0]?.username).toBe("n01");
+    expect(
+        indexBlocks([
+            {
+                blocker: rows[0]?.accountId ?? first.accountId,
+                blocked: rows[1]?.accountId ?? first.accountId,
+            },
+        ])
+            .get(rows[1]?.accountId ?? first.accountId)
+            ?.has(first.accountId),
+    ).toBe(true);
 });

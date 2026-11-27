@@ -496,3 +496,57 @@ test(
         );
     }),
 );
+
+test(
+    "a completed deletion takes the banner image and the open reports about the member's listings with it",
+    inWorld(1502, async ({ deps, db, rng }) => {
+        const zed = await newMember(deps, rng, { username: "qzvex", with: "all" });
+        const obo = await newMember(deps, rng, { username: "obo", with: "passkey" });
+        const id = zed.accountId;
+        const banner = "b".repeat(64);
+        await seed(
+            db,
+            sql`insert into avatar_image (digest, bytes) values (${banner}, ${new TextEncoder().encode("BANNER-BYTES")})`,
+        );
+        await seed(
+            db,
+            sql`insert into profile (account_id, bio, banner) values (${id}, '', ${banner})`,
+        );
+        await seed(
+            db,
+            sql`insert into cloud_scope (account_id, product_id) values (${id}, ${LOADER})`,
+        );
+        await seed(
+            db,
+            sql`with item as (
+                    insert into cloud_item (account_id, product_id, kind)
+                    values (${id}, ${LOADER}, 'script') returning item_id),
+                version as (
+                    insert into cloud_version (account_id, product_id, item_id, revision, name, bytes)
+                    select ${id}, ${LOADER}, item.item_id, 1, 'listed script', ${new TextEncoder().encode("code")}
+                    from item returning item_id)
+                insert into cloud_listing (owner_id, product_id, kind, item_id, pending_revision,
+                                           name, summary, state)
+                select ${id}, ${LOADER}, 'script', version.item_id, 1, 'listed script', '', 'pending'
+                from version`,
+        );
+        await seed(
+            db,
+            sql`insert into report (reporter_id, target_kind, target_id, reason)
+                select ${obo.accountId}, 'listing', l.id, 'other' from cloud_listing l`,
+        );
+        const reports = sql`select count(*) as value from report where target_kind = 'listing'`;
+        expect(await count(db, reports)).toBe(1);
+
+        const asked = await requestDeletion(deps, {
+            token: zed.sessionToken,
+            purpose: "member",
+            client: null,
+        });
+        invariant(asked.ok, "requesting failed");
+        await lapse(db, id);
+        expect((await completeDeletion(deps, id)).ok).toBe(true);
+        expect(await count(db, reports)).toBe(0);
+        expect(await count(db, sql`select count(*) as value from avatar_image`)).toBe(0);
+    }),
+);

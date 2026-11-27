@@ -1,5 +1,6 @@
+import type { ProductCatalog } from "@lucent/catalog/catalog";
 import { err, ok } from "@lucent/core/result";
-import { AccountId, type BearerToken, EpochMs } from "@lucent/core/scalars";
+import { AccountId, type BearerToken, EpochMs, ProductId } from "@lucent/core/scalars";
 import { z } from "zod";
 import {
     type Db,
@@ -10,11 +11,12 @@ import {
     sql,
     sqlIdent,
 } from "../../base/db/pool.ts";
+import { filterListedProducts } from "../../delivery/products/visibility.ts";
 import { withMember } from "../notify/account.ts";
 import { notBlockedWith } from "./blocks.ts";
 import { withMemberAt } from "./member.ts";
 import type { NotFound } from "./page.ts";
-import { mayPostHere } from "./standing.ts";
+import { mayPostHere, readMaySeeSuspended } from "./standing.ts";
 
 // The role label of an account, as the shared FROM/WHERE body of its query: the first role (by
 // rank, the roles' order) that carries a colour; an expired assignment is none. Callers select
@@ -56,6 +58,15 @@ function startOfUtcDay(at: number): number {
 
 const LOADER_PRODUCT = "lucent-loader";
 
+// An account a profile may name to this viewer (as inviter or invitee): not a tombstone, active,
+// not private to them, no block between them either way. `account` and `profile` are the aliases
+// the query gives the account and its (left-joined) profile.
+function nameable(viewer: AccountId, account: SqlFragment, profile: SqlFragment): SqlFragment {
+    return sql`${account}.username is not null and ${account}.status = 'active'
+        and (${account}.id = ${viewer} or coalesce(${profile}.visibility, 'members') = 'members')
+        and ${notBlockedWith(viewer, sql`${account}.id`)}`;
+}
+
 const BaseRow = z.object({
     id: AccountId,
     profileId: z.uuid().nullable(),
@@ -87,11 +98,14 @@ export function readProfile(
         readonly username: string;
         // Live presence is in-process (community/events.ts), so the hub answers it.
         readonly present?: (accountId: AccountId) => boolean;
-        // Product names come from the catalog, which the database does not hold.
-        readonly productName?: (productId: string) => string | null;
+        // Product names come from the catalog, which the database does not hold; without it a
+        // profile names no products.
+        readonly catalog?: ProductCatalog;
     },
 ) {
-    return withMember(db, token, async (tx, accountId) => {
+    return withMemberAt(db, token, async (tx, accountId, txNow) => {
+        const sees = await readMaySeeSuspended(tx, { accountId, txNow });
+        if (!sees.ok) return sees;
         const row = await queryOne(
             tx,
             BaseRow,
@@ -113,6 +127,7 @@ export function readProfile(
                 from account a left join profile p on p.account_id = a.id
                 where a.username = ${params.username.toLowerCase()}
                   and (a.id = ${accountId} or coalesce(p.visibility, 'members') = 'members')
+                  and (a.status = 'active' or a.id = ${accountId} or ${sees.value})
                   and ${notBlockedWith(accountId, sql`a.id`)}`,
         );
         if (!row.ok) return row;
@@ -139,10 +154,10 @@ export function readProfile(
             const inviter = await queryOne(
                 tx,
                 z.object({ username: z.string().nullable() }),
-                // A tombstone has no username, so it never appears.
                 sql`select i2.username from invite i
                     join account i2 on i2.id = i.inviter_id
-                    where i.invitee_id = ${ownerId} and i2.username is not null`,
+                    left join profile ip on ip.account_id = i2.id
+                    where i.invitee_id = ${ownerId} and ${nameable(accountId, sql`i2`, sql`ip`)}`,
             );
             if (!inviter.ok) return inviter;
             invitedBy = inviter.value?.username ?? null;
@@ -154,7 +169,8 @@ export function readProfile(
                 tx,
                 z.object({ username: z.string() }),
                 sql`select a.username from invite i join account a on a.id = i.invitee_id
-                    where i.inviter_id = ${ownerId} and a.username is not null
+                    left join profile ip on ip.account_id = a.id
+                    where i.inviter_id = ${ownerId} and ${nameable(accountId, sql`a`, sql`ip`)}
                     order by i.redeemed_at asc, i.id asc limit 50`,
             );
             if (!rows.ok) return rows;
@@ -165,7 +181,7 @@ export function readProfile(
         if (shown("products")) {
             const rows = await queryAll(
                 tx,
-                z.object({ productId: z.string() }),
+                z.object({ productId: ProductId }),
                 // The same active test readEffectiveProductAccess applies: status, and the
                 // window against the transaction's clock.
                 sql`select distinct ep.product_id as "productId"
@@ -176,9 +192,22 @@ export function readProfile(
                     order by ep.product_id`,
             );
             if (!rows.ok) return rows;
-            products = (rows.value ?? [])
-                .map((r) => (params.productName ?? (() => null))(r.productId))
-                .filter((name): name is string => name !== null);
+            const catalog = params.catalog;
+            if (catalog === undefined) {
+                products = [];
+            } else {
+                // What the viewer may see in the catalog, not what the owner holds: an unlisted
+                // product is no more named here than in the shouts.
+                const listed = await filterListedProducts(
+                    tx,
+                    { accountId, catalog },
+                    rows.value.map((r) => r.productId),
+                );
+                if (!listed.ok) return listed;
+                products = listed.value
+                    .map((id) => catalog.get(id)?.name ?? null)
+                    .filter((name): name is string => name !== null);
+            }
         }
 
         let lastSeen: "now" | z.output<typeof EpochMs> | null = null;
@@ -245,7 +274,8 @@ export function setBio(db: Db, token: BearerToken, params: { readonly bio: strin
     });
 }
 
-// Same rule and restrictions as the bio: it is the profile's text beside it.
+// Same restrictions as the bio, but not its lifting: staff's removal of a profile stands until a
+// new bio replaces it (avatars.rules.ts), so a tagline set afterwards stays hidden with it.
 export function setTagline(db: Db, token: BearerToken, params: { readonly tagline: string }) {
     return withMemberAt(db, token, async (tx, accountId, txNow) => {
         const may = await mayPostHere(tx, {
@@ -259,7 +289,7 @@ export function setTagline(db: Db, token: BearerToken, params: { readonly taglin
             tx,
             sql`insert into profile (account_id, bio, tagline) values (${accountId}, '', ${params.tagline})
                 on conflict (account_id) do update
-                set tagline = excluded.tagline, updated_at = now(), removed_at = null, removed_by = null`,
+                set tagline = excluded.tagline, updated_at = now()`,
         );
         if (!saved.ok) return saved;
         return ok(undefined);

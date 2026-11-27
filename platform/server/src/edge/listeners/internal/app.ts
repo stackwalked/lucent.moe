@@ -52,6 +52,7 @@ export function createInternalWebApp(deps: {
                     ...(deps.cloudLimits === undefined ? {} : { cloudLimits: deps.cloudLimits }),
                     presentOnline: (accountId: Parameters<typeof events.present>[0]) =>
                         events.present(accountId),
+                    rosterChanged: () => events.rosterChanged(),
                 }),
             );
         },

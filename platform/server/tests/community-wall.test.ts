@@ -13,8 +13,8 @@ import { readProfile, setShows, setVisibility } from "../src/members/community/p
 import { createWallComment, deleteWallComment, listWall } from "../src/members/community/wall.ts";
 import { createReport, resolveReport } from "../src/members/moderation/reports.ts";
 import { setRestriction } from "../src/members/moderation/restrictions.ts";
-import { catalog } from "./authority-fixtures.ts";
-import { member, moderator } from "./community-fixtures.ts";
+import { catalog, seedRole, seedStaff, waitForLockWaiters } from "./authority-fixtures.ts";
+import { member, moderator, sessionFor } from "./community-fixtures.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 
 const products = catalog();
@@ -375,5 +375,80 @@ test("a report on a wall comment resolves and removes like any comment, and the 
         });
         expect(resolved).toEqual(ok({ removed: { kind: "comment", id: rude.value.id } }));
         expect(await wallBodies(db, owner.token, "owner")).toEqual([]);
+    });
+});
+
+test("a post refuses when the owner turns show_wall off or the profile private while it waits for the owner's row", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ browserDb: db }) => {
+        const rng = createSeededRng(18511);
+        const owner = await member(db, rng, "owner@lucent.test", "owner");
+        const alice = await member(db, rng, "alice@lucent.test", "alice");
+        for (const change of [
+            sql`insert into profile (account_id, bio, show_wall) values (${owner.id}, '', false)`,
+            sql`insert into profile (account_id, bio, visibility) values (${owner.id}, '', 'private')`,
+        ]) {
+            const racing: ReturnType<typeof post>[] = [];
+            let parked = false;
+            const gate = await withTx(db, async (tx) => {
+                const held = await execute(
+                    tx,
+                    sql`select 1 from account where id = ${owner.id} for update`,
+                );
+                invariant(held.ok, "the gate holds the owner's row");
+                const changed = await execute(tx, change);
+                invariant(changed.ok, "the gate writes the profile");
+                racing.push(post(db, alice.token, "owner", "too late"));
+                parked = await waitForLockWaiters(db, 1);
+                return ok(undefined);
+            });
+            expect(gate.ok).toBe(true);
+            expect(parked).toBe(true);
+            invariant(racing[0] !== undefined, "expected the post");
+            expect(await racing[0]).toEqual(missing);
+            expect(
+                await execute(db, sql`delete from profile where account_id = ${owner.id}`),
+            ).toEqual({ ok: true, value: 1 });
+        }
+    });
+});
+
+test("a suspended account's wall is missing to members and still there for staff reading accounts", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ browserDb: db }) => {
+        const rng = createSeededRng(18512);
+        const owner = await member(db, rng, "owner@lucent.test", "owner");
+        const alice = await member(db, rng, "alice@lucent.test", "alice");
+        const reader = await seedRole(db, {
+            id: "role_reader",
+            rank: 5,
+            permissions: ["accounts:read"],
+        });
+        const staffId = await seedStaff(db, rng, { email: "reader@lucent.test", roleId: reader });
+        const staffToken = await sessionFor(db, rng, staffId);
+        expect((await post(db, alice.token, "owner", "before")).ok).toBe(true);
+
+        expect(
+            await execute(db, sql`update account set status = 'suspended' where id = ${owner.id}`),
+        ).toEqual({ ok: true, value: 1 });
+        expect(await wall(db, alice.token, "owner")).toEqual(missing);
+        expect(await post(db, alice.token, "owner", "after")).toEqual(missing);
+        expect(await wallBodies(db, staffToken, "owner")).toEqual(["before"]);
+    });
+});
+
+test("two members writing on each other's walls at once never wait on each other in a cycle", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ browserDb: db }) => {
+        const rng = createSeededRng(18513);
+        const alice = await member(db, rng, "alice@lucent.test", "alice");
+        const bob = await member(db, rng, "bob@lucent.test", "bob");
+        for (let round = 0; round < 10; round++) {
+            const results = await Promise.all([
+                post(db, alice.token, "bob", `a${round}`),
+                post(db, bob.token, "alice", `b${round}`),
+            ]);
+            expect(results.map((result) => result.ok)).toEqual([true, true]);
+        }
     });
 });

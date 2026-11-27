@@ -1,39 +1,69 @@
 import { err, ok } from "@lucent/core/result";
-import { type AccountId, type BearerToken, EpochMs } from "@lucent/core/scalars";
+import { AccountId, type BearerToken, EpochMs } from "@lucent/core/scalars";
 import { z } from "zod";
 import { type Db, execute, queryAll, queryOne, sql, type Tx } from "../../base/db/pool.ts";
-import { withMember } from "../notify/account.ts";
+import { withTx } from "../../base/db/tx.ts";
+import { lockSession, readSession } from "../../identity/auth/sessions.ts";
 import { authorAvatar } from "./avatars.ts";
 import { notBlockedWith } from "./blocks.ts";
 import { checkPostRate } from "./limits.ts";
 import { withMemberAt } from "./member.ts";
 import { type NotFound, PAGE_SIZE, pageOf } from "./page.ts";
-import { mayPostHere } from "./standing.ts";
+import { mayPostHere, readMaySeeSuspended } from "./standing.ts";
 
 // A profile's wall: comments that attach to an account instead of a guide. A wall is the owner's
 // profile's own, so it is read by the same rule as the profile: a private profile (the owner's
-// excepted), a tombstone and a block in either direction are all "no such account". The owner's
-// `show_wall` opt-out empties it for everyone else and refuses writing to it; the owner still
-// reads and writes their own. Writing (`write`) share-locks the owner's account row, so a deletion stripping
-// the account (deletion/strip.ts) either waits for a comment being written or finds it.
-async function wallOwner(tx: Tx, viewer: AccountId, username: string, mode: "read" | "write") {
+// excepted), a suspended account (to anyone but itself and staff reading accounts), a tombstone
+// and a block in either direction are all "no such account". The owner's `show_wall` opt-out
+// empties it for everyone else and refuses writing to it; the owner still reads and writes their
+// own.
+//
+// This only reads. A writer takes lockWallParties first and reads after: under READ COMMITTED a
+// subquery in a locking statement sees the snapshot from before the lock wait, so a block or a
+// privacy switch that committed meanwhile would be missed.
+async function wallOwner(
+    tx: Tx,
+    viewer: { readonly id: AccountId; readonly seesSuspended: boolean },
+    username: string,
+) {
     const owner = await queryOne(
         tx,
-        z.object({ id: z.string(), showWall: z.boolean() }),
+        z.object({ id: AccountId, showWall: z.boolean() }),
         sql`select a.id, coalesce(p.show_wall, true) as "showWall"
             from account a left join profile p on p.account_id = a.id
             where a.username = ${username.toLowerCase()}
-              and (a.id = ${viewer} or coalesce(p.visibility, 'members') = 'members')
-              and ${notBlockedWith(viewer, sql`a.id`)}
-            ${mode === "write" ? sql`for share of a` : sql``}`,
+              and (a.id = ${viewer.id} or coalesce(p.visibility, 'members') = 'members')
+              and (a.status = 'active' or a.id = ${viewer.id} or ${viewer.seesSuspended})
+              and ${notBlockedWith(viewer.id, sql`a.id`)}`,
     );
     if (!owner.ok) return owner;
     if (owner.value === null) return err<NotFound>({ code: "NOT_FOUND" });
     return ok({
         id: owner.value.id,
-        isSelf: owner.value.id === viewer,
+        isSelf: owner.value.id === viewer.id,
         shown: owner.value.showWall,
     });
+}
+
+// The writer's account row `for update` and the owner's `for share`, taken in ascending id order
+// (the canonical account order, platform/AGENTS.md), so two members writing on each other's walls
+// never wait on each other in a cycle. The owner's lock also makes a deletion stripping the
+// account (deletion/strip.ts) either wait for a comment being written or find it, and holds off
+// the owner's own block, visibility and `show_wall` writers, which lock their row `for update`.
+async function lockWallParties(
+    tx: Tx,
+    parties: { readonly writer: AccountId; readonly owner: AccountId },
+) {
+    for (const id of [...new Set([parties.writer, parties.owner])].sort()) {
+        const locked = await execute(
+            tx,
+            id === parties.writer
+                ? sql`select 1 from account where id = ${id} for update`
+                : sql`select 1 from account where id = ${id} for share`,
+        );
+        if (!locked.ok) return locked;
+    }
+    return ok(undefined);
 }
 
 const Row = z.object({
@@ -53,8 +83,14 @@ export function listWall(
         readonly cursor: string | null;
     },
 ) {
-    return withMember(db, token, async (tx, accountId) => {
-        const owner = await wallOwner(tx, accountId, params.username, "read");
+    return withMemberAt(db, token, async (tx, accountId, txNow) => {
+        const sees = await readMaySeeSuspended(tx, { accountId, txNow });
+        if (!sees.ok) return sees;
+        const owner = await wallOwner(
+            tx,
+            { id: accountId, seesSuspended: sees.value },
+            params.username,
+        );
         if (!owner.ok) return owner;
         if (!owner.value.isSelf && !owner.value.shown) {
             return ok({ items: [], nextCursor: null });
@@ -96,9 +132,37 @@ export function createWallComment(
     token: BearerToken,
     params: { readonly username: string; readonly body: string },
 ) {
-    return withMemberAt(db, token, async (tx, accountId, txNow) => {
-        const owner = await wallOwner(tx, accountId, params.username, "write");
+    return withTx(db, async (tx, txNow) => {
+        // Not withMemberAt: that locks the writer's row before the owner is known, and the owner
+        // may sort before the writer. The session is read unlocked to learn who writes, the rows
+        // are locked in id order, then the session is locked (its account row is already ours)
+        // and everything the decision rests on is read after.
+        const seen = await readSession(tx, { token, txNow, purposes: ["member"] });
+        if (!seen.ok) return seen;
+        const named = await queryOne(
+            tx,
+            z.object({ id: AccountId }),
+            sql`select id from account where username = ${params.username.toLowerCase()}`,
+        );
+        if (!named.ok) return named;
+        if (named.value === null) return err<NotFound>({ code: "NOT_FOUND" });
+        const locked = await lockWallParties(tx, {
+            writer: seen.value.accountId,
+            owner: named.value.id,
+        });
+        if (!locked.ok) return locked;
+        const session = await lockSession(tx, { token, txNow, purposes: ["member"] });
+        if (!session.ok) return session;
+        const accountId = session.value.accountId;
+        const sees = await readMaySeeSuspended(tx, { accountId, txNow });
+        if (!sees.ok) return sees;
+        const owner = await wallOwner(
+            tx,
+            { id: accountId, seesSuspended: sees.value },
+            params.username,
+        );
         if (!owner.ok) return owner;
+        if (owner.value.id !== named.value.id) return err<NotFound>({ code: "NOT_FOUND" });
         if (!owner.value.isSelf && !owner.value.shown) return err<NotFound>({ code: "NOT_FOUND" });
         const may = await mayPostHere(tx, {
             accountId,

@@ -24,6 +24,8 @@ export type WebRpcContext = {
     readonly overrideSigner?: OverrideSigner | null;
     // Live presence from the event hub; absent in tests, where nobody is present.
     readonly presentOnline?: (accountId: AccountId) => boolean;
+    // Tells the hub the roster's inputs changed (a block, last seen, visibility); absent in tests.
+    readonly rosterChanged?: () => void;
 };
 
 type Unavailable = { readonly code: "SERVICE_UNAVAILABLE" };

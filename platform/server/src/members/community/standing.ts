@@ -1,5 +1,6 @@
 import { ok, type Result } from "@lucent/core/result";
 import { type AccountId, type BearerToken, EpochMs, ProductId } from "@lucent/core/scalars";
+import { can } from "@lucent/policy/policy";
 import { z } from "zod";
 import {
     type Db,
@@ -9,6 +10,7 @@ import {
     sql,
     type Tx,
 } from "../../base/db/pool.ts";
+import { readStanding } from "../../identity/authority/standing.ts";
 import { withMember } from "../notify/account.ts";
 import {
     decidePosting,
@@ -60,6 +62,20 @@ export async function mayPostHere(
         productId: params.productId,
         now: params.txNow,
     });
+}
+
+// A suspended account is no member to the others: its profile and wall read as missing, as a
+// private profile does. Staff reading accounts and the account itself still see them. No step-up
+// is asked: this decides what shows, not an action.
+export async function readMaySeeSuspended(
+    tx: Tx,
+    params: { readonly accountId: AccountId; readonly txNow: EpochMs },
+): Promise<Result<boolean, DbFailure>> {
+    const standing = await readStanding(tx, params.accountId, params.txNow);
+    if (!standing.ok) return standing;
+    return ok(
+        standing.value !== null && can({ ...standing.value, stepUpAt: null }, "accounts:read"),
+    );
 }
 
 // What the member sees of their own standing: that they are restricted, where and until when.

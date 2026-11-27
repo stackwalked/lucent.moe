@@ -201,6 +201,13 @@ async function strip(
             order by product_id for update`,
     );
     if (!scopes.ok) return scopes;
+    // The listings go with their items (the cascade below), so their ids are read first: reports
+    // about them are deleted by id in stripCommunity, which could no longer find them afterwards.
+    const listings = await ids(
+        tx,
+        sql`select id::text as id from cloud_listing where owner_id = ${id} order by id for update`,
+    );
+    if (!listings.ok) return listings;
     const cloud = await all(tx, [
         sql`delete from cloud_share where account_id = ${id}`,
         sql`delete from cloud_item where account_id = ${id}`,
@@ -220,7 +227,7 @@ async function strip(
     ]);
     if (!credentials.ok) return credentials;
 
-    const community = await stripCommunity(tx, id);
+    const community = await stripCommunity(tx, id, listings.value);
     if (!community.ok) return community;
 
     // Support keeps the threads for staff; the member's open ones close without a notice, so they
@@ -314,8 +321,10 @@ async function strip(
 // deletion holds), then every row that goes is locked: a report filed meanwhile locks its
 // target too (moderation/reports.ts), so it either finds the row gone or commits first and is
 // closed with the rest. Open reports about what goes would wait in no queue (it joins the
-// content), so they go; decided ones are staff's record and stay.
-async function stripCommunity(tx: Tx, id: AccountId) {
+// content), so they go; decided ones are staff's record and stay. The member's listings are
+// already gone with their cloud items (copies others made keep their content), so their ids come
+// from the cloud strip, which read them before deleting.
+async function stripCommunity(tx: Tx, id: AccountId, listings: readonly string[]) {
     const guides = await ids(
         tx,
         sql`select id::text as id from guide where author_id = ${id} order by id for update`,
@@ -334,16 +343,15 @@ async function stripCommunity(tx: Tx, id: AccountId) {
         sql`select id::text as id from shout where author_id = ${id} order by id for update`,
     );
     if (!shouts.ok) return shouts;
-    // Listings go with the items they list (cloud strip); copies others made keep their content.
-    const listings = await ids(
-        tx,
-        sql`select id::text as id from cloud_listing where owner_id = ${id} order by id for update`,
-    );
-    if (!listings.ok) return listings;
     const profile = await queryAll(
         tx,
-        z.object({ id: z.string(), large: z.string().nullable(), small: z.string().nullable() }),
-        sql`select id::text as id, avatar_large as large, avatar_small as small
+        z.object({
+            id: z.string(),
+            large: z.string().nullable(),
+            small: z.string().nullable(),
+            banner: z.string().nullable(),
+        }),
+        sql`select id::text as id, avatar_large as large, avatar_small as small, banner
             from profile where account_id = ${id} for update`,
     );
     if (!profile.ok) return profile;
@@ -357,7 +365,7 @@ async function stripCommunity(tx: Tx, id: AccountId) {
                 (r.target_kind = 'comment' and r.target_id = any(${comments.value}::uuid[]))
                 or (r.target_kind = 'guide' and r.target_id = any(${guides.value}::uuid[]))
                 or (r.target_kind = 'shout' and r.target_id = any(${shouts.value}::uuid[]))
-                or (r.target_kind = 'listing' and r.target_id = any(${listings.value}::uuid[]))
+                or (r.target_kind = 'listing' and r.target_id = any(${listings}::uuid[]))
                 or (r.target_kind = 'profile' and r.target_id = any(${profiles}::uuid[])))`,
         sql`delete from report where reporter_id = ${id}`,
         sql`delete from account_block where blocker_id = ${id} or blocked_id = ${id}`,
@@ -365,7 +373,9 @@ async function stripCommunity(tx: Tx, id: AccountId) {
     if (!deleted.ok) return deleted;
     const images = await forgetAvatars(
         tx,
-        profile.value.flatMap((row) => [row.large, row.small]).filter((d) => d !== null),
+        profile.value
+            .flatMap((row) => [row.large, row.small, row.banner])
+            .filter((d) => d !== null),
     );
     return images.ok ? ok(undefined) : images;
 }
