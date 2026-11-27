@@ -1,0 +1,12 @@
+@layer features {
+    .title {
+        color: var(--ink-2);
+        font-size: var(--size-13);
+        font-weight: var(--w-medium);
+    }
+
+    .link {
+        text-decoration: underline;
+        text-underline-offset: var(--s-1);
+    }
+}

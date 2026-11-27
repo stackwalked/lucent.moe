@@ -314,7 +314,7 @@ export function ProfilePage() {
                                                     },
                                                 });
                                                 if (!reply.ok) return setRefused(reply.refused);
-                                                await router.navigate({ to: "/account/privacy" });
+                                                await router.navigate({ to: "/account" });
                                             }}
                                         >
                                             {C.block}

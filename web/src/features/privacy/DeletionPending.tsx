@@ -13,7 +13,7 @@ export function DeletionPending({ dueAt }: { readonly dueAt: EpochMs }) {
             <Status tone="shu">
                 {PRIVACY_COPY.pending} <Time at={dueAt} />
             </Status>
-            <Link to="/account/privacy">{PRIVACY_COPY.keep}</Link>
+            <Link to="/account">{PRIVACY_COPY.keep}</Link>
         </Stack>
     );
 }

@@ -78,7 +78,7 @@ export function AccountMenu({
         {
             label: SHELL_COPY.account,
             icon: "key-round",
-            onSelect: () => void router.navigate({ to: "/account/security" }),
+            onSelect: () => void router.navigate({ to: "/account" }),
         },
     ];
     if (isStaff(viewer)) {

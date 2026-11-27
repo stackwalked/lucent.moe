@@ -180,7 +180,7 @@ describe("web against a real platform", () => {
         expect(
             accepted(z.string(), await page.call(fn.signInWithCode, { code: await codeIn(1) })),
         ).toBe("/");
-        expect((await page.get("/account/security")).status).toBe(200);
+        expect((await page.get("/account")).status).toBe(200);
     });
 
     test("the public reset page and POSTs use a separate per-ip limit for known and unknown addresses", async () => {
@@ -216,7 +216,7 @@ describe("web against a real platform", () => {
         );
         const response = await authenticator.assert(options);
         accepted(z.string(), await page.call(fn.finishPasskey, { mode: "passkey-only", response }));
-        expect((await page.get("/account/security")).status).toBe(200);
+        expect((await page.get("/account")).status).toBe(200);
         member = page;
     });
 
@@ -228,7 +228,7 @@ describe("web against a real platform", () => {
         await db`update browser_session set expires_at = created_at + interval '1 millisecond'`;
         await db.close();
 
-        const sent = await page.get("/account/security");
+        const sent = await page.get("/account");
         expect(sent.status).toBe(303);
         expect(sent.headers.get("location")).toEndWith("/sign-in");
         accepted(
@@ -246,7 +246,7 @@ describe("web against a real platform", () => {
                 response: await authenticator.assert(second),
             }),
         );
-        expect(landed).toBe("/account/security");
+        expect(landed).toBe("/account");
     });
 
     test("a staff action refused for want of a step-up acts once after it, however often it's sent", async () => {

@@ -26,6 +26,7 @@ import { ProductPick } from "../../ui/ProductPick/ProductPick.tsx";
 import { Refusal } from "../../ui/Refusal/Refusal.tsx";
 import { RoleLabel } from "../../ui/RoleLabel/RoleLabel.tsx";
 import { Section } from "../../ui/Section/Section.tsx";
+import { RowAction, RowMark, SettingRow, SettingRows } from "../../ui/SettingRow/SettingRow.tsx";
 import { Stack } from "../../ui/Stack/Stack.tsx";
 import { Status } from "../../ui/Status/Status.tsx";
 import { Switch } from "../../ui/Switch/Switch.tsx";
@@ -259,6 +260,48 @@ function Data({ now }: { readonly now: EpochMs }) {
                     { label: "subscription", value: "until 3 jan 2027" },
                 ]}
             />
+            <SettingRows label="settings">
+                <SettingRow
+                    name="password"
+                    value="changed 1d ago"
+                    action={<RowAction onClick={() => undefined}>change</RowAction>}
+                />
+                <SettingRow
+                    name="passkeys"
+                    value="none"
+                    action={
+                        <RowAction tone="pink" onClick={() => undefined}>
+                            add
+                        </RowAction>
+                    }
+                />
+                <SettingRow
+                    name="delete account"
+                    action={
+                        <RowAction tone="shu" onClick={() => undefined}>
+                            delete
+                        </RowAction>
+                    }
+                />
+            </SettingRows>
+            <SettingRows label="items">
+                <SettingRow
+                    layout="item"
+                    name="chrome on windows"
+                    value="now"
+                    action={<RowMark>this one</RowMark>}
+                />
+                <SettingRow
+                    layout="item"
+                    name="edge on windows"
+                    value="2d ago"
+                    action={
+                        <RowAction tone="quiet" onClick={() => undefined}>
+                            sign out
+                        </RowAction>
+                    }
+                />
+            </SettingRows>
             <Stack direction="row" gap={3} align="center">
                 <RoleLabel name="staff" color="pink" />
                 <RoleLabel name="moderator" color="shu" />

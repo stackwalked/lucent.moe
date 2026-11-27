@@ -1,0 +1,147 @@
+@layer components {
+    .list {
+        display: flex;
+        flex-direction: column;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+    }
+
+    .row {
+        display: grid;
+        grid-template-columns: minmax(0, 14rem) minmax(0, 1fr) auto;
+        column-gap: var(--s-4);
+        align-items: center;
+        align-content: center;
+        min-block-size: calc(var(--row2-h) + var(--s-2));
+        font-size: var(--size-14);
+    }
+
+    .row[data-layout="setting"] {
+        border-block-end: 1px solid var(--line);
+    }
+
+    .row[data-layout="setting"]:last-child {
+        border-block-end: 0;
+    }
+
+    .row[data-layout="item"] {
+        grid-template-columns: minmax(0, max-content) minmax(0, 1fr) auto;
+        column-gap: var(--s-3);
+        min-block-size: calc(var(--row2-h) + var(--s-1));
+    }
+
+    .row[data-nested="true"] {
+        padding-inline-start: var(--s-4);
+    }
+
+    .name,
+    .value {
+        min-inline-size: 0;
+        overflow-wrap: anywhere;
+    }
+
+    .name {
+        grid-column: 1;
+        color: var(--ink);
+    }
+
+    .row[data-layout="item"] .name {
+        font-weight: var(--w-medium);
+    }
+
+    .value {
+        grid-column: 2;
+        color: var(--ink-2);
+    }
+
+    .row[data-layout="item"] .value {
+        font-size: var(--size-13);
+    }
+
+    .action {
+        grid-column: 3;
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: var(--s-3);
+        font-size: var(--size-13);
+    }
+
+    .extra {
+        grid-column: 1 / -1;
+    }
+
+    .extra:empty {
+        display: none;
+    }
+
+    .act {
+        min-block-size: var(--control-sm);
+        padding: 0 var(--s-1);
+        border: 0;
+        border-radius: var(--r-inner);
+        background: none;
+        color: var(--ink);
+        font: inherit;
+        font-size: var(--size-13);
+        white-space: nowrap;
+        cursor: pointer;
+        text-underline-offset: var(--s-1);
+        transition: color var(--t-hover) var(--ease);
+    }
+
+    .act:hover:not(:disabled) {
+        text-decoration: underline;
+    }
+
+    .act:disabled {
+        cursor: default;
+        color: var(--ink-3);
+    }
+
+    .act[data-tone="quiet"] {
+        color: var(--ink-2);
+    }
+
+    .act[data-tone="pink"] {
+        color: var(--pink-ink);
+    }
+
+    .act[data-tone="shu"] {
+        color: var(--shu-ink);
+    }
+
+    .act[aria-busy="true"] {
+        cursor: progress;
+    }
+
+    .mark {
+        color: var(--pink-ink);
+        font-size: var(--size-13);
+    }
+
+    /* A phone: the name and its action share the first line, the value sits under the name. */
+    @media (width <= 640px) {
+        .row,
+        .row[data-layout="item"] {
+            grid-template-columns: minmax(0, 1fr) auto;
+            padding-block: var(--s-1);
+        }
+
+        .row .name {
+            grid-column: 1;
+            grid-row: 1;
+        }
+
+        .row .action {
+            grid-column: 2;
+            grid-row: 1;
+        }
+
+        .row .value {
+            grid-column: 1 / -1;
+            grid-row: 2;
+        }
+    }
+}

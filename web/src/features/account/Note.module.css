@@ -1,0 +1,6 @@
+@layer features {
+    .note {
+        color: var(--ink-2);
+        font-size: var(--size-13);
+    }
+}

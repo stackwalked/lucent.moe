@@ -3,15 +3,13 @@ import { z } from "zod";
 import { done, refuse } from "../../server/outcome.ts";
 import { callPlatform, readPlatform } from "../../server/platform.ts";
 
-// What the privacy page shows: standing, blocks and who may open the profile. The visibility is
-// the profile's own, so it is read through the profile.
+// What the account page shows of privacy: blocks, who may open the profile and a pending
+// deletion. The visibility is the profile's own, so it is read through the profile.
 export const fetchPrivacy = createServerFn({ method: "GET" })
     .validator((data: unknown) =>
         z.strictObject({ username: z.string().max(64).nullable() }).parse(data),
     )
     .handler(async ({ data }) => {
-        const restrictions = await readPlatform("privacy.restrictions.list", {});
-        if (!restrictions.ok) return refuse(restrictions.error);
         const blocks = await readPlatform("privacy.blocks.list", {});
         if (!blocks.ok) return refuse(blocks.error);
         const deletion = await readPlatform("deletion.request.read", {});
@@ -21,7 +19,6 @@ export const fetchPrivacy = createServerFn({ method: "GET" })
                 ? null
                 : await readPlatform("profile.get", { username: data.username });
         return done({
-            restrictions: restrictions.value.restrictions,
             blocks: blocks.value.blocks,
             deletion: deletion.value,
             visibility: profile?.ok === true ? profile.value.visibility : ("members" as const),
@@ -94,4 +91,11 @@ export const askAppealDeletion = createServerFn({ method: "POST" }).handler(asyn
 export const keepAppealAccount = createServerFn({ method: "POST" }).handler(async () => {
     const reply = await callPlatform("appeals.deletion.cancel", {});
     return reply.ok ? done(null) : refuse(reply.error);
+});
+
+// The address on file, for the account page to show. Only the export carries it; the rest of the
+// file is left unread here.
+export const fetchEmail = createServerFn({ method: "GET" }).handler(async () => {
+    const reply = await readPlatform("privacy.export.read", {});
+    return reply.ok ? done(reply.value.account.email) : refuse(reply.error);
 });

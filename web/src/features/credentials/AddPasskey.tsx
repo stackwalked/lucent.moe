@@ -9,9 +9,8 @@ import { useStepUp } from "../step-up/StepUp.tsx";
 import { CREDENTIALS_COPY } from "./copy.ts";
 import { beginPasskeyRegistration, finishPasskeyRegistration } from "./server.ts";
 
-// One browser prompt; the passkey is named for the browser and system it was made on, renamed
-// later if wanted.
-export function AddPasskey({ onAdded }: { readonly onAdded: () => void }) {
+// One browser prompt; the passkey is named for the browser and system it was made on.
+export function useAddPasskey(onAdded: () => void) {
     const guard = useStepUp();
     const [pending, setPending] = useState(false);
     const [refused, setRefused] = useState<Refused | null>(null);
@@ -36,7 +35,11 @@ export function AddPasskey({ onAdded }: { readonly onAdded: () => void }) {
         if (!finished.ok) return setRefused(finished.refused);
         onAdded();
     };
+    return { add, pending, refused, clear: () => setRefused(null) };
+}
 
+export function AddPasskey({ onAdded }: { readonly onAdded: () => void }) {
+    const { add, pending, refused } = useAddPasskey(onAdded);
     return (
         <Stack gap={3}>
             <RefusalNote refused={refused} />
