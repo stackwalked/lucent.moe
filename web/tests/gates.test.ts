@@ -42,3 +42,23 @@ test("the public origin is https, or http only on localhost", () => {
     }
     expect(readWebConfig(env({ LUCENT_PUBLIC_ORIGIN: "http://localhost:4710" })).ok).toBe(true);
 });
+
+test("the discord invite is optional, and when set is an https link on discord's own hosts", () => {
+    const invite = (value: string) => readWebConfig(env({ LUCENT_DISCORD_INVITE_URL: value }));
+    const unset = readWebConfig(env({}));
+    expect(unset.ok && unset.value.discordInvite).toBe(null);
+    const blank = invite("");
+    expect(blank.ok && blank.value.discordInvite).toBe(null);
+    const set = invite("https://discord.gg/lucent");
+    expect(set.ok && set.value.discordInvite).toBe("https://discord.gg/lucent");
+    expect(invite("https://discord.com/invite/lucent").ok).toBe(true);
+    for (const bad of [
+        "http://discord.gg/lucent",
+        "https://discord.gg.evil.example/x",
+        "https://example.com/discord.gg",
+        "https://user@discord.gg/x",
+        "discord.gg/lucent",
+    ]) {
+        expect(invite(bad).ok).toBe(false);
+    }
+});

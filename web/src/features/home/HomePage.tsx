@@ -2,6 +2,7 @@ import { can } from "@lucent/policy/policy";
 import { getRouteApi, Link, useRouteContext } from "@tanstack/react-router";
 import { Avatar } from "../../ui/Avatar/Avatar.tsx";
 import { Columns } from "../../ui/Columns/Columns.tsx";
+import { ExternalLink } from "../../ui/ExternalLink/ExternalLink.tsx";
 import { Page } from "../../ui/Page/Page.tsx";
 import { Section } from "../../ui/Section/Section.tsx";
 import { Time } from "../../ui/Time/Time.tsx";
@@ -69,7 +70,7 @@ function HereNow() {
 // member's products (each block only when it has something) and who is here now.
 export function HomePage() {
     const data = route.useLoaderData();
-    const { session } = useRouteContext({ from: "__root__" });
+    const { session, site } = useRouteContext({ from: "__root__" });
     if (data === null) return null;
     const viewer = memberOf(session);
     const canPurge = viewer !== null && can(subjectOf(viewer), "moderation:remove");
@@ -86,7 +87,18 @@ export function HomePage() {
         <SiteShell>
             <Page title={null} hideTitle>
                 <Columns
-                    head={{ lead: <h1 className={styles.title}>{C.shouts}</h1> }}
+                    head={{
+                        lead: <h1 className={styles.title}>{C.shouts}</h1>,
+                        ...(site.discordInvite === null
+                            ? {}
+                            : {
+                                  actions: (
+                                      <ExternalLink href={site.discordInvite}>
+                                          {C.discord}
+                                      </ExternalLink>
+                                  ),
+                              }),
+                    }}
                     main={
                         <div className={styles.feedBox}>
                             <ShoutFeed

@@ -11,5 +11,6 @@ export const HOME_COPY = {
     members: "members",
     inGame: "in game",
     more: "more",
+    discord: "discord",
     lucent: "lucent",
 } as const;

@@ -16,6 +16,8 @@ export type WebConfig = {
     readonly peerKey: string;
     // The one origin browsers use (https://lucent.moe); Host, Origin and redirects check against it.
     readonly publicOrigin: string;
+    // The community server's invite link, when there is one to show.
+    readonly discordInvite: string | null;
 };
 
 // Names the variables and what's wrong with them, never their values: the peer key is a secret.
@@ -26,6 +28,7 @@ export type WebEnvironment = {
     readonly LUCENT_PLATFORM_INTERNAL_URL: string | undefined;
     readonly LUCENT_WEB_INTERNAL_KEY: string | undefined;
     readonly LUCENT_PUBLIC_ORIGIN: string | undefined;
+    readonly LUCENT_DISCORD_INVITE_URL?: string | undefined;
 };
 
 function parseListen(raw: string): WebListen | null {
@@ -60,6 +63,17 @@ function parsePublicOrigin(raw: string): string | null {
     return url.protocol === "https:" || local ? url.origin : null;
 }
 
+// An https link on Discord's own invite hosts, as it is shown to members; blank means none.
+const DISCORD_INVITE_HOSTS = new Set(["discord.gg", "discord.com"]);
+
+function parseDiscordInvite(raw: string): string | null | undefined {
+    if (raw === "") return null;
+    if (!URL.canParse(raw)) return undefined;
+    const url = new URL(raw);
+    const ours = url.protocol === "https:" && DISCORD_INVITE_HOSTS.has(url.hostname);
+    return ours && url.username === "" && url.password === "" ? url.href : undefined;
+}
+
 export function readWebConfig(env: WebEnvironment): Result<WebConfig, ConfigError> {
     const problems: string[] = [];
     const listen = parseListen(env.LUCENT_WEB_LISTEN ?? "");
@@ -82,10 +96,22 @@ export function readWebConfig(env: WebEnvironment): Result<WebConfig, ConfigErro
     if (publicOrigin === null) {
         problems.push("LUCENT_PUBLIC_ORIGIN must be an https:// origin (or http://localhost)");
     }
-    if (problems.length > 0 || listen === null || platform === null || publicOrigin === null) {
+    const discordInvite = parseDiscordInvite(env.LUCENT_DISCORD_INVITE_URL ?? "");
+    if (discordInvite === undefined) {
+        problems.push(
+            "LUCENT_DISCORD_INVITE_URL must be an https:// link on discord.gg or discord.com",
+        );
+    }
+    if (
+        problems.length > 0 ||
+        listen === null ||
+        platform === null ||
+        publicOrigin === null ||
+        discordInvite === undefined
+    ) {
         return err({ code: "CONFIG_INVALID", problems });
     }
-    return ok({ listen, platform, peerKey, publicOrigin });
+    return ok({ listen, platform, peerKey, publicOrigin, discordInvite });
 }
 
 // The one read of the process environment (ast-grep: ts-no-ambient-env).
@@ -95,11 +121,13 @@ export function processEnvironment(): WebEnvironment {
         LUCENT_PLATFORM_INTERNAL_URL,
         LUCENT_WEB_INTERNAL_KEY,
         LUCENT_PUBLIC_ORIGIN,
+        LUCENT_DISCORD_INVITE_URL,
     } = process.env;
     return {
         LUCENT_WEB_LISTEN,
         LUCENT_PLATFORM_INTERNAL_URL,
         LUCENT_WEB_INTERNAL_KEY,
         LUCENT_PUBLIC_ORIGIN,
+        LUCENT_DISCORD_INVITE_URL,
     };
 }

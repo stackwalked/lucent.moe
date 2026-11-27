@@ -141,6 +141,7 @@ services:
       LUCENT_PLATFORM_INTERNAL_URL: unix:/run/lucent/internal/http.sock
       LUCENT_WEB_LISTEN: unix:/run/lucent/web/http.sock
       LUCENT_PUBLIC_ORIGIN: https://lucent.moe
+      LUCENT_DISCORD_INVITE_URL: ${LUCENT_DISCORD_INVITE_URL:-}
       LUCENT_WEB_INTERNAL_KEY: ${LUCENT_WEB_INTERNAL_KEY:?set the web peer key}
     volumes:
       - /var/lib/lucent/internal-socket:/run/lucent/internal:ro

@@ -55,9 +55,12 @@ const DOCS_PLACE = {
 export function AccountMenu({
     viewer,
     avatar,
+    discord,
 }: {
     readonly viewer: Viewer;
     readonly avatar: string | null;
+    // The community server's invite link, when the site has one.
+    readonly discord: string | null;
 }) {
     const router = useRouter();
     const [theme, setTheme] = useState<ThemeChoice>(currentTheme);
@@ -80,6 +83,15 @@ export function AccountMenu({
             icon: "key-round",
             onSelect: () => void router.navigate({ to: "/account" }),
         },
+        ...(discord === null
+            ? []
+            : [
+                  {
+                      label: SHELL_COPY.discord,
+                      icon: "external-link" as const,
+                      onSelect: () => void window.open(discord, "_blank", "noopener,noreferrer"),
+                  },
+              ]),
     ];
     if (isStaff(viewer)) {
         items.push({
@@ -138,7 +150,7 @@ export function AccountMenu({
 // The frame of every page with the site's bar: the places and the account's corner when signed
 // in, only "sign in" when not.
 export function SiteShell({ children }: { readonly children: ReactNode }) {
-    const { session, unreadCount, avatar, docs } = useRouteContext({ from: "__root__" });
+    const { session, unreadCount, avatar, docs, site } = useRouteContext({ from: "__root__" });
     const viewer = memberOf(session);
     const { pathname } = useLocation();
     return (
@@ -181,7 +193,11 @@ export function SiteShell({ children }: { readonly children: ReactNode }) {
                                       <span className={styles.dot} aria-hidden="true" />
                                   )}
                               </Link>
-                              <AccountMenu viewer={viewer} avatar={avatar} />
+                              <AccountMenu
+                                  viewer={viewer}
+                                  avatar={avatar}
+                                  discord={site.discordInvite}
+                              />
                           </>
                       ),
                   })}

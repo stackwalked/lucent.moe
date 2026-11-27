@@ -17,7 +17,7 @@ import { visibleTabs } from "./sections.ts";
 const adminRoute = getRouteApi("/_admin");
 
 export function AdminShell({ children }: { readonly children: ReactNode }) {
-    const { session, avatar } = useRouteContext({ from: "__root__" });
+    const { session, avatar, site } = useRouteContext({ from: "__root__" });
     const viewer = memberOf(session);
     const { pathname } = useLocation();
     const { counts, total } = adminRoute.useLoaderData();
@@ -81,7 +81,7 @@ export function AdminShell({ children }: { readonly children: ReactNode }) {
                     <Link to="/" className={shellStyles.corner}>
                         {C.backToSite}
                     </Link>
-                    <AccountMenu viewer={viewer} avatar={avatar} />
+                    <AccountMenu viewer={viewer} avatar={avatar} discord={site.discordInvite} />
                 </>
             }
         >

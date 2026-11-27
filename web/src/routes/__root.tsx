@@ -13,6 +13,7 @@ import { fetchDocScopes } from "../features/docs/server.ts";
 import { fetchUnread } from "../features/inbox/unread.ts";
 import { SiteShell } from "../features/shell/SiteShell.tsx";
 import { fetchOwnAvatar } from "../features/shell/server.ts";
+import { loadSite } from "../features/shell/site.ts";
 import { StepUpProvider } from "../features/step-up/StepUp.tsx";
 import { currentTheme } from "../theme.ts";
 import { currentTimeZone, reportTimeZone } from "../time-zone.ts";
@@ -92,8 +93,10 @@ export const Route = createRootRoute({
                   ]);
         // The bar's "docs" tab: only when a page exists for a scope this member can open.
         const docs = viewer !== null && (await fetchDocScopes()).length > 0;
+        const site = await loadSite();
         return {
             session,
+            site,
             unreadCount,
             avatar,
             docs,
