@@ -44,6 +44,7 @@ function Contents({ listing }: { readonly listing: Listing }) {
     const long = content.split("\n").length > CAPPED_LINES;
     return (
         <Stack gap={3}>
+            {listing.escaped ? <p className={styles.escaped}>{C.escaped}</p> : null}
             <div className={long && !all ? styles.capped : undefined}>
                 <Code>{content}</Code>
             </div>

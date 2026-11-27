@@ -1,5 +1,10 @@
 @layer features {
     /* The owner's words, line breaks kept as written. */
+    .escaped {
+        color: var(--shu-ink);
+        font-size: var(--size-13);
+    }
+
     .description {
         color: var(--ink-2);
         overflow-wrap: anywhere;

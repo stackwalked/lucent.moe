@@ -37,6 +37,11 @@
         overflow-y: auto;
     }
 
+    .escaped {
+        color: var(--shu-ink);
+        font-size: var(--size-13);
+    }
+
     .added {
         color: var(--ok-ink);
         font-size: var(--size-13);

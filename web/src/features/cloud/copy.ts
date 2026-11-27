@@ -34,6 +34,7 @@ export const CLOUD_COPY = {
     noAccess: "no access",
     contents: "contents",
     notShown: "not shown",
+    escaped: "hidden characters shown as \\u{…}",
     empty: "empty",
     showAll: "show all",
     listing: "listing",

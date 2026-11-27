@@ -3,6 +3,7 @@ import type { Outcome } from "../../../server/outcome.ts";
 import { Code } from "../../../ui/Code/Code.tsx";
 import { Stack } from "../../../ui/Stack/Stack.tsx";
 import { RefusalNote } from "../../auth/RefusalNote.tsx";
+import { sizeWords } from "../../cloud/copy.ts";
 import { AccountAction } from "../accounts/AccountAction.tsx";
 import { useStaffAction } from "../staff.ts";
 import styles from "./ApproveListing.module.css";
@@ -53,15 +54,9 @@ export function ApproveListing({ listingId }: { readonly listingId: string }) {
                                     <p className={styles.description}>{read.value.description}</p>
                                 </Stack>
                             )}
-                            <Stack gap={2}>
-                                <p>{C.waiting}</p>
-                                <Code>{read.value.pending.content}</Code>
-                            </Stack>
+                            <Snapshot caption={C.waiting} shown={read.value.pending} />
                             {read.value.listed === null ? null : (
-                                <Stack gap={2}>
-                                    <p>{C.listedNow}</p>
-                                    <Code>{read.value.listed.content}</Code>
-                                </Stack>
+                                <Snapshot caption={C.listedNow} shown={read.value.listed} />
                             )}
                         </>
                     )}
@@ -75,6 +70,34 @@ export function ApproveListing({ listingId }: { readonly listingId: string }) {
                 });
             }}
         />
+    );
+}
+
+function Snapshot({
+    caption,
+    shown,
+}: {
+    readonly caption: string;
+    readonly shown: {
+        readonly content: string | null;
+        readonly size: number;
+        readonly escaped: boolean;
+    };
+}) {
+    return (
+        <Stack gap={2}>
+            <p>{caption}</p>
+            {shown.content === null ? (
+                <p>
+                    {C.notShown} · {sizeWords(shown.size)}
+                </p>
+            ) : (
+                <>
+                    {shown.escaped ? <p className={styles.escaped}>{C.escaped}</p> : null}
+                    <Code>{shown.content}</Code>
+                </>
+            )}
+        </Stack>
     );
 }
 

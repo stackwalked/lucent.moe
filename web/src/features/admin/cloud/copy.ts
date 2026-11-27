@@ -16,6 +16,8 @@ export const ADMIN_CLOUD_COPY = {
     waiting: "waiting",
     listedNow: "listed now",
     unread: "not loaded yet",
+    notShown: "not shown",
+    escaped: "hidden characters shown as \\u{…}",
     remove: "remove",
     removeTitle: "remove this listing?",
     removeBody: "members can no longer see or add it. copies stay.",
