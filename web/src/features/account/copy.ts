@@ -1,6 +1,5 @@
 export const ACCOUNT_COPY = {
     title: "account",
-    profile: "profile",
     security: "security",
     devices: "pcs",
     invites: "invites",

@@ -7,12 +7,15 @@ export function Switch({
     label,
     defaultChecked = false,
     disabled = false,
+    hideLabel = false,
     onChange,
 }: {
     readonly name: string;
     readonly label: string;
     readonly defaultChecked?: boolean;
     readonly disabled?: boolean;
+    // The label is only for screen readers, where the switch sits beside the thing it sets.
+    readonly hideLabel?: boolean;
     readonly onChange?: (checked: boolean) => void;
 }) {
     const [checked, setChecked] = useState(defaultChecked);
@@ -31,7 +34,7 @@ export function Switch({
                     onChange?.(event.currentTarget.checked);
                 }}
             />
-            <span>{label}</span>
+            <span className={hideLabel ? styles.hidden : undefined}>{label}</span>
         </label>
     );
 }

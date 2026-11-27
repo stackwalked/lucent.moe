@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import type { Outcome, Refused } from "../../server/outcome.ts";
 import { Avatar } from "../../ui/Avatar/Avatar.tsx";
 import { Button } from "../../ui/Button/Button.tsx";
@@ -65,9 +65,12 @@ function Row({
 export function Wall({
     username,
     first,
+    actions,
 }: {
     readonly username: string;
     readonly first: Outcome<Listed>;
+    // Beside the caption: the owner's switch for showing the wall, in edit mode.
+    readonly actions?: ReactNode;
 }) {
     const [items, setItems] = useState<readonly Comment[]>(first.ok ? first.value.items : []);
     const [next, setNext] = useState<string | null>(first.ok ? first.value.nextCursor : null);
@@ -97,7 +100,7 @@ export function Wall({
     };
     const note = postingNote(refused);
     return (
-        <Section caption={C.wall}>
+        <Section caption={C.wall} {...(actions === undefined ? {} : { actions })}>
             <Stack gap={4}>
                 {items.length === 0 ? (
                     <Empty>{C.noComments}</Empty>

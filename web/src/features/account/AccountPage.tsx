@@ -25,7 +25,6 @@ export function AccountPage({
                     lead: (
                         <Tabs
                             tabs={[
-                                { to: "/account/profile", label: C.profile },
                                 { to: "/account/security", label: C.security },
                                 { to: "/account/devices", label: C.devices },
                                 { to: "/account/invites", label: C.invites },

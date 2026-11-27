@@ -25,7 +25,7 @@ const PLACES = [
 
 const DOCS_PLACE = { to: "/docs", label: DOCS_COPY.title, also: null } as const;
 
-// Account, staff's admin, the theme, and sign out: everything of the member's own that isn't a
+// Profile, account, staff's admin, the theme, and sign out: everything of the member's own that isn't a
 // place, behind their picture.
 export function AccountMenu({
     viewer,
@@ -37,9 +37,18 @@ export function AccountMenu({
     const router = useRouter();
     const items: DropdownItem[] = [
         {
-            label: SHELL_COPY.account,
+            label: SHELL_COPY.profile,
             icon: "user",
-            onSelect: () => void router.navigate({ to: "/account/profile" }),
+            onSelect: () =>
+                void router.navigate({
+                    to: "/members/$username",
+                    params: { username: viewer.username ?? "" },
+                }),
+        },
+        {
+            label: SHELL_COPY.account,
+            icon: "key-round",
+            onSelect: () => void router.navigate({ to: "/account/security" }),
         },
     ];
     if (isStaff(viewer)) {

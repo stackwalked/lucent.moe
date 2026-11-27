@@ -42,11 +42,4 @@ export const PRIVACY_COPY = {
     pending: "deletion pending:",
     keep: "keep my account",
     signInAgain: "sign in again, then ask within 5 minutes.",
-    shownOnProfile: "shown on your profile",
-    showInvitedBy: "invited by",
-    showInvited: "invited",
-    showProducts: "products",
-    showLastSeen: "last seen",
-    showDiscord: "discord",
-    showWall: "wall",
 } as const;

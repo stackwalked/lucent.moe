@@ -53,4 +53,12 @@
     .track:disabled + span {
         opacity: 0.5;
     }
+
+    .hidden {
+        position: absolute;
+        inline-size: 1px;
+        block-size: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+    }
 }
