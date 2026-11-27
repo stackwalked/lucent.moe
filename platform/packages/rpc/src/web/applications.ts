@@ -1,4 +1,4 @@
-import { AccountId, EpochMs, ProductId } from "@lucent/core/scalars";
+import { AccountId, EpochMs } from "@lucent/core/scalars";
 import { z } from "zod";
 import { defineContract } from "../contract.ts";
 import { Done, ReadRefusal, refusal, StaffRefusals } from "./shared.ts";
@@ -11,7 +11,7 @@ const ApplicationState = z.enum(["pending", "approved", "declined"]);
 const ApplicationSummary = z.object({
     applicationId: ApplicationId,
     email: z.string(),
-    products: z.array(ProductId).readonly(),
+    games: z.string(),
     state: ApplicationState,
     createdAt: EpochMs,
     decidedAt: EpochMs.nullable(),
@@ -38,8 +38,9 @@ export const applicationsContract = defineContract({
         effect: "read",
         input: z.strictObject({ applicationId: ApplicationId }),
         output: ApplicationSummary.extend({
-            about: z.string(),
-            discord: z.string().nullable(),
+            discord: z.string(),
+            experience: z.string(),
+            additional: z.string().nullable(),
             // The account whose username matches `knownBy`, if one does.
             knownByMember: z.object({ accountId: AccountId, username: z.string() }).nullable(),
             decidedBy: z.object({ id: z.string(), username: z.string().nullable() }).nullable(),

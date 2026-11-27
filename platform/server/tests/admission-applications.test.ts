@@ -2,7 +2,8 @@ import { expect, test } from "bun:test";
 import { invariant } from "@lucent/core/contain";
 import { err, ok } from "@lucent/core/result";
 import { createSeededRng, type SeededRng } from "@lucent/core/rng";
-import { type AccountId, BearerToken, ProductId } from "@lucent/core/scalars";
+import { type AccountId, BearerToken } from "@lucent/core/scalars";
+import { webContract } from "@lucent/rpc/web";
 import { z } from "zod";
 import { createMailTransport } from "../src/base/adapters/mail/mail.ts";
 import { type Db, execute, queryAll, sql } from "../src/base/db/pool.ts";
@@ -13,7 +14,6 @@ import {
     approveApplication,
     declineApplication,
     listApplications,
-    listOfferedProducts,
     readApplication,
     submitApplication,
 } from "../src/identity/admission/applications.ts";
@@ -23,7 +23,6 @@ import { recoverAccount } from "../src/identity/authority/writers.ts";
 import { claimMail, sendClaim, settleMail } from "../src/members/notify/mail.ts";
 import { seedRootOnce } from "./auth-fixtures.ts";
 import {
-    catalog,
     scalar,
     seedAccount,
     seedRole,
@@ -51,18 +50,18 @@ function inWorld(seed: number, run: (world: World) => Promise<void>) {
     };
 }
 
-const LOADER = ProductId.parse("lucent-loader");
-
 const form = (email: string): ApplicationInput => ({
     email,
-    products: [LOADER],
-    about: "i play a lot.\n<b>not markup</b>",
     discord: "someone",
+    experience: "i play a lot.\n<b>not markup</b>",
+    games: "cs2",
     knownBy: "@Founder",
+    additional: "streams",
 });
 
-const submit = (world: World, input: ApplicationInput) =>
-    submitApplication(world.deps, { catalog: catalog(), input });
+const ApplicationForm = webContract["waitlist.application.submit"].input;
+
+const submit = (world: World, input: ApplicationInput) => submitApplication(world.deps, { input });
 
 const count = (db: Db, statement: ReturnType<typeof sql>) =>
     scalar(db, z.coerce.number(), statement);
@@ -103,8 +102,9 @@ test(
         });
         expect(read.ok && read.value).toMatchObject({
             email: "ann@lucent.test",
-            products: [LOADER],
-            about: "i play a lot.\n<b>not markup</b>",
+            games: "cs2",
+            experience: "i play a lot.\n<b>not markup</b>",
+            additional: "streams",
             discord: "someone",
             knownBy: "@Founder",
             knownByMember: { username: "founder" },
@@ -180,16 +180,85 @@ test(
 );
 
 test(
-    "only live products are offered, and a seed product cannot be asked for",
+    "naming a member who exists, is suspended or does not exist answers alike and on the same floor",
     inWorld(9203, async (world) => {
-        expect(listOfferedProducts(catalog()).map((p) => p.productId)).toEqual([LOADER]);
+        const away = await seedAccount(world.db, world.rng, "away@lucent.test");
         expect(
-            await submit(world, {
-                ...form("seed@lucent.test"),
-                products: [ProductId.parse("cs2")],
-            }),
-        ).toEqual(err({ code: "PRODUCT_NOT_OFFERED" }));
-        expect(await count(world.db, sql`select count(*) as value from application`)).toBe(0);
+            await execute(
+                world.db,
+                sql`update account set username = 'away', status = 'suspended' where id = ${away}`,
+            ),
+        ).toEqual(ok(1));
+        const named = ["@Founder", "away", "nobody-by-that-name"];
+        for (const knownBy of named) {
+            const started = performance.now();
+            expect(
+                await submit(world, {
+                    ...form(`applicant-${knownBy.replace(/\W/g, "")}@lucent.test`),
+                    knownBy,
+                }),
+            ).toEqual(ok(undefined));
+            expect(performance.now() - started).toBeGreaterThanOrEqual(340);
+        }
+        expect((await onlyPending(world)).map((a) => a.knownBy)).toEqual(named);
+    }),
+);
+
+test.each([
+    ["a handle of one character", { discord: "x" }],
+    ["a handle of 33 characters", { discord: "x".repeat(33) }],
+    ["a handle over two lines", { discord: "some\none" }],
+    ["no experience", { experience: "  " }],
+    ["experience over 1,000 characters", { experience: "x".repeat(1001) }],
+    ["no games", { games: "" }],
+    ["games over 300 characters", { games: "x".repeat(301) }],
+    ["additional info over 1,000 characters", { additional: "x".repeat(1001) }],
+    ["an empty name for who vouches", { knownBy: "" }],
+    ["a field the form does not have", { products: ["lucent-loader"] }],
+])("the form refuses %s", (_, change) => {
+    expect(ApplicationForm.safeParse({ ...form("a@lucent.test"), ...change }).success).toBe(false);
+});
+
+test("the form takes the limits themselves, and the optional answers left out", () => {
+    const limits = {
+        email: "a@lucent.test",
+        discord: "x".repeat(32),
+        experience: "x".repeat(1000),
+        games: "x".repeat(300),
+        knownBy: null,
+        additional: "x".repeat(1000),
+    };
+    expect(ApplicationForm.safeParse(limits).success).toBe(true);
+    expect(ApplicationForm.safeParse({ ...limits, discord: "xy", additional: null }).success).toBe(
+        true,
+    );
+});
+
+test(
+    "an application made before the form keeps its old answers as additional info, and can still be decided",
+    inWorld(9211, async (world) => {
+        const staff = await reviewer(world);
+        // As migration 0048 leaves a row of the old form.
+        await execute(
+            world.db,
+            sql`insert into application (email, discord, experience, games, additional, created_at)
+                values ('old@lucent.test', '', '', '', 'what they wrote', now())`,
+        );
+        const [old] = await onlyPending(world);
+        invariant(old !== undefined, "the application waits");
+        const read = await readApplication(world.db, {
+            caller: staff,
+            applicationId: old.applicationId,
+        });
+        expect(read.ok && read.value).toMatchObject({
+            discord: "",
+            experience: "",
+            games: "",
+            additional: "what they wrote",
+        });
+        expect(
+            await declineApplication(world.db, { caller: staff, applicationId: old.applicationId }),
+        ).toEqual(ok(undefined));
     }),
 );
 

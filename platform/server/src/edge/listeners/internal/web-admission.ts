@@ -1,12 +1,11 @@
 import { invariant } from "@lucent/core/contain";
-import { err, ok, type Result } from "@lucent/core/result";
+import { err, type Result } from "@lucent/core/result";
 import type { Handlers } from "@lucent/rpc/mount";
 import type { WebContract } from "@lucent/rpc/web";
 import {
     approveApplication,
     declineApplication,
     listApplications,
-    listOfferedProducts,
     readApplication,
     submitApplication,
 } from "../../../identity/admission/applications.ts";
@@ -52,9 +51,8 @@ export const admissionHandlers = {
             done(withinBounds(await setInviteAllowance(ctx.auth.db, { caller, ...input }))),
         ),
 
-    "waitlist.products.list": async (ctx) => ok(listOfferedProducts(ctx.catalog)),
     "waitlist.application.submit": async (ctx, input) =>
-        served(done(await submitApplication(ctx.auth, { catalog: ctx.catalog, input }))),
+        served(done(await submitApplication(ctx.auth, { input }))),
     "admin.applications.list": (ctx, input, call) =>
         asStaff(ctx, call, (caller) =>
             listApplications(ctx.auth.db, { caller, state: input.state }),

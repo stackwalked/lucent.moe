@@ -20,7 +20,7 @@ import { suspendAccount } from "../src/identity/authority/writers.ts";
 import { requestDeletion } from "../src/identity/deletion/deletion.ts";
 import { completeDeletion } from "../src/identity/deletion/strip.ts";
 import { newMember, seedRootOnce } from "./auth-fixtures.ts";
-import { catalog, scalar, steppedUp } from "./authority-fixtures.ts";
+import { scalar, steppedUp } from "./authority-fixtures.ts";
 import { createTestAuthDeps } from "./harness/auth.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 
@@ -170,9 +170,9 @@ test(
         );
         await seed(
             db,
-            sql`insert into application (email, products, about, discord, known_by, state,
+            sql`insert into application (email, experience, games, additional, discord, known_by, state,
                                          created_at, decided_at, decided_by, account_id)
-                values ('qzvex@lucent.test', ${[LOADER]}, 'APPLY-ABOUT-7731', 'discord-handle-7731',
+                values ('qzvex@lucent.test', 'EXPERIENCE-7731', 'games', 'APPLY-ABOUT-7731', 'discord-handle-7731',
                         null, 'approved', now(), now(), ${obo.accountId}, ${id})`,
         );
         await seed(
@@ -183,9 +183,9 @@ test(
         // Two other applicants name the member as who knows them, one as a look-alike.
         await seed(
             db,
-            sql`insert into application (email, products, about, known_by, created_at)
-                values ('friend1@lucent.test', ${[LOADER]}, 'hi', '@qzvex', now()),
-                       ('friend2@lucent.test', ${[LOADER]}, 'hi', 'Qz_Vex', now())`,
+            sql`insert into application (email, experience, games, discord, known_by, created_at)
+                values ('friend1@lucent.test', 'hi', 'cs2', 'friend1', '@qzvex', now()),
+                       ('friend2@lucent.test', 'hi', 'cs2', 'friend2', 'Qz_Vex', now())`,
         );
         await seed(
             db,
@@ -335,16 +335,15 @@ test(
 
         const form = (email: string) => ({
             email,
-            products: [LOADER],
-            about: "back again",
-            discord: null,
+            experience: "back again",
+            games: "cs2",
+            additional: null,
+            discord: "back again",
             knownBy: null,
         });
         // The applicant hears the same either way.
         for (const email of ["Sam@lucent.test", "ida@lucent.test", "new@lucent.test"]) {
-            expect(
-                await submitApplication(deps, { catalog: catalog(), input: form(email) }),
-            ).toEqual(ok(undefined));
+            expect(await submitApplication(deps, { input: form(email) })).toEqual(ok(undefined));
         }
         const queue = await listApplications(db, { caller: staff, state: "pending" });
         invariant(queue.ok, "the queue reads");

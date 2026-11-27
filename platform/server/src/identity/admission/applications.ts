@@ -1,7 +1,6 @@
-import type { ProductCatalog } from "@lucent/catalog/catalog";
 import { invariant } from "@lucent/core/contain";
 import { err, ok, type Result } from "@lucent/core/result";
-import { AccountId, EpochMs, ProductId } from "@lucent/core/scalars";
+import { AccountId, EpochMs } from "@lucent/core/scalars";
 import type { AuthzRefusal, Caller } from "@lucent/policy/policy";
 import { z } from "zod";
 import { appendAudit } from "../../base/db/audit.ts";
@@ -40,32 +39,23 @@ const QUEUE_LIMIT = 100;
 // an account or an application already.
 const SUBMIT_FLOOR_MS = 350;
 
-// Only a live product can be asked for; a seed product is offered to nobody.
-export function listOfferedProducts(catalog: ProductCatalog) {
-    return [...catalog.values()]
-        .filter((product) => product.state === "live")
-        .map((product) => ({ productId: product.id, name: product.name }));
-}
-
+// The form as the contract has already bounded it (rpc/web/waitlist.ts). `knownBy` is stored as
+// typed and never looked up here: whether such a member exists, is private or is suspended must
+// not reach the applicant, so only staff's read of the application resolves it.
 export type ApplicationInput = {
     readonly email: string;
-    readonly products: readonly ProductId[];
-    readonly about: string;
-    readonly discord: string | null;
+    readonly discord: string;
+    readonly experience: string;
+    readonly games: string;
     readonly knownBy: string | null;
+    readonly additional: string | null;
 };
 
 export async function submitApplication(
     deps: AuthDeps,
-    params: { readonly catalog: ProductCatalog; readonly input: ApplicationInput },
-): Promise<Result<void, DbFailure | { readonly code: "PRODUCT_NOT_OFFERED" }>> {
+    params: { readonly input: ApplicationInput },
+): Promise<Result<void, DbFailure>> {
     const padding = Bun.sleep(SUBMIT_FLOOR_MS);
-    const offered = new Set(listOfferedProducts(params.catalog).map((p) => p.productId));
-    const products = [...new Set(params.input.products)].sort();
-    if (products.length === 0 || products.some((id) => !offered.has(id))) {
-        await padding;
-        return err({ code: "PRODUCT_NOT_OFFERED" });
-    }
     const email = params.input.email.trim().toLowerCase();
     const digests = await deps.emailHasher.candidates(email);
     const result = await withTx(deps.db, async (tx, txNow) => {
@@ -82,11 +72,11 @@ export async function submitApplication(
         // A concurrent submission for the address may have opened one since: it stands.
         const opened = await execute(
             tx,
-            sql`insert into application (email, products, about, discord, known_by, created_at,
-                                         returning_account_id)
-                values (${email}, ${products}, ${params.input.about}, ${params.input.discord},
-                        ${params.input.knownBy}, ${toTimestamptz(txNow)}::timestamptz,
-                        ${returning.value})
+            sql`insert into application (email, discord, experience, games, known_by, additional,
+                                         created_at, returning_account_id)
+                values (${email}, ${params.input.discord}, ${params.input.experience},
+                        ${params.input.games}, ${params.input.knownBy}, ${params.input.additional},
+                        ${toTimestamptz(txNow)}::timestamptz, ${returning.value})
                 on conflict (email) where state = 'pending' do nothing`,
         );
         return opened.ok ? ok(undefined) : opened;
@@ -144,7 +134,7 @@ const Person = z.object({ id: z.string(), username: z.string().nullable() });
 const SummaryRow = z.object({
     id: z.string(),
     email: z.string(),
-    products: z.array(ProductId),
+    games: z.string(),
     state: z.enum(["pending", "approved", "declined"]),
     created_at: EpochMs,
     decided_at: EpochMs.nullable(),
@@ -156,7 +146,7 @@ const SummaryRow = z.object({
 export type ApplicationSummary = {
     readonly applicationId: string;
     readonly email: string;
-    readonly products: readonly ProductId[];
+    readonly games: string;
     readonly state: "pending" | "approved" | "declined";
     readonly createdAt: EpochMs;
     readonly decidedAt: EpochMs | null;
@@ -171,7 +161,7 @@ function toSummary(row: z.output<typeof SummaryRow>): ApplicationSummary {
     return {
         applicationId: row.id,
         email: row.email,
-        products: row.products,
+        games: row.games,
         state: row.state,
         createdAt: row.created_at,
         decidedAt: row.decided_at,
@@ -181,7 +171,7 @@ function toSummary(row: z.output<typeof SummaryRow>): ApplicationSummary {
     };
 }
 
-const SUMMARY_COLUMNS = sql`a.id::text as id, a.email, a.products, a.state, a.created_at,
+const SUMMARY_COLUMNS = sql`a.id::text as id, a.email, a.games, a.state, a.created_at,
     a.decided_at, a.known_by, exists (select from account x where x.email = a.email) as has_account,
     a.returning_account_id`;
 
@@ -212,8 +202,9 @@ export async function listApplications(
 }
 
 export type Application = ApplicationSummary & {
-    readonly about: string;
-    readonly discord: string | null;
+    readonly experience: string;
+    readonly additional: string | null;
+    readonly discord: string;
     // The member the applicant named, if a username matches; it says nothing more than that.
     readonly knownByMember: { readonly accountId: AccountId; readonly username: string } | null;
     readonly decidedBy: z.output<typeof Person> | null;
@@ -231,15 +222,16 @@ export async function readApplication(
             const row = await queryOne(
                 q,
                 SummaryRow.extend({
-                    about: z.string(),
-                    discord: z.string().nullable(),
+                    experience: z.string(),
+                    additional: z.string().nullable(),
+                    discord: z.string(),
                     known_id: AccountId.nullable(),
                     known_username: z.string().nullable(),
                     decided_by: z.string().nullable(),
                     decider_username: z.string().nullable(),
                     account_id: AccountId.nullable(),
                 }),
-                sql`select ${SUMMARY_COLUMNS}, a.about, a.discord, k.id as known_id,
+                sql`select ${SUMMARY_COLUMNS}, a.experience, a.additional, a.discord, k.id as known_id,
                        k.username as known_username, a.decided_by,
                        d.username as decider_username, a.account_id
                 from application a
@@ -253,7 +245,8 @@ export async function readApplication(
             const found = row.value;
             return ok({
                 ...toSummary(found),
-                about: found.about,
+                experience: found.experience,
+                additional: found.additional,
                 discord: found.discord,
                 knownByMember:
                     found.known_id === null || found.known_username === null
