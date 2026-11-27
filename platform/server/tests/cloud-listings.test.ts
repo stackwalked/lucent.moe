@@ -714,7 +714,12 @@ test("staff read the script waiting, and beside it the listed one for an update;
         ).toEqual(forbidden);
         const first = await w.client.call("admin.cloud.listings.get", { listingId: id }, mod.call);
         invariant(first.ok, "expected the waiting script");
-        expect(first.value.pending).toEqual({ revision: 1, content: "overlay-v1" });
+        expect(first.value.pending).toEqual({
+            revision: 1,
+            content: "overlay-v1",
+            size: 10,
+            escaped: false,
+        });
         expect(first.value.listed).toBeNull();
         expect(
             await w.client.call(
@@ -734,8 +739,46 @@ test("staff read the script waiting, and beside it the listed one for an update;
         );
         const update = await w.client.call("admin.cloud.listings.get", { listingId: id }, mod.call);
         invariant(update.ok, "expected the update");
-        expect(update.value.pending).toEqual({ revision: 2, content: "<b>second</b>" });
-        expect(update.value.listed).toEqual({ revision: 1, content: "overlay-v1" });
+        expect(update.value.pending).toEqual({
+            revision: 2,
+            content: "<b>second</b>",
+            size: 13,
+            escaped: false,
+        });
+        expect(update.value.listed).toEqual({
+            revision: 1,
+            content: "overlay-v1",
+            size: 10,
+            escaped: false,
+        });
+    });
+});
+
+test("a script staff cannot read as text is shown as not shown with its size, and cannot be approved", async () => {
+    await world(19113, async (w) => {
+        const owner = await w.member("owner");
+        const mod = await w.staff("mod");
+        const buyer = await w.member("buyer");
+        const bad = new Uint8Array([0x61, 0xc3, 0x28]);
+        const itemId = await w.item(owner.id, "script", "broken", bad);
+        const created = await w.client.call(
+            "cloud.listings.create",
+            { ...p, itemId, summary: "" },
+            owner.call,
+        );
+        invariant(created.ok, "expected a listing");
+        const id = created.value.listingId;
+        const read = await w.client.call("admin.cloud.listings.get", { listingId: id }, mod.call);
+        invariant(read.ok, "expected the waiting script");
+        expect(read.value.pending).toEqual({ revision: 1, content: null, size: 3, escaped: false });
+        expect(
+            await w.client.call(
+                "admin.cloud.listings.approve",
+                { listingId: id, revision: 1 },
+                mod.call,
+            ),
+        ).toEqual(err({ code: "UNREADABLE_CONTENT" }));
+        expect(await listed(w, buyer)).toEqual([]);
     });
 });
 
@@ -1019,6 +1062,11 @@ test("what a page shows of the bytes: text as it is, a script's source whole, an
         expect(await page("inventory", "nul", text("a\u0000b"))).toMatchObject({
             content: null,
             size: 3,
+        });
+        // Characters that disguise code are shown as text, and the page says so.
+        expect(await page("script", "sneaky", text("a‮b﻿c"))).toMatchObject({
+            content: "a\\u{202E}b\\u{FEFF}c",
+            escaped: true,
         });
     });
 });

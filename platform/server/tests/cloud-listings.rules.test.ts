@@ -136,7 +136,45 @@ test.each([
     expect(decideListingContent({ kind, bytes: content })).toEqual({
         text: expected,
         size: content.byteLength,
+        escaped: false,
     });
+});
+
+test.each([
+    ["a C1 control", 0x85, "0085"],
+    ["a bidirectional override", 0x202e, "202E"],
+    ["a bidirectional isolate", 0x2066, "2066"],
+    ["an Arabic letter mark", 0x61c, "061C"],
+    ["a left-to-right mark", 0x200e, "200E"],
+    ["a zero-width space", 0x200b, "200B"],
+    ["a word joiner", 0x2060, "2060"],
+    ["a byte order mark in the middle", 0xfeff, "FEFF"],
+    ["a line separator", 0x2028, "2028"],
+    ["a paragraph separator", 0x2029, "2029"],
+] as const)("what a page shows: %s is shown escaped, not hidden", (_name, code, hex) => {
+    const input = bytes(`a${String.fromCodePoint(code)}b`);
+    for (const kind of ["script", "config"] as const) {
+        expect(decideListingContent({ kind, bytes: input })).toEqual({
+            text: `a\\u{${hex}}b`,
+            size: input.byteLength,
+            escaped: true,
+        });
+    }
+});
+
+test("a byte order mark at the start is kept and escaped, not stripped", () => {
+    const withBom = new Uint8Array([0xef, 0xbb, 0xbf, 0x61]);
+    expect(decideListingContent({ kind: "script", bytes: withBom })).toEqual({
+        text: "\\u{FEFF}a",
+        size: 4,
+        escaped: true,
+    });
+});
+
+test("ordinary non-ASCII text is untouched", () => {
+    expect(
+        decideListingContent({ kind: "script", bytes: bytes("naïve — 日本語 😀") }),
+    ).toMatchObject({ text: "naïve — 日本語 😀", escaped: false });
 });
 
 const nested = (depth: number) => "[".repeat(depth) + "]".repeat(depth);
@@ -175,6 +213,7 @@ test("above 256 KB nothing is shown, and the size still is", () => {
     expect(decideListingContent({ kind: "script", bytes: big })).toEqual({
         text: null,
         size: CONTENT_SHOWN_MAX_BYTES + 1,
+        escaped: false,
     });
     const edge = new Uint8Array(CONTENT_SHOWN_MAX_BYTES).fill(0x61);
     expect(decideListingContent({ kind: "script", bytes: edge }).text).toHaveLength(

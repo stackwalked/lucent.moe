@@ -42,6 +42,15 @@ export const ListingDescription = z
     .max(2_000)
     .refine((value) => !value.includes("\0"));
 const ListingState = z.enum(["pending", "listed"]);
+
+// One snapshot as staff read it: `content` is null when it is not text staff can read (then
+// `size` is all there is), `escaped` when characters that disguise code were made visible.
+const ReviewedContent = z.object({
+    revision: Revision,
+    content: z.string().nullable(),
+    size: z.int().nonnegative(),
+    escaped: z.boolean(),
+});
 const read = {
     session: "member",
     effect: "read",
@@ -168,6 +177,8 @@ export const cloudContract = defineContract({
             copy: z.object({ itemId: CloudId }).nullable(),
             size: z.int().nonnegative(),
             content: z.string().nullable(),
+            // Characters that change how a line reads are in `content` as \u{XXXX}.
+            escaped: z.boolean(),
         }),
     },
     "cloud.listings.mine": {
@@ -266,9 +277,9 @@ export const cloudContract = defineContract({
             name: z.string(),
             description: z.string(),
             // The snapshot waiting for approval.
-            pending: z.object({ revision: Revision, content: z.string() }),
+            pending: ReviewedContent,
             // The one members see now, when what waits is an update of it.
-            listed: z.object({ revision: Revision, content: z.string() }).nullable(),
+            listed: ReviewedContent.nullable(),
         }),
         error: z.discriminatedUnion("code", [...StaffRefusals, refusal("NOT_FOUND")]),
     },
@@ -281,6 +292,8 @@ export const cloudContract = defineContract({
             ...StaffRefusals,
             refusal("NOT_FOUND"),
             refusal("STALE_REVISION"),
+            // Bytes staff cannot read as text are not approved.
+            refusal("UNREADABLE_CONTENT"),
         ]),
     },
     "admin.cloud.listings.remove": {

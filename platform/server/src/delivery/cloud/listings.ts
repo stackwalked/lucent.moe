@@ -441,6 +441,7 @@ export function readListing(
             copy: copyItemId === null ? null : { itemId: copyItemId },
             size: shown.size,
             content: shown.text,
+            escaped: shown.escaped,
         });
     });
 }
@@ -594,18 +595,22 @@ export function readListingForReview(
         );
         if (!row.ok) return row;
         if (row.value === null) return missing();
-        const text = (bytes: Uint8Array) => new TextDecoder("utf-8").decode(bytes);
+        const { kind } = row.value;
+        const snapshot = (revision: number, bytes: Uint8Array) => {
+            const shown = decideListingContent({ kind, bytes });
+            return { revision, content: shown.text, size: shown.size, escaped: shown.escaped };
+        };
         return ok({
             id: row.value.id,
             productId: row.value.productId,
             kind: row.value.kind,
             name: row.value.name,
             description: row.value.description,
-            pending: { revision: row.value.revision, content: text(row.value.bytes) },
+            pending: snapshot(row.value.revision, row.value.bytes),
             listed:
                 row.value.listedRevision === null || row.value.listedBytes === null
                     ? null
-                    : { revision: row.value.listedRevision, content: text(row.value.listedBytes) },
+                    : snapshot(row.value.listedRevision, row.value.listedBytes),
         });
     });
 }
@@ -646,13 +651,19 @@ export async function approveListing(
         // would see the snapshot from before the wait.
         const pendingName = await queryOne(
             tx,
-            z.object({ name: z.string() }),
-            sql`select name from cloud_version
+            z.object({ name: z.string(), bytes: z.instanceof(Uint8Array) }),
+            sql`select name, bytes from cloud_version
                 where account_id = ${row.value.ownerId} and product_id = ${row.value.productId}
                   and item_id = ${row.value.itemId}::bigint and revision = ${next.value.revision}`,
         );
         if (!pendingName.ok) return pendingName;
         if (pendingName.value === null) return missing();
+        // Staff approve what they could read: a script they cannot read is not approved.
+        const readable = decideListingContent({
+            kind: row.value.kind,
+            bytes: pendingName.value.bytes,
+        });
+        if (readable.text === null) return err({ code: "UNREADABLE_CONTENT" as const });
         const updated = await execute(
             tx,
             sql`update cloud_listing set state = 'listed', revision = ${next.value.revision},

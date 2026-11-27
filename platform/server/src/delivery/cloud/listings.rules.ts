@@ -79,23 +79,62 @@ function hasControl(text: string): boolean {
     return false;
 }
 
-export type ListingContent = { readonly text: string | null; readonly size: number };
+// Legal text that changes how a line reads without showing: C1 controls, bidirectional controls,
+// zero-width characters (a byte order mark anywhere, since it is kept), line and paragraph
+// separators. They are shown as \u{XXXX}, never hidden and never passed through.
+const HIDDEN_RANGES: readonly (readonly [number, number])[] = [
+    [0x80, 0x9f],
+    [0x61c, 0x61c],
+    [0x200b, 0x200f],
+    [0x2028, 0x202e],
+    [0x2060, 0x2060],
+    [0x2066, 0x2069],
+    [0xfeff, 0xfeff],
+];
+
+function isHidden(code: number): boolean {
+    return HIDDEN_RANGES.some(([low, high]) => code >= low && code <= high);
+}
+
+function escapeHidden(text: string): { readonly text: string; readonly escaped: boolean } {
+    let out = "";
+    let escaped = false;
+    for (const char of text) {
+        const code = char.codePointAt(0) ?? 0;
+        if (isHidden(code)) {
+            escaped = true;
+            out += `\\u{${code.toString(16).toUpperCase().padStart(4, "0")}}`;
+        } else {
+            out += char;
+        }
+    }
+    return { text: out, escaped };
+}
+
+// Both reads of a snapshot (the member's page and staff's review) go through this: what is shown
+// is exactly what is installed, so BOM stripping is off and bytes that are not UTF-8 are not shown.
+export type ListingContent = {
+    readonly text: string | null;
+    readonly size: number;
+    readonly escaped: boolean;
+};
 
 export function decideListingContent(params: {
     readonly kind: ListingKind;
     readonly bytes: Uint8Array;
 }): ListingContent {
     const size = params.bytes.byteLength;
-    if (size > CONTENT_SHOWN_MAX_BYTES) return { text: null, size };
+    const shown = (text: string): ListingContent => ({ size, ...escapeHidden(text) });
+    if (size > CONTENT_SHOWN_MAX_BYTES) return { text: null, size, escaped: false };
     const decoded = trySync(
-        () => new TextDecoder("utf-8", { fatal: true }).decode(params.bytes),
+        () => new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(params.bytes),
         () => null,
     );
-    if (!decoded.ok || hasControl(decoded.value)) return { text: null, size };
-    if (params.kind === "script") return { text: decoded.value, size };
+    if (!decoded.ok || hasControl(decoded.value)) return { text: null, size, escaped: false };
+    if (params.kind === "script") return shown(decoded.value);
     // Indentation grows with depth squared: 48 KB of brackets would lay out to over a gigabyte.
     // So deep input is not laid out, and neither is a result past what a page should carry.
-    if (jsonDepthExceeds(decoded.value, LAID_OUT_DEPTH_MAX)) return { text: decoded.value, size };
+    if (jsonDepthExceeds(decoded.value, LAID_OUT_DEPTH_MAX)) return shown(decoded.value);
     const laidOut = trySync(
         (): string | null => {
             const parsed: unknown = JSON.parse(decoded.value);
@@ -106,9 +145,9 @@ export function decideListingContent(params: {
         () => null,
     );
     if (!laidOut.ok || laidOut.value === null || laidOut.value.length > LAID_OUT_MAX_CHARS) {
-        return { text: decoded.value, size };
+        return shown(decoded.value);
     }
-    return { text: laidOut.value, size };
+    return shown(laidOut.value);
 }
 
 export const LAID_OUT_DEPTH_MAX = 32;
