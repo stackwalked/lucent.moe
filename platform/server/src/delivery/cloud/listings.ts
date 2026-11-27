@@ -35,10 +35,11 @@ import {
     decideApproval,
     decideFirstPin,
     decideListingContent,
-    decideRepin,
+    decideListingUpdate,
     LISTING_PAGE_SIZE,
     listingName,
     type Pins,
+    type Words,
 } from "./listings.rules.ts";
 import { withCloudMember } from "./member.ts";
 
@@ -52,6 +53,10 @@ const PinRow = z.object({
     state: z.enum(["pending", "listed", "removed"]),
     revision: z.int().positive().nullable(),
     pending: z.int().positive().nullable(),
+    summary: z.string(),
+    description: z.string(),
+    pendingSummary: z.string().nullable(),
+    pendingDescription: z.string().nullable(),
 });
 
 function pinsOf(row: z.output<typeof PinRow>): Pins | null {
@@ -85,7 +90,9 @@ function lockOwn(tx: Tx, scope: CloudScope, listingId: string) {
     return queryOne(
         tx,
         PinRow,
-        sql`select id, item_id::text as "itemId", kind, state, revision, pending_revision as pending
+        sql`select id, item_id::text as "itemId", kind, state, revision, pending_revision as pending,
+                   summary, description, pending_summary as "pendingSummary",
+                   pending_description as "pendingDescription"
             from cloud_listing
             where id = ${listingId}::uuid and owner_id = ${scope.accountId}
               and product_id = ${scope.productId}
@@ -138,11 +145,13 @@ export async function createListing(
         tx,
         z.object({ listingId: z.uuid() }),
         sql`insert into cloud_listing (owner_id, product_id, kind, item_id, revision,
-                                       pending_revision, name, summary, description, state, listed_at)
+                                       pending_revision, name, summary, description, state, listed_at,
+                                       pending_version)
             values (${scope.accountId}, ${scope.productId}, ${kind.value.kind}, ${params.itemId},
                     ${pins.revision}, ${pins.pending}, ${listingName(head.value.name)},
                     ${params.summary}, ${params.description ?? ""}, ${pins.state},
-                    ${pins.state === "listed" ? sql`now()` : sql`null`})
+                    ${pins.state === "listed" ? sql`now()` : sql`null`},
+                    ${pins.pending === null ? 0 : 1})
             returning id as "listingId"`,
     );
     if (!inserted.ok) return inserted;
@@ -175,7 +184,21 @@ export async function updateListing(
     if (row.value === null || current === null) return missing();
     const head = await readItem(tx, { ...scope, itemId: row.value.itemId });
     if (!head.ok) return head;
-    const pins = decideRepin({ kind: row.value.kind, current, head: head.value.revision });
+    const plan = decideListingUpdate({
+        kind: row.value.kind,
+        current,
+        head: head.value.revision,
+        live: { summary: row.value.summary, description: row.value.description },
+        waiting:
+            row.value.pendingSummary === null || row.value.pendingDescription === null
+                ? null
+                : { summary: row.value.pendingSummary, description: row.value.pendingDescription },
+        change: {
+            ...(params.summary === undefined ? {} : { summary: params.summary }),
+            ...(params.description === undefined ? {} : { description: params.description }),
+        },
+    });
+    const { pins } = plan;
     // The visible name and the moment move only when what others see does.
     const visibleChanges = pins.revision !== current.revision;
     const updated = await execute(
@@ -183,8 +206,11 @@ export async function updateListing(
         sql`update cloud_listing set
                 revision = ${pins.revision}, pending_revision = ${pins.pending}, state = ${pins.state},
                 name = ${visibleChanges || pins.state === "pending" ? listingName(head.value.name) : sql`name`},
-                summary = ${params.summary ?? sql`summary`},
-                description = ${params.description ?? sql`description`},
+                summary = ${plan.live.summary},
+                description = ${plan.live.description},
+                pending_summary = ${plan.waiting?.summary ?? null},
+                pending_description = ${plan.waiting?.description ?? null},
+                pending_version = pending_version + ${plan.bump ? 1 : 0},
                 listed_at = ${pins.state === "listed" ? sql`coalesce(listed_at, now())` : sql`listed_at`},
                 updated_at = ${visibleChanges ? sql`now()` : sql`updated_at`}
             where id = ${params.listingId}::uuid`,
@@ -212,7 +238,7 @@ export async function removeOwnListing(
 // A listing taken down keeps its row and pins nothing.
 export function takeDown(listingId: string, by: AccountId): SqlFragment {
     return sql`update cloud_listing set state = 'removed', revision = null, pending_revision = null,
-            removed_at = now(), removed_by = ${by}, updated_at = now()
+            pending_summary = null, pending_description = null, removed_at = now(), removed_by = ${by}, updated_at = now()
         where id = ${listingId}::uuid and state <> 'removed'`;
 }
 
@@ -229,8 +255,10 @@ export function listMine(tx: Tx, scope: CloudScope) {
             pending: z.boolean(),
             updatedAt: EpochMs,
         }),
-        sql`select id, item_id::text as "itemId", name, kind, summary, state,
-                   pending_revision is not null as pending, updated_at as "updatedAt"
+        sql`select id, item_id::text as "itemId", name, kind,
+                   coalesce(pending_summary, summary) as summary, state,
+                   pending_revision is not null or pending_summary is not null as pending,
+                   updated_at as "updatedAt"
             from cloud_listing
             where owner_id = ${scope.accountId} and product_id = ${scope.productId}
               and state <> 'removed'
@@ -375,6 +403,7 @@ const ListingPage = z.object({
     kind: ItemKind,
     summary: z.string(),
     description: z.string(),
+    waiting: z.boolean(),
     username: z.string().nullable(),
     avatar: z.string().nullable(),
     mine: z.boolean(),
@@ -413,7 +442,13 @@ export function readListing(
         const row = await queryOne(
             tx,
             ListingPage,
-            sql`select l.id, l.product_id as "productId", l.name, l.kind, l.summary, l.description,
+            sql`select l.id, l.product_id as "productId", l.name, l.kind,
+                       case when l.owner_id = ${accountId}
+                            then coalesce(l.pending_summary, l.summary) else l.summary end as summary,
+                       case when l.owner_id = ${accountId}
+                            then coalesce(l.pending_description, l.description)
+                            else l.description end as description,
+                       l.owner_id = ${accountId} and l.pending_summary is not null as waiting,
                        a.username, ${authorAvatar(accountId, sql`l.owner_id`)} as avatar,
                        l.owner_id = ${accountId} as mine,
                        coalesce(l.listed_at, l.updated_at) as "listedAt", l.updated_at as "updatedAt",
@@ -517,16 +552,20 @@ export function listPending(
                 accountId: AccountId,
                 username: z.string().nullable(),
                 first: z.boolean(),
+                wordsOnly: z.boolean(),
                 updatedAt: EpochMs,
             }),
-            sql`select l.id, l.product_id as "productId", l.kind, pv.name, l.summary,
+            sql`select l.id, l.product_id as "productId", l.kind, pv.name,
+                       coalesce(l.pending_summary, l.summary) as summary,
                        l.owner_id as "accountId", a.username, l.state = 'pending' as first,
-                       l.updated_at as "updatedAt"
+                       l.pending_revision is null as "wordsOnly", l.updated_at as "updatedAt"
                 from cloud_listing l
                 join account a on a.id = l.owner_id
                 join cloud_version pv on (pv.account_id, pv.product_id, pv.item_id, pv.revision) =
-                                         (l.owner_id, l.product_id, l.item_id, l.pending_revision)
-                where l.state <> 'removed' and l.pending_revision is not null ${after}
+                                         (l.owner_id, l.product_id, l.item_id,
+                                          coalesce(l.pending_revision, l.revision))
+                where l.state <> 'removed'
+                  and (l.pending_revision is not null or l.pending_summary is not null) ${after}
                 order by l.updated_at, l.id limit ${LISTING_PAGE_SIZE + 1}`,
         );
         if (!rows.ok) return rows;
@@ -551,11 +590,14 @@ const StaffRow = z.object({
     state: z.enum(["pending", "listed", "removed"]),
     revision: z.int().positive().nullable(),
     pending: z.int().positive().nullable(),
+    pendingSummary: z.string().nullable(),
+    pendingVersion: z.int().nonnegative(),
 });
 
-// What a reviewer reads before approving: the waiting snapshot's content, and for an update the
-// visible snapshot's beside it. The content is the member's own text and untrusted; it is only
-// ever shown as text. The revision names what was read, and approving sends it back.
+// What a reviewer reads before approving: what waits (a script's snapshot, its words, or both),
+// and for an update what is visible beside it. The content and the words are the member's own
+// text and untrusted; they are only ever shown as text. `pendingVersion` names what was read, and
+// approving sends it back.
 export function readListingForReview(
     db: Db,
     params: { readonly caller: Caller; readonly listingId: string },
@@ -576,48 +618,72 @@ export function readListingForReview(
                 productId: ProductId,
                 kind: ItemKind,
                 name: z.string(),
+                summary: z.string(),
                 description: z.string(),
+                pendingSummary: z.string().nullable(),
+                pendingDescription: z.string().nullable(),
+                pendingVersion: z.int().nonnegative(),
                 revision: z.int().positive(),
                 bytes: z.instanceof(Uint8Array),
                 listedRevision: z.int().positive().nullable(),
                 listedBytes: z.instanceof(Uint8Array).nullable(),
             }),
-            sql`select l.id, l.product_id as "productId", l.kind, pv.name, l.description,
+            sql`select l.id, l.product_id as "productId", l.kind, pv.name, l.summary, l.description,
+                       l.pending_summary as "pendingSummary",
+                       l.pending_description as "pendingDescription",
+                       l.pending_version as "pendingVersion",
                        pv.revision, pv.bytes,
                        lv.revision as "listedRevision", lv.bytes as "listedBytes"
                 from cloud_listing l
                 join cloud_version pv on (pv.account_id, pv.product_id, pv.item_id, pv.revision) =
-                                         (l.owner_id, l.product_id, l.item_id, l.pending_revision)
+                                         (l.owner_id, l.product_id, l.item_id,
+                                          coalesce(l.pending_revision, l.revision))
                 left join cloud_version lv on (lv.account_id, lv.product_id, lv.item_id, lv.revision) =
                                               (l.owner_id, l.product_id, l.item_id, l.revision)
                 where l.id = ${params.listingId}::uuid and l.state <> 'removed'
-                  and l.pending_revision is not null`,
+                  and (l.pending_revision is not null or l.pending_summary is not null)`,
         );
         if (!row.ok) return row;
         if (row.value === null) return missing();
         const { kind } = row.value;
-        const snapshot = (revision: number, bytes: Uint8Array) => {
+        const snapshot = (revision: number, bytes: Uint8Array, words: Words) => {
             const shown = decideListingContent({ kind, bytes });
-            return { revision, content: shown.text, size: shown.size, escaped: shown.escaped };
+            return {
+                revision,
+                content: shown.text,
+                size: shown.size,
+                escaped: shown.escaped,
+                ...words,
+            };
         };
         return ok({
             id: row.value.id,
             productId: row.value.productId,
             kind: row.value.kind,
             name: row.value.name,
-            description: row.value.description,
-            pending: snapshot(row.value.revision, row.value.bytes),
+            pendingVersion: row.value.pendingVersion,
+            pending: snapshot(row.value.revision, row.value.bytes, {
+                summary: row.value.pendingSummary ?? row.value.summary,
+                description: row.value.pendingDescription ?? row.value.description,
+            }),
             listed:
                 row.value.listedRevision === null || row.value.listedBytes === null
                     ? null
-                    : snapshot(row.value.listedRevision, row.value.listedBytes),
+                    : snapshot(row.value.listedRevision, row.value.listedBytes, {
+                          summary: row.value.summary,
+                          description: row.value.description,
+                      }),
         });
     });
 }
 
 export async function approveListing(
     db: Db,
-    params: { readonly caller: Caller; readonly listingId: string; readonly revision: number },
+    params: {
+        readonly caller: Caller;
+        readonly listingId: string;
+        readonly pendingVersion: number;
+    },
 ) {
     return await withTx(db, async (tx, txNow) => {
         const locked = await lockCallerWith(tx, { caller: params.caller, targets: [], txNow });
@@ -633,19 +699,22 @@ export async function approveListing(
             StaffRow,
             sql`select l.owner_id as "ownerId", l.product_id as "productId",
                        l.item_id::text as "itemId", l.kind, l.state,
-                       l.revision, l.pending_revision as pending
+                       l.revision, l.pending_revision as pending,
+                       l.pending_summary as "pendingSummary", l.pending_version as "pendingVersion"
                 from cloud_listing l where l.id = ${params.listingId}::uuid for update`,
         );
         if (!row.ok) return row;
         if (row.value === null || row.value.state === "removed") return missing();
-        const next = decideApproval(
-            {
+        const next = decideApproval({
+            current: {
                 state: row.value.state,
                 revision: row.value.revision,
                 pending: row.value.pending,
             },
-            params.revision,
-        );
+            wordsWaiting: row.value.pendingSummary !== null,
+            version: row.value.pendingVersion,
+            seen: params.pendingVersion,
+        });
         if (!next.ok) return next;
         // Read after the lock, in a statement of its own: a subselect inside the locking one
         // would see the snapshot from before the wait.
@@ -668,6 +737,9 @@ export async function approveListing(
             tx,
             sql`update cloud_listing set state = 'listed', revision = ${next.value.revision},
                     pending_revision = null, name = ${listingName(pendingName.value.name)},
+                    summary = coalesce(pending_summary, summary),
+                    description = coalesce(pending_description, description),
+                    pending_summary = null, pending_description = null,
                     listed_at = coalesce(listed_at, now()), updated_at = now()
                 where id = ${params.listingId}::uuid`,
         );

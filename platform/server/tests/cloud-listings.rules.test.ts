@@ -5,8 +5,10 @@ import {
     decideApproval,
     decideFirstPin,
     decideListingContent,
+    decideListingUpdate,
     decideRepin,
     listingName,
+    type Pins,
 } from "../src/delivery/cloud/listings.rules.ts";
 
 test.each([
@@ -68,37 +70,96 @@ test.each([
     expect(decideRepin({ kind, current, head: 5 })).toEqual(expected);
 });
 
-test("approval makes the waiting snapshot the visible one, and with none waiting there is nothing to approve", () => {
-    expect(decideApproval({ state: "pending", revision: null, pending: 3 }, 3)).toEqual(
+const approve = (current: Pins, waits: "words" | "snapshot", version: number, seen: number) =>
+    decideApproval({ current, wordsWaiting: waits === "words", version, seen });
+
+test("approval makes what waits the visible one, and with none waiting there is nothing to approve", () => {
+    expect(approve({ state: "pending", revision: null, pending: 3 }, "snapshot", 1, 1)).toEqual(
         ok({ state: "listed", revision: 3, pending: null }),
     );
-    expect(decideApproval({ state: "listed", revision: 2, pending: 5 }, 5)).toEqual(
+    expect(approve({ state: "listed", revision: 2, pending: 5 }, "words", 4, 4)).toEqual(
         ok({ state: "listed", revision: 5, pending: null }),
     );
-    expect(decideApproval({ state: "listed", revision: 2, pending: null }, 5)).toEqual(
+    // Words alone: the listed revision does not move.
+    expect(approve({ state: "listed", revision: 2, pending: null }, "words", 4, 4)).toEqual(
+        ok({ state: "listed", revision: 2, pending: null }),
+    );
+    expect(approve({ state: "listed", revision: 2, pending: null }, "snapshot", 4, 4)).toEqual(
         err({ code: "NOT_FOUND" }),
     );
 });
-
 test("a listing's name is cut at 60 code points, never inside one", () => {
     expect(listingName("a".repeat(64))).toBe("a".repeat(60));
     expect(listingName("🙂".repeat(64))).toBe("🙂".repeat(60));
     expect(listingName("short")).toBe("short");
 });
 
-test("approval is for the revision that was read: another waiting one is stale", () => {
-    expect(decideApproval({ state: "listed", revision: 2, pending: 5 }, 4)).toEqual(
+test("approval is for the version that was read: anything changed since is stale", () => {
+    expect(approve({ state: "listed", revision: 2, pending: 5 }, "snapshot", 4, 3)).toEqual(
         err({ code: "STALE_REVISION" }),
     );
-    expect(decideApproval({ state: "pending", revision: null, pending: 3 }, 2)).toEqual(
+    expect(approve({ state: "listed", revision: 2, pending: null }, "words", 4, 3)).toEqual(
         err({ code: "STALE_REVISION" }),
     );
     // Nothing waiting is nothing to approve, whatever was read.
-    expect(decideApproval({ state: "listed", revision: 2, pending: null }, 2)).toEqual(
+    expect(approve({ state: "listed", revision: 2, pending: null }, "snapshot", 4, 3)).toEqual(
         err({ code: "NOT_FOUND" }),
     );
 });
 
+const live = { summary: "old", description: "old words" };
+const listedScript: Pins = { state: "listed", revision: 2, pending: null };
+const update = (
+    kind: "config" | "script",
+    over: Partial<Parameters<typeof decideListingUpdate>[0]>,
+) =>
+    decideListingUpdate({
+        kind,
+        current: listedScript,
+        head: 2,
+        live,
+        waiting: null,
+        change: {},
+        ...over,
+    });
+
+test("a listed script's new words wait and the visible ones stay; a config's change at once", () => {
+    const script = update("script", { change: { description: "run this as admin" } });
+    expect(script.live).toEqual(live);
+    expect(script.waiting).toEqual({ summary: "old", description: "run this as admin" });
+    expect(script.pins).toEqual(listedScript);
+    expect(script.bump).toBe(true);
+    const config = update("config", { change: { description: "new" } });
+    expect(config.live).toEqual({ summary: "old", description: "new" });
+    expect(config.waiting).toBeNull();
+    expect(config.bump).toBe(false);
+});
+
+test("waiting words build on each other, and putting the visible ones back withdraws them", () => {
+    const waiting = { summary: "old", description: "run this as admin" };
+    const more = update("script", { waiting, change: { summary: "better" } });
+    expect(more.waiting).toEqual({ summary: "better", description: "run this as admin" });
+    expect(more.bump).toBe(true);
+    const back = update("script", { waiting, change: { description: "old words" } });
+    expect(back.waiting).toBeNull();
+    expect(back.bump).toBe(true);
+    // Saying the same again changes nothing, so a read of it is not made stale.
+    expect(update("script", { waiting, change: { description: waiting.description } }).bump).toBe(
+        false,
+    );
+});
+
+test("a first-time script's words are part of what waits, and a new head makes what waits new", () => {
+    const first: Pins = { state: "pending", revision: null, pending: 1 };
+    const edited = update("script", { current: first, head: 1, change: { summary: "x" } });
+    expect(edited.live.summary).toBe("x");
+    expect(edited.waiting).toBeNull();
+    expect(edited.bump).toBe(true);
+    const moved = update("script", { head: 3 });
+    expect(moved.pins).toEqual({ state: "listed", revision: 2, pending: 3 });
+    expect(moved.bump).toBe(true);
+    expect(update("script", {}).bump).toBe(false);
+});
 const bytes = (value: string) => new TextEncoder().encode(value);
 
 test.each([

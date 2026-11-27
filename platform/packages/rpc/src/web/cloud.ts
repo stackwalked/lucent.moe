@@ -47,6 +47,9 @@ const ListingState = z.enum(["pending", "listed"]);
 // `size` is all there is), `escaped` when characters that disguise code were made visible.
 const ReviewedContent = z.object({
     revision: Revision,
+    // The words that go with this snapshot: the ones that will go live, or the ones now live.
+    summary: ListingSummary,
+    description: ListingDescription,
     content: z.string().nullable(),
     size: z.int().nonnegative(),
     escaped: z.boolean(),
@@ -177,6 +180,8 @@ export const cloudContract = defineContract({
             copy: z.object({ itemId: CloudId }).nullable(),
             size: z.int().nonnegative(),
             content: z.string().nullable(),
+            // The owner's words, shown to the owner only, are waiting for staff (a script's).
+            waiting: z.boolean(),
             // Characters that change how a line reads are in `content` as \u{XXXX}.
             escaped: z.boolean(),
         }),
@@ -239,9 +244,9 @@ export const cloudContract = defineContract({
         output: z.object({ itemId: CloudId }),
     },
     // Staff with `moderation:remove`: what waits for approval, oldest first; read what waits
-    // (the content is the member's own text: show it as text, never run or render it); approve
-    // the revision that was read, or STALE_REVISION when the owner pinned another since; take a
-    // listing down.
+    // (the content is the member's own text: show it as text, never run or render it); approve what
+    // was read (`pendingVersion`), or STALE_REVISION when the owner changed what waits since; take
+    // a listing down.
     "admin.cloud.listings.list": {
         session: "member",
         effect: "read",
@@ -258,6 +263,8 @@ export const cloudContract = defineContract({
                         owner: z.object({ accountId: AccountId, username: z.string().nullable() }),
                         // A first listing, not an update of one already visible.
                         first: z.boolean(),
+                        // An update of the words alone: the listed snapshot is unchanged.
+                        wordsOnly: z.boolean(),
                         updatedAt: EpochMs,
                     }),
                 )
@@ -275,8 +282,11 @@ export const cloudContract = defineContract({
             productId: ProductId,
             kind: ItemKind,
             name: z.string(),
-            description: z.string(),
-            // The snapshot waiting for approval.
+            // What staff read, sent back to approve it: it changes whenever the owner changes
+            // what waits (the snapshot or the words), and approving a stale one is refused.
+            pendingVersion: z.int().nonnegative(),
+            // What waits for approval: the snapshot and the words that go live with it. For an
+            // update of the words alone, the revision is the one already listed.
             pending: ReviewedContent,
             // The one members see now, when what waits is an update of it.
             listed: ReviewedContent.nullable(),
@@ -286,7 +296,7 @@ export const cloudContract = defineContract({
     "admin.cloud.listings.approve": {
         session: "member",
         effect: "write",
-        input: z.strictObject({ listingId: ListingId, revision: Revision }),
+        input: z.strictObject({ listingId: ListingId, pendingVersion: z.int().nonnegative() }),
         output: Done,
         error: z.discriminatedUnion("code", [
             ...StaffRefusals,

@@ -424,28 +424,28 @@ test("a script is invisible until staff approve it, and an update keeps the appr
         expect(
             await w.client.call(
                 "admin.cloud.listings.approve",
-                { listingId: id, revision: 1 },
+                { listingId: id, pendingVersion: 1 },
                 buyer.call,
             ),
         ).toEqual(forbidden);
         expect(
             await w.client.call(
                 "admin.cloud.listings.approve",
-                { listingId: id, revision: 1 },
+                { listingId: id, pendingVersion: 1 },
                 owner.call,
             ),
         ).toEqual(forbidden);
         expect(
             await w.client.call(
                 "admin.cloud.listings.approve",
-                { listingId: id, revision: 1 },
+                { listingId: id, pendingVersion: 1 },
                 mod.call,
             ),
         ).toEqual(ok({}));
         expect(
             await w.client.call(
                 "admin.cloud.listings.approve",
-                { listingId: id, revision: 1 },
+                { listingId: id, pendingVersion: 1 },
                 mod.call,
             ),
         ).toEqual(missing);
@@ -484,7 +484,7 @@ test("a script is invisible until staff approve it, and an update keeps the appr
         expect(
             await w.client.call(
                 "admin.cloud.listings.approve",
-                { listingId: id, revision: 2 },
+                { listingId: id, pendingVersion: 2 },
                 mod.call,
             ),
         ).toEqual(ok({}));
@@ -719,12 +719,14 @@ test("staff read the script waiting, and beside it the listed one for an update;
             content: "overlay-v1",
             size: 10,
             escaped: false,
+            summary: "runs code",
+            description: "",
         });
         expect(first.value.listed).toBeNull();
         expect(
             await w.client.call(
                 "admin.cloud.listings.approve",
-                { listingId: id, revision: first.value.pending.revision },
+                { listingId: id, pendingVersion: first.value.pendingVersion },
                 mod.call,
             ),
         ).toEqual(ok({}));
@@ -744,12 +746,16 @@ test("staff read the script waiting, and beside it the listed one for an update;
             content: "<b>second</b>",
             size: 13,
             escaped: false,
+            summary: "runs code",
+            description: "",
         });
         expect(update.value.listed).toEqual({
             revision: 1,
             content: "overlay-v1",
             size: 10,
             escaped: false,
+            summary: "runs code",
+            description: "",
         });
     });
 });
@@ -770,11 +776,16 @@ test("a script staff cannot read as text is shown as not shown with its size, an
         const id = created.value.listingId;
         const read = await w.client.call("admin.cloud.listings.get", { listingId: id }, mod.call);
         invariant(read.ok, "expected the waiting script");
-        expect(read.value.pending).toEqual({ revision: 1, content: null, size: 3, escaped: false });
+        expect(read.value.pending).toMatchObject({
+            revision: 1,
+            content: null,
+            size: 3,
+            escaped: false,
+        });
         expect(
             await w.client.call(
                 "admin.cloud.listings.approve",
-                { listingId: id, revision: 1 },
+                { listingId: id, pendingVersion: 1 },
                 mod.call,
             ),
         ).toEqual(err({ code: "UNREADABLE_CONTENT" }));
@@ -804,7 +815,7 @@ test("staff approve the revision they read: one pinned since is stale, before or
         expect(
             await w.client.call(
                 "admin.cloud.listings.approve",
-                { listingId: id, revision: 1 },
+                { listingId: id, pendingVersion: 1 },
                 mod.call,
             ),
         ).toEqual(stale);
@@ -823,14 +834,15 @@ test("staff approve the revision they read: one pinned since is stale, before or
             racing.push(
                 w.client.call(
                     "admin.cloud.listings.approve",
-                    { listingId: id, revision: 2 },
+                    { listingId: id, pendingVersion: 2 },
                     mod.call,
                 ),
             );
             parked = await waitForLockWaiters(w.db, 1);
             const pinned = await execute(
                 tx,
-                sql`update cloud_listing set pending_revision = 3 where id = ${id}::uuid`,
+                sql`update cloud_listing set pending_revision = 3, pending_version = pending_version + 1
+                    where id = ${id}::uuid`,
             );
             invariant(pinned.ok, "the gate re-pins");
             return ok(undefined);
@@ -842,7 +854,7 @@ test("staff approve the revision they read: one pinned since is stale, before or
         expect(
             await w.client.call(
                 "admin.cloud.listings.approve",
-                { listingId: id, revision: 3 },
+                { listingId: id, pendingVersion: 3 },
                 mod.call,
             ),
         ).toEqual(ok({}));
@@ -1032,7 +1044,7 @@ test("what a page shows of the bytes: text as it is, a script's source whole, an
             if (kind === "script") {
                 const approved = await w.client.call(
                     "admin.cloud.listings.approve",
-                    { listingId: created.value.listingId, revision: 1 },
+                    { listingId: created.value.listingId, pendingVersion: 1 },
                     mod.call,
                 );
                 invariant(approved.ok, "expected an approval");
@@ -1144,7 +1156,7 @@ test("who may read a listing's page: entitled members, not blocked, not a gone o
             (
                 await w.client.call(
                     "admin.cloud.listings.approve",
-                    { listingId: sid, revision: 1 },
+                    { listingId: sid, pendingVersion: 1 },
                     mod.call,
                 )
             ).ok,
@@ -1189,7 +1201,7 @@ test("a description is 0 to 2,000 characters, set on create and update, and chan
             (
                 await w.client.call(
                     "admin.cloud.listings.approve",
-                    { listingId: id, revision: 1 },
+                    { listingId: id, pendingVersion: 1 },
                     mod.call,
                 )
             ).ok,
@@ -1204,9 +1216,10 @@ test("a description is 0 to 2,000 characters, set on create and update, and chan
                 )
             ).ok,
         ).toBe(true);
+        // A script's words wait for staff, and the owner sees them as waiting.
         const mine = await w.client.call("cloud.listings.mine", p, owner.call);
         invariant(mine.ok, "expected the owner's listings");
-        expect(mine.value.map((row) => [row.state, row.pending])).toEqual([["listed", false]]);
+        expect(mine.value.map((row) => [row.state, row.pending])).toEqual([["listed", true]]);
         expect(
             await w.client.call(
                 "cloud.listings.update",
@@ -1232,6 +1245,142 @@ test("a description is 0 to 2,000 characters, set on create and update, and chan
         expect(waiting.value.map((row) => row.pending)).toEqual([true]);
         const review = await w.client.call("admin.cloud.listings.get", { listingId: id }, mod.call);
         invariant(review.ok, "expected the review read");
-        expect(review.value.description).toBe("new words\nand a line");
+        expect(review.value.pending.description).toBe("new words\nand a line");
+        expect(review.value.listed?.description).toBe("x".repeat(2_000));
+    });
+});
+
+test("a script's words wait for staff like its code: others keep the approved ones, a stale read is refused, a words-only approval leaves the revision, and a config's words change at once", async () => {
+    await world(19205, async (w) => {
+        const owner = await w.member("owner");
+        const buyer = await w.member("buyer");
+        const mod = await w.staff("mod");
+        const script = await w.item(owner.id, "script", "tool", text("source"));
+        const made = await w.client.call(
+            "cloud.listings.create",
+            { ...p, itemId: script, summary: "a tool", description: "does a thing" },
+            owner.call,
+        );
+        invariant(made.ok, "expected a listing");
+        const id = made.value.listingId;
+        const approve = (pendingVersion: number) =>
+            w.client.call(
+                "admin.cloud.listings.approve",
+                { listingId: id, pendingVersion },
+                mod.call,
+            );
+        const read = async () => {
+            const reply = await w.client.call(
+                "admin.cloud.listings.get",
+                { listingId: id },
+                mod.call,
+            );
+            invariant(reply.ok, "expected the review read");
+            return reply.value;
+        };
+        const page = async (who: typeof buyer) => {
+            const reply = await w.client.call("cloud.listings.get", { listingId: id }, who.call);
+            invariant(reply.ok, "expected the page");
+            return reply.value;
+        };
+        // A first-time script's words are approved with its first revision.
+        const first = await read();
+        expect(first.pending).toMatchObject({ summary: "a tool", description: "does a thing" });
+        expect((await approve(first.pendingVersion)).ok).toBe(true);
+
+        // A words-only edit: invisible to another member, marked waiting for the owner.
+        const edit = await w.client.call(
+            "cloud.listings.update",
+            { listingId: id, summary: "run as admin", description: "run this as admin" },
+            owner.call,
+        );
+        expect(edit.ok).toBe(true);
+        expect(await page(buyer)).toMatchObject({
+            summary: "a tool",
+            description: "does a thing",
+            waiting: false,
+        });
+        expect((await listed(w, buyer)).map((row) => row.summary)).toEqual(["a tool"]);
+        expect(await page(owner)).toMatchObject({
+            summary: "run as admin",
+            description: "run this as admin",
+            waiting: true,
+        });
+        const mine = await w.client.call("cloud.listings.mine", p, owner.call);
+        invariant(mine.ok, "expected the owner's listings");
+        expect(mine.value.map((row) => [row.summary, row.pending])).toEqual([
+            ["run as admin", true],
+        ]);
+        const queue = await w.client.call(
+            "admin.cloud.listings.list",
+            { state: "pending", cursor: null },
+            mod.call,
+        );
+        invariant(queue.ok, "expected the queue");
+        expect(queue.value.items.map((row) => [row.first, row.wordsOnly])).toEqual([[false, true]]);
+        const waiting = await read();
+        expect(waiting.pending).toMatchObject({ revision: 1, description: "run this as admin" });
+        expect(waiting.listed).toMatchObject({ revision: 1, description: "does a thing" });
+
+        // The owner changes the words again after staff read: that read is stale.
+        await w.client.call(
+            "cloud.listings.update",
+            { listingId: id, description: "run this" },
+            owner.call,
+        );
+        expect(await approve(waiting.pendingVersion)).toEqual(err({ code: "STALE_REVISION" }));
+        expect((await page(buyer)).description).toBe("does a thing");
+        const again = await read();
+        expect(again.pendingVersion).toBeGreaterThan(waiting.pendingVersion);
+        expect((await approve(again.pendingVersion)).ok).toBe(true);
+        // Approved: others see the words, the listed revision did not move, nothing waits.
+        expect(await page(buyer)).toMatchObject({
+            summary: "run as admin",
+            description: "run this",
+            waiting: false,
+        });
+        const live = await queryAll(
+            w.db,
+            z.object({ revision: z.number(), pendingSummary: z.string().nullable() }),
+            sql`select revision, pending_summary as "pendingSummary" from cloud_listing`,
+        );
+        expect(live).toEqual(ok([{ revision: 1, pendingSummary: null }]));
+        expect(
+            await w.client.call("admin.cloud.listings.get", { listingId: id }, mod.call),
+        ).toEqual(missing);
+
+        // Putting the visible words back withdraws what waits.
+        await w.client.call(
+            "cloud.listings.update",
+            { listingId: id, description: "x" },
+            owner.call,
+        );
+        await w.client.call(
+            "cloud.listings.update",
+            { listingId: id, description: "run this" },
+            owner.call,
+        );
+        expect((await page(owner)).waiting).toBe(false);
+
+        // A config's words change at once.
+        const config = await w.item(owner.id, "config", "cfg");
+        const cfg = await w.client.call(
+            "cloud.listings.create",
+            { ...p, itemId: config, summary: "cfg", description: "old" },
+            owner.call,
+        );
+        invariant(cfg.ok, "expected a config listing");
+        await w.client.call(
+            "cloud.listings.update",
+            { listingId: cfg.value.listingId, description: "new" },
+            owner.call,
+        );
+        const seen = await w.client.call(
+            "cloud.listings.get",
+            { listingId: cfg.value.listingId },
+            buyer.call,
+        );
+        invariant(seen.ok, "expected the config page");
+        expect(seen.value).toMatchObject({ description: "new", waiting: false });
     });
 });

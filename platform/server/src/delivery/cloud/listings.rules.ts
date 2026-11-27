@@ -44,18 +44,80 @@ export function decideRepin(params: {
         : { state: "listed", revision: params.current.revision, pending: params.head };
 }
 
-// Approval makes the waiting snapshot the visible one; with nothing waiting there is nothing to
-// approve. Staff approve the revision they read: the owner can re-pin after staff looked, and a
-// different snapshot must not go live on the strength of a review of another.
-export function decideApproval(
-    current: Pins,
-    seen: number,
-): Result<Pins, { readonly code: "NOT_FOUND" } | { readonly code: "STALE_REVISION" }> {
-    if (current.pending === null) return err({ code: "NOT_FOUND" });
-    if (current.pending !== seen) return err({ code: "STALE_REVISION" });
-    return ok({ state: "listed", revision: current.pending, pending: null });
+export type Words = { readonly summary: string; readonly description: string };
+
+function sameWords(a: Words | null, b: Words | null): boolean {
+    if (a === null || b === null) return a === b;
+    return a.summary === b.summary && a.description === b.description;
 }
 
+// Everything an owner's update to a listing can move: the pins, the words, and the version of what
+// waits. A script runs code, so a visible one's words are approved like its revision: a change
+// waits (`waiting`, the owner's own view of the words) while others keep the visible ones, and
+// changing them back to the visible ones withdraws it. A first-time script's words are approved
+// with its first revision, and a config's or inventory's change at once. `bump` says what waits
+// is not what it was, so a staff member's earlier read of it is stale.
+export type ListingUpdate = {
+    readonly pins: Pins;
+    readonly live: Words;
+    readonly waiting: Words | null;
+    readonly bump: boolean;
+};
+
+export function decideListingUpdate(params: {
+    readonly kind: ListingKind;
+    readonly current: Pins;
+    readonly head: number;
+    readonly live: Words;
+    readonly waiting: Words | null;
+    readonly change: { readonly summary?: string; readonly description?: string };
+}): ListingUpdate {
+    const pins = decideRepin(params);
+    const base = params.waiting ?? params.live;
+    const next: Words = {
+        summary: params.change.summary ?? base.summary,
+        description: params.change.description ?? base.description,
+    };
+    const held = params.kind === "script" && params.current.state === "listed";
+    const live = held ? params.live : next;
+    const waiting = held && !sameWords(next, params.live) ? next : null;
+    const waitsFor = (
+        state: ListingState,
+        pending: number | null,
+        words: Words,
+        hold: Words | null,
+    ) => ({ pending, words: state === "pending" ? words : hold });
+    const before = waitsFor(
+        params.current.state,
+        params.current.pending,
+        params.live,
+        params.waiting,
+    );
+    const after = waitsFor(pins.state, pins.pending, live, waiting);
+    return {
+        pins,
+        live,
+        waiting,
+        bump: before.pending !== after.pending || !sameWords(before.words, after.words),
+    };
+}
+
+// Approval makes what waits (the snapshot, the words, or both) the visible one; with nothing
+// waiting there is nothing to approve. Staff approve the version they read: the owner can change
+// what waits after staff looked, and something else must not go live on the strength of a review
+// of another.
+export function decideApproval(params: {
+    readonly current: Pins;
+    readonly wordsWaiting: boolean;
+    readonly version: number;
+    readonly seen: number;
+}): Result<Pins, { readonly code: "NOT_FOUND" } | { readonly code: "STALE_REVISION" }> {
+    const { current } = params;
+    if (current.pending === null && !params.wordsWaiting) return err({ code: "NOT_FOUND" });
+    if (params.version !== params.seen) return err({ code: "STALE_REVISION" });
+    const revision = current.pending ?? current.revision;
+    return ok({ state: "listed", revision, pending: null });
+}
 // Item names run to 64 code points; a listing's to 60, cut at a code point.
 export function listingName(name: string): string {
     return [...name].slice(0, LISTING_NAME_MAX).join("");

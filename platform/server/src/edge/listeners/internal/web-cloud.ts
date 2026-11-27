@@ -165,7 +165,7 @@ export const cloudHandlers = {
                 await approveListing(ctx.auth.db, {
                     caller,
                     listingId: input.listingId,
-                    revision: input.revision,
+                    pendingVersion: input.pendingVersion,
                 }),
             ),
         ),
