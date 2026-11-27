@@ -6,6 +6,7 @@ import { Button } from "../../ui/Button/Button.tsx";
 import { Time } from "../../ui/Time/Time.tsx";
 import { memberOf } from "../../viewer.ts";
 import { RefusalNote } from "../auth/RefusalNote.tsx";
+import { ReportButton } from "../comments/ReportButton.tsx";
 import { CLOUD_COPY as C } from "./copy.ts";
 import styles from "./ListingRow.module.css";
 import type { fetchListings } from "./server.ts";
@@ -56,9 +57,16 @@ export function ListingRow({
 }) {
     const { owner } = listing;
     const { session } = useRouteContext({ from: "__root__" });
-    // Your own listing is not yours to add.
+    // Your own listing is not yours to add or to report.
     const own = owner.username !== null && owner.username === memberOf(session)?.username;
-    const action = own ? null : <AddButton listing={listing} />;
+    const action = own ? null : (
+        <span className={styles.end}>
+            <span className={styles.acts}>
+                <ReportButton kind="listing" targetId={listing.id} />
+            </span>
+            <AddButton listing={listing} />
+        </span>
+    );
     const who =
         owner.username === null ? (
             C.copyOf(null)

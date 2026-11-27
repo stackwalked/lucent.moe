@@ -1,4 +1,4 @@
-import { Link } from "@tanstack/react-router";
+import { Link, useRouteContext } from "@tanstack/react-router";
 import { type ReactNode, useState } from "react";
 import type { Outcome, Refused } from "../../server/outcome.ts";
 import { Avatar } from "../../ui/Avatar/Avatar.tsx";
@@ -7,8 +7,10 @@ import { Empty } from "../../ui/Empty/Empty.tsx";
 import { Section } from "../../ui/Section/Section.tsx";
 import { Stack } from "../../ui/Stack/Stack.tsx";
 import { Time } from "../../ui/Time/Time.tsx";
+import { memberOf } from "../../viewer.ts";
 import { RefusalNote } from "../auth/RefusalNote.tsx";
 import { postingNote } from "../comments/posting.ts";
+import { ReportButton } from "../comments/ReportButton.tsx";
 import { TextArea } from "../comments/TextArea.tsx";
 import { PROFILE_COPY as C } from "./copy.ts";
 import { fetchWall, postWallComment, removeWallComment } from "./server.ts";
@@ -25,6 +27,8 @@ function Row({
     readonly onDelete: (id: string) => void;
 }) {
     const { author } = comment;
+    const { session } = useRouteContext({ from: "__root__" });
+    const mine = author.username !== null && author.username === memberOf(session)?.username;
     return (
         <li className={styles.comment}>
             <span className={styles.pic}>
@@ -49,6 +53,7 @@ function Row({
                                 {C.delete}
                             </Button>
                         ) : null}
+                        {mine ? null : <ReportButton kind="comment" targetId={comment.id} />}
                         <span className={styles.when}>
                             <Time at={comment.createdAt} format="relative" />
                         </span>

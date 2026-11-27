@@ -63,7 +63,7 @@
         white-space: pre-wrap;
     }
 
-    /* The delete control shows on hover or focus; where there is no hover (touch) or little
+    /* The delete and report controls show on hover or focus; where there is no hover (touch) or little
        room, it is always there. */
     .end button {
         opacity: 0;
