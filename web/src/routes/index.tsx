@@ -2,7 +2,6 @@ import { createFileRoute } from "@tanstack/react-router";
 import { APPEAL_PATH } from "../features/appeal/path.ts";
 import { fetchChangelog } from "../features/changes/server.ts";
 import { fetchListings } from "../features/cloud/server.ts";
-import { fetchMembers } from "../features/community/server.ts";
 import { HomePage } from "../features/home/HomePage.tsx";
 import { Landing } from "../features/landing/Landing.tsx";
 import { fetchLoaderOffer, fetchProducts } from "../features/products/server.ts";
@@ -22,16 +21,14 @@ export const Route = createFileRoute("/")({
     },
     loader: async ({ context }) => {
         if (memberOf(context.session) === null) return null;
-        const [shouts, products, loader, changes, listings, members, newest] = await Promise.all([
+        const [shouts, products, loader, changes, listings] = await Promise.all([
             fetchShouts({ data: { productId: null, cursor: null } }),
             fetchProducts(),
             fetchLoaderOffer(),
             fetchChangelog({ data: {} }),
             fetchListings({ data: {} }),
-            fetchMembers({ data: {} }),
-            fetchMembers({ data: { sort: "newest" } }),
         ]);
-        return { shouts, products, loader, changes, listings, members, newest };
+        return { shouts, products, loader, changes, listings };
     },
     component: function Home() {
         return Route.useLoaderData() === null ? <Landing /> : <HomePage />;
