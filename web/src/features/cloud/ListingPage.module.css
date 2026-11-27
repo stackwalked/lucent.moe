@@ -37,6 +37,12 @@
         overflow-y: auto;
     }
 
+    /* The same colour a waiting listing has in the cloud list. */
+    .waiting {
+        color: var(--wait-ink);
+        font-size: var(--size-13);
+    }
+
     .escaped {
         color: var(--shu-ink);
         font-size: var(--size-13);

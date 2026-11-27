@@ -57,7 +57,8 @@ export function AdminCloudPage() {
                             {
                                 key: "what",
                                 header: C.what,
-                                cell: (row) => (row.first ? C.first : C.update),
+                                cell: (row) =>
+                                    row.first ? C.first : row.wordsOnly ? C.words : C.update,
                             },
                             {
                                 key: "actions",

@@ -12,8 +12,8 @@ import { approveListing, readListing } from "./server.ts";
 
 type Read = Awaited<ReturnType<typeof readListing>>;
 
-// Approval is of what was read: opening the dialog reads the waiting script (and, for an update,
-// the one members see now), and approving sends the revision shown. The content is the member's
+// Approval is of what was read: opening the dialog reads what waits (the script, its words, or
+// both) and, for an update, what members see now; approving sends the version of what was read. The content is the member's
 // own text: it is shown as text in the code block and nothing else.
 export function ApproveListing({ listingId }: { readonly listingId: string }) {
     const staff = useStaffAction();
@@ -48,15 +48,15 @@ export function ApproveListing({ listingId }: { readonly listingId: string }) {
                         <RefusalNote refused={read.refused} />
                     ) : (
                         <>
-                            {read.value.description === "" ? null : (
-                                <Stack gap={2}>
-                                    <p>{C.description}</p>
-                                    <p className={styles.description}>{read.value.description}</p>
-                                </Stack>
-                            )}
                             <Snapshot caption={C.waiting} shown={read.value.pending} />
                             {read.value.listed === null ? null : (
-                                <Snapshot caption={C.listedNow} shown={read.value.listed} />
+                                <Snapshot
+                                    caption={C.listedNow}
+                                    shown={read.value.listed}
+                                    withCode={
+                                        read.value.listed.revision !== read.value.pending.revision
+                                    }
+                                />
                             )}
                         </>
                     )}
@@ -66,7 +66,7 @@ export function ApproveListing({ listingId }: { readonly listingId: string }) {
             run={() => {
                 if (read === null || !read.ok) return Promise.resolve(unread);
                 return approveListing({
-                    data: { listingId, revision: read.value.pending.revision },
+                    data: { listingId, pendingVersion: read.value.pendingVersion },
                 });
             }}
         />
@@ -76,9 +76,13 @@ export function ApproveListing({ listingId }: { readonly listingId: string }) {
 function Snapshot({
     caption,
     shown,
+    withCode = true,
 }: {
     readonly caption: string;
+    readonly withCode?: boolean;
     readonly shown: {
+        readonly summary: string;
+        readonly description: string;
         readonly content: string | null;
         readonly size: number;
         readonly escaped: boolean;
@@ -87,7 +91,11 @@ function Snapshot({
     return (
         <Stack gap={2}>
             <p>{caption}</p>
-            {shown.content === null ? (
+            {shown.summary === "" ? null : <p className={styles.description}>{shown.summary}</p>}
+            {shown.description === "" ? null : (
+                <p className={styles.description}>{shown.description}</p>
+            )}
+            {!withCode ? null : shown.content === null ? (
                 <p>
                     {C.notShown} · {sizeWords(shown.size)}
                 </p>

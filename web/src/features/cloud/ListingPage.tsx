@@ -157,6 +157,9 @@ function Actions({ listing }: { readonly listing: Listing }) {
                 {listing.mine ? (
                     <>
                         <EditListing listing={listing} />
+                        {listing.waiting ? (
+                            <span className={styles.waiting}>{C.waiting}</span>
+                        ) : null}
                         <Button
                             tone="danger"
                             pending={pending === "unlist"}

@@ -20,10 +20,11 @@ export const readListing = createServerFn({ method: "GET" })
         return reply.ok ? done(reply.value) : refuse(reply.error);
     });
 
-// The revision is the one the reviewer read; platform refuses it if another is waiting now.
+// The version is what the reviewer read (the waiting snapshot and words); platform refuses it if
+// the owner changed either since.
 export const approveListing = createServerFn({ method: "POST" })
     .validator((data: unknown) =>
-        z.strictObject({ listingId: z.uuid(), revision: z.int().positive() }).parse(data),
+        z.strictObject({ listingId: z.uuid(), pendingVersion: z.int().nonnegative() }).parse(data),
     )
     .handler(async ({ data }) => {
         const reply = await callPlatform("admin.cloud.listings.approve", data);

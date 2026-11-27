@@ -10,6 +10,7 @@ export const ADMIN_CLOUD_COPY = {
     what: "waiting",
     first: "first",
     update: "update",
+    words: "words",
     approve: "approve",
     approveTitle: "approve this listing?",
     loading: "loading",
