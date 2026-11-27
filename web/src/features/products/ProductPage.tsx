@@ -14,15 +14,14 @@ import { PRODUCTS_COPY as C } from "./copy.ts";
 import { noteLastProduct } from "./lastProduct.ts";
 import { ProductLead } from "./ProductLead.tsx";
 import styles from "./ProductPage.module.css";
-import { statusWord } from "./view.ts";
+import { statusWord, versionOf } from "./view.ts";
 
 const parent = getRouteApi("/_member/products/$productId");
 const route = getRouteApi("/_member/products/$productId/");
 
 // One product as the member holds it: its changes on the left; on the right whether it runs
-// today and until when theirs lasts, and the loader. The head
-// row is the product's own (ProductLead). No version
-// rows anywhere: releases carry no version string, only a seal number.
+// today, the version they run when its release has an entry, and until when theirs lasts, and the
+// loader. The head row is the product's own (ProductLead).
 export function ProductPage() {
     const { product, status } = parent.useLoaderData();
     const { changes, loader, cloud } = route.useLoaderData();
@@ -34,7 +33,9 @@ export function ProductPage() {
 
     const now = status.products.find((listed) => listed.productId === product.productId) ?? null;
     const current = statusWord(now?.state ?? product.state, now?.supported ?? null);
+    const version = versionOf(product);
     const accessItems = [
+        version === null ? null : { label: C.version, value: version },
         current === null ? null : { label: C.support, value: current.word, tone: current.tone },
         access === null
             ? { label: C.yourAccess, value: C.noAccess }
@@ -67,7 +68,18 @@ export function ProductPage() {
                             <Pairs items={accessItems} align="end" />
                         </Section>
                         <Section
-                            caption={C.loader}
+                            caption={
+                                <>
+                                    {C.loader}
+                                    {loader.ok &&
+                                    loader.value.state === "ready" &&
+                                    loader.value.version !== null ? (
+                                        <span className={styles.version}>
+                                            {loader.value.version}
+                                        </span>
+                                    ) : null}
+                                </>
+                            }
                             actions={<Link to="/changes/loader">{C.loaderChanges}</Link>}
                         >
                             {loader.ok && loader.value.state === "ready" ? (

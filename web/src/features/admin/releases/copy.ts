@@ -3,6 +3,7 @@ export const RELEASES_COPY = {
     line: (product: string, channel: string) => `${product} on ${channel}`,
     seals: (product: string, channel: string) => `seals for ${product} on ${channel}`,
     seal: "seal",
+    version: "version",
     release: "release",
     staged: "staged",
     state: "state",

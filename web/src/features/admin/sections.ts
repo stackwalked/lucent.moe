@@ -15,7 +15,7 @@ export type AdminSection =
     | "cloud"
     | "tickets"
     | "resources"
-    | "record"
+    | "changelog"
     | "audit"
     | "system"
     | "usage"
@@ -51,7 +51,7 @@ export const ADMIN_TABS = [
     {
         tab: "products",
         subs: [
-            { section: "record", to: "/admin/products/status" },
+            { section: "changelog", to: "/admin/products/changelog" },
             { section: "releases", to: "/admin/products/releases" },
             { section: "updates", to: "/admin/products/updates" },
             { section: "overrides", to: "/admin/products/overrides" },
@@ -107,7 +107,7 @@ export function adminSections(viewer: Viewer): Readonly<Record<AdminSection, boo
         tickets: viewerCan(viewer, "tickets:reply"),
         queue: queueKinds((action) => viewerCan(viewer, action)).length > 0,
         resources: viewerCan(viewer, "releases:promote"),
-        record: viewerCan(viewer, "releases:promote"),
+        changelog: viewerCan(viewer, "releases:promote"),
         audit: viewerCan(viewer, "audit:read"),
         system: viewerCan(viewer, "audit:read"),
         usage: viewerCan(viewer, "audit:read"),

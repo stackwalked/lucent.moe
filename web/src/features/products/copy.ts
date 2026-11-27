@@ -9,6 +9,7 @@ export const PRODUCTS_COPY = {
     none: "no products",
     status: "status",
     support: "support",
+    version: "version",
     yourAccess: "subscription",
     noAccess: "no access",
     until: "until",

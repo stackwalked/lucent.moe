@@ -13,6 +13,13 @@
         list-style: none;
     }
 
+    .version {
+        margin-inline-start: var(--s-2);
+        color: var(--ink-2);
+        font-family: var(--font-mono);
+        font-size: var(--size-13);
+    }
+
     .note {
         color: var(--ink-2);
     }

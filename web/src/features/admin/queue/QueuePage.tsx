@@ -205,12 +205,6 @@ export function QueuePage() {
                                                         {word.word}
                                                     </span>
                                                 )}
-                                                <Link
-                                                    to="/admin/products/status"
-                                                    className={styles.set}
-                                                >
-                                                    {C.set}
-                                                </Link>
                                             </li>
                                         );
                                     })}

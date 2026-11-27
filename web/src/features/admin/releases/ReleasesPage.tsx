@@ -24,6 +24,15 @@ type Listed = Extract<ReturnType<typeof route.useLoaderData>, { ok: true }>["val
 type Line = Listed[number];
 type Seal = Line["seals"][number];
 
+// The current release's version when its entry names one, else its seal number.
+function pickWord(line: Line) {
+    const { current } = line;
+    if (current === null) return null;
+    const version =
+        line.seals.find((seal: Seal) => seal.number === current.number)?.version ?? null;
+    return { word: version ?? current.number, tone: "dim" as const };
+}
+
 const lineId = (line: Line) => `${line.productId}:${line.channel}`;
 
 // One product and channel at a time, chosen from the picker: its current seal and the staged ones
@@ -63,10 +72,7 @@ export function ReleasesPage() {
                                 rows={listed.value.map((each) => ({
                                     id: lineId(each),
                                     label: RELEASES_COPY.line(productName(each.name), each.channel),
-                                    status:
-                                        each.current === null
-                                            ? null
-                                            : { word: each.current.number, tone: "dim" as const },
+                                    status: pickWord(each),
                                 }))}
                                 current={lineId(line)}
                                 linkFor={(id, children) => (
@@ -110,6 +116,11 @@ function Seals({ line, mayPromote }: { readonly line: Line; readonly mayPromote:
             caption={RELEASES_COPY.seals(product, line.channel)}
             columns={[
                 { key: "seal", header: RELEASES_COPY.seal, cell: (seal: Seal) => seal.number },
+                {
+                    key: "version",
+                    header: RELEASES_COPY.version,
+                    cell: (seal) => seal.version ?? "—",
+                },
                 {
                     key: "release",
                     header: RELEASES_COPY.release,

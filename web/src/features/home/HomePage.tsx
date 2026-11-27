@@ -8,7 +8,7 @@ import { Time } from "../../ui/Time/Time.tsx";
 import { memberOf, subjectOf } from "../../viewer.ts";
 import { ListingRow } from "../cloud/ListingRow.tsx";
 import { usePresence } from "../community/presence.ts";
-import { LOADER_PRODUCT_ID, productName, statusWord } from "../products/view.ts";
+import { LOADER_PRODUCT_ID, productName, statusWord, versionOf } from "../products/view.ts";
 import { SiteShell } from "../shell/SiteShell.tsx";
 import { ShoutFeed } from "../shouts/ShoutFeed.tsx";
 import { HOME_COPY as C } from "./copy.ts";
@@ -108,7 +108,14 @@ export function HomePage() {
                                                         }}
                                                         className={styles.row}
                                                     >
-                                                        <span>{productName(product.name)}</span>
+                                                        <span>
+                                                            {productName(product.name)}
+                                                            {versionOf(product) === null ? null : (
+                                                                <span className={styles.version}>
+                                                                    {versionOf(product)}
+                                                                </span>
+                                                            )}
+                                                        </span>
                                                         {word === null ? null : (
                                                             <span
                                                                 className={styles.end}

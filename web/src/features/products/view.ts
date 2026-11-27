@@ -41,3 +41,14 @@ export function statusWord(state: LifecycleState, supported: boolean | null): St
     if (state === "live") return null;
     return { word: PRODUCTS_COPY.lifecycle[state], tone: "dim" };
 }
+
+// The version of the release a member runs, when its changelog entry names one: the first of
+// their channels that has one.
+export function versionOf(product: {
+    readonly channels: readonly { readonly release: { readonly version: string | null } | null }[];
+}): string | null {
+    for (const channel of product.channels) {
+        if (channel.release?.version != null) return channel.release.version;
+    }
+    return null;
+}

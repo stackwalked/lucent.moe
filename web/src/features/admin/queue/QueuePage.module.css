@@ -116,11 +116,6 @@
         color: var(--shu-ink);
     }
 
-    .set {
-        color: var(--pink-ink);
-        font-size: var(--size-13);
-    }
-
     @media (width <= 640px) {
         .row {
             grid-template-columns: minmax(0, 1fr) auto;

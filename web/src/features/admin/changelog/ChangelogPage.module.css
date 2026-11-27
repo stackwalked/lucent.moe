@@ -1,0 +1,20 @@
+@layer features {
+    /* Fields as wide as a form is, no wider: the page's main column is far wider than a line of
+       this text wants. */
+    .form {
+        max-inline-size: calc(var(--form) * 1.5);
+    }
+
+    .fields {
+        display: flex;
+        flex-direction: column;
+        gap: var(--s-3);
+    }
+
+    /* About, release and version share a row while each keeps room to read. */
+    .trio {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(calc(var(--s-8) * 2), 1fr));
+        gap: var(--s-3);
+    }
+}

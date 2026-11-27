@@ -10,7 +10,7 @@ export const ADMIN_COPY = {
     cloud: "cloud listings",
     tickets: "tickets",
     resources: "resources",
-    record: "public record",
+    changelog: "changelog",
     overrides: "kill switches",
     updates: "update days",
     review: "review",
@@ -39,7 +39,7 @@ export const ADMIN_COPY = {
         accounts: "accounts",
         invites: "invites",
         roles: "roles",
-        record: "status",
+        changelog: "changelog",
         releases: "releases",
         updates: "updates",
         overrides: "overrides",
@@ -115,7 +115,15 @@ export const OPERATION_LABELS: Readonly<Record<AuditOperation, string>> = {
     "discord.rule_remove": "discord rule removed",
 };
 
+// These name operations that no longer exist but remain in the audit log.
+const RETIRED_OPERATION_LABELS: Readonly<Record<string, string>> = {
+    "known_issue.add": "known issue added",
+    "known_issue.update": "known issue edited",
+    "known_issue.close": "known issue closed",
+    "known_issue.delete": "known issue removed",
+};
+
 export function operationLabel(operation: string): string {
     const known = Object.entries(OPERATION_LABELS).find(([name]) => name === operation);
-    return known === undefined ? operation : known[1];
+    return known?.[1] ?? RETIRED_OPERATION_LABELS[operation] ?? operation;
 }

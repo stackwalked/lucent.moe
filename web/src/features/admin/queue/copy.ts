@@ -16,7 +16,6 @@ export const QUEUE_COPY = {
     none: "nothing waiting",
     more: "more",
     products: "products",
-    set: "set",
     system: "system",
     jobs: "jobs",
     mail: "mail",

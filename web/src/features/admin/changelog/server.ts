@@ -4,7 +4,7 @@ import { z } from "zod";
 import { done, refuse } from "../../../server/outcome.ts";
 import { callPlatform, readPlatform } from "../../../server/platform.ts";
 
-export const listRecord = createServerFn({ method: "GET" }).handler(async () => {
+export const listChangelog = createServerFn({ method: "GET" }).handler(async () => {
     const reply = await readPlatform("admin.record.list", {});
     return reply.ok ? done(reply.value) : refuse(reply.error);
 });

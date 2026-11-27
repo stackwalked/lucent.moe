@@ -33,6 +33,13 @@
         white-space: nowrap;
     }
 
+    .version {
+        margin-inline-start: var(--s-2);
+        color: var(--ink-2);
+        font-family: var(--font-mono);
+        font-size: var(--size-13);
+    }
+
     .end {
         flex: none;
         color: var(--ink-2);
