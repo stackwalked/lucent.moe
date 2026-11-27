@@ -9,6 +9,13 @@
         anchor-name: --anchor;
     }
 
+    .root[data-fill="true"],
+    .root[data-fill="true"] > .anchor {
+        display: flex;
+        inline-size: 100%;
+        block-size: 100%;
+    }
+
     /* No display here: a class's display would beat the UA's hiding of a closed popover. */
     .panel {
         position: fixed;

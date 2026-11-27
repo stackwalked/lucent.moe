@@ -26,7 +26,6 @@ export const membersContract = defineContract({
                     avatar: AvatarDigest.nullable(),
                     memberNo: z.number(),
                     joinedAt: EpochMs,
-                    tagline: z.string(),
                     role: z.object({ name: z.string(), color: RoleLabelColor }).nullable(),
                 }),
             ),

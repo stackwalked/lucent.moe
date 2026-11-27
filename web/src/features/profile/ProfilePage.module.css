@@ -53,11 +53,6 @@
         font-weight: var(--w-regular);
     }
 
-    .tagline {
-        margin-block-start: var(--s-1);
-        color: var(--ink-2);
-    }
-
     .acts {
         display: flex;
         flex-wrap: wrap;
@@ -110,46 +105,12 @@
         position: relative;
     }
 
-    /* Edit mode: the banner's buttons sit on its lower right corner. */
-    .bannerActs {
-        position: absolute;
-        inset-block-end: var(--s-2);
-        inset-inline-end: var(--s-2);
-        max-inline-size: calc(100% - var(--s-4));
-    }
-
-    .imageControl {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        justify-content: flex-end;
-        gap: var(--s-2);
-    }
-
+    /* The picture's edit control covers it. */
     .picBox {
         position: relative;
         flex: none;
     }
 
-    /* Under the picture, out of the flow, so the identity row keeps its layout; the row only
-       reserves the room. */
-    .picActs {
-        position: absolute;
-        inset-block-start: calc(100% + var(--s-1));
-        inset-inline-start: 0;
-        inline-size: max-content;
-        max-inline-size: calc(var(--s-8) * 6);
-    }
-
-    .picActs .imageControl {
-        justify-content: flex-start;
-    }
-
-    .identity[data-edit] {
-        margin-block-end: calc(var(--control-sm) + var(--s-2));
-    }
-
-    .taglineInput,
     .aboutInput {
         inline-size: 100%;
         padding-inline: var(--s-2);
@@ -160,9 +121,10 @@
         font-size: var(--size-14);
     }
 
-    .taglineInput {
-        block-size: var(--control-h);
-        margin-block-start: var(--s-1);
+    /* The picture's edit control covers it. */
+    .picBox {
+        position: relative;
+        flex: none;
     }
 
     .aboutInput {
@@ -192,17 +154,5 @@
 
     .off a {
         color: inherit;
-    }
-
-    /* Where the identity row wraps, the picture's buttons go in the flow under it. */
-    @media (width <= 640px) {
-        .identity[data-edit] {
-            margin-block-end: 0;
-        }
-
-        .picActs {
-            position: static;
-            margin-block-start: var(--s-1);
-        }
     }
 }

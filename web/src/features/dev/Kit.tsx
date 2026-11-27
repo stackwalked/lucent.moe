@@ -158,6 +158,21 @@ function Actions() {
                 <Popover trigger={(target) => <Button popoverTarget={target}>popover</Button>}>
                     <p>a panel anchored to its trigger.</p>
                 </Popover>
+                <span className={styles.fill}>
+                    <Popover
+                        fill
+                        trigger={(target) => (
+                            <button
+                                type="button"
+                                className={styles.fillTrigger}
+                                aria-label="filling popover"
+                                popoverTarget={target}
+                            />
+                        )}
+                    >
+                        <p>the trigger is as large as its parent.</p>
+                    </Popover>
+                </span>
                 <Button onClick={() => setDialog(true)}>dialog</Button>
                 <Button onClick={() => toast("session ended")}>toast</Button>
             </Stack>

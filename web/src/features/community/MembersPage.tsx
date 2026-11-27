@@ -49,7 +49,6 @@ function MemberRow({ member }: { readonly member: Member }) {
                 {member.role === null ? null : (
                     <RoleLabel name={member.role.name} color={member.role.color} />
                 )}
-                <span className={styles.tagline}>{member.tagline}</span>
             </span>
             <span className={styles.number}>{C.memberNo(member.memberNo)}</span>
             <span className={styles.joined}>

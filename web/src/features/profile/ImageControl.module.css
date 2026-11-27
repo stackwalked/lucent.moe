@@ -1,0 +1,63 @@
+@layer features {
+    .control {
+        position: absolute;
+        inset: 0;
+    }
+
+    .edit {
+        position: relative;
+        display: grid;
+        flex: 1;
+        place-items: center;
+        padding: 0;
+        border: 0;
+        border-radius: var(--r);
+        background: transparent;
+        color: var(--ink);
+        cursor: pointer;
+    }
+
+    .control[data-shape="round"] .edit {
+        border-radius: 50%;
+    }
+
+    /* The dimming is a scrim over the image, which the pencil sits on. */
+    .edit::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        background: var(--scrim);
+        opacity: 0;
+        transition: opacity var(--t-hover) var(--ease);
+    }
+
+    .edit svg {
+        position: relative;
+        opacity: 0;
+        transition: opacity var(--t-hover) var(--ease);
+    }
+
+    .edit:hover::before,
+    .edit:focus-visible::before,
+    .edit:hover svg,
+    .edit:focus-visible svg {
+        opacity: 1;
+    }
+
+    .menu {
+        display: flex;
+        flex-direction: column;
+        gap: var(--s-2);
+    }
+
+    .verbs {
+        display: flex;
+        gap: var(--s-2);
+    }
+
+    .hint {
+        color: var(--ink-2);
+        font-size: var(--size-12);
+    }
+}

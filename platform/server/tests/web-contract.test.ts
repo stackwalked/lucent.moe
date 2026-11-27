@@ -308,7 +308,6 @@ const inputs: SinglePurpose = {
     "profile.comments.create": { username: "someone", body: "hello" },
     "profile.comments.delete": { id: "00000000-0000-4000-8000-000000000001" },
     "profile.bio.set": { bio: "hello" },
-    "profile.tagline.set": { tagline: "hi" },
     "profile.banner.clear": {},
     "profile.avatar.clear": {},
     "guides.list": { productId: "cs2", cursor: null },

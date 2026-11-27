@@ -25,7 +25,7 @@ import { BANNER_ACCEPT, uploadBanner } from "./banner.ts";
 import { PROFILE_COPY as C } from "./copy.ts";
 import { ImageControl } from "./ImageControl.tsx";
 import styles from "./ProfilePage.module.css";
-import { removeAvatar, removeBanner, saveBio, saveTagline } from "./server.ts";
+import { removeAvatar, removeBanner, saveBio } from "./server.ts";
 import { PROFILE_TITLE } from "./title.ts";
 import { Wall } from "./Wall.tsx";
 
@@ -50,11 +50,8 @@ export function ProfilePage() {
     const staff = viewer !== null && can(subjectOf(viewer), "accounts:read");
     const [refused, setRefused] = useState<Refused | null>(null);
     const [showsRefused, setShowsRefused] = useState<Refused | null>(null);
-    const [taglineRefused, setTaglineRefused] = useState<Refused | null>(null);
     const [bioRefused, setBioRefused] = useState<Refused | null>(null);
-    const savedTagline = outcome.ok ? outcome.value.tagline : "";
     const savedBio = outcome.ok ? outcome.value.bio : "";
-    const [tagline, setTagline] = useState(savedTagline);
     const [bio, setBio] = useState(savedBio);
     const [saving, setSaving] = useState(false);
     const [asked, setAsked] = useState(false);
@@ -63,7 +60,6 @@ export function ProfilePage() {
     const wasEditing = useRef<boolean | null>(null);
     const editing = outcome.ok && outcome.value.isSelf && edit === "true";
     // What the server holds after a save is what the fields show again (it may have trimmed).
-    useEffect(() => setTagline(savedTagline), [savedTagline]);
     useEffect(() => setBio(savedBio), [savedBio]);
     // Focus follows the mode: into the first control on entering, back onto "edit" on leaving.
     useEffect(() => {
@@ -81,16 +77,12 @@ export function ProfilePage() {
         );
     }
     const profile = outcome.value;
-    const dirty = editing && (tagline !== profile.tagline || bio !== profile.bio);
+    const dirty = editing && bio !== profile.bio;
     const answered = async () => {
         await router.invalidate();
     };
     const save = async () => {
         setSaving(true);
-        if (tagline !== profile.tagline) {
-            const reply = await saveTagline({ data: { tagline } });
-            setTaglineRefused(reply.ok ? null : reply.refused);
-        }
         if (bio !== profile.bio) {
             const reply = await saveBio({ data: { bio } });
             setBioRefused(reply.ok ? null : reply.refused);
@@ -103,9 +95,7 @@ export function ProfilePage() {
     const leave = async () => {
         if (dirty && !asked) return setAsked(true);
         setAsked(false);
-        setTagline(profile.tagline);
         setBio(profile.bio);
-        setTaglineRefused(null);
         setBioRefused(null);
         await router.navigate({
             to: "/members/$username",
@@ -212,7 +202,6 @@ export function ProfilePage() {
     ];
     const products = profile.products ?? [];
     const invited = profile.invited ?? [];
-    const taglineNote = postingNote(taglineRefused);
     const bioNote = postingNote(bioRefused);
     return (
         <Page title={null} hideTitle>
@@ -229,20 +218,17 @@ export function ProfilePage() {
                                     />
                                 )}
                                 {editing ? (
-                                    <div className={styles.bannerActs}>
-                                        <ImageControl
-                                            accept={BANNER_ACCEPT}
-                                            has={profile.banner !== null}
-                                            add={C.addBanner}
-                                            verbs={C.bannerOf}
-                                            upload={uploadBanner}
-                                            clear={removeBanner}
-                                            answered={answered}
-                                        />
-                                    </div>
-                                ) : null}
+                                    <ImageControl
+                                        accept={BANNER_ACCEPT}
+                                        has={profile.banner !== null}
+                                        verbs={C.bannerOf}
+                                        upload={uploadBanner}
+                                        clear={removeBanner}
+                                        answered={answered}
+                                    />
+                                ) : null}{" "}
                             </div>
-                            <div className={styles.identity} data-edit={editing ? "" : undefined}>
+                            <div className={styles.identity}>
                                 <span className={styles.picBox}>
                                     <span className={styles.pic}>
                                         <Avatar
@@ -251,18 +237,16 @@ export function ProfilePage() {
                                         />
                                     </span>
                                     {editing ? (
-                                        <span className={styles.picActs}>
-                                            <ImageControl
-                                                accept={AVATAR_ACCEPT}
-                                                has={profile.avatar !== null}
-                                                add={C.change}
-                                                verbs={C.pictureOf}
-                                                upload={uploadAvatar}
-                                                clear={removeAvatar}
-                                                answered={answered}
-                                            />
-                                        </span>
-                                    ) : null}
+                                        <ImageControl
+                                            accept={AVATAR_ACCEPT}
+                                            has={profile.avatar !== null}
+                                            verbs={C.pictureOf}
+                                            upload={uploadAvatar}
+                                            clear={removeAvatar}
+                                            answered={answered}
+                                            shape="round"
+                                        />
+                                    ) : null}{" "}
                                 </span>
                                 <div className={styles.who}>
                                     <h1 className={styles.name}>
@@ -276,28 +260,6 @@ export function ProfilePage() {
                                             </span>
                                         )}
                                     </h1>
-                                    {editing ? (
-                                        <>
-                                            <input
-                                                className={styles.taglineInput}
-                                                aria-label={C.tagline}
-                                                value={tagline}
-                                                maxLength={80}
-                                                onChange={(event) => {
-                                                    setAsked(false);
-                                                    setTagline(event.currentTarget.value);
-                                                }}
-                                            />
-                                            <RefusalNote
-                                                refused={taglineRefused}
-                                                {...(taglineNote === undefined
-                                                    ? {}
-                                                    : { extra: taglineNote })}
-                                            />
-                                        </>
-                                    ) : profile.tagline === "" ? null : (
-                                        <p className={styles.tagline}>{profile.tagline}</p>
-                                    )}
                                 </div>
                                 <div className={styles.acts}>
                                     {editing ? (
@@ -360,7 +322,6 @@ export function ProfilePage() {
                                     )}
                                 </div>
                             </div>
-                            {editing ? <p className={styles.quiet}>{C.imageHint}</p> : null}
                             {!editing && profile.isSelf && profile.visibility === "private" ? (
                                 <p className={styles.quiet}>{C.private}</p>
                             ) : null}

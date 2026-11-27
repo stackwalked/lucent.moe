@@ -15,12 +15,6 @@ import { ProfileVisibility } from "./privacy.ts";
 import { Done, refusal, Unavailable } from "./shared.ts";
 
 export const Bio = z.string().max(500);
-// One line beside the name; the column's check holds it to the same shape.
-export const Tagline = z
-    .string()
-    .max(80)
-    .regex(/^[^\r\n]*$/);
-
 export const RoleLabelColor = z.enum(["pink", "shu", "ok", "wait", "violet", "aqua"]);
 
 // What the avatar upload route (AVATAR_UPLOAD_PATH in web.ts) answers instead of the new digests:
@@ -53,7 +47,6 @@ export const profileContract = defineContract({
             isSelf: z.boolean(),
             avatar: Avatar.nullable(),
             memberNo: z.number().int().positive(),
-            tagline: z.string(),
             // One digest in the avatar image store (the banner is a single 1500x400 WebP).
             banner: z.string().nullable(),
             role: z.object({ name: z.string(), color: RoleLabelColor }).nullable(),
@@ -115,13 +108,6 @@ export const profileContract = defineContract({
         session: "member",
         effect: "write",
         input: z.strictObject({ bio: Bio }),
-        output: Done,
-        error: PostRefusal,
-    },
-    "profile.tagline.set": {
-        session: "member",
-        effect: "write",
-        input: z.strictObject({ tagline: Tagline }),
         output: Done,
         error: PostRefusal,
     },

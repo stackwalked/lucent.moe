@@ -1,6 +1,6 @@
 import { CommentBody } from "@lucent/rpc/web/comments";
 import { ContentId } from "@lucent/rpc/web/community";
-import { Bio, Tagline } from "@lucent/rpc/web/profile";
+import { Bio } from "@lucent/rpc/web/profile";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { done, refuse } from "../../server/outcome.ts";
@@ -22,13 +22,6 @@ export const saveBio = createServerFn({ method: "POST" })
     .validator((data: unknown) => z.strictObject({ bio: Bio }).parse(data))
     .handler(async ({ data }) => {
         const reply = await callPlatform("profile.bio.set", data);
-        return reply.ok ? done(null) : refuse(reply.error);
-    });
-
-export const saveTagline = createServerFn({ method: "POST" })
-    .validator((data: unknown) => z.strictObject({ tagline: Tagline }).parse(data))
-    .handler(async ({ data }) => {
-        const reply = await callPlatform("profile.tagline.set", data);
         return reply.ok ? done(null) : refuse(reply.error);
     });
 

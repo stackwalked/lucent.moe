@@ -21,8 +21,8 @@ export const PROFILE_COPY = {
     discard: "discard",
     save: "save",
     change: "change",
+    upload: "upload",
     remove: "remove",
-    addBanner: "add banner",
     private: "private",
     members: "members",
     visibility: "visible to",
@@ -30,7 +30,6 @@ export const PROFILE_COPY = {
     admin: "admin",
     block: "block",
     unknownAuthor: "—",
-    tagline: "tagline",
     imageHint: "jpeg, png or webp, up to 512 kb",
     // The accessible names of the two images' controls: the visible word alone says nothing about which.
     pictureOf: (verb: string) => `${verb} picture`,

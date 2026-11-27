@@ -1,7 +1,7 @@
 import type { Handlers } from "@lucent/rpc/mount";
 import type { profileContract } from "@lucent/rpc/web/profile";
 import { clearAvatar, clearBanner } from "../../../members/community/avatars.ts";
-import { readProfile, setBio, setTagline } from "../../../members/community/profiles.ts";
+import { readProfile, setBio } from "../../../members/community/profiles.ts";
 import { createWallComment, deleteWallComment, listWall } from "../../../members/community/wall.ts";
 import { done, served, type WebRpcContext } from "./web-shared.ts";
 
@@ -20,8 +20,6 @@ export const profileHandlers = {
         served(await createWallComment(ctx.auth.db, session, input)),
     "profile.comments.delete": async (ctx, input, { session }) =>
         served(done(await deleteWallComment(ctx.auth.db, session, input))),
-    "profile.tagline.set": async (ctx, input, { session }) =>
-        served(done(await setTagline(ctx.auth.db, session, input))),
     "profile.banner.clear": async (ctx, _input, { session }) =>
         served(done(await clearBanner(ctx.auth.db, session))),
     "profile.bio.set": async (ctx, input, { session }) =>

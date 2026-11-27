@@ -11,6 +11,7 @@ export function Popover({
     trigger,
     align = "start",
     flush = false,
+    fill = false,
     onOpen,
     children,
 }: {
@@ -19,12 +20,14 @@ export function Popover({
     readonly align?: "start" | "end";
     // No padding of its own, for content that pads itself (a menu).
     readonly flush?: boolean;
+    // The trigger is as large as the parent (an image that is itself the control).
+    readonly fill?: boolean;
     readonly onOpen?: () => void;
     readonly children: ReactNode;
 }) {
     const id = useId();
     return (
-        <span className={styles.root}>
+        <span className={styles.root} data-fill={fill}>
             <span className={styles.anchor}>{trigger(id)}</span>
             <div
                 id={id}

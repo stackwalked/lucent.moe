@@ -77,12 +77,11 @@ test("the directory leaves out private, suspended, tombstoned and blocked accoun
         expect(page.total).toBe(names.length);
         expect(page.next).toBeNull();
 
-        // The stranger's row is whole: number, joined day, tagline, no role.
+        // The stranger's row is whole: number, joined day, no role.
         const row = page.items.find((item) => item.username === "open");
         invariant(row !== undefined, "expected the open row");
         expect(row.memberNo).toBeGreaterThan(0);
         expect(typeof row.joinedAt).toBe("number");
-        expect(row.tagline).toBe("");
         expect(row.role).toBeNull();
         expect(row.avatar).toBeNull();
     });

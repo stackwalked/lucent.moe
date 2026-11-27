@@ -3,7 +3,6 @@ import { invariant } from "@lucent/core/contain";
 import { err, ok } from "@lucent/core/result";
 import { createSeededRng } from "@lucent/core/rng";
 import { EpochMs, newOperationId, RoleId } from "@lucent/core/scalars";
-import { profileContract } from "@lucent/rpc/web/profile";
 import { z } from "zod";
 import { execute, queryOne, sql, toTimestamptz } from "../src/base/db/pool.ts";
 import { withTx } from "../src/base/db/tx.ts";
@@ -17,10 +16,8 @@ import {
     type ShowKey,
     setBio,
     setShows,
-    setTagline,
     setVisibility,
 } from "../src/members/community/profiles.ts";
-import { setRestriction } from "../src/members/moderation/restrictions.ts";
 import {
     catalog,
     dbNow,
@@ -149,16 +146,13 @@ test("private and blocked profiles keep the new fields hidden from other members
         const owner = await member(db, rng, "private-owner@lucent.test", "privateowner");
         const viewer = await member(db, rng, "private-viewer@lucent.test", "privateviewer");
         expect(await setBio(db, owner.token, { bio: "private bio" })).toEqual(ok(undefined));
-        expect(await setTagline(db, owner.token, { tagline: "owner tagline" })).toEqual(
-            ok(undefined),
-        );
         expect(await setVisibility(db, owner.token, { visibility: "private" })).toEqual(
             ok(undefined),
         );
         expect(await readAs(db, viewer.token, "privateowner")).toEqual(err({ code: "NOT_FOUND" }));
         const own = await readAs(db, owner.token, "privateowner");
         invariant(own.ok, "owner still reads a private profile");
-        expect(own.value.tagline).toBe("owner tagline");
+        expect(own.value.bio).toBe("private bio");
 
         expect(await setVisibility(db, owner.token, { visibility: "members" })).toEqual(
             ok(undefined),
@@ -379,35 +373,6 @@ test("the member-facing role label uses the lowest ranked unexpired coloured rol
     });
 });
 
-test("profile tagline validation and posting restrictions match bio rules", async () => {
-    const cluster = await sharedTestCluster();
-    await cluster.withTestDb(async ({ browserDb: db }) => {
-        const rng = createSeededRng(18108);
-        const input = profileContract["profile.tagline.set"].input;
-        expect(input.safeParse({ tagline: "x".repeat(80) }).success).toBe(true);
-        expect(input.safeParse({ tagline: "x".repeat(81) }).success).toBe(false);
-        expect(input.safeParse({ tagline: "line one\nline two" }).success).toBe(false);
-
-        const mod = await moderator(db, rng, "tagline-mod@lucent.test");
-        const owner = await member(db, rng, "tagline-owner@lucent.test", "taglineowner");
-        expect(await setTagline(db, owner.token, { tagline: "before" })).toEqual(ok(undefined));
-        const muted = await setRestriction({
-            db,
-            catalog: products,
-            caller: mod.caller,
-            username: "taglineowner",
-            kind: "barred",
-            productId: null,
-            reason: "staff only",
-            endsAt: null,
-        });
-        invariant(muted.ok, "expected a restriction");
-        const refused = await setTagline(db, owner.token, { tagline: "after" });
-        expect(refused.ok).toBe(false);
-        if (!refused.ok) expect(refused.error.code).toBe("POSTING_RESTRICTED");
-    });
-});
-
 test("discord role sync refreshes the stored username when the connector provides it", async () => {
     const cluster = await sharedTestCluster();
     await cluster.withTestDb(async ({ browserDb: db }) => {
@@ -552,7 +517,7 @@ test("an unlisted product is not named on a profile to a member who cannot see i
     });
 });
 
-test("a tagline set after staff removed the profile leaves it removed; a new bio lifts it", async () => {
+test("a profile staff removed reads empty to others until a new bio lifts it", async () => {
     const cluster = await sharedTestCluster();
     await cluster.withTestDb(async ({ browserDb: db }) => {
         const rng = createSeededRng(18113);
@@ -577,11 +542,10 @@ test("a tagline set after staff removed the profile leaves it removed; a new bio
             invariant(row.ok && row.value !== null, "expected the profile row");
             return row.value.removed;
         };
-        expect(await setTagline(db, owner.token, { tagline: "still rude" })).toEqual(ok(undefined));
         expect(await removed()).toBe(true);
         const seen = await readAs(db, viewer.token, "removalowner");
         invariant(seen.ok, "expected the profile");
-        expect(seen.value.tagline).toBe("");
+        expect(seen.value.bio).toBe("");
 
         expect(await setBio(db, owner.token, { bio: "sorry" })).toEqual(ok(undefined));
         expect(await removed()).toBe(false);

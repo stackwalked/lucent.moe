@@ -1,4 +1,4 @@
-import { type KeyboardEvent, type ReactNode, useRef } from "react";
+import { Fragment, type KeyboardEvent, type ReactNode, useRef } from "react";
 import { Icon } from "../Icon/Icon.tsx";
 import { Popover } from "../Popover/Popover.tsx";
 import styles from "./ProductPick.module.css";
@@ -80,24 +80,26 @@ export function ProductPick({
                     event.currentTarget.closest<HTMLElement>("[popover]")?.hidePopover()
                 }
             >
-                {rows.map((row) =>
-                    linkFor(
-                        row.id,
-                        <span
-                            className={styles.row}
-                            aria-current={row.id === current ? "true" : undefined}
-                        >
-                            <span>{row.label}</span>
-                            {row.status === null ? null : row.status === "no-access" ? (
-                                <span className={styles.noAccess}>no access</span>
-                            ) : (
-                                <span className={styles.word} data-tone={row.status.tone}>
-                                    {row.status.word}
-                                </span>
-                            )}
-                        </span>,
-                    ),
-                )}
+                {rows.map((row) => (
+                    <Fragment key={row.id}>
+                        {linkFor(
+                            row.id,
+                            <span
+                                className={styles.row}
+                                aria-current={row.id === current ? "true" : undefined}
+                            >
+                                <span>{row.label}</span>
+                                {row.status === null ? null : row.status === "no-access" ? (
+                                    <span className={styles.noAccess}>no access</span>
+                                ) : (
+                                    <span className={styles.word} data-tone={row.status.tone}>
+                                        {row.status.word}
+                                    </span>
+                                )}
+                            </span>,
+                        )}
+                    </Fragment>
+                ))}
             </div>
         </Popover>
     );

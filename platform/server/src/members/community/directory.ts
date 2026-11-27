@@ -17,7 +17,6 @@ const Row = z.object({
     memberNo: z.coerce.number(),
     joinedAt: EpochMs,
     joinKey: z.coerce.number(),
-    tagline: z.string(),
     roleName: z.string().nullable(),
     roleColor: z.enum(["pink", "shu", "ok", "wait", "violet", "aqua"]).nullable(),
 });
@@ -109,7 +108,6 @@ export function listMembers(
             sql`select a.id, a.username, a.member_no as "memberNo", a.created_at as "joinedAt",
                        -- Microseconds, so the keyset cursor loses nothing to EpochMs truncation.
                        extract(epoch from a.created_at) * 1000000 as "joinKey",
-                       case when p.removed_at is null then coalesce(p.tagline, '') else '' end as tagline,
                        case when p.removed_at is null then p.avatar_small end as avatar,
                        role.name as "roleName", role.color as "roleColor"
                 from account a
@@ -134,7 +132,6 @@ export function listMembers(
                 avatar: row.avatar,
                 memberNo: row.memberNo,
                 joinedAt: row.joinedAt,
-                tagline: row.tagline,
                 role:
                     row.roleName === null || row.roleColor === null
                         ? null

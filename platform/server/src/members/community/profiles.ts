@@ -75,7 +75,6 @@ const BaseRow = z.object({
     visibility: z.enum(PROFILE_VISIBILITIES),
     joinedAt: EpochMs,
     memberNo: z.coerce.number(),
-    tagline: z.string(),
     banner: z.string().nullable(),
     avatar: z.object({ large: z.string(), small: z.string() }).nullable(),
     shows: z.object({
@@ -111,7 +110,6 @@ export function readProfile(
             BaseRow,
             sql`select a.id, p.id as "profileId", a.username, a.member_no as "memberNo",
                        case when p.removed_at is null then coalesce(p.bio, '') else '' end as bio,
-                       case when p.removed_at is null then coalesce(p.tagline, '') else '' end as tagline,
                        case when p.removed_at is null then p.banner end as banner,
                        case when p.removed_at is null and p.avatar_large is not null
                             then json_build_object('large', p.avatar_large, 'small', p.avatar_small)
@@ -268,28 +266,6 @@ export function setBio(db: Db, token: BearerToken, params: { readonly bio: strin
             sql`insert into profile (account_id, bio) values (${accountId}, ${params.bio})
                 on conflict (account_id) do update
                 set bio = excluded.bio, updated_at = now(), removed_at = null, removed_by = null`,
-        );
-        if (!saved.ok) return saved;
-        return ok(undefined);
-    });
-}
-
-// Same restrictions as the bio, but not its lifting: staff's removal of a profile stands until a
-// new bio replaces it (avatars.rules.ts), so a tagline set afterwards stays hidden with it.
-export function setTagline(db: Db, token: BearerToken, params: { readonly tagline: string }) {
-    return withMemberAt(db, token, async (tx, accountId, txNow) => {
-        const may = await mayPostHere(tx, {
-            accountId,
-            surface: "profile",
-            productId: null,
-            txNow,
-        });
-        if (!may.ok) return may;
-        const saved = await execute(
-            tx,
-            sql`insert into profile (account_id, bio, tagline) values (${accountId}, '', ${params.tagline})
-                on conflict (account_id) do update
-                set tagline = excluded.tagline, updated_at = now()`,
         );
         if (!saved.ok) return saved;
         return ok(undefined);

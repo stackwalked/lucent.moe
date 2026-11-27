@@ -1,4 +1,17 @@
 @layer features {
+    .fill {
+        display: inline-block;
+        inline-size: calc(var(--s-8) * 2);
+        block-size: var(--control-h);
+    }
+
+    .fillTrigger {
+        flex: 1;
+        border: 1px solid var(--line-2);
+        border-radius: var(--r);
+        background: var(--raised);
+    }
+
     .themes {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--form)), 1fr));
