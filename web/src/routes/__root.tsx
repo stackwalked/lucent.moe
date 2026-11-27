@@ -24,6 +24,7 @@ import "../ui/global.css";
 import "virtual:lucent/tokens.css";
 import plex400 from "../ui/fonts/ibm-plex-sans-400.woff2?url";
 import plex500 from "../ui/fonts/ibm-plex-sans-500.woff2?url";
+import favicon from "../ui/Logo/favicon.svg?url";
 
 // The document every page renders in, error and not-found pages included. "now" is the moment
 // the page was made, so relative times read the same on the server and after hydration.
@@ -107,13 +108,17 @@ export const Route = createRootRoute({
             { title: SITE_COPY.name },
         ],
         // Plex only: Geist Mono loads the first time a page shows monospaced text.
-        links: [plex400, plex500].map((href) => ({
-            rel: "preload",
-            href,
-            as: "font",
-            type: "font/woff2",
-            crossOrigin: "anonymous" as const,
-        })),
+        links: [
+            // The mark, in the tab's own light or dark.
+            { rel: "icon", href: favicon, type: "image/svg+xml" },
+            ...[plex400, plex500].map((href) => ({
+                rel: "preload",
+                href,
+                as: "font",
+                type: "font/woff2",
+                crossOrigin: "anonymous" as const,
+            })),
+        ],
     }),
     shellComponent: Document,
     notFoundComponent: NotFound,
