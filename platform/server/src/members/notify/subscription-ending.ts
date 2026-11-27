@@ -1,13 +1,15 @@
 import type { ProductCatalog } from "@lucent/catalog/catalog";
-import { ok, type Result } from "@lucent/core/result";
+import { err, ok, type Result } from "@lucent/core/result";
 import { AccountId, EpochMs, ProductId } from "@lucent/core/scalars";
 import { z } from "zod";
+import type { Logger } from "../../base/core/log.ts";
 import {
     type Db,
     type DbFailure,
     execute,
     queryAll,
     queryOne,
+    type SqlFragment,
     sql,
     toTimestamptz,
 } from "../../base/db/pool.ts";
@@ -17,6 +19,23 @@ import { recordNotification } from "./inbox.ts";
 import { decideEndingNotice, ENDING_WINDOW_MS } from "./subscription-ending.rules.ts";
 
 const PER_RUN = 200;
+
+// A product of entitlement `id` that no other active entitlement of the account carries past
+// `endsAt` without a gap: renewing early means the subscription does not end.
+function uncovered(params: {
+    readonly id: SqlFragment;
+    readonly accountId: SqlFragment;
+    readonly endsAt: SqlFragment;
+}): SqlFragment {
+    const { id, accountId, endsAt } = params;
+    return sql`not exists (
+        select 1 from entitlement o
+        join entitlement_product op on op.entitlement_id = o.id
+        where o.account_id = ${accountId} and o.id <> ${id} and o.status = 'active'
+          and op.product_id = ep.product_id
+          and o.valid_from <= ${endsAt}
+          and (o.valid_until is null or o.valid_until > ${endsAt}))`;
+}
 
 const Candidate = z.object({ id: z.string(), accountId: AccountId });
 const MarkRow = z.object({ mark: z.enum(["7d", "1d"]) });
@@ -54,6 +73,22 @@ async function tellOne(
         if (!entitlement.ok) return entitlement;
         if (entitlement.value === null) return ok(0);
         const { validUntil } = entitlement.value;
+        // Read after the locks, in a statement of its own: a renewal that committed while this
+        // waited is seen.
+        const open = await queryAll(
+            tx,
+            z.object({ productId: ProductId }),
+            sql`select ep.product_id as "productId" from entitlement_product ep
+                where ep.entitlement_id = ${params.id}
+                  and ${uncovered({
+                      id: sql`${params.id}`,
+                      accountId: sql`${params.accountId}`,
+                      endsAt: sql`${toTimestamptz(validUntil)}::timestamptz`,
+                  })}
+                order by ep.product_id`,
+        );
+        if (!open.ok) return open;
+        if (open.value.length === 0) return ok(0);
         const clock = await queryOne(
             tx,
             z.object({ now: EpochMs }),
@@ -85,14 +120,7 @@ async function tellOne(
             if (!recorded.ok) return recorded;
         }
         if (plan.file === null) return ok(0);
-        const products = await queryAll(
-            tx,
-            z.object({ productId: ProductId }),
-            sql`select product_id as "productId" from entitlement_product
-                where entitlement_id = ${params.id} order by product_id`,
-        );
-        if (!products.ok) return products;
-        for (const { productId } of products.value) {
+        for (const { productId } of open.value) {
             const told = await recordNotification(tx, {
                 recipient: params.accountId,
                 notice: {
@@ -104,18 +132,21 @@ async function tellOne(
             });
             if (!told.ok) return told;
         }
-        return ok(products.value.length);
+        return ok(open.value.length);
     });
 }
 
 // Tells holders their entitlement is about to end: once per entitlement at each mark of
 // subscription-ending.rules.ts, however often this runs and however many instances run it (the
 // marks recorded under the holder's lock are the memory). Not entitlements without an end,
-// suspended or revoked ones, nor suspended or deleted accounts.
+// suspended or revoked ones, nor suspended or deleted accounts, nor a product the holder keeps
+// through another entitlement. Soonest end first, so a large first run does not make tomorrow's
+// wait behind next week's. One entitlement failing is logged and the rest go on; `failed` counts
+// them.
 export async function tellEndingSubscriptions(
     db: Db,
-    params: { readonly catalog: ProductCatalog },
-): Promise<Result<{ readonly told: number }, DbFailure>> {
+    params: { readonly catalog: ProductCatalog; readonly logger: Logger },
+): Promise<Result<{ readonly told: number; readonly failed: number }, DbFailure>> {
     const candidates = await queryAll(
         db,
         Candidate,
@@ -131,21 +162,34 @@ export async function tellEndingSubscriptions(
                               where n.entitlement_id = e.id and n.valid_until = e.valid_until
                                 and n.mark = case when e.valid_until <= now() + interval '1 day'
                                                   then '1d' else '7d' end)
-            order by e.account_id, e.id limit ${PER_RUN}`,
+              -- Nor one whose every product the holder keeps by another entitlement.
+              and exists (select 1 from entitlement_product ep
+                          where ep.entitlement_id = e.id
+                            and ${uncovered({ id: sql`e.id`, accountId: sql`e.account_id`, endsAt: sql`e.valid_until` })})
+            order by e.valid_until, e.id limit ${PER_RUN}`,
     );
     if (!candidates.ok) return candidates;
     let told = 0;
+    let failed = 0;
     for (const candidate of candidates.value) {
         const done = await tellOne(db, { catalog: params.catalog, ...candidate });
-        if (!done.ok) return done;
+        if (!done.ok) {
+            failed += 1;
+            params.logger.write("error", "subscription ending notice failed", {
+                origin: "jobs",
+                detail: `entitlement ${candidate.id}: ${done.error.code}`,
+            });
+            continue;
+        }
         told += done.value;
     }
-    return ok({ told });
+    return ok({ told, failed });
 }
 
 export function subscriptionEndingJob(params: {
     readonly db: Db;
     readonly catalog: ProductCatalog;
+    readonly logger: Logger;
 }): Job {
     return {
         name: "subscription-ending",
@@ -153,6 +197,8 @@ export function subscriptionEndingJob(params: {
         run: async () => {
             const run = await tellEndingSubscriptions(params.db, params);
             if (!run.ok) return run;
+            // Shown to staff on the jobs page as the run's failure; the rows are in the log.
+            if (run.value.failed > 0) return err({ code: "ENTITLEMENT_NOTICE_FAILED" });
             return ok(
                 run.value.told === 0 ? null : `told ${run.value.told} of a subscription ending`,
             );

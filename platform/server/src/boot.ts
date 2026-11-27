@@ -268,7 +268,7 @@ export async function startServer(params: {
             riskScoringJob(db),
             idleTicketJob(db),
             followerNoticeJob({ db, catalog: catalog.value }),
-            subscriptionEndingJob({ db, catalog: catalog.value }),
+            subscriptionEndingJob({ db, catalog: catalog.value, logger }),
             signInCountriesJob(db, geo),
             ...(geo === null ? [] : [geoReloadJob(geo)]),
             ...(nativeDb === null ? [] : [nativeExpiryJob(nativeDb)]),
