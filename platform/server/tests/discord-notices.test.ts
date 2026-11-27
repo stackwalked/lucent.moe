@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { invariant } from "@lucent/core/contain";
 import { err, ok } from "@lucent/core/result";
 import { createSeededRng, type SeededRng } from "@lucent/core/rng";
-import { type AccountId, EpochMs } from "@lucent/core/scalars";
+import { type AccountId, EpochMs, ProductId } from "@lucent/core/scalars";
 import { z } from "zod";
 import { type Db, execute, queryAll, sql } from "../src/base/db/pool.ts";
 import { withTx } from "../src/base/db/tx.ts";
@@ -263,5 +263,56 @@ test("a ticket opened from Discord is the site's ticket and counts against the s
             sql`update account set status = 'suspended' where id = ${member.accountId}`,
         );
         expect(await open("suspended")).toEqual(err({ code: "ACCOUNT_UNAVAILABLE" }));
+    });
+});
+
+test("an ending subscription is a DM on the same switch, naming the product only while the member may see it", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ nativeDb }) => {
+        const rng = createSeededRng(4005);
+        const deps = await createTestAuthDeps(nativeDb, rng);
+        const chose = await linked(deps, rng, "chose@lucent.test", "600000000000000010");
+        const declined = await linked(deps, rng, "declined@lucent.test", "600000000000000011");
+        expect(
+            await setPreference(nativeDb, chose.token, { kind: "security", discord: true }),
+        ).toEqual(ok(undefined));
+        const endsAt = EpochMs.parse(NOW + 3 * 24 * 60 * 60_000);
+        const ending = (recipient: AccountId, productId: string) =>
+            withTx(nativeDb, (tx) =>
+                recordNotification(tx, {
+                    recipient,
+                    notice: {
+                        kind: "subscription_ending",
+                        productId: ProductId.parse(productId),
+                        endsAt,
+                        catalog: catalog(),
+                    },
+                }),
+            );
+        // A live product is listed for everyone; a seed one only for those who hold it.
+        expect((await ending(chose.accountId, "lucent-loader")).ok).toBe(true);
+        expect((await ending(chose.accountId, "cs2")).ok).toBe(true);
+        expect((await ending(declined.accountId, "lucent-loader")).ok).toBe(true);
+        expect(await queued(nativeDb)).toEqual([
+            { account_id: chose.accountId, attempts: 0 },
+            { account_id: chose.accountId, attempts: 0 },
+        ]);
+        const due = await readDueDms(nativeDb, { catalog: catalog(), siteOrigin: SITE });
+        invariant(due.ok, "the queue reads");
+        expect(due.value.dms.map((dm) => [dm.notice, dm.url])).toEqual([
+            [
+                { kind: "subscription_ending", product: "Lucent Loader", endsAt },
+                `${SITE}/products/lucent-loader`,
+            ],
+            [{ kind: "subscription_ending", product: null, endsAt }, `${SITE}/account/inbox`],
+        ]);
+        // All three are in the inbox, whatever the switch.
+        expect(
+            await queryAll(
+                nativeDb,
+                z.object({ count: z.coerce.number() }),
+                sql`select count(*) as count from inbox_entry where kind = 'subscription_ending'`,
+            ),
+        ).toEqual(ok([{ count: 3 }]));
     });
 });

@@ -6,6 +6,8 @@ export const INBOX_COPY = {
     security: "account security notice",
     product: (id: string) => `support changed for ${id}`,
     ticketReply: "support replied to your ticket",
+    ends: "ends",
+    aSubscription: "a subscription",
     mark: "mark as read",
     read: "read",
 } as const;

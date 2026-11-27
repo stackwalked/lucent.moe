@@ -81,7 +81,7 @@ export const ExportData = z.object({
     inbox: z
         .array(
             z.object({
-                kind: z.enum(["security", "product_status", "ticket_reply"]),
+                kind: z.enum(["security", "product_status", "ticket_reply", "subscription_ending"]),
                 productId: ProductId.nullable(),
                 createdAt: EpochMs,
                 isRead: z.boolean(),

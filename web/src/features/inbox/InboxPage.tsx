@@ -51,6 +51,31 @@ export function InboxPage() {
                                                         return INBOX_COPY.security;
                                                     case "product_status":
                                                         return INBOX_COPY.product(item.productId);
+                                                    case "subscription_ending":
+                                                        return item.productId === null ? (
+                                                            <>
+                                                                {INBOX_COPY.aSubscription}{" "}
+                                                                {INBOX_COPY.ends}{" "}
+                                                                <Time
+                                                                    at={item.endsAt}
+                                                                    format="date"
+                                                                />
+                                                            </>
+                                                        ) : (
+                                                            <Link
+                                                                to="/products/$productId"
+                                                                params={{
+                                                                    productId: item.productId,
+                                                                }}
+                                                                className={styles.link}
+                                                            >
+                                                                {item.productId} {INBOX_COPY.ends}{" "}
+                                                                <Time
+                                                                    at={item.endsAt}
+                                                                    format="date"
+                                                                />
+                                                            </Link>
+                                                        );
                                                     case "ticket_reply":
                                                         return (
                                                             <Link

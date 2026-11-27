@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { ProductId } from "@lucent/core/scalars";
+import { EpochMs, ProductId } from "@lucent/core/scalars";
 import type { Notice } from "@lucent/rpc/web/inbox";
 import { decideDeliveries } from "../src/members/notify/deliveries.rules.ts";
 
@@ -10,6 +10,12 @@ const all = { inbox: true, discord: true };
 const inbox = { inbox: true, discord: false };
 const neither = { inbox: false, discord: false };
 const discord = { inbox: false, discord: true };
+
+const ending: Notice = {
+    kind: "subscription_ending",
+    productId,
+    endsAt: EpochMs.parse(1_800_000_000_000),
+};
 
 const reply: Notice = {
     kind: "ticket_reply",
@@ -56,6 +62,14 @@ test.each([
         chosen(null, false, neither),
         [],
         neither,
+    ],
+    ["an ending subscription needs no follow and no setting", ending, chosen(neither), [], inbox],
+    [
+        "an ending subscription goes to discord on the member's one switch",
+        ending,
+        chosen(null, true),
+        [],
+        all,
     ],
     ["a ticket reply never goes to discord", reply, chosen(all, true, all), [], inbox],
 ] as const)("%s", (_name, notice, preferences, subscriptions, expected) => {

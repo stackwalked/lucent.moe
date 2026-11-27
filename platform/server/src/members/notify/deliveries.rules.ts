@@ -23,6 +23,10 @@ export function decideDeliveries(
     if (notice.kind === "security") {
         return ok({ ...SECURITY_CHANNELS, discord: preferences.securityDiscord });
     }
+    if (notice.kind === "subscription_ending") {
+        // Always in the inbox; the member's one Discord switch (the security one) governs the DM.
+        return ok({ ...SECURITY_CHANNELS, discord: preferences.securityDiscord });
+    }
     if (notice.kind === "ticket_reply") {
         // Never a DM here: connector_discord_dm.kind does not list this kind, and the Discord
         // connector's stage C, built apart from this change, owns adding it. Until then the

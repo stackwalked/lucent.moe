@@ -10,6 +10,26 @@ import { DM_COPY } from "./copy.ts";
 // nothing, so they are settled as refused. https://discord.com/developers/docs/topics/opcodes-and-status-codes
 const REFUSED_CODES: ReadonlySet<number | string> = new Set([50007, 10013]);
 
+type DueNotice =
+    | { readonly kind: "security" }
+    | { readonly kind: "product_status"; readonly product: string }
+    | {
+          readonly kind: "subscription_ending";
+          readonly product: string | null;
+          readonly endsAt: number;
+      };
+
+function dmContent(notice: DueNotice): string {
+    switch (notice.kind) {
+        case "security":
+            return DM_COPY.security;
+        case "product_status":
+            return DM_COPY.productStatus(notice.product);
+        case "subscription_ending":
+            return DM_COPY.subscriptionEnding(notice.product, notice.endsAt);
+    }
+}
+
 // Each due notice goes out as a DM saying that something happened, with a link to the inbox, and
 // is settled with how it went; platform decides whether a failure is tried again.
 export async function sendDueDms(deps: {
@@ -27,10 +47,7 @@ export async function sendDueDms(deps: {
             async () => {
                 const channel = await deps.api.users.createDM(dm.userId);
                 return await deps.api.channels.createMessage(channel.id, {
-                    content:
-                        dm.notice.kind === "security"
-                            ? DM_COPY.security
-                            : DM_COPY.productStatus(dm.notice.product),
+                    content: dmContent(dm.notice),
                     allowed_mentions: { parse: [] },
                     components: [
                         {

@@ -1,6 +1,6 @@
 import type { ProductCatalog } from "@lucent/catalog/catalog";
 import { ok, type Result } from "@lucent/core/result";
-import { ProductId } from "@lucent/core/scalars";
+import { EpochMs, ProductId } from "@lucent/core/scalars";
 import { z } from "zod";
 import {
     type Db,
@@ -19,7 +19,12 @@ export type DueDm = {
     readonly userId: string;
     readonly notice:
         | { readonly kind: "security" }
-        | { readonly kind: "product_status"; readonly product: string };
+        | { readonly kind: "product_status"; readonly product: string }
+        | {
+              readonly kind: "subscription_ending";
+              readonly product: string | null;
+              readonly endsAt: EpochMs;
+          };
     readonly url: string;
 };
 
@@ -46,10 +51,11 @@ export async function readDueDms(
             z.object({
                 id: z.string(),
                 discord_user_id: z.string(),
-                kind: z.enum(["security", "product_status"]),
+                kind: z.enum(["security", "product_status", "subscription_ending"]),
                 product_id: ProductId.nullable(),
+                ends_at: EpochMs.nullable(),
             }),
-            sql`select d.id::text as id, l.discord_user_id, d.kind, d.product_id
+            sql`select d.id::text as id, l.discord_user_id, d.kind, d.product_id, d.ends_at
                 from connector_discord_dm d
                 join connector_discord_link l on l.account_id = d.account_id
                 where d.next_attempt_at <= now()
@@ -58,23 +64,30 @@ export async function readDueDms(
         );
         if (!rows.ok) return rows;
         return ok({
-            dms: rows.value.map((row) => ({
-                id: row.id,
-                userId: row.discord_user_id,
-                notice:
-                    row.kind === "security" || row.product_id === null
-                        ? { kind: "security" as const }
-                        : {
-                              kind: "product_status" as const,
-                              product: params.catalog.get(row.product_id)?.name ?? row.product_id,
-                          },
-                // A product notice may have been kept out of the inbox by the member's own choice,
-                // so its button opens the product, which always has something to show.
-                url:
-                    row.kind === "security" || row.product_id === null
-                        ? `${params.siteOrigin}/account/inbox`
-                        : `${params.siteOrigin}/products/${row.product_id}`,
-            })),
+            dms: rows.value.map((row) => {
+                const product =
+                    row.product_id === null
+                        ? null
+                        : (params.catalog.get(row.product_id)?.name ?? row.product_id);
+                const notice =
+                    row.kind === "subscription_ending" && row.ends_at !== null
+                        ? { kind: "subscription_ending" as const, product, endsAt: row.ends_at }
+                        : row.kind === "product_status" && product !== null
+                          ? { kind: "product_status" as const, product }
+                          : { kind: "security" as const };
+                return {
+                    id: row.id,
+                    userId: row.discord_user_id,
+                    notice,
+                    // A product notice may have been kept out of the inbox by the member's own
+                    // choice, so its button opens the product, which always has something to show.
+                    // An ending subscription's does too, when the DM names the product.
+                    url:
+                        row.product_id !== null && notice.kind !== "security"
+                            ? `${params.siteOrigin}/products/${row.product_id}`
+                            : `${params.siteOrigin}/account/inbox`,
+                };
+            }),
         });
     });
 }

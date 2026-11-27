@@ -12,6 +12,11 @@ function when(at: number): string {
     return `<t:${Math.floor(at / 1_000)}:f>`;
 }
 
+// The same, as a date alone.
+function day(at: number): string {
+    return `<t:${Math.floor(at / 1_000)}:D>`;
+}
+
 export const COMMANDS_COPY = {
     link: "link your lucent.moe account",
     linkCode: "the code from your account's discord page on lucent.moe",
@@ -211,6 +216,8 @@ export const QUEUE_COPY = {
 export const DM_COPY = {
     security: "there's a new security notice on your lucent.moe account.",
     productStatus: (product: string) => `support for **${plain(product)}** changed.`,
+    subscriptionEnding: (product: string | null, endsAt: number) =>
+        `${product === null ? "a subscription" : `**${plain(product)}**`} ends ${day(endsAt)}.`,
     open: "open inbox",
 } as const;
 

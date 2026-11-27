@@ -34,6 +34,7 @@ import { createEventHub } from "./members/community/events.ts";
 import { createRosterProvider } from "./members/community/presence.ts";
 import { restrictionExpiryJob } from "./members/moderation/restrictions.ts";
 import { mailDeliveryJob } from "./members/notify/mail.ts";
+import { subscriptionEndingJob } from "./members/notify/subscription-ending.ts";
 import { followerNoticeJob } from "./members/record/followers.ts";
 import { geoReloadJob, signInCountriesJob } from "./members/support/sign-in-countries.ts";
 import { idleTicketJob } from "./members/support/tickets.ts";
@@ -267,6 +268,7 @@ export async function startServer(params: {
             riskScoringJob(db),
             idleTicketJob(db),
             followerNoticeJob({ db, catalog: catalog.value }),
+            subscriptionEndingJob({ db, catalog: catalog.value }),
             signInCountriesJob(db, geo),
             ...(geo === null ? [] : [geoReloadJob(geo)]),
             ...(nativeDb === null ? [] : [nativeExpiryJob(nativeDb)]),

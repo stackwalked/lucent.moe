@@ -4,7 +4,15 @@ import { ok } from "@lucent/core/result";
 import { AccountId, type BearerToken, ProductId } from "@lucent/core/scalars";
 import { InboxEntry, type Notice } from "@lucent/rpc/web/inbox";
 import { z } from "zod";
-import { type Db, execute, queryAll, queryOne, sql, type Tx } from "../../base/db/pool.ts";
+import {
+    type Db,
+    execute,
+    queryAll,
+    queryOne,
+    sql,
+    type Tx,
+    toTimestamptz,
+} from "../../base/db/pool.ts";
 import {
     filterListedProducts,
     isListedForMember,
@@ -19,7 +27,9 @@ type Notification =
     | (Extract<Notice, { kind: "product_status" }> & {
           readonly catalog: ProductCatalog;
       })
-    | Extract<Notice, { kind: "ticket_reply" }>;
+    | Extract<Notice, { kind: "ticket_reply" }>
+    // The inbox entry keeps the product; the DM names it only if the member may see it now.
+    | (Extract<Notice, { kind: "subscription_ending" }> & { readonly catalog: ProductCatalog });
 
 const NO_PREFERENCES = {
     productStatus: null,
@@ -28,7 +38,11 @@ const NO_PREFERENCES = {
 } as const;
 
 async function planDelivery(tx: Tx, recipient: AccountId, notice: Notification) {
-    if (notice.kind === "security" || notice.kind === "ticket_reply") {
+    if (
+        notice.kind === "security" ||
+        notice.kind === "ticket_reply" ||
+        notice.kind === "subscription_ending"
+    ) {
         const preferences = await findPreferences(tx, recipient);
         if (!preferences.ok) return preferences;
         return decideDeliveries(notice, preferences.value, []);
@@ -62,6 +76,19 @@ async function planDelivery(tx: Tx, recipient: AccountId, notice: Notification) 
     );
 }
 
+// The product a DM may name: the notice's own, except that a subscription's ending names it only
+// if the member may still see it, as the inbox does when it is read.
+async function dmProduct(tx: Tx, recipient: AccountId, notice: Notification) {
+    if (notice.kind !== "subscription_ending") return ok(notice.productId);
+    const listed = await isListedForMember(
+        tx,
+        { accountId: recipient, catalog: notice.catalog },
+        notice.productId,
+    );
+    if (!listed.ok) return listed;
+    return ok(listed.value ? notice.productId : null);
+}
+
 // Writers holding later locks must lock recipient accounts first, in canonical order. The inbox
 // insert and the Discord DM belong to the event's transaction. A notice is never emailed: the
 // site's mail is the reset link, the setup link and the deletion notice, each sent by its own
@@ -75,10 +102,14 @@ export async function recordNotification(
     if (!plan.ok) return plan;
     // Only a linked account has anyone to message; the connector sends it (discord/dms.ts).
     if (plan.value.discord) {
+        const named = await dmProduct(tx, recipient, notice);
+        if (!named.ok) return named;
         const queued = await execute(
             tx,
-            sql`insert into connector_discord_dm (account_id, kind, product_id, next_attempt_at, created_at)
-                select account_id, ${notice.kind}, ${notice.productId}, now(), now()
+            sql`insert into connector_discord_dm (account_id, kind, product_id, ends_at, next_attempt_at, created_at)
+                select account_id, ${notice.kind}, ${named.value},
+                       ${notice.kind === "subscription_ending" ? toTimestamptz(notice.endsAt) : null}::timestamptz,
+                       now(), now()
                 from connector_discord_link where account_id = ${recipient}`,
         );
         if (!queued.ok) return queued;
@@ -86,9 +117,10 @@ export async function recordNotification(
     if (plan.value.inbox) {
         const inserted = await execute(
             tx,
-            sql`insert into inbox_entry (account_id, kind, product_id, ticket_id)
+            sql`insert into inbox_entry (account_id, kind, product_id, ticket_id, ends_at)
             values (${recipient}, ${notice.kind}, ${notice.productId},
-                    ${notice.kind === "ticket_reply" ? notice.ticketId : null}::uuid)`,
+                    ${notice.kind === "ticket_reply" ? notice.ticketId : null}::uuid,
+                    ${notice.kind === "subscription_ending" ? toTimestamptz(notice.endsAt) : null}::timestamptz)`,
         );
         if (!inserted.ok) return inserted;
     }
@@ -98,7 +130,9 @@ export async function recordNotification(
 const PAGE_SIZE = 25;
 
 // Old notices do not turn yesterday's visibility into a permanent product directory. Scope
-// cursor resolution, pagination, counts and read receipts to the same visible rows.
+// cursor resolution, pagination, counts and read receipts to the same visible rows. A subscription
+// ending stays whatever the product's visibility: it is read as "a subscription ends" once the
+// product is hidden (`listed` says which products are not).
 async function inboxScope(tx: Tx, member: MemberCatalog) {
     const rows = await queryAll(
         tx,
@@ -112,9 +146,12 @@ async function inboxScope(tx: Tx, member: MemberCatalog) {
         rows.value.map((row) => row.product_id),
     );
     if (!listed.ok) return listed;
-    return ok(
-        sql`account_id = ${member.accountId} and (product_id is null or product_id = any(${listed.value}::text[]))`,
-    );
+    return ok({
+        where: sql`account_id = ${member.accountId}
+                and (product_id is null or kind = 'subscription_ending'
+                     or product_id = any(${listed.value}::text[]))`,
+        listed: new Set<string>(listed.value),
+    });
 }
 
 export function listInbox(
@@ -129,17 +166,23 @@ export function listInbox(
             params.cursor === null
                 ? sql``
                 : sql`and (created_at, id) < (
-            select created_at, id from inbox_entry where ${scope.value} and id = ${params.cursor}::uuid)`;
+            select created_at, id from inbox_entry where ${scope.value.where} and id = ${params.cursor}::uuid)`;
         const rows = await queryAll(
             tx,
             InboxEntry,
             sql`select id, kind, product_id as "productId", ticket_id as "ticketId",
-                       created_at as "createdAt", is_read as "isRead"
-                from inbox_entry where ${scope.value} ${after}
+                       ends_at as "endsAt", created_at as "createdAt", is_read as "isRead"
+                from inbox_entry where ${scope.value.where} ${after}
                 order by created_at desc, id desc limit ${PAGE_SIZE + 1}`,
         );
         if (!rows.ok) return rows;
-        const items = rows.value.slice(0, PAGE_SIZE);
+        const items = rows.value
+            .slice(0, PAGE_SIZE)
+            .map((item) =>
+                item.kind === "subscription_ending" && !scope.value.listed.has(item.productId ?? "")
+                    ? { ...item, productId: null }
+                    : item,
+            );
         return ok({
             items,
             nextCursor: rows.value.length > PAGE_SIZE ? (items.at(-1)?.id ?? null) : null,
@@ -154,7 +197,7 @@ export function countUnread(db: Db, token: BearerToken, catalog: ProductCatalog)
         const count = await queryOne(
             tx,
             z.object({ count: z.coerce.number().int().nonnegative() }),
-            sql`select count(*) as count from inbox_entry where ${scope.value} and not is_read`,
+            sql`select count(*) as count from inbox_entry where ${scope.value.where} and not is_read`,
         );
         if (!count.ok) return count;
         invariant(count.value !== null, "count always returns a row");
@@ -174,7 +217,7 @@ export function markRead(
             await execute(
                 tx,
                 sql`update inbox_entry set is_read = true
-            where ${scope.value} and id = ${params.entryId}::uuid and not is_read`,
+            where ${scope.value.where} and id = ${params.entryId}::uuid and not is_read`,
             ),
         );
     });

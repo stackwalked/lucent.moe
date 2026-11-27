@@ -359,6 +359,12 @@ export const discordContract = defineContract({
                         notice: z.discriminatedUnion("kind", [
                             z.object({ kind: z.literal("security") }),
                             z.object({ kind: z.literal("product_status"), product: z.string() }),
+                            // `product` is null when the member may not see it any more.
+                            z.object({
+                                kind: z.literal("subscription_ending"),
+                                product: z.string().nullable(),
+                                endsAt: EpochMs,
+                            }),
                         ]),
                         url: z.url(),
                     }),

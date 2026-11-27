@@ -584,12 +584,21 @@ test("a notice goes out as a DM; closed DMs and failures lose nothing and are no
         await db`insert into connector_discord_dm (account_id, kind, next_attempt_at, created_at)
                  values (${accountId}, 'security', now(), now())`;
     }
+    // An ending subscription, as a notice names no product the member may not see.
+    const endsAt = 1_800_000_000_000;
+    await db`insert into connector_discord_dm (account_id, kind, ends_at, next_attempt_at, created_at)
+             values (${members[0]?.accountId ?? ""}, 'subscription_ending', to_timestamp(${endsAt / 1000}), now(), now())`;
     await connector.tick();
 
     expect(fake.dms(IVAN)).toEqual([
         {
             channelId: expect.any(String),
             content: DM_COPY.security,
+            buttonUrl: `${site}/account/inbox`,
+        },
+        {
+            channelId: expect.any(String),
+            content: DM_COPY.subscriptionEnding(null, endsAt),
             buttonUrl: `${site}/account/inbox`,
         },
     ]);
