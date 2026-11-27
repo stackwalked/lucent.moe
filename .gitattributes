@@ -15,3 +15,6 @@ platform/**/tests/fixtures/**/*.webp binary
 
 # Product assets: fonts web serves as they are.
 web/src/ui/fonts/*.woff2 binary
+
+# The landing's link preview, drawn by web/dev/og-image.ts.
+web/src/features/landing/*.png binary

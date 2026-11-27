@@ -104,11 +104,15 @@ export const Route = createRootRoute({
             timeZone: currentTimeZone(),
         };
     },
-    head: () => ({
+    // Only the signed-out landing is for search engines to index.
+    head: ({ match, matches }) => ({
         meta: [
             { charSet: "utf-8" },
             { name: "viewport", content: "width=device-width, initial-scale=1" },
             { title: SITE_COPY.name },
+            ...(matches.at(-1)?.pathname === "/" && memberOf(match.context.session) === null
+                ? []
+                : [{ name: "robots", content: "noindex" }]),
         ],
         // Plex only: Geist Mono loads the first time a page shows monospaced text.
         links: [
