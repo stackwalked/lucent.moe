@@ -14,4 +14,7 @@ export const COMMENTS_COPY = {
     done: "done",
     thanks: "reported",
     seePrivacy: "see privacy.",
+    muted: "muted",
+    barred: "posting barred",
+    until: "until",
 } as const;

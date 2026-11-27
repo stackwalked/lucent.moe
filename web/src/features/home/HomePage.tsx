@@ -89,7 +89,12 @@ export function HomePage() {
                     head={{ lead: <h1 className={styles.title}>{C.shouts}</h1> }}
                     main={
                         <div className={styles.feedBox}>
-                            <ShoutFeed first={data.shouts} productId={null} canPurge={canPurge} />
+                            <ShoutFeed
+                                first={data.shouts}
+                                productId={null}
+                                canPurge={canPurge}
+                                closed={data.closed}
+                            />
                         </div>
                     }
                     aside={

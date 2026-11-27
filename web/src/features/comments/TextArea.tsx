@@ -13,6 +13,8 @@ export function TextArea({
     label,
     maxLength,
     required = false,
+    disabled = false,
+    placeholder,
     defaultValue,
     size,
     hint,
@@ -22,6 +24,9 @@ export function TextArea({
     readonly label: string;
     readonly maxLength: number;
     readonly required?: boolean;
+    // A closed input says why in place of its label (a member who is muted or barred).
+    readonly disabled?: boolean;
+    readonly placeholder?: string;
     readonly defaultValue?: string;
     readonly size?: "line" | "grow";
     // A line under the field, in the same voice as a TextField's.
@@ -53,10 +58,11 @@ export function TextArea({
                     name={name}
                     maxLength={maxLength}
                     required={required}
+                    disabled={disabled}
                     rows={1}
                     ref={(area) => (area === null ? undefined : ref(area))}
                     aria-invalid={message !== undefined}
-                    {...(inline ? { "aria-label": label, placeholder: label } : {})}
+                    {...(inline ? { "aria-label": label, placeholder: placeholder ?? label } : {})}
                     {...(describedBy === "" ? {} : { "aria-describedby": describedBy })}
                     {...(defaultValue === undefined ? {} : { defaultValue })}
                     {...(inline

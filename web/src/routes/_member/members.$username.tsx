@@ -1,6 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { SITE_COPY } from "../../copy/site.ts";
 import { fetchListings } from "../../features/cloud/server.ts";
+import { closedBy } from "../../features/comments/closed.ts";
+import { fetchStanding } from "../../features/comments/server.ts";
 import { fetchShows } from "../../features/privacy/server.ts";
 import { ProfilePage } from "../../features/profile/ProfilePage.tsx";
 import { fetchProfile, fetchWall } from "../../features/profile/server.ts";
@@ -22,7 +24,9 @@ export const Route = createFileRoute("/_member/members/$username")({
             ? await fetchListings({ data: { owner: params.username } })
             : null;
         const shows = profile.ok && profile.value.isSelf ? await fetchShows() : null;
-        return { profile, wall, shared, shows };
+        const standing = wall === null ? null : await fetchStanding();
+        const closed = standing?.ok ? closedBy(standing.value) : null;
+        return { profile, wall, shared, shows, closed };
     },
     head: () => ({ meta: [{ title: SITE_COPY.pageTitle(PROFILE_TITLE) }] }),
     component: ProfilePage,

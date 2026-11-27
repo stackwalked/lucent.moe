@@ -9,6 +9,7 @@ import { Stack } from "../../ui/Stack/Stack.tsx";
 import { Time } from "../../ui/Time/Time.tsx";
 import { memberOf } from "../../viewer.ts";
 import { RefusalNote } from "../auth/RefusalNote.tsx";
+import { type Closed, useClosedWords } from "../comments/closed.ts";
 import { postingNote } from "../comments/posting.ts";
 import { ReportButton } from "../comments/ReportButton.tsx";
 import { TextArea } from "../comments/TextArea.tsx";
@@ -70,10 +71,13 @@ function Row({
 export function Wall({
     username,
     first,
+    closed,
     actions,
 }: {
     readonly username: string;
     readonly first: Outcome<Listed>;
+    // What closes the viewer's own words, when something does.
+    readonly closed: Closed | null;
     // Beside the caption: the owner's switch for showing the wall, in edit mode.
     readonly actions?: ReactNode;
 }) {
@@ -104,6 +108,7 @@ export function Wall({
         setItems((soFar) => soFar.filter((comment) => comment.id !== id));
     };
     const note = postingNote(refused);
+    const closedWords = useClosedWords(closed);
     return (
         <Section caption={C.wall} {...(actions === undefined ? {} : { actions })}>
             <Stack gap={4}>
@@ -147,7 +152,13 @@ export function Wall({
                             maxLength={2000}
                             required
                             size="line"
-                            end={<Button type="submit">{C.post}</Button>}
+                            disabled={closedWords !== null}
+                            {...(closedWords === null ? {} : { placeholder: closedWords })}
+                            end={
+                                <Button type="submit" disabled={closedWords !== null}>
+                                    {C.post}
+                                </Button>
+                            }
                         />
                     </Stack>
                 </form>

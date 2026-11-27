@@ -2,6 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { APPEAL_PATH } from "../features/appeal/path.ts";
 import { fetchChangelog } from "../features/changes/server.ts";
 import { fetchListings } from "../features/cloud/server.ts";
+import { closedBy } from "../features/comments/closed.ts";
+import { fetchStanding } from "../features/comments/server.ts";
 import { HomePage } from "../features/home/HomePage.tsx";
 import { Landing } from "../features/landing/Landing.tsx";
 import { fetchLoaderOffer, fetchProducts } from "../features/products/server.ts";
@@ -21,14 +23,16 @@ export const Route = createFileRoute("/")({
     },
     loader: async ({ context }) => {
         if (memberOf(context.session) === null) return null;
-        const [shouts, products, loader, changes, listings] = await Promise.all([
+        const [shouts, products, loader, changes, listings, standing] = await Promise.all([
             fetchShouts({ data: { productId: null, cursor: null } }),
             fetchProducts(),
             fetchLoaderOffer(),
             fetchChangelog({ data: {} }),
             fetchListings({ data: {} }),
+            fetchStanding(),
         ]);
-        return { shouts, products, loader, changes, listings };
+        const closed = standing.ok ? closedBy(standing.value) : null;
+        return { shouts, products, loader, changes, listings, closed };
     },
     component: function Home() {
         return Route.useLoaderData() === null ? <Landing /> : <HomePage />;

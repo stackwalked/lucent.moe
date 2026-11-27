@@ -6,7 +6,6 @@ import { Pairs } from "../../ui/Pairs/Pairs.tsx";
 import { Section } from "../../ui/Section/Section.tsx";
 import { Stack } from "../../ui/Stack/Stack.tsx";
 import { Status } from "../../ui/Status/Status.tsx";
-import { Time } from "../../ui/Time/Time.tsx";
 import { forgetSession } from "../../viewer.ts";
 import { RefusalNote } from "../auth/RefusalNote.tsx";
 import { signOut } from "../auth/session.ts";
@@ -17,8 +16,9 @@ import { sendAppeal } from "./server.ts";
 
 const route = getRouteApi("/_auth/appeal");
 
-// What a suspended account sees after signing in: why it was suspended, as staff recorded it, and
-// its appeal to staff. Nothing else is reachable from here.
+// What a suspended account sees after signing in, as a notice first: "suspended", the reason staff
+// recorded when there is one, then its appeal to staff and the way out. A suspension has no end
+// date in the data, so none is shown. Nothing else is reachable from here.
 export function AppealPage() {
     const outcome = route.useLoaderData();
     const router = useRouter();
@@ -46,18 +46,9 @@ export function AppealPage() {
     return (
         <BarePage title={APPEAL_TITLE} actions={leave}>
             <Stack gap={6}>
-                <p>{APPEAL_COPY.suspended}</p>
-                <Pairs
-                    items={[
-                        {
-                            label: APPEAL_COPY.reason,
-                            value: suspension?.reason ?? APPEAL_COPY.noReason,
-                        },
-                        ...(suspension === null
-                            ? []
-                            : [{ label: APPEAL_COPY.since, value: <Time at={suspension.at} /> }]),
-                    ]}
-                />
+                {suspension === null ? null : (
+                    <Pairs items={[{ label: APPEAL_COPY.reason, value: suspension.reason }]} />
+                )}
                 <Section caption={APPEAL_COPY.thread}>
                     <Stack gap={4}>
                         {appeal === null ? (

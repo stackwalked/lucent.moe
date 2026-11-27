@@ -8,6 +8,7 @@ import { Dialog } from "../../ui/Dialog/Dialog.tsx";
 import { Empty } from "../../ui/Empty/Empty.tsx";
 import { Time } from "../../ui/Time/Time.tsx";
 import { RefusalNote } from "../auth/RefusalNote.tsx";
+import { type Closed, useClosedWords } from "../comments/closed.ts";
 import { postingNote } from "../comments/posting.ts";
 import { ReportButton } from "../comments/ReportButton.tsx";
 import { type PurgeTarget, readShoutInput } from "./command.ts";
@@ -79,10 +80,13 @@ export function ShoutFeed({
     first,
     productId,
     canPurge,
+    closed,
 }: {
     readonly first: Outcome<Listed>;
     readonly productId: ProductId | null;
     readonly canPurge: boolean;
+    // What closes the viewer's own words, when something does.
+    readonly closed: Closed | null;
 }) {
     const [items, setItems] = useState<readonly Shout[]>(
         first.ok ? [...first.value.items].reverse() : [],
@@ -166,6 +170,7 @@ export function ShoutFeed({
     };
 
     const note = postingNote(refused);
+    const closedWords = useClosedWords(closed);
     return (
         <div className={styles.feed}>
             <div className={styles.scroll} ref={list}>
@@ -192,9 +197,10 @@ export function ShoutFeed({
                     className={styles.input}
                     name="body"
                     aria-label={C.body}
-                    placeholder={C.body}
+                    placeholder={closedWords ?? C.body}
                     maxLength={280}
                     required
+                    disabled={closedWords !== null}
                     autoComplete="off"
                 />
                 {usage ? <p className={styles.usage}>{C.usage}</p> : null}

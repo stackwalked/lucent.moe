@@ -42,7 +42,7 @@ type ShowKey = "invitedBy" | "invited" | "products" | "lastSeen" | "discord" | "
 // part the owner hides stays on the page, dimmed, so it can be turned back on. Outside edit mode
 // the owner's page is exactly what another member reads, plus "edit".
 export function ProfilePage() {
-    const { profile: outcome, wall, shared, shows } = route.useLoaderData();
+    const { profile: outcome, wall, shared, shows, closed } = route.useLoaderData();
     const { edit } = route.useSearch();
     const router = useRouter();
     const { session } = useRouteContext({ from: "__root__" });
@@ -371,6 +371,7 @@ export function ProfilePage() {
                                     key={profile.username}
                                     username={profile.username}
                                     first={wall}
+                                    closed={closed}
                                     actions={showSwitch("wall", C.wall)}
                                 />
                             </div>

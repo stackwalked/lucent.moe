@@ -46,6 +46,11 @@
         resize: none;
     }
 
+    .area:disabled {
+        border-color: var(--line);
+        cursor: not-allowed;
+    }
+
     .area[data-size="line"] {
         min-block-size: var(--control-h);
         max-block-size: calc(4lh + var(--s-2) + 2px);
