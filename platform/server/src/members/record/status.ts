@@ -1,23 +1,16 @@
 import type { ProductCatalog } from "@lucent/catalog/catalog";
 import type { ProductState } from "@lucent/catalog/product";
-import { trySync } from "@lucent/core/contain";
-import { err, ok, type Result } from "@lucent/core/result";
-import {
-    type AccountId,
-    type BearerToken,
-    EpochMs,
-    ProductId,
-    toBase64Url,
-} from "@lucent/core/scalars";
+import { ok, type Result } from "@lucent/core/result";
+import { type AccountId, type BearerToken, EpochMs, ProductId } from "@lucent/core/scalars";
 import { z } from "zod";
 import {
-    type Db,
-    type DbFailure,
-    queryAll,
-    sql,
-    type Tx,
-    toTimestamptz,
-} from "../../base/db/pool.ts";
+    beforeKeyset,
+    type Keyset,
+    microsOf,
+    parseKeyset,
+    toKeyset,
+} from "../../base/db/keyset.ts";
+import { type Db, type DbFailure, queryAll, sql, type Tx } from "../../base/db/pool.ts";
 import { withTx } from "../../base/db/tx.ts";
 import { isListedForMember } from "../../delivery/products/visibility.ts";
 import { readSession, type SessionInvalid } from "../../identity/auth/sessions.ts";
@@ -147,30 +140,6 @@ export async function readMemberStatus(
     });
 }
 
-// A cursor is the last row's sort key as base64url JSON: opaque to web, checked on the way back.
-function toCursor(key: readonly [EpochMs, string]): string {
-    return toBase64Url(new TextEncoder().encode(JSON.stringify(key)));
-}
-
-const CursorKey = z.tuple([EpochMs, z.string()]);
-
-function fromCursor(
-    cursor: string,
-): Result<readonly [EpochMs, string], { readonly code: "INVALID_CURSOR" }> {
-    const decoded = trySync(
-        (): unknown =>
-            JSON.parse(
-                new TextDecoder("utf-8", { fatal: true }).decode(
-                    Uint8Array.fromBase64(cursor, { alphabet: "base64url" }),
-                ),
-            ),
-        () => ({ code: "INVALID_CURSOR" as const }),
-    );
-    if (!decoded.ok) return decoded;
-    const parsed = CursorKey.safeParse(decoded.value);
-    return parsed.success ? ok(parsed.data) : err({ code: "INVALID_CURSOR" });
-}
-
 type ListInput = {
     // Absent: everything the member may see. Null: the service's entries only. A product id:
     // that product's (a product the member may not see is an empty page, never a refusal).
@@ -196,9 +165,9 @@ export async function listMemberChangelog(
         SessionInvalid | DbFailure | { readonly code: "INVALID_CURSOR" }
     >
 > {
-    let key: readonly [EpochMs, string] | null = null;
+    let key: Keyset | null = null;
     if (params.input.cursor !== undefined) {
-        const parsed = fromCursor(params.input.cursor);
+        const parsed = parseKeyset(params.input.cursor);
         if (!parsed.ok) return parsed;
         key = parsed.value;
     }
@@ -227,24 +196,24 @@ export async function listMemberChangelog(
                 ? scoped
                 : sql`(${scoped}) and subject = ${params.input.subject}`;
         const after =
-            key === null
-                ? sql`true`
-                : sql`(published_at, id) < (${toTimestamptz(key[0])}::timestamptz, ${key[1]}::uuid)`;
+            key === null ? sql`true` : beforeKeyset({ time: sql`published_at`, id: sql`id` }, key);
         const rows = await queryAll(
             tx,
-            ChangelogRow,
-            sql`select ${CHANGELOG_COLUMNS} from changelog_entry
+            ChangelogRow.extend({ publishedAtMicros: z.string() }),
+            sql`select ${CHANGELOG_COLUMNS}, ${microsOf(sql`published_at`)} as "publishedAtMicros"
+                from changelog_entry
                 where (${narrowed}) and (${after})
                 order by published_at desc, id desc limit ${CHANGELOG_PAGE + 1}`,
         );
         if (!rows.ok) return rows;
-        const entries = rows.value.slice(0, CHANGELOG_PAGE);
-        const last = entries.at(-1);
+        const page = rows.value.slice(0, CHANGELOG_PAGE);
+        const last = page.at(-1);
+        const entries = page.map(({ publishedAtMicros: _, ...entry }) => entry);
         return ok({
             entries,
             next:
                 rows.value.length > CHANGELOG_PAGE && last !== undefined
-                    ? toCursor([last.publishedAt, last.id])
+                    ? toKeyset({ micros: last.publishedAtMicros, id: last.id })
                     : null,
             names: listed.value.map(({ id, name }) => ({ id, name })),
         });

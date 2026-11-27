@@ -1,3 +1,4 @@
+import { SEARCH_TEXT_MIN } from "@lucent/rpc/web/search-text";
 import { useRouter } from "@tanstack/react-router";
 import { useEffect, useId, useRef, useState } from "react";
 import { Icon } from "../../../ui/Icon/Icon.tsx";
@@ -78,7 +79,7 @@ export function AdminSearch() {
     useEffect(() => {
         const element = panel.current;
         if (element === null) return;
-        const wanted = found !== null && text.trim() !== "";
+        const wanted = found !== null && text.trim().length >= SEARCH_TEXT_MIN;
         if (wanted && !element.matches(":popover-open")) element.showPopover();
         if (!wanted && element.matches(":popover-open")) element.hidePopover();
     }, [found, text]);
@@ -88,7 +89,7 @@ export function AdminSearch() {
         setActive(0);
         const ticket = latest.current + 1;
         latest.current = ticket;
-        if (value.trim() === "") return setFound(null);
+        if (value.trim().length < SEARCH_TEXT_MIN) return setFound(null);
         setTimeout(async () => {
             if (latest.current !== ticket) return;
             const reply = await searchStaff({ data: { text: value } });
@@ -126,7 +127,7 @@ export function AdminSearch() {
                 type="search"
                 role="combobox"
                 aria-label={C.search}
-                aria-expanded={found !== null && text.trim() !== ""}
+                aria-expanded={found !== null && text.trim().length >= SEARCH_TEXT_MIN}
                 aria-controls={id}
                 placeholder={C.search}
                 autoComplete="off"

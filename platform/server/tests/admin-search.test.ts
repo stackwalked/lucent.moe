@@ -213,7 +213,7 @@ test("results are capped at five, tombstones are left out, suspended accounts ar
         invariant(deleted.ok, "expected results");
         expect(deleted.value.accounts).toEqual([]);
 
-        for (const text of ["%", "_", "z_d", "z%"]) {
+        for (const text of ["%%", "__", "z_d", "z%"]) {
             const literal = await w.client.call("admin.search", { text }, staff.call);
             invariant(literal.ok, "expected results");
             expect(literal.value.accounts).toEqual([]);
@@ -242,4 +242,18 @@ test("the thumbprint prefix of a match code is the base64url start of the key it
     for (const length of [4, 5, 6, 8]) {
         expect(jkt.startsWith(thumbprintPrefix(digits.slice(0, length)))).toBe(true);
     }
+});
+
+test("a search of fewer than two characters, once trimmed, is refused before anything is read", async () => {
+    await world(21103, async (w) => {
+        const staff = await w.member("reader", ["accounts:read"]);
+        await w.member("anabel", null);
+        for (const text of ["a", " a ", " ", ""]) {
+            const refused = await w.client.call("admin.search", { text }, staff.call);
+            expect(!refused.ok && refused.error.code).toBe("INVALID_REQUEST");
+        }
+        const found = await w.client.call("admin.search", { text: " an " }, staff.call);
+        invariant(found.ok, "two characters are enough");
+        expect(found.value.accounts.map((a) => a.username)).toEqual(["anabel"]);
+    });
 });

@@ -13,6 +13,7 @@ import { ActionSchema } from "@lucent/policy/actions";
 import { z } from "zod";
 import { defineContract } from "../contract.ts";
 import { ACCOUNT_STATUSES } from "./account-status.ts";
+import { SEARCH_TEXT_MIN } from "./search-text.ts";
 import {
     AuditEntry,
     Cursor,
@@ -93,11 +94,14 @@ export const authorityContract = defineContract({
     // The staff search box: what starts with, or exactly is, what was typed, at most five of each
     // kind the caller may read. Accounts by username or email prefix and pcs by match code or
     // device id (accounts:read, as are invites by their link), tickets by id or subject prefix
-    // (tickets:reply). A kind the caller lacks the permission for comes back empty.
+    // (tickets:reply). A kind the caller lacks the permission for comes back empty. The text is at
+    // least SEARCH_TEXT_MIN characters once trimmed.
     "admin.search": {
         session: "member",
         effect: "read",
-        input: z.strictObject({ text: z.string().trim().min(1).max(120) }),
+        input: z.strictObject({
+            text: z.string().trim().min(SEARCH_TEXT_MIN).max(120),
+        }),
         output: z.object({
             accounts: z
                 .array(

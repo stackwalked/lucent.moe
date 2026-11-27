@@ -2,12 +2,12 @@ import { expect, test } from "bun:test";
 import { invariant } from "@lucent/core/contain";
 import { err, ok } from "@lucent/core/result";
 import { createSeededRng } from "@lucent/core/rng";
-import { BearerToken, ProductId } from "@lucent/core/scalars";
+import { BearerToken, ProductId, toBase64Url } from "@lucent/core/scalars";
 import { createRpcClient } from "@lucent/rpc/client";
 import { mountInternalRpc } from "@lucent/rpc/mount";
 import { webContract } from "@lucent/rpc/web";
 import { z } from "zod";
-import { type Db, execute, sql } from "../src/base/db/pool.ts";
+import { type Db, execute, queryAll, sql } from "../src/base/db/pool.ts";
 import { webProcedures } from "../src/edge/listeners/internal/web-rpc.ts";
 import type { ChangelogEntryFields } from "../src/members/record/notes.rules.ts";
 import {
@@ -17,7 +17,11 @@ import {
     listStaffNotes,
     updateNote,
 } from "../src/members/record/notes.ts";
-import { listMemberChangelog, readMemberStatus } from "../src/members/record/status.ts";
+import {
+    CHANGELOG_PAGE,
+    listMemberChangelog,
+    readMemberStatus,
+} from "../src/members/record/status.ts";
 import { memberSession, seedRootOnce } from "./auth-fixtures.ts";
 import {
     catalog,
@@ -722,5 +726,75 @@ test("the table mirrors the entry rules: a product exactly for a product subject
         expect((await insert({ added: Array(31).fill("one") })).ok).toBe(false);
         expect((await insert({ added: [`a${FORMAT[0]}b`] })).ok).toBe(false);
         expect((await insert({ version: "v".repeat(41) })).ok).toBe(false);
+    });
+});
+
+test("the changelog pages through entries published in the same instant without skipping any", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ browserDb: db }) => {
+        const rng = createSeededRng(11_230);
+        const products = liveCatalog();
+        const auth = await createTestAuthDeps(db, rng);
+        const session = await memberSession(auth, await seedRootOnce(db, rng));
+        // One statement, one timestamp with microseconds a millisecond cursor would cut.
+        const total = CHANGELOG_PAGE + 3;
+        expect(
+            await execute(
+                db,
+                sql`insert into changelog_entry (title, body, subject, published_at, updated_at)
+                    select 'entry ' || n, 'body', 'service',
+                           timestamptz '2026-01-01 00:00:00.123456+00', now()
+                    from generate_series(1, ${total}) n`,
+            ),
+        ).toEqual({ ok: true, value: total });
+
+        const seen: string[] = [];
+        let cursor: string | undefined;
+        for (let pages = 0; pages < 5; pages++) {
+            const page = await listMemberChangelog(db, {
+                catalog: products,
+                sessionToken: session,
+                input: cursor === undefined ? {} : { cursor },
+            });
+            invariant(page.ok, "the changelog reads");
+            seen.push(...page.value.entries.map((entry) => entry.id));
+            if (page.value.next === null) break;
+            cursor = page.value.next;
+        }
+        expect(seen.length).toBe(total);
+        expect(new Set(seen).size).toBe(total);
+        const order = await queryAll(
+            db,
+            z.object({ id: z.string() }),
+            sql`select id::text as id from changelog_entry order by published_at desc, id desc`,
+        );
+        invariant(order.ok, "the order reads");
+        expect(seen).toEqual(order.value.map((row) => row.id));
+    });
+});
+
+test("a changelog cursor that is not one of ours, or whose id is not a uuid, is invalid rather than a database error", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ browserDb: db }) => {
+        const rng = createSeededRng(11_231);
+        const products = liveCatalog();
+        const auth = await createTestAuthDeps(db, rng);
+        const session = await memberSession(auth, await seedRootOnce(db, rng));
+        const encode = (value: unknown) =>
+            toBase64Url(new TextEncoder().encode(JSON.stringify(value)));
+        for (const cursor of [
+            "nope!",
+            encode([1_767_225_600_123, "not-a-uuid"]),
+            encode(["1767225600123456", "not-a-uuid"]),
+            encode(["1767225600123456", "00000000-0000-4000-8000-000000000001", "x"]),
+        ]) {
+            expect(
+                await listMemberChangelog(db, {
+                    catalog: products,
+                    sessionToken: session,
+                    input: { cursor },
+                }),
+            ).toEqual(err({ code: "INVALID_CURSOR" }));
+        }
     });
 });
