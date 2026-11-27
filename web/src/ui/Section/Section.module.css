@@ -17,6 +17,18 @@
         border-block-end: 1px solid var(--line);
     }
 
+    /* A caption right under a head row is a plain label: the head row's hairline is the only line
+       there. Head rows are followed by their content directly (Page's body, Columns' headed
+       block), or by one wrapper whose first child it is. Lower captions keep theirs. */
+    [data-below-head="true"] > .section:first-child > .caption,
+    [data-below-head="true"] > :first-child > .section:first-child > .caption,
+    [data-below-head="true"] > header + .section > .caption,
+    [data-below-head="true"] > header + :not(header) > .section:first-child > .caption {
+        min-block-size: 0;
+        padding-block-end: 0;
+        border-block-end: 0;
+    }
+
     .label {
         color: var(--ink-2);
         font-size: var(--size-13);

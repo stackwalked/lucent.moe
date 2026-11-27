@@ -23,7 +23,7 @@ export function Columns({
                 {head === undefined ? (
                     main
                 ) : (
-                    <div className={styles.headed}>
+                    <div className={styles.headed} data-below-head="true">
                         <HeadRow
                             lead={head.lead}
                             {...(head.actions === undefined ? {} : { actions: head.actions })}
