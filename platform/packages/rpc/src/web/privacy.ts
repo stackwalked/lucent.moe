@@ -32,26 +32,11 @@ export const ExportData = z.object({
             avatar: Avatar.nullable(),
         })
         .nullable(),
-    guides: z
-        .array(
-            z.object({
-                id: z.uuid(),
-                productId: ProductId,
-                title: z.string(),
-                body: z.string(),
-                createdAt: EpochMs,
-                updatedAt: EpochMs,
-                removedAt: Removed,
-            }),
-        )
-        .readonly(),
     comments: z
         .array(
             z.object({
                 id: z.uuid(),
-                // Null for a comment on a profile wall, which names the profile instead.
-                guideId: z.uuid().nullable(),
-                profileUsername: z.string().nullable(),
+                profileUsername: z.string(),
                 body: z.string(),
                 createdAt: EpochMs,
                 removedAt: Removed,
@@ -73,7 +58,7 @@ export const ExportData = z.object({
     reportsMade: z
         .array(
             z.object({
-                kind: z.enum(["comment", "shout", "guide", "profile", "listing"]),
+                kind: z.enum(["comment", "shout", "profile", "listing"]),
                 targetId: z.uuid(),
                 reason: z.enum(["spam", "abuse", "other"]),
                 note: z.string(),

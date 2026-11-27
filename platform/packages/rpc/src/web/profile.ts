@@ -1,7 +1,6 @@
 import { EpochMs } from "@lucent/core/scalars";
 import { z } from "zod";
 import { defineContract } from "../contract.ts";
-import { CommentBody } from "./comments.ts";
 import {
     Author,
     Avatar,
@@ -31,6 +30,8 @@ export const AvatarUploadRefusal = z.discriminatedUnion("code", [
     refusal("IMAGE_UNDECODABLE"),
     refusal("IMAGE_TIMED_OUT"),
 ]);
+
+export const CommentBody = z.string().trim().min(1).max(2_000);
 
 export const profileContract = defineContract({
     "profile.get": {

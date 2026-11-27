@@ -4,7 +4,7 @@ import type { EpochMs, ProductId } from "@lucent/core/scalars";
 export const RESTRICTION_KINDS = ["muted", "barred"] as const;
 export type RestrictionKind = (typeof RESTRICTION_KINDS)[number];
 
-export const POSTING_SURFACES = ["profile", "comment", "shout", "guide", "listing"] as const;
+export const POSTING_SURFACES = ["profile", "comment", "shout", "listing"] as const;
 export type PostingSurface = (typeof POSTING_SURFACES)[number];
 
 export type Restriction = {

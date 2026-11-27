@@ -70,8 +70,6 @@ export const ACCOUNT_REFERENCES: Readonly<Record<string, Fate>> = {
     // Community.
     "profile.account_id": goes("the bio, avatar and banner"),
     "profile.removed_by": stays(STAFF),
-    "guide.author_id": goes("with every comment under it"),
-    "guide.removed_by": stays(STAFF),
     "comment.author_id": goes("what the member wrote"),
     "comment.profile_account_id": goes("the member's wall goes with them"),
     "comment.removed_by": stays(STAFF),

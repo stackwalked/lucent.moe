@@ -13,7 +13,7 @@ export const PRIVACY_COPY = {
     none: "none",
     manage: "manage",
     blocksTitle: "blocked accounts",
-    blocksHint: "neither of you sees the other's comments, shouts, guides or profile.",
+    blocksHint: "neither of you sees the other's comments, shouts or profile.",
     unblock: "unblock",
     unblockLabel: (name: string) => `unblock ${name}`,
     blockField: "username",
@@ -30,7 +30,7 @@ export const PRIVACY_COPY = {
     deletes: "deletes",
     confirmTitle: "delete your account?",
     confirmBody:
-        "in 7 days your sign-in, profile, guides, comments, shouts, cloud items, licences and discord link go for good, and your username can't be used again.",
+        "in 7 days your sign-in, profile, comments, shouts, cloud items, licences and discord link go for good, and your username can't be used again.",
     cancel: "cancel",
     pending: "deletion pending:",
     keep: "keep my account",

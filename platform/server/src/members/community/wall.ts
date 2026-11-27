@@ -11,7 +11,7 @@ import { withMemberAt } from "./member.ts";
 import { type NotFound, PAGE_SIZE, pageOf } from "./page.ts";
 import { mayPostHere, readMaySeeSuspended } from "./standing.ts";
 
-// A profile's wall: comments that attach to an account instead of a guide. A wall is the owner's
+// A profile's wall: comments that attach to an account. A wall is the owner's
 // profile's own, so it is read by the same rule as the profile: a private profile (the owner's
 // excepted), a suspended account (to anyone but itself and staff reading accounts), a tombstone
 // and a block in either direction are all "no such account". The owner's `show_wall` opt-out
@@ -186,8 +186,8 @@ export function createWallComment(
 }
 
 // The comment's author and the wall's owner may delete it, whatever blocks lie between them (an
-// owner clears their own wall). Anyone else is told it is not there; so is a guide's comment,
-// which is staff's to remove through a report. One already removed stays as it is.
+// owner clears their own wall). Anyone else is told it is not there; staff remove through a
+// report. One already removed stays as it is.
 export function deleteWallComment(db: Db, token: BearerToken, params: { readonly id: string }) {
     return withMemberAt(db, token, async (tx, accountId) => {
         const found = await queryOne(

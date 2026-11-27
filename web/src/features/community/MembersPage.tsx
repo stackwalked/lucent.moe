@@ -16,7 +16,6 @@ import { COMMUNITY_COPY as C } from "./copy.ts";
 import styles from "./MembersPage.module.css";
 import { usePresence } from "./presence.ts";
 import { fetchMembers } from "./server.ts";
-import { CommunityTabs } from "./Tabs.tsx";
 
 type Listed = Extract<Awaited<ReturnType<typeof fetchMembers>>, { readonly ok: true }>["value"];
 type Member = Listed["items"][number];
@@ -181,7 +180,10 @@ export function MembersPage({ data }: { readonly data: MembersData }) {
     return (
         <Page title={C.title} hideTitle>
             <Columns
-                head={{ lead: <CommunityTabs />, actions: <FindMembers find={find} /> }}
+                head={{
+                    lead: <h1 className={styles.title}>{C.members}</h1>,
+                    actions: <FindMembers find={find} />,
+                }}
                 main={
                     members.ok ? (
                         <MemberList key={find ?? ""} first={members.value} find={find} />

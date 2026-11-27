@@ -1,8 +1,4 @@
 export const COMMENTS_COPY = {
-    title: "comments",
-    none: "no comments",
-    body: "comment",
-    post: "post",
     you: "you",
     staff: "staff",
     report: "report",
@@ -18,5 +14,4 @@ export const COMMENTS_COPY = {
     done: "done",
     thanks: "reported",
     seePrivacy: "see privacy.",
-    author: (name: string | null) => name ?? "—",
 } as const;

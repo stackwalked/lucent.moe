@@ -2,15 +2,13 @@ import { expect, test } from "bun:test";
 import { invariant } from "@lucent/core/contain";
 import { err, ok } from "@lucent/core/result";
 import { createSeededRng } from "@lucent/core/rng";
-import { ProductId } from "@lucent/core/scalars";
 import { z } from "zod";
 import { execute, queryOne, sql } from "../src/base/db/pool.ts";
 import { setBlock } from "../src/members/community/blocks.ts";
-import { createComment, listComments } from "../src/members/community/comments.ts";
 import { exportOwnData } from "../src/members/community/export.ts";
-import { createGuide, listGuides } from "../src/members/community/guides.ts";
 import { readProfile, setBio } from "../src/members/community/profiles.ts";
 import { createShout } from "../src/members/community/shouts.ts";
+import { createWallComment, listWall } from "../src/members/community/wall.ts";
 import { createReport, listReports, resolveReport } from "../src/members/moderation/reports.ts";
 import { setRestriction } from "../src/members/moderation/restrictions.ts";
 import { catalog } from "./authority-fixtures.ts";
@@ -18,7 +16,6 @@ import { member, moderator } from "./community-fixtures.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 
 const products = catalog();
-const loader = ProductId.parse("lucent-loader");
 
 test("a reported profile bio is removed from view for everyone, audited, and the owner can write a new one", async () => {
     const cluster = await sharedTestCluster();
@@ -98,25 +95,14 @@ test("a reported profile bio is removed from view for everyone, audited, and the
     });
 });
 
-test("a member cannot report a comment on a guide whose author blocked them, and learns nothing from the id", async () => {
+test("a member cannot report a comment on a wall whose owner blocked them, and learns nothing from the id", async () => {
     const cluster = await sharedTestCluster();
     await cluster.withTestDb(async ({ browserDb: db }) => {
         const rng = createSeededRng(9702);
         const alice = await member(db, rng, "alice@lucent.test", "alice");
         const bob = await member(db, rng, "bob@lucent.test", "bob");
         const carol = await member(db, rng, "carol@lucent.test", "carol");
-        const guide = await createGuide(db, alice.token, {
-            catalog: products,
-            productId: loader,
-            title: "t",
-            body: "b",
-        });
-        invariant(guide.ok, "expected a guide");
-        const comment = await createComment(db, carol.token, {
-            catalog: products,
-            guideId: guide.value.id,
-            body: "c",
-        });
+        const comment = await createWallComment(db, carol.token, { username: "alice", body: "c" });
         invariant(comment.ok, "expected a comment");
         const report = (id: string) =>
             createReport(db, bob.token, {
@@ -137,14 +123,13 @@ test("a member cannot report a comment on a guide whose author blocked them, and
     });
 });
 
-test("volume limits: open reports, posts a minute and guides per product", async () => {
+test("volume limits: open reports and posts a minute", async () => {
     const cluster = await sharedTestCluster();
     await cluster.withTestDb(async ({ browserDb: db }) => {
         const rng = createSeededRng(9703);
         const alice = await member(db, rng, "alice@lucent.test", "alice");
         const bob = await member(db, rng, "bob@lucent.test", "bob");
-        const limit = (name: "reports" | "posts" | "guides") =>
-            err({ code: "LIMIT_REACHED", limit: name });
+        const limit = (name: "reports" | "posts") => err({ code: "LIMIT_REACHED", limit: name });
 
         // Ten posts in the window, then refused; another account is unaffected.
         for (let n = 0; n < 10; n += 1) {
@@ -193,18 +178,6 @@ test("volume limits: open reports, posts a minute and guides per product", async
         for (const id of old.value.ids.slice(0, 20)) expect(await flag(id)).toEqual(ok(undefined));
         expect(await flag(old.value.ids[20] ?? "")).toEqual(limit("reports"));
         expect(await flag(old.value.ids[0] ?? "")).toEqual(ok(undefined));
-
-        // Fifty guides in one product, then refused there; removed ones do not count.
-        await execute(
-            db,
-            sql`insert into guide (product_id, author_id, title, body)
-                select ${loader}, ${bob.id}, 'g' || n, 'b' from generate_series(1, 50) n`,
-        );
-        const guide = (token: typeof bob.token) =>
-            createGuide(db, token, { catalog: products, productId: loader, title: "x", body: "y" });
-        expect(await guide(bob.token)).toEqual(limit("guides"));
-        await execute(db, sql`update guide set removed_at = now() where title = 'g1'`);
-        expect((await guide(bob.token)).ok).toBe(true);
     });
 });
 
@@ -234,40 +207,22 @@ test("a cursor naming a row the reader cannot see ends the page instead of order
         const rng = createSeededRng(9705);
         const alice = await member(db, rng, "alice@lucent.test", "alice");
         const bob = await member(db, rng, "bob@lucent.test", "bob");
-        const hidden = await createGuide(db, bob.token, {
-            catalog: products,
-            productId: loader,
-            title: "hidden",
-            body: "b",
+        const hidden = await createWallComment(db, bob.token, {
+            username: "alice",
+            body: "hidden",
         });
-        invariant(hidden.ok, "expected a guide");
-        for (const n of [1, 2]) {
-            invariant(
-                (
-                    await createGuide(db, alice.token, {
-                        catalog: products,
-                        productId: loader,
-                        title: `g${n}`,
-                        body: "b",
-                    })
-                ).ok,
-                "expected a guide",
-            );
-        }
+        invariant(hidden.ok, "expected a comment");
+        invariant(
+            (await createWallComment(db, alice.token, { username: "alice", body: "mine" })).ok,
+            "expected a comment",
+        );
         expect(await setBlock(db, alice.token, { username: "bob", blocked: true })).toEqual(
             ok(undefined),
         );
-        const page = await listGuides(db, alice.token, {
-            catalog: products,
-            productId: loader,
+        const page = await listWall(db, alice.token, {
+            username: "alice",
             cursor: hidden.value.id,
         });
         expect(page).toEqual(ok({ items: [], nextCursor: null }));
-        const comments = await listComments(db, alice.token, {
-            catalog: products,
-            guideId: hidden.value.id,
-            cursor: null,
-        });
-        expect(comments).toEqual(err({ code: "NOT_FOUND" }));
     });
 });

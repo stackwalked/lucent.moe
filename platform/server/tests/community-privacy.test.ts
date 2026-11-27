@@ -2,13 +2,11 @@ import { expect, test } from "bun:test";
 import { invariant } from "@lucent/core/contain";
 import { err, ok } from "@lucent/core/result";
 import { createSeededRng } from "@lucent/core/rng";
-import { ProductId } from "@lucent/core/scalars";
 import { listBlocks, setBlock } from "../src/members/community/blocks.ts";
-import { createComment, listComments } from "../src/members/community/comments.ts";
 import { exportOwnData } from "../src/members/community/export.ts";
-import { createGuide, listGuides, readGuide } from "../src/members/community/guides.ts";
 import { readProfile, setBio, setVisibility } from "../src/members/community/profiles.ts";
 import { createShout, listShouts } from "../src/members/community/shouts.ts";
+import { createWallComment, listWall } from "../src/members/community/wall.ts";
 import { createReport } from "../src/members/moderation/reports.ts";
 import { setRestriction } from "../src/members/moderation/restrictions.ts";
 import { catalog } from "./authority-fixtures.ts";
@@ -16,39 +14,26 @@ import { member, moderator } from "./community-fixtures.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 
 const products = catalog();
-const loader = ProductId.parse("lucent-loader");
 
-test("a blocked account's comments, shouts, guides and profile are absent for the blocker, and the blocker's for them", async () => {
+test("a blocked account's wall comments, shouts and profile are absent for the blocker, and the blocker's for them", async () => {
     const cluster = await sharedTestCluster();
     await cluster.withTestDb(async ({ browserDb: db }) => {
         const rng = createSeededRng(9401);
         const alice = await member(db, rng, "alice@lucent.test", "alice");
         const bob = await member(db, rng, "bob@lucent.test", "bob");
         const carol = await member(db, rng, "carol@lucent.test", "carol");
-        const aliceGuide = await createGuide(db, alice.token, {
-            catalog: products,
-            productId: loader,
-            title: "alice guide",
-            body: "b",
-        });
-        const bobGuide = await createGuide(db, bob.token, {
-            catalog: products,
-            productId: loader,
-            title: "bob guide",
-            body: "b",
-        });
-        invariant(aliceGuide.ok && bobGuide.ok, "expected guides");
+        const comments: Record<string, string> = {};
         for (const [who, text] of [
             [alice, "from alice"],
             [bob, "from bob"],
             [carol, "from carol"],
         ] as const) {
-            const comment = await createComment(db, who.token, {
-                catalog: products,
-                guideId: aliceGuide.value.id,
+            const comment = await createWallComment(db, who.token, {
+                username: "carol",
                 body: text,
             });
             invariant(comment.ok, "expected a comment");
+            comments[text] = comment.value.id;
             const shout = await createShout(db, who.token, {
                 catalog: products,
                 productId: null,
@@ -57,21 +42,14 @@ test("a blocked account's comments, shouts, guides and profile are absent for th
             invariant(shout.ok, "expected a shout");
         }
         const view = async (who: typeof alice) => ({
-            comments: await listComments(db, who.token, {
-                catalog: products,
-                guideId: aliceGuide.value.id,
-                cursor: null,
-            }).then((r) => (r.ok ? r.value.items.map((c) => c.body) : r.error.code)),
+            comments: await listWall(db, who.token, { username: "carol", cursor: null }).then(
+                (r) => (r.ok ? r.value.items.map((c) => c.body).sort() : r.error.code),
+            ),
             shouts: await listShouts(db, who.token, {
                 catalog: products,
                 productId: null,
                 cursor: null,
             }).then((r) => (r.ok ? r.value.items.map((s) => s.body).sort() : r.error.code)),
-            guides: await listGuides(db, who.token, {
-                catalog: products,
-                productId: loader,
-                cursor: null,
-            }).then((r) => (r.ok ? r.value.items.map((g) => g.title).sort() : r.error.code)),
         });
         expect((await view(alice)).shouts).toEqual(["from alice", "from bob", "from carol"]);
 
@@ -84,25 +62,19 @@ test("a blocked account's comments, shouts, guides and profile are absent for th
         expect(await setBlock(db, alice.token, { username: "alice", blocked: true })).toEqual(
             err({ code: "NOT_FOUND" }),
         );
+        // Neither sees the other's writing.
         expect(await view(alice)).toEqual({
             comments: ["from alice", "from carol"],
             shouts: ["from alice", "from carol"],
-            guides: ["alice guide"],
         });
-        // Neither sees the other's writing, and the blocker's guide is gone for the blocked.
         expect(await view(bob)).toEqual({
-            comments: "NOT_FOUND",
+            comments: ["from bob", "from carol"],
             shouts: ["from bob", "from carol"],
-            guides: ["bob guide"],
         });
         expect(await view(carol)).toEqual({
             comments: ["from alice", "from bob", "from carol"],
             shouts: ["from alice", "from bob", "from carol"],
-            guides: ["alice guide", "bob guide"],
         });
-        expect(
-            await readGuide(db, bob.token, { catalog: products, id: aliceGuide.value.id }),
-        ).toEqual(err({ code: "NOT_FOUND" }));
         expect(await readProfile(db, alice.token, { username: "bob" })).toEqual(
             err({ code: "NOT_FOUND" }),
         );
@@ -111,17 +83,13 @@ test("a blocked account's comments, shouts, guides and profile are absent for th
         );
         expect((await readProfile(db, carol.token, { username: "bob" })).ok).toBe(true);
         expect(
-            await createComment(db, bob.token, {
-                catalog: products,
-                guideId: aliceGuide.value.id,
-                body: "still here?",
-            }),
+            await createWallComment(db, bob.token, { username: "alice", body: "still here?" }),
         ).toEqual(err({ code: "NOT_FOUND" }));
         expect(
             await createReport(db, alice.token, {
                 catalog: products,
-                kind: "guide",
-                targetId: bobGuide.value.id,
+                kind: "comment",
+                targetId: comments["from bob"] ?? "",
                 reason: "spam",
                 note: "",
             }),
@@ -136,7 +104,7 @@ test("a blocked account's comments, shouts, guides and profile are absent for th
             ok(undefined),
         );
         expect((await view(alice)).shouts).toEqual(["from alice", "from bob", "from carol"]);
-        expect((await view(bob)).comments).toEqual(["from alice", "from bob", "from carol"]);
+        expect((await view(alice)).comments).toEqual(["from alice", "from bob", "from carol"]);
     });
 });
 
@@ -186,13 +154,6 @@ test("the export is the account's own data in one document and nothing of anyone
         const mod = await moderator(db, rng, "mod@lucent.test");
         const alice = await member(db, rng, "alice@lucent.test", "alice");
         const bob = await member(db, rng, "bob@lucent.test", "bob");
-        const guide = await createGuide(db, alice.token, {
-            catalog: products,
-            productId: loader,
-            title: "alice guide",
-            body: "secret alice body",
-        });
-        invariant(guide.ok, "expected a guide");
         invariant(
             (
                 await createShout(db, alice.token, {
@@ -204,13 +165,7 @@ test("the export is the account's own data in one document and nothing of anyone
             "expected a shout",
         );
         invariant(
-            (
-                await createComment(db, bob.token, {
-                    catalog: products,
-                    guideId: guide.value.id,
-                    body: "bob comment",
-                })
-            ).ok,
+            (await createWallComment(db, bob.token, { username: "alice", body: "bob comment" })).ok,
             "expected a comment",
         );
         invariant(
@@ -251,7 +206,6 @@ test("the export is the account's own data in one document and nothing of anyone
             removedAt: null,
             avatar: null,
         });
-        expect(mine.value.guides.map((g) => g.title)).toEqual(["alice guide"]);
         expect(mine.value.shouts.map((s) => s.body)).toEqual(["alice shout"]);
         expect(mine.value.comments).toEqual([]);
         expect(mine.value.blocks.map((b) => b.username)).toEqual(["bob"]);
@@ -263,6 +217,7 @@ test("the export is the account's own data in one document and nothing of anyone
         const theirs = await exportOwnData(db, bob.token);
         invariant(theirs.ok, "expected the export");
         expect(theirs.value.comments.map((c) => c.body)).toEqual(["bob comment"]);
-        expect(JSON.stringify(theirs.value)).not.toContain("secret alice body");
+        expect(theirs.value.comments.map((c) => c.profileUsername)).toEqual(["alice"]);
+        expect(JSON.stringify(theirs.value)).not.toContain("alice shout");
     });
 });

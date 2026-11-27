@@ -314,27 +314,19 @@ async function strip(
     });
 }
 
-// Guides go with every comment under them, whoever wrote it; so does the member's wall, and what
-// they wrote on other walls goes with their other writing. The member's guides are locked first,
-// so a comment on one can't be added between the comment and guide deletes (its insert takes a key
-// share on the guide; one on a wall takes a share lock on the owner's account row, which the
-// deletion holds), then every row that goes is locked: a report filed meanwhile locks its
-// target too (moderation/reports.ts), so it either finds the row gone or commits first and is
-// closed with the rest. Open reports about what goes would wait in no queue (it joins the
-// content), so they go; decided ones are staff's record and stay. The member's listings are
-// already gone with their cloud items (copies others made keep their content), so their ids come
-// from the cloud strip, which read them before deleting.
+// The member's wall goes with them, and what they wrote on other walls goes with their other
+// writing. Every row that goes is locked: a report filed meanwhile locks its target too
+// (moderation/reports.ts), so it either finds the row gone or commits first and is closed with
+// the rest. A comment on a wall takes a share lock on the owner's account row, which the deletion
+// holds, so none is added between the lock and the delete. Open reports about what goes would wait
+// in no queue (it joins the content), so they go; decided ones are staff's record and stay. The
+// member's listings are already gone with their cloud items (copies others made keep their
+// content), so their ids come from the cloud strip, which read them before deleting.
 async function stripCommunity(tx: Tx, id: AccountId, listings: readonly string[]) {
-    const guides = await ids(
-        tx,
-        sql`select id::text as id from guide where author_id = ${id} order by id for update`,
-    );
-    if (!guides.ok) return guides;
     const comments = await ids(
         tx,
         sql`select id::text as id from comment
             where author_id = ${id} or profile_account_id = ${id}
-               or guide_id = any(${guides.value}::uuid[])
             order by id for update`,
     );
     if (!comments.ok) return comments;
@@ -358,12 +350,10 @@ async function stripCommunity(tx: Tx, id: AccountId, listings: readonly string[]
     const profiles = profile.value.map((row) => row.id);
     const deleted = await all(tx, [
         sql`delete from comment where id = any(${comments.value}::uuid[])`,
-        sql`delete from guide where id = any(${guides.value}::uuid[])`,
         sql`delete from shout where id = any(${shouts.value}::uuid[])`,
         sql`delete from profile where account_id = ${id}`,
         sql`delete from report r where r.state = 'open' and (
                 (r.target_kind = 'comment' and r.target_id = any(${comments.value}::uuid[]))
-                or (r.target_kind = 'guide' and r.target_id = any(${guides.value}::uuid[]))
                 or (r.target_kind = 'shout' and r.target_id = any(${shouts.value}::uuid[]))
                 or (r.target_kind = 'listing' and r.target_id = any(${listings}::uuid[]))
                 or (r.target_kind = 'profile' and r.target_id = any(${profiles}::uuid[])))`,

@@ -1,4 +1,10 @@
 @layer features {
+    .title {
+        color: var(--ink-2);
+        font-size: var(--size-13);
+        font-weight: var(--w-medium);
+    }
+
     .list {
         display: flex;
         flex-direction: column;

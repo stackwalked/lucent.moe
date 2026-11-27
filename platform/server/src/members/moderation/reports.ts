@@ -18,7 +18,7 @@ import { withTx } from "../../base/db/tx.ts";
 import { takeDown } from "../../delivery/cloud/listings.ts";
 import { lockCallerWith } from "../../identity/authority/standing.ts";
 import { clearRemovedAvatar } from "../community/avatars.ts";
-import { guideReadable, notBlockedWith } from "../community/blocks.ts";
+import { notBlockedWith } from "../community/blocks.ts";
 import { decideReportLimit } from "../community/limits.rules.ts";
 import { type NotFound, requireListed } from "../community/page.ts";
 import { withMember } from "../notify/account.ts";
@@ -32,10 +32,9 @@ const Target = z.object({
     excerpt: z.string(),
 });
 
-// What a report points at, while it is still there: removed content and a comment whose guide
-// was removed are gone for everyone, reports included. With a viewer the answer is also what
-// that member may read, by the same predicates the lists use (guideReadable, blocks, a private
-// profile); without one (staff) it is only what exists. The row is share-locked, so an account
+// What a report points at, while it is still there: removed content is gone for everyone,
+// reports included. With a viewer the answer is also what that member may read, by the same
+// predicates the lists use (blocks, a private profile, a hidden wall); without one (staff) it is only what exists. The row is share-locked, so an account
 // deletion stripping it (deletion/strip.ts) either waits for this report and closes it, or has
 // already taken the row and this finds nothing.
 function findTarget(tx: Tx, kind: Kind, id: string, viewer: AccountId | null) {
@@ -46,31 +45,20 @@ function findTarget(tx: Tx, kind: Kind, id: string, viewer: AccountId | null) {
             return queryOne(
                 tx,
                 Target,
-                sql`select c.author_id as "authorId", g.product_id as "productId", left(c.body, 280) as excerpt
+                sql`select c.author_id as "authorId", null as "productId", left(c.body, 280) as excerpt
                     from comment c
-                    left join guide g on g.id = c.guide_id
-                    left join account w on w.id = c.profile_account_id
+                    join account w on w.id = c.profile_account_id
                     left join profile wp on wp.account_id = c.profile_account_id
                     where c.id = ${id}::uuid and c.removed_at is null
                       and ${unblocked(sql`c.author_id`)}
-                      and (
-                          (c.guide_id is not null and ${
-                              viewer === null
-                                  ? sql`g.removed_at is null`
-                                  : guideReadable(viewer, {
-                                        removedAt: sql`g.removed_at`,
-                                        authorId: sql`g.author_id`,
-                                    })
-                          })
-                          or (c.profile_account_id is not null and w.username is not null and ${
-                              viewer === null
-                                  ? sql`true`
-                                  : sql`${notBlockedWith(viewer, sql`w.id`)}
-                                        and (w.id = ${viewer}
-                                             or (coalesce(wp.visibility, 'members') = 'members'
-                                                 and coalesce(wp.show_wall, true)))`
-                          })
-                      )
+                      and w.username is not null and ${
+                          viewer === null
+                              ? sql`true`
+                              : sql`${notBlockedWith(viewer, sql`w.id`)}
+                                    and (w.id = ${viewer}
+                                         or (coalesce(wp.visibility, 'members') = 'members'
+                                             and coalesce(wp.show_wall, true)))`
+                      }
                     for share of c`,
             );
         case "shout":
@@ -80,15 +68,6 @@ function findTarget(tx: Tx, kind: Kind, id: string, viewer: AccountId | null) {
                 sql`select s.author_id as "authorId", s.product_id as "productId", left(s.body, 280) as excerpt
                     from shout s where s.id = ${id}::uuid and s.removed_at is null
                       and ${unblocked(sql`s.author_id`)}
-                    for share`,
-            );
-        case "guide":
-            return queryOne(
-                tx,
-                Target,
-                sql`select g.author_id as "authorId", g.product_id as "productId", left(g.title, 280) as excerpt
-                    from guide g where g.id = ${id}::uuid and g.removed_at is null
-                      and ${unblocked(sql`g.author_id`)}
                     for share`,
             );
         case "profile":
@@ -197,20 +176,18 @@ export function listReports(
             QueueRow,
             sql`select r.id, r.target_kind as kind, r.target_id as "targetId", r.reason, r.note,
                        rep.username as "reporterUsername",
-                       coalesce(c.author_id, s.author_id, g.author_id, pr.account_id, cl.owner_id) as "authorId",
+                       coalesce(c.author_id, s.author_id, pr.account_id, cl.owner_id) as "authorId",
                        au.username as "authorUsername",
-                       coalesce(cg.product_id, s.product_id, g.product_id, cl.product_id) as "productId",
-                       left(coalesce(c.body, s.body, g.title, pr.bio, cl.name), 280) as excerpt,
+                       coalesce(s.product_id, cl.product_id) as "productId",
+                       left(coalesce(c.body, s.body, pr.bio, cl.name), 280) as excerpt,
                        r.created_at as "createdAt"
                 from report r
                 join account rep on rep.id = r.reporter_id
                 left join comment c on r.target_kind = 'comment' and c.id = r.target_id
-                left join guide cg on cg.id = c.guide_id
                 left join shout s on r.target_kind = 'shout' and s.id = r.target_id
-                left join guide g on r.target_kind = 'guide' and g.id = r.target_id
                 left join profile pr on r.target_kind = 'profile' and pr.id = r.target_id
                 left join cloud_listing cl on r.target_kind = 'listing' and cl.id = r.target_id
-                join account au on au.id = coalesce(c.author_id, s.author_id, g.author_id, pr.account_id, cl.owner_id)
+                join account au on au.id = coalesce(c.author_id, s.author_id, pr.account_id, cl.owner_id)
                 where r.state = 'open' ${after}
                 order by r.created_at, r.id limit ${QUEUE_PAGE_SIZE + 1}`,
         );
@@ -256,13 +233,6 @@ function hide(tx: Tx, kind: Kind, id: string, by: AccountId) {
                 tx,
                 hidden,
                 sql`update profile set removed_at = now(), removed_by = ${by}
-                    where id = ${id}::uuid and removed_at is null returning id`,
-            );
-        case "guide":
-            return queryOne(
-                tx,
-                hidden,
-                sql`update guide set removed_at = now(), removed_by = ${by}
                     where id = ${id}::uuid and removed_at is null returning id`,
             );
         case "listing":

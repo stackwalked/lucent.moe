@@ -226,18 +226,13 @@ test(
 );
 
 test(
-    "a comment on the member's guide racing the strip waits for it rather than failing it",
+    "a comment on the member's wall racing the strip waits for it rather than failing it",
     inWorld(1604, async ({ deps, db, rng }) => {
         const pam = await newMember(deps, rng, { username: "pam", with: "passkey" });
         const rex = await newMember(deps, rng, { username: "rex", with: "passkey" });
-        await execute(
-            db,
-            sql`insert into guide (product_id, author_id, title, body)
-                values ('lucent-loader', ${pam.accountId}, 'pam guide', 'body')`,
-        );
         await ask(deps, pam);
         await lapse(db, pam.accountId);
-        // Rex's comment is written and held open: its insert holds a key share on the guide.
+        // Rex's comment is written and held open: its insert holds a key share on the wall owner's account row.
         let release = () => {};
         const held = new Promise<void>((resolve) => {
             release = resolve;
@@ -245,9 +240,8 @@ test(
         const commenting = withTx(db, async (tx) => {
             const wrote = await execute(
                 tx,
-                sql`insert into comment (guide_id, author_id, body)
-                    select id, ${rex.accountId}, 'racing comment' from guide
-                    where author_id = ${pam.accountId}`,
+                sql`insert into comment (profile_account_id, author_id, body)
+                    values (${pam.accountId}, ${rex.accountId}, 'racing comment')`,
             );
             invariant(wrote.ok, "the racing comment inserts");
             await held;

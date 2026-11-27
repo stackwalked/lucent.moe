@@ -7,7 +7,7 @@ import { Done, refusal, StaffRefusals } from "./shared.ts";
 export const QueueId = z.uuid();
 
 // What a member can flag: anything a member wrote that has a page of its own to be seen on.
-export const ReportKind = z.enum(["comment", "shout", "guide", "profile", "listing"]);
+export const ReportKind = z.enum(["comment", "shout", "profile", "listing"]);
 export const ReportReason = z.enum(["spam", "abuse", "other"]);
 
 export const moderationContract = defineContract({

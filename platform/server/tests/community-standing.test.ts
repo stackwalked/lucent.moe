@@ -43,11 +43,11 @@ test("a barred account cannot post in the named product, can post elsewhere, and
             endsAt: null,
         });
         expect(set.ok).toBe(true);
-        const may = (productId: ProductId | null, surface: "guide" | "shout" = "guide") =>
+        const may = (productId: ProductId | null) =>
             withMemberAt(db, alice.token, async (tx, accountId, txNow) =>
                 mayPostHere(tx, {
                     accountId,
-                    surface,
+                    surface: "shout",
                     productId,
                     txNow,
                 }),
@@ -56,7 +56,7 @@ test("a barred account cannot post in the named product, can post elsewhere, and
             err({ code: "POSTING_RESTRICTED", kind: "barred", productId: cs2, endsAt: null }),
         );
         expect(await may(loader)).toEqual(ok(null));
-        expect(await may(null, "shout")).toEqual(ok(null));
+        expect(await may(null)).toEqual(ok(null));
         const own = await listOwnRestrictions(db, alice.token);
         invariant(own.ok, "expected the member's own list");
         expect(own.value.restrictions).toEqual([

@@ -2,13 +2,10 @@ import { expect, test } from "bun:test";
 import { invariant } from "@lucent/core/contain";
 import { err, ok } from "@lucent/core/result";
 import { createSeededRng } from "@lucent/core/rng";
-import { ProductId } from "@lucent/core/scalars";
 import { execute, queryAll, sql } from "../src/base/db/pool.ts";
 import { withTx } from "../src/base/db/tx.ts";
 import { setBlock } from "../src/members/community/blocks.ts";
-import { createComment, listComments } from "../src/members/community/comments.ts";
 import { exportOwnData } from "../src/members/community/export.ts";
-import { createGuide } from "../src/members/community/guides.ts";
 import { readProfile, setShows, setVisibility } from "../src/members/community/profiles.ts";
 import { createWallComment, deleteWallComment, listWall } from "../src/members/community/wall.ts";
 import { createReport, resolveReport } from "../src/members/moderation/reports.ts";
@@ -18,7 +15,6 @@ import { member, moderator, sessionFor } from "./community-fixtures.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 
 const products = catalog();
-const loader = ProductId.parse("lucent-loader");
 const missing = err({ code: "NOT_FOUND" });
 
 type Db = Parameters<typeof listWall>[0];
@@ -69,27 +65,6 @@ test("a member writes on another's wall, reads it newest first, and sees who may
         invariant(asOwner.ok, "expected the wall");
         expect(asOwner.value.items.map((item) => item.canDelete)).toEqual([true, true]);
 
-        // Neither a guide's comments nor a wall's cross over.
-        const guide = await createGuide(db, owner.token, {
-            catalog: products,
-            productId: loader,
-            title: "setup",
-            body: "steps",
-        });
-        invariant(guide.ok, "expected a guide");
-        const onGuide = await createComment(db, alice.token, {
-            catalog: products,
-            guideId: guide.value.id,
-            body: "on the guide",
-        });
-        expect(onGuide.ok).toBe(true);
-        const guideComments = await listComments(db, owner.token, {
-            catalog: products,
-            guideId: guide.value.id,
-            cursor: null,
-        });
-        invariant(guideComments.ok, "expected comments");
-        expect(guideComments.value.items.map((item) => item.body)).toEqual(["on the guide"]);
         expect(await wallBodies(db, owner.token, "owner")).toEqual(["second", "first"]);
     });
 });
@@ -145,24 +120,15 @@ test("who may delete a wall comment: its author and the wall's owner, nobody els
             ok(undefined),
         );
         expect(await wallBodies(db, owner.token, "owner")).toEqual([]);
-        // Again, nothing changes; a guide's comment is not a wall's to delete here.
+        // Again, nothing changes; a comment that is not there is not theirs to delete.
         expect(await deleteWallComment(db, alice.token, { id: one.value.id })).toEqual(
             ok(undefined),
         );
-        const guide = await createGuide(db, owner.token, {
-            catalog: products,
-            productId: loader,
-            title: "setup",
-            body: "steps",
-        });
-        invariant(guide.ok, "expected a guide");
-        const onGuide = await createComment(db, alice.token, {
-            catalog: products,
-            guideId: guide.value.id,
-            body: "mine",
-        });
-        invariant(onGuide.ok, "expected a comment");
-        expect(await deleteWallComment(db, alice.token, { id: onGuide.value.id })).toEqual(missing);
+        expect(
+            await deleteWallComment(db, alice.token, {
+                id: "00000000-0000-4000-8000-000000000009",
+            }),
+        ).toEqual(missing);
     });
 });
 
@@ -247,7 +213,7 @@ test("show_wall off empties the wall for others and closes writing to it; the ow
     });
 });
 
-test("a muted or barred author is refused on a wall as on a guide, and deleting is never refused", async () => {
+test("a muted or barred author is refused on a wall, and deleting is never refused", async () => {
     const cluster = await sharedTestCluster();
     await cluster.withTestDb(async ({ browserDb: db }) => {
         const rng = createSeededRng(18506);
@@ -303,38 +269,6 @@ test("the daily post cap counts wall comments with comments and shouts", async (
     });
 });
 
-test("exactly one of a guide and a profile is a comment's target", async () => {
-    const cluster = await sharedTestCluster();
-    await cluster.withTestDb(async ({ browserDb: db }) => {
-        const rng = createSeededRng(18508);
-        const owner = await member(db, rng, "owner@lucent.test", "owner");
-        const guide = await createGuide(db, owner.token, {
-            catalog: products,
-            productId: loader,
-            title: "setup",
-            body: "steps",
-        });
-        invariant(guide.ok, "expected a guide");
-        const both = await execute(
-            db,
-            sql`insert into comment (guide_id, profile_account_id, author_id, body)
-                values (${guide.value.id}::uuid, ${owner.id}, ${owner.id}, 'both')`,
-        );
-        expect(both.ok).toBe(false);
-        const neither = await execute(
-            db,
-            sql`insert into comment (author_id, body) values (${owner.id}, 'neither')`,
-        );
-        expect(neither.ok).toBe(false);
-        const ok1 = await execute(
-            db,
-            sql`insert into comment (profile_account_id, author_id, body)
-                values (${owner.id}, ${owner.id}, 'wall')`,
-        );
-        expect(ok1).toEqual({ ok: true, value: 1 });
-    });
-});
-
 test("a report on a wall comment resolves and removes like any comment, and the export names the wall", async () => {
     const cluster = await sharedTestCluster();
     await cluster.withTestDb(async ({ browserDb: db }) => {
@@ -348,9 +282,9 @@ test("a report on a wall comment resolves and removes like any comment, and the 
 
         const exported = await exportOwnData(db, alice.token);
         invariant(exported.ok, "expected the export");
-        expect(
-            exported.value.comments?.map((item) => [item.guideId, item.profileUsername, item.body]),
-        ).toEqual([[null, "owner", "rude"]]);
+        expect(exported.value.comments?.map((item) => [item.profileUsername, item.body])).toEqual([
+            ["owner", "rude"],
+        ]);
 
         expect(
             await createReport(db, carol.token, {

@@ -6,14 +6,12 @@ import { authContract } from "./web/auth.ts";
 import { authorityContract, AccountStatus as Status } from "./web/authority.ts";
 import { catalogContract } from "./web/catalog.ts";
 import { cloudContract } from "./web/cloud.ts";
-import { commentsContract } from "./web/comments.ts";
 import { crashesContract } from "./web/crashes.ts";
 import { deletionContract } from "./web/deletion.ts";
 import { devicesContract } from "./web/devices.ts";
 import { discordContract } from "./web/discord.ts";
 import { downloadContract } from "./web/download.ts";
 import { factsContract } from "./web/facts.ts";
-import { guidesContract } from "./web/guides.ts";
 import { healthContract } from "./web/health.ts";
 import { inboxContract } from "./web/inbox.ts";
 import { invitesContract } from "./web/invites.ts";
@@ -28,7 +26,6 @@ import { recordContract } from "./web/record.ts";
 import { releasesContract } from "./web/releases.ts";
 import { resourcesContract } from "./web/resources.ts";
 import { reviewContract } from "./web/review.ts";
-import { searchContract } from "./web/search.ts";
 import { shoutsContract } from "./web/shouts.ts";
 import { systemContract } from "./web/system.ts";
 import { ticketsContract } from "./web/tickets.ts";
@@ -83,10 +80,7 @@ function composeWebContract() {
         ...moderationContract,
         ...membersContract,
         ...profileContract,
-        ...guidesContract,
-        ...commentsContract,
         ...shoutsContract,
-        ...searchContract,
         ...overridesContract,
         ...reviewContract,
         ...crashesContract,

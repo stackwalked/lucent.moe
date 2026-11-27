@@ -1,6 +1,5 @@
-import { CommentBody } from "@lucent/rpc/web/comments";
 import { ContentId } from "@lucent/rpc/web/community";
-import { Bio } from "@lucent/rpc/web/profile";
+import { Bio, CommentBody } from "@lucent/rpc/web/profile";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { done, refuse } from "../../server/outcome.ts";

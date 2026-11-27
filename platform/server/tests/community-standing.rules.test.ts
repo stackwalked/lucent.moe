@@ -41,11 +41,11 @@ test.each<
     [
         "a bar on one product closes that product",
         [barred(cs2, null)],
-        "guide",
+        "shout",
         cs2,
         refused(barred(cs2, null)),
     ],
-    ["a bar on one product leaves another open", [barred(cs2, null)], "guide", loader, ok(null)],
+    ["a bar on one product leaves another open", [barred(cs2, null)], "shout", loader, ok(null)],
     [
         "a bar on one product leaves product-less surfaces open",
         [barred(cs2, null)],
@@ -62,7 +62,6 @@ test.each<
     ],
     ["a mute closes comments", [muted(null, null)], "comment", cs2, refused(muted(null, null))],
     ["a mute closes shouts", [muted(cs2, null)], "shout", cs2, refused(muted(cs2, null))],
-    ["a mute leaves guides open", [muted(null, null)], "guide", cs2, ok(null)],
     ["a mute leaves the profile open", [muted(null, null)], "profile", null, ok(null)],
     ["a restriction past its end is no restriction", [barred(null, now)], "comment", cs2, ok(null)],
     [

@@ -115,19 +115,6 @@ test(
             sql`insert into profile (account_id, bio, avatar_large, avatar_small)
                 values (${id}, 'BIO-MARK-7731', ${avatar}, ${avatar})`,
         );
-        await seed(
-            db,
-            sql`with mine as (
-                    insert into guide (product_id, author_id, title, body)
-                    values (${LOADER}, ${id}, 'GUIDE-TITLE-7731', 'GUIDE-BODY-7731') returning id),
-                theirs as (
-                    insert into guide (product_id, author_id, title, body)
-                    values (${LOADER}, ${obo.accountId}, 'their guide', 'their body') returning id)
-                insert into comment (guide_id, author_id, body)
-                select mine.id, ${id}, 'COMMENT-OWN-7731' from mine
-                union all select mine.id, ${obo.accountId}, 'COMMENT-OTHER-7731' from mine
-                union all select theirs.id, ${id}, 'COMMENT-ELSEWHERE-7731' from theirs`,
-        );
         await seed(db, sql`insert into shout (author_id, body) values (${id}, 'SHOUT-7731')`);
         // A wall goes with its owner, and what the member wrote on someone else's goes with them.
         await seed(
@@ -139,8 +126,8 @@ test(
         await seed(
             db,
             sql`insert into report (reporter_id, target_kind, target_id, reason, note)
-                select ${id}, 'guide', g.id, 'other', 'REPORT-NOTE-7731'
-                from guide g where g.author_id = ${obo.accountId}`,
+                select ${id}, 'comment', c.id, 'other', 'REPORT-NOTE-7731'
+                from comment c where c.author_id = ${id} and c.profile_account_id = ${obo.accountId}`,
         );
         await seed(
             db,
@@ -197,11 +184,6 @@ test(
             text: [
                 "qzvex",
                 "BIO-MARK-7731",
-                "GUIDE-TITLE-7731",
-                "GUIDE-BODY-7731",
-                "COMMENT-OWN-7731",
-                "COMMENT-OTHER-7731",
-                "COMMENT-ELSEWHERE-7731",
                 "SHOUT-7731",
                 "WALL-ON-MINE-7731",
                 "WALL-ON-THEIRS-7731",

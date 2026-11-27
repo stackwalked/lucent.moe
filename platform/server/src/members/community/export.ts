@@ -39,22 +39,13 @@ async function gather(tx: Tx, accountId: AccountId, txNow: EpochMs) {
         from profile where account_id = ${accountId}`,
     );
     if (!profile.ok) return profile;
-    const guides = await queryAll(
-        tx,
-        ExportData.shape.guides.unwrap().element,
-        sql`
-        select id, product_id as "productId", title, body, created_at as "createdAt",
-               updated_at as "updatedAt", removed_at as "removedAt"
-        from guide where author_id = ${accountId} order by created_at desc, id desc limit ${EXPORT_CAP + 1}`,
-    );
-    if (!guides.ok) return guides;
     const comments = await queryAll(
         tx,
         ExportData.shape.comments.unwrap().element,
         sql`
-        select c.id, c.guide_id as "guideId", w.username as "profileUsername", c.body,
+        select c.id, w.username as "profileUsername", c.body,
                c.created_at as "createdAt", c.removed_at as "removedAt"
-        from comment c left join account w on w.id = c.profile_account_id
+        from comment c join account w on w.id = c.profile_account_id
         where c.author_id = ${accountId} order by c.created_at desc, c.id desc limit ${EXPORT_CAP + 1}`,
     );
     if (!comments.ok) return comments;
@@ -121,7 +112,6 @@ async function gather(tx: Tx, accountId: AccountId, txNow: EpochMs) {
         account: account.value,
         truncated: cut,
         profile: profile.value,
-        guides: newest("guides", guides.value, cut),
         comments: newest("comments", comments.value, cut),
         shouts: newest("shouts", shouts.value, cut),
         blocks: newest("blocks", blocks.value, cut),

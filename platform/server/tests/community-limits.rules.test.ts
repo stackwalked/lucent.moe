@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
 import { err, ok } from "@lucent/core/result";
 import {
-    decideGuideLimit,
     decidePostRate,
     decideReportLimit,
     type LimitRefusal,
@@ -16,8 +15,6 @@ test.each([
     ["posts", decidePostRate, 0, ok(null)],
     ["posts", decidePostRate, 9, ok(null)],
     ["posts", decidePostRate, 10, refused("posts")],
-    ["guides", decideGuideLimit, 49, ok(null)],
-    ["guides", decideGuideLimit, 50, refused("guides")],
 ] as const)("the %s limit at a count of %d", (_name, decide, count, expected) => {
     expect(decide(count)).toEqual(expected);
 });

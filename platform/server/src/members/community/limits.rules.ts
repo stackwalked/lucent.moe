@@ -1,16 +1,15 @@
 import { err, ok, type Result } from "@lucent/core/result";
 
 // Volume limits: what one account may have or do, so a single account cannot flood the queue,
-// the feeds or a product's guides. Each is decided from a count the writer reads under the
+// the feeds. Each is decided from a count the writer reads under the
 // account's lock, so two requests of one account cannot both slip under it.
 export const MAX_OPEN_REPORTS = 20;
 export const MAX_POSTS_PER_WINDOW = 10;
 export const POST_WINDOW_MS = 60_000;
-export const MAX_GUIDES_PER_PRODUCT = 50;
 
 export type LimitRefusal = {
     readonly code: "LIMIT_REACHED";
-    readonly limit: "reports" | "posts" | "guides";
+    readonly limit: "reports" | "posts";
 };
 
 function below(
@@ -29,9 +28,4 @@ export function decideReportLimit(openReports: number): Result<null, LimitRefusa
 // Comments and shouts together, over the last POST_WINDOW_MS.
 export function decidePostRate(recentPosts: number): Result<null, LimitRefusal> {
     return below(recentPosts, MAX_POSTS_PER_WINDOW, "posts");
-}
-
-// Guides the account has in one product (removed ones do not count).
-export function decideGuideLimit(guidesInProduct: number): Result<null, LimitRefusal> {
-    return below(guidesInProduct, MAX_GUIDES_PER_PRODUCT, "guides");
 }

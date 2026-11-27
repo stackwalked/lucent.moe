@@ -21,11 +21,11 @@ export const ViewRefusal = z.discriminatedUnion("code", [
     refusal("NOT_FOUND"),
 ]);
 
-// Refused when the account is at a volume limit (open reports, posts a minute, guides in a
-// product); which one is in `limit`.
+// Refused when the account is at a volume limit (open reports, posts a minute); which one is
+// in `limit`.
 export const LimitReached = z.object({
     code: z.literal("LIMIT_REACHED"),
-    limit: z.enum(["reports", "posts", "guides"]),
+    limit: z.enum(["reports", "posts"]),
 });
 
 // Writing adds the account's community standing and volume limits.

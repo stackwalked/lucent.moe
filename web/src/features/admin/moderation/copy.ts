@@ -8,7 +8,6 @@ export const MODERATION_COPY = {
     reporter: "reported by",
     comment: "comment",
     shout: "shout",
-    guide: "guide",
     profile: "profile",
     listing: "cloud listing",
     spam: "spam",

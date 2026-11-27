@@ -22,5 +22,4 @@ export const PRODUCTS_COPY = {
     loaderUnavailable: "loader not released yet",
     changesTab: "changes",
     cloudTab: "cloud",
-    guides: "guides",
 } as const;

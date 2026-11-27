@@ -3,16 +3,9 @@ import { invariant } from "@lucent/core/contain";
 import { err, ok } from "@lucent/core/result";
 import { createSeededRng } from "@lucent/core/rng";
 import { ProductId } from "@lucent/core/scalars";
-import { execute, sql } from "../src/base/db/pool.ts";
-import { createComment, listComments } from "../src/members/community/comments.ts";
-import {
-    createGuide,
-    listGuides,
-    readGuide,
-    updateGuide,
-} from "../src/members/community/guides.ts";
 import { readProfile, setBio } from "../src/members/community/profiles.ts";
 import { createShout, listShouts } from "../src/members/community/shouts.ts";
+import { createWallComment } from "../src/members/community/wall.ts";
 import { setRestriction } from "../src/members/moderation/restrictions.ts";
 import { catalog } from "./authority-fixtures.ts";
 import { holdProduct, member, moderator } from "./community-fixtures.ts";
@@ -22,20 +15,13 @@ const products = catalog();
 const loader = ProductId.parse("lucent-loader");
 const cs2 = ProductId.parse("cs2");
 
-test("a bar in one product closes that product's guides and comments and nothing else", async () => {
+test("a bar in one product closes shouts about it and nothing else", async () => {
     const cluster = await sharedTestCluster();
     await cluster.withTestDb(async ({ browserDb: db }) => {
         const rng = createSeededRng(9201);
         const mod = await moderator(db, rng, "mod@lucent.test");
         const alice = await member(db, rng, "alice@lucent.test", "alice");
-        const bob = await member(db, rng, "bob@lucent.test", "bob");
-        const guide = await createGuide(db, bob.token, {
-            catalog: products,
-            productId: loader,
-            title: "setup",
-            body: "steps",
-        });
-        invariant(guide.ok, "expected a guide");
+        await member(db, rng, "bob@lucent.test", "bob");
         const barred = await setRestriction({
             db,
             catalog: products,
@@ -47,32 +33,12 @@ test("a bar in one product closes that product's guides and comments and nothing
             endsAt: null,
         });
         invariant(barred.ok, "expected a restriction");
-        const refused = err({
-            code: "POSTING_RESTRICTED",
-            kind: "barred",
-            productId: loader,
-            endsAt: null,
-        });
-        // The comment takes its guide's product, so the bar on that product closes it.
-        expect(
-            await createComment(db, alice.token, {
-                catalog: products,
-                guideId: guide.value.id,
-                body: "hi",
-            }),
-        ).toEqual(refused);
-        expect(
-            await createGuide(db, alice.token, {
-                catalog: products,
-                productId: loader,
-                title: "mine",
-                body: "text",
-            }),
-        ).toEqual(refused);
         expect(
             await createShout(db, alice.token, { catalog: products, productId: loader, body: "x" }),
-        ).toEqual(refused);
-        // Elsewhere she is free: a shout about no product, her own bio.
+        ).toEqual(
+            err({ code: "POSTING_RESTRICTED", kind: "barred", productId: loader, endsAt: null }),
+        );
+        // Elsewhere she is free: a shout about no product, a comment on a wall, her own bio.
         expect(
             (
                 await createShout(db, alice.token, {
@@ -82,33 +48,20 @@ test("a bar in one product closes that product's guides and comments and nothing
                 })
             ).ok,
         ).toBe(true);
+        expect((await createWallComment(db, alice.token, { username: "bob", body: "hi" })).ok).toBe(
+            true,
+        );
         expect(await setBio(db, alice.token, { bio: "hi" })).toEqual(ok(undefined));
-        // Reading is not posting.
-        expect(
-            (
-                await listComments(db, alice.token, {
-                    catalog: products,
-                    guideId: guide.value.id,
-                    cursor: null,
-                })
-            ).ok,
-        ).toBe(true);
     });
 });
 
-test("a mute closes comments and shouts but leaves guides and the profile open", async () => {
+test("a mute closes wall comments and shouts but leaves the profile open", async () => {
     const cluster = await sharedTestCluster();
     await cluster.withTestDb(async ({ browserDb: db }) => {
         const rng = createSeededRng(9202);
         const mod = await moderator(db, rng, "mod@lucent.test");
         const alice = await member(db, rng, "alice@lucent.test", "alice");
-        const guide = await createGuide(db, alice.token, {
-            catalog: products,
-            productId: loader,
-            title: "t",
-            body: "b",
-        });
-        invariant(guide.ok, "expected a guide");
+        await member(db, rng, "bob@lucent.test", "bob");
         const muted = await setRestriction({
             db,
             catalog: products,
@@ -120,29 +73,18 @@ test("a mute closes comments and shouts but leaves guides and the profile open",
             endsAt: null,
         });
         invariant(muted.ok, "expected a restriction");
-        const comment = await createComment(db, alice.token, {
-            catalog: products,
-            guideId: guide.value.id,
-            body: "c",
-        });
-        expect(comment.ok).toBe(false);
+        expect((await createWallComment(db, alice.token, { username: "bob", body: "c" })).ok).toBe(
+            false,
+        );
         expect(
             (await createShout(db, alice.token, { catalog: products, productId: null, body: "s" }))
                 .ok,
         ).toBe(false);
-        expect(
-            await updateGuide(db, alice.token, {
-                catalog: products,
-                id: guide.value.id,
-                title: "t2",
-                body: "b2",
-            }),
-        ).toEqual(ok(undefined));
         expect(await setBio(db, alice.token, { bio: "still here" })).toEqual(ok(undefined));
     });
 });
 
-test("guides, comments and shouts show only to members who may see their product", async () => {
+test("shouts show only to members who may see their product", async () => {
     const cluster = await sharedTestCluster();
     await cluster.withTestDb(async ({ browserDb: db }) => {
         const rng = createSeededRng(9203);
@@ -150,41 +92,6 @@ test("guides, comments and shouts show only to members who may see their product
         const holder = await member(db, rng, "holder@lucent.test", "holder");
         // cs2 is a seed product: listed only for accounts that hold it.
         await holdProduct(db, rng, holder.id, "cs2");
-        const guide = await createGuide(db, holder.token, {
-            catalog: products,
-            productId: cs2,
-            title: "seed",
-            body: "text",
-        });
-        invariant(guide.ok, "expected a guide for the holder");
-        expect(
-            await createGuide(db, alice.token, {
-                catalog: products,
-                productId: cs2,
-                title: "no",
-                body: "no",
-            }),
-        ).toEqual(err({ code: "NOT_FOUND" }));
-        expect(await readGuide(db, alice.token, { catalog: products, id: guide.value.id })).toEqual(
-            err({ code: "NOT_FOUND" }),
-        );
-        expect(
-            await listGuides(db, alice.token, { catalog: products, productId: cs2, cursor: null }),
-        ).toEqual(err({ code: "NOT_FOUND" }));
-        expect(
-            await createComment(db, alice.token, {
-                catalog: products,
-                guideId: guide.value.id,
-                body: "x",
-            }),
-        ).toEqual(err({ code: "NOT_FOUND" }));
-        expect(
-            await listComments(db, alice.token, {
-                catalog: products,
-                guideId: guide.value.id,
-                cursor: null,
-            }),
-        ).toEqual(err({ code: "NOT_FOUND" }));
         const aboutSeed = await createShout(db, holder.token, {
             catalog: products,
             productId: cs2,
@@ -210,50 +117,12 @@ test("guides, comments and shouts show only to members who may see their product
     });
 });
 
-test("only a guide's author edits it, comments page oldest first and profiles name their owner", async () => {
+test("profiles name their owner", async () => {
     const cluster = await sharedTestCluster();
     await cluster.withTestDb(async ({ browserDb: db }) => {
         const rng = createSeededRng(9204);
         const alice = await member(db, rng, "alice@lucent.test", "alice");
         const bob = await member(db, rng, "bob@lucent.test", "bob");
-        const guide = await createGuide(db, alice.token, {
-            catalog: products,
-            productId: loader,
-            title: "t",
-            body: "b",
-        });
-        invariant(guide.ok, "expected a guide");
-        expect(
-            await updateGuide(db, bob.token, {
-                catalog: products,
-                id: guide.value.id,
-                title: "x",
-                body: "y",
-            }),
-        ).toEqual(err({ code: "NOT_FOUND" }));
-        // Seeded directly: posting 27 comments through the writer would meet the rate limit.
-        await execute(
-            db,
-            sql`insert into comment (guide_id, author_id, body, created_at)
-                select ${guide.value.id}::uuid, ${bob.id}, 'c' || n, now() - make_interval(secs => 100 - n)
-                from generate_series(0, 26) n`,
-        );
-        const first = await listComments(db, alice.token, {
-            catalog: products,
-            guideId: guide.value.id,
-            cursor: null,
-        });
-        invariant(first.ok && first.value.nextCursor !== null, "expected a second page");
-        expect(first.value.items).toHaveLength(25);
-        expect(first.value.items[0]?.body).toBe("c0");
-        expect(first.value.items[0]?.isMine).toBe(false);
-        const second = await listComments(db, alice.token, {
-            catalog: products,
-            guideId: guide.value.id,
-            cursor: first.value.nextCursor,
-        });
-        invariant(second.ok, "expected the rest");
-        expect(second.value.items.map((c) => c.body)).toEqual(["c25", "c26"]);
         expect(await setBio(db, bob.token, { bio: "bob here" })).toEqual(ok(undefined));
         const profile = await readProfile(db, alice.token, { username: "Bob" });
         invariant(profile.ok, "expected a profile");

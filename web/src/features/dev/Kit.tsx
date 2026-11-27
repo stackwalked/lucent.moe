@@ -305,7 +305,7 @@ function Data({ now }: { readonly now: EpochMs }) {
             <Stack direction="row" gap={3} align="center">
                 <RoleLabel name="staff" color="pink" />
                 <RoleLabel name="moderator" color="shu" />
-                <RoleLabel name="guide" color="ok" />
+                <RoleLabel name="tester" color="ok" />
                 <RoleLabel name="trial" color="wait" />
                 <RoleLabel name="artist" color="violet" />
                 <RoleLabel name="helper" color="aqua" />
