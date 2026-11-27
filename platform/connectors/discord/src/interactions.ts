@@ -120,7 +120,7 @@ function fieldOf(components: readonly APIModalSubmissionComponent[], customId: s
 export function createInteractions(deps: InteractionDeps) {
     const { api, platform } = deps;
     const site = () => deps.siteOrigin() ?? "lucent.moe";
-    const linkPage = () => `${site()}/account/discord`;
+    const linkPage = () => `${site()}/account`;
 
     // Whatever the account's standing keeps from being said: the same words for nobody linked as
     // for an account that doesn't exist.

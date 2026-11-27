@@ -210,7 +210,7 @@ test(
             ok({
                 n: 1,
                 subject: "your lucent account will be deleted",
-                body: `your account will be deleted on ${day}.\n\nto keep it, sign in before then and choose keep my account:\n\n${deps.rp.origin}/account/privacy`,
+                body: `your account will be deleted on ${day}.\n\nto keep it, sign in before then and choose keep my account:\n\n${deps.rp.origin}/account`,
             }),
         );
         expect(

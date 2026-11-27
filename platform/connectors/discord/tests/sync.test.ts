@@ -183,7 +183,7 @@ test("the connector mirrors standing into the guild within a tick, and a reconci
     // Linking: a wrong code is refused; the member's own links and syncs at once.
     expect(await fake.command("link", ALICE, { code: "AAAAA-AAAAA" })).toEqual({
         kind: "message",
-        content: REPLIES.codeInvalid(`${site}/account/discord`),
+        content: REPLIES.codeInvalid(`${site}/account`),
         ephemeral: true,
         buttonUrl: null,
     });
@@ -468,7 +468,7 @@ test("/me says what the site shows the linked account, and an unlinked user lear
     const nobody = await fake.command("me", EVE);
     expect(nobody).toEqual({
         kind: "message",
-        content: REPLIES.linkFirst(`${site}/account/discord`),
+        content: REPLIES.linkFirst(`${site}/account`),
         ephemeral: true,
         buttonUrl: null,
     });
@@ -519,7 +519,7 @@ test("/ticket opens a ticket the site shows under the linked account", async () 
 
     expect(await fake.command("ticket", HEIDI)).toEqual({
         kind: "message",
-        content: REPLIES.linkFirst(`${site}/account/discord`),
+        content: REPLIES.linkFirst(`${site}/account`),
         ephemeral: true,
         buttonUrl: null,
     });

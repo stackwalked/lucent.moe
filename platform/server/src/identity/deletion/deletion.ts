@@ -21,7 +21,7 @@ import { type DeletionState, decideDeletion } from "./deletion.rules.ts";
 import { holdsRoleSql } from "./strip.ts";
 
 // Where the member keeps the account; web serves the privacy page here.
-const PRIVACY_PATH = "/account/privacy";
+const ACCOUNT_PATH = "/account";
 
 // The member's side of deletion: ask, see when, keep the account. A suspended member deletes from
 // the appeal session their sign-in gives them; each procedure names the one purpose it serves.
@@ -156,7 +156,7 @@ export function requestDeletion(
         if (deps.mailEnabled) {
             const mail = deletionPendingMail({
                 dueAt,
-                link: `${deps.rp.origin}${PRIVACY_PATH}`,
+                link: `${deps.rp.origin}${ACCOUNT_PATH}`,
             });
             const queued = await execute(
                 tx,
