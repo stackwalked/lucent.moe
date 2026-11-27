@@ -5,20 +5,19 @@ import { MemberRefusal } from "./inbox.ts";
 import { Done, refusal, Unavailable } from "./shared.ts";
 
 // `discord`: a DM to the linked Discord user, saying that something happened. Security notices
-// always reach the inbox and mail; their Discord DM is the one choice a member has there.
-export const Channels = z.object({ inbox: z.boolean(), mail: z.boolean(), discord: z.boolean() });
+// always reach the inbox; their Discord DM is the one choice a member has there. No notice is
+// emailed.
+export const Channels = z.object({ inbox: z.boolean(), discord: z.boolean() });
 export type Channels = z.output<typeof Channels>;
 export const SetPreference = z.discriminatedUnion("kind", [
-    // discord may be left out: platform deploys before web, and the web of one deploy ago
-    // sends only inbox and mail. Left out, the stored choice stands.
+    // discord may be left out: then the stored choice stands.
     z.strictObject({
         kind: z.literal("product_status"),
         inbox: z.boolean(),
-        mail: z.boolean(),
         discord: z.boolean().optional(),
     }),
     z.strictObject({ kind: z.literal("security"), discord: z.boolean() }),
-    z.strictObject({ kind: z.literal("ticket_reply"), inbox: z.boolean(), mail: z.boolean() }),
+    z.strictObject({ kind: z.literal("ticket_reply"), inbox: z.boolean() }),
 ]);
 export const SetSubscription = z.strictObject({ productId: ProductId, following: z.boolean() });
 

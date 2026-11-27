@@ -266,7 +266,7 @@ export async function startServer(params: {
             deletionJob({ db, emailHasher: auth.emailHasher, logger }),
             riskScoringJob(db),
             idleTicketJob(db),
-            followerNoticeJob({ db, catalog: catalog.value, mail: mail !== undefined }),
+            followerNoticeJob({ db, catalog: catalog.value }),
             signInCountriesJob(db, geo),
             ...(geo === null ? [] : [geoReloadJob(geo)]),
             ...(nativeDb === null ? [] : [nativeExpiryJob(nativeDb)]),

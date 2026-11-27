@@ -208,7 +208,6 @@ export async function redeemPasswordReset(
         const recorded = await recordNotification(tx, {
             recipient: id,
             notice: { kind: "security", productId: null },
-            mail: deps.mailEnabled,
         });
         return recorded.ok ? ok(undefined) : recorded;
     });

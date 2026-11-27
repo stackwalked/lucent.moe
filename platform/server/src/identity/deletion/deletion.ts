@@ -150,7 +150,6 @@ export function requestDeletion(
         const notified = await recordNotification(tx, {
             recipient: accountId,
             notice: { kind: "security", productId: null },
-            mail: false,
         });
         if (!notified.ok) return notified;
         if (deps.mailEnabled) {

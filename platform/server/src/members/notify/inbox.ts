@@ -11,7 +11,6 @@ import {
     type MemberCatalog,
 } from "../../delivery/products/visibility.ts";
 import { withMember, written } from "./account.ts";
-import { notificationMail, ticketReplyMail } from "./copy.ts";
 import { decideDeliveries } from "./deliveries.rules.ts";
 import { findPreferences } from "./preferences.ts";
 
@@ -20,8 +19,7 @@ type Notification =
     | (Extract<Notice, { kind: "product_status" }> & {
           readonly catalog: ProductCatalog;
       })
-    // `origin` is the site's, for the mail's link to the ticket.
-    | (Extract<Notice, { kind: "ticket_reply" }> & { readonly origin: string });
+    | Extract<Notice, { kind: "ticket_reply" }>;
 
 const NO_PREFERENCES = {
     productStatus: null,
@@ -64,33 +62,17 @@ async function planDelivery(tx: Tx, recipient: AccountId, notice: Notification) 
     );
 }
 
-// Writers holding later locks must lock recipient accounts first, in canonical order. The
-// inbox insert and mail enqueue belong to the event's transaction. With no mail provider
-// (`mail` false) nothing is queued: no job would drain it, and the address and text would stay.
+// Writers holding later locks must lock recipient accounts first, in canonical order. The inbox
+// insert and the Discord DM belong to the event's transaction. A notice is never emailed: the
+// site's mail is the reset link, the setup link and the deletion notice, each sent by its own
+// writer.
 export async function recordNotification(
     tx: Tx,
-    params: {
-        readonly recipient: AccountId;
-        readonly notice: Notification;
-        readonly mail: boolean;
-    },
+    params: { readonly recipient: AccountId; readonly notice: Notification },
 ) {
     const { recipient, notice } = params;
-    const planned = await planDelivery(tx, recipient, notice);
-    if (!planned.ok) return planned;
-    const plan = ok({ ...planned.value, mail: planned.value.mail && params.mail });
-    if (plan.value.mail) {
-        const mail =
-            notice.kind === "ticket_reply"
-                ? ticketReplyMail(`${notice.origin}/tickets/${notice.ticketId}`)
-                : notificationMail(notice);
-        const queued = await execute(
-            tx,
-            sql`insert into mail_outbox (recipient, subject, body)
-                values ((select email from account where id = ${recipient}), ${mail.subject}, ${mail.body})`,
-        );
-        if (!queued.ok) return queued;
-    }
+    const plan = await planDelivery(tx, recipient, notice);
+    if (!plan.ok) return plan;
     // Only a linked account has anyone to message; the connector sends it (discord/dms.ts).
     if (plan.value.discord) {
         const queued = await execute(

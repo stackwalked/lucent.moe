@@ -1,6 +1,5 @@
 import { toIsoTimestamp } from "@lucent/core/clock";
 import type { EpochMs } from "@lucent/core/scalars";
-import type { Notice } from "@lucent/rpc/web/inbox";
 
 export function passwordResetMail(link: string) {
     return {
@@ -14,28 +13,6 @@ export function setupLinkMail(link: string) {
     return {
         subject: "set up your lucent account",
         body: `finish setting up your account within 3 days:\n\n${link}\n\nnot you? ignore this email.`,
-    };
-}
-
-// Says that support replied and where to read it; the reply and the subject stay on the site.
-export function ticketReplyMail(link: string) {
-    return {
-        subject: "support replied to your ticket",
-        body: `support replied to a ticket you opened. sign in to read it:\n\n${link}`,
-    };
-}
-
-// The mail can arrive after access changes, so it must not name a now-hidden product.
-export function notificationMail(notice: Exclude<Notice, { kind: "ticket_reply" }>) {
-    if (notice.kind === "security") {
-        return {
-            subject: "account security notice",
-            body: "there is a security notice for your lucent account. sign in to review it.",
-        };
-    }
-    return {
-        subject: "product support update",
-        body: "support has changed for a product you follow. sign in to check its current status.",
     };
 }
 

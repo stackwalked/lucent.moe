@@ -26,7 +26,7 @@ const BATCHES_PER_RUN = 500;
 
 // Who may still be told, checked under the follower's account lock (taken here in id order, the
 // order recordNotification locks in too): not a suspended account, nor a deleted one (a tombstone
-// has no address, so its mail would fail the batch). Another standing that stops notices joins
+// has no inbox to write to). Another standing that stops notices joins
 // this fragment.
 const ACTIVE_FOLLOWER = sql`status = 'active' and deleted_at is null`;
 
@@ -43,7 +43,6 @@ async function tellBatch(
     db: Db,
     params: {
         readonly catalog: ProductCatalog;
-        readonly mail: boolean;
         readonly change: z.output<typeof PendingRow>;
     },
 ): Promise<Result<number, Raced | DbFailure>> {
@@ -80,7 +79,6 @@ async function tellBatch(
                     productId: change.product_id,
                     catalog: params.catalog,
                 },
-                mail: params.mail,
             });
             if (!notified.ok) return notified;
             told += 1;
@@ -131,7 +129,7 @@ export type Told = {
 // row's last attempt.
 export async function tellFollowers(
     db: Db,
-    params: { readonly catalog: ProductCatalog; readonly mail: boolean },
+    params: { readonly catalog: ProductCatalog },
 ): Promise<Result<Told, DbFailure>> {
     let told = 0;
     const givenUp: string[] = [];
@@ -165,7 +163,6 @@ export async function tellFollowers(
 export function followerNoticeJob(params: {
     readonly db: Db;
     readonly catalog: ProductCatalog;
-    readonly mail: boolean;
 }): Job {
     return {
         name: "support-followers",

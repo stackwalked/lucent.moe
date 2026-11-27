@@ -158,7 +158,6 @@ const inputs: SinglePurpose = {
     "preferences.channels.set": {
         kind: "product_status",
         inbox: true,
-        mail: false,
         discord: false,
     },
     "preferences.subscriptions.set": { productId: "cs2", following: true },

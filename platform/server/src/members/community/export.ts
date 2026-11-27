@@ -95,7 +95,7 @@ async function gather(tx: Tx, accountId: AccountId, txNow: EpochMs) {
         tx,
         ExportData.shape.notificationPreferences.unwrap().element,
         sql`
-        select kind, inbox, mail from notification_preference where account_id = ${accountId} order by kind`,
+        select kind, inbox from notification_preference where account_id = ${accountId} order by kind`,
     );
     if (!preferences.ok) return preferences;
     const subscriptions = await queryAll(

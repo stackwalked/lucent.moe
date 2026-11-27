@@ -5,7 +5,7 @@ import { createSeededRng } from "@lucent/core/rng";
 import { EpochMs } from "@lucent/core/scalars";
 import { z } from "zod";
 import type { Envelope, MailTransport } from "../src/base/adapters/mail/mail.ts";
-import { type Db, execute, queryAll, queryOne, sql } from "../src/base/db/pool.ts";
+import { type Db, execute, queryAll, queryOne, sql, type Tx } from "../src/base/db/pool.ts";
 import { withTx } from "../src/base/db/tx.ts";
 import { sweepRetention } from "../src/base/jobs/retention.ts";
 import { listAudit } from "../src/identity/authority/reads.ts";
@@ -13,6 +13,16 @@ import { recordNotification } from "../src/members/notify/inbox.ts";
 import { claimMail, mailDeliveryJob, sendClaim, settleMail } from "../src/members/notify/mail.ts";
 import { dbNow, grantRole, seedAccount, seedRole, steppedUp } from "./authority-fixtures.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
+
+// What the site mails today (a reset or setup link, the deletion notice) is queued by its own writer
+// in the writer's transaction; this stands in for that.
+function queueMail(tx: Tx) {
+    return execute(
+        tx,
+        sql`insert into mail_outbox (recipient, subject, body)
+            values ('private@lucent.test', 'a subject', 'a body')`,
+    );
+}
 
 async function fixture(db: Db) {
     const recipient = await seedAccount(db, createSeededRng(5211), "private@lucent.test");
@@ -39,7 +49,7 @@ async function fixture(db: Db) {
         requests,
         recipient,
         notice,
-        emit: () => withTx(db, (tx) => recordNotification(tx, { recipient, notice, mail: true })),
+        emit: () => withTx(db, (tx) => queueMail(tx)),
         advance: (ms: number) => {
             now = EpochMs.parse(now + ms);
         },
@@ -55,15 +65,7 @@ test("the mail drain cannot see an uncommitted event and rollback leaves nothing
     await (await sharedTestCluster()).withTestDb(async ({ nativeDb: db }) => {
         const f = await fixture(db);
         const result = await withTx(db, async (tx) => {
-            expect(
-                (
-                    await recordNotification(tx, {
-                        recipient: f.recipient,
-                        notice: f.notice,
-                        mail: true,
-                    })
-                ).ok,
-            ).toBe(true);
+            expect((await queueMail(tx)).ok).toBe(true);
             expect(await claimMail(f.worker)).toEqual(ok(null));
             return err({ code: "ABORT" });
         });
@@ -73,18 +75,14 @@ test("the mail drain cannot see an uncommitted event and rollback leaves nothing
     });
 });
 
-test("with no provider a notice reaches the inbox and queues no mail", async () => {
+test("a notice reaches the inbox and queues no mail", async () => {
     await (await sharedTestCluster()).withTestDb(async ({ nativeDb: db }) => {
         const f = await fixture(db);
         expect(
             await withTx(db, (tx) =>
-                recordNotification(tx, {
-                    recipient: f.recipient,
-                    notice: f.notice,
-                    mail: false,
-                }),
+                recordNotification(tx, { recipient: f.recipient, notice: f.notice }),
             ),
-        ).toEqual(ok({ inbox: true, mail: false, discord: false }));
+        ).toEqual(ok({ inbox: true, discord: false }));
         expect(
             await queryOne(
                 db,

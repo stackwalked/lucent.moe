@@ -11,7 +11,7 @@ import { savePreference } from "./server.ts";
 
 type Loaded = Extract<Awaited<ReturnType<typeof fetchPreferences>>, { ok: true }>["value"];
 
-// Security notices always reach the inbox and mail; whether they also reach Discord is the one
+// Security notices always reach the inbox; whether they also reach Discord is the one
 // choice, applied as the switch is flipped. Without a linked Discord there is nothing to switch.
 export function NotificationsSection({ preferences }: { readonly preferences: Outcome<Loaded> }) {
     const router = useRouter();
@@ -39,7 +39,7 @@ export function NotificationsSection({ preferences }: { readonly preferences: Ou
         <Section caption={C.title}>
             <RefusalNote refused={refused} />
             <SettingRows label={C.title}>
-                <SettingRow name={C.inboxAndEmail} value={C.always} />
+                <SettingRow name={C.inbox} value={C.always} />
                 <SettingRow
                     name={C.discord}
                     {...(discordLinked ? {} : { value: C.needsDiscord })}

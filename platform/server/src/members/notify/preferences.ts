@@ -20,15 +20,13 @@ export async function findPreferences(
     const rows = await queryAll(
         tx,
         Channels.extend({ kind: z.enum(["product_status", "security", "ticket_reply"]) }),
-        sql`select kind, inbox, mail, discord from notification_preference
+        sql`select kind, inbox, discord from notification_preference
             where account_id = ${accountId}`,
     );
     if (!rows.ok) return rows;
     const channelsOf = (kind: "product_status" | "ticket_reply") => {
         const row = rows.value.find((r) => r.kind === kind);
-        return row === undefined
-            ? null
-            : { inbox: row.inbox, mail: row.mail, discord: row.discord };
+        return row === undefined ? null : { inbox: row.inbox, discord: row.discord };
     };
     return ok({
         productStatus: channelsOf("product_status"),
@@ -65,23 +63,23 @@ export function listPreferences(db: Db, token: BearerToken, catalog: ProductCata
     });
 }
 
-// A security row keeps inbox and mail on: only its Discord choice is the member's. A ticket
+// A security row keeps inbox on: only its Discord choice is the member's. A ticket
 // reply row has no Discord channel: it stores false.
 export function setPreference(db: Db, token: BearerToken, choice: z.output<typeof SetPreference>) {
     const channels =
         choice.kind === "security"
             ? { ...SECURITY_CHANNELS, discord: choice.discord }
             : choice.kind === "ticket_reply"
-              ? { inbox: choice.inbox, mail: choice.mail, discord: false }
+              ? { inbox: choice.inbox, discord: false }
               : choice;
     return withMember(db, token, async (tx, id) =>
         written(
             await execute(
                 tx,
-                sql`insert into notification_preference (account_id, kind, inbox, mail, discord)
-            values (${id}, ${choice.kind}, ${channels.inbox}, ${channels.mail}, ${channels.discord ?? false})
+                sql`insert into notification_preference (account_id, kind, inbox, discord)
+            values (${id}, ${choice.kind}, ${channels.inbox}, ${channels.discord ?? false})
             on conflict (account_id, kind) do update
-            set inbox = excluded.inbox, mail = excluded.mail,
+            set inbox = excluded.inbox,
                 discord = coalesce(${channels.discord ?? null}::boolean, notification_preference.discord)`,
             ),
         ),

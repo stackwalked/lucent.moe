@@ -7,7 +7,7 @@ import { createRpcClient } from "@lucent/rpc/client";
 import { mountInternalRpc } from "@lucent/rpc/mount";
 import { webContract } from "@lucent/rpc/web";
 import { z } from "zod";
-import { type Db, execute, queryAll, sql } from "../src/base/db/pool.ts";
+import { type Db, execute, queryOne, sql } from "../src/base/db/pool.ts";
 import { withTx } from "../src/base/db/tx.ts";
 import { webProcedures } from "../src/edge/listeners/internal/web-rpc.ts";
 import { mintSession } from "../src/identity/auth/sessions.ts";
@@ -46,7 +46,6 @@ async function member(db: Db, rng: SeededRng, email: string) {
             withTx(db, (tx) =>
                 recordNotification(tx, {
                     recipient: id,
-                    mail: true,
                     notice: { kind: "product_status", productId, catalog: products },
                 }),
             ),
@@ -112,7 +111,6 @@ test("a notification rolls back with its writer and follows only the recipient's
         const preference = {
             kind: "product_status",
             inbox: false,
-            mail: true,
             discord: false,
         } as const;
         expect(await setSubscription(db, alice.token, { ...choice, following: true })).toEqual(
@@ -121,9 +119,9 @@ test("a notification rolls back with its writer and follows only the recipient's
         expect(await setPreference(db, bob.token, preference)).toEqual(ok(undefined));
         expect(await listPreferences(db, bob.token, products)).toEqual(
             ok({
-                security: { inbox: true, mail: true, discord: false },
-                product_status: { inbox: false, mail: true, discord: false },
-                ticket_reply: { inbox: true, mail: true, discord: false },
+                security: { inbox: true, discord: false },
+                product_status: { inbox: false, discord: false },
+                ticket_reply: { inbox: true, discord: false },
                 subscriptions: [],
             }),
         );
@@ -135,14 +133,13 @@ test("a notification rolls back with its writer and follows only the recipient's
             await setPreference(db, bob.token, {
                 kind: "product_status",
                 inbox: false,
-                mail: true,
             }),
         ).toEqual(ok(undefined));
         expect(await listPreferences(db, bob.token, products)).toEqual(
             ok({
-                security: { inbox: true, mail: true, discord: false },
-                product_status: { inbox: false, mail: true, discord: true },
-                ticket_reply: { inbox: true, mail: true, discord: false },
+                security: { inbox: true, discord: false },
+                product_status: { inbox: false, discord: true },
+                ticket_reply: { inbox: true, discord: false },
                 subscriptions: [],
             }),
         );
@@ -151,50 +148,41 @@ test("a notification rolls back with its writer and follows only the recipient's
             expect(
                 await recordNotification(tx, {
                     recipient: id,
-                    mail: true,
                     notice: { kind: "product_status", ...choice },
                 }),
-            ).toEqual(ok({ inbox: true, mail: false, discord: false }));
+            ).toEqual(ok({ inbox: true, discord: false }));
             return err({ code: "ABORT" });
         });
         expect(rolledBack).toEqual(err({ code: "ABORT" }));
         expect(await alice.unread()).toEqual(ok({ count: 0 }));
-        expect(await bob.emit(productId)).toEqual(
-            ok({ inbox: false, mail: false, discord: false }),
-        );
-        expect(await alice.emit(productId)).toEqual(
-            ok({ inbox: true, mail: false, discord: false }),
-        );
+        expect(await bob.emit(productId)).toEqual(ok({ inbox: false, discord: false }));
+        expect(await alice.emit(productId)).toEqual(ok({ inbox: true, discord: false }));
         expect(await bob.unread()).toEqual(ok({ count: 0 }));
         expect(await alice.unread()).toEqual(ok({ count: 1 }));
         expect(await setPreference(db, alice.token, preference)).toEqual(ok(undefined));
-        expect(await alice.emit(productId)).toEqual(
-            ok({ inbox: false, mail: true, discord: false }),
-        );
+        expect(await alice.emit(productId)).toEqual(ok({ inbox: false, discord: false }));
         expect(await alice.unread()).toEqual(ok({ count: 1 }));
         expect(
             await withMember(db, alice.token, (tx, id) =>
                 recordNotification(tx, {
                     recipient: id,
-                    mail: true,
                     notice: { kind: "security", productId: null },
                 }),
             ),
-        ).toEqual(ok({ inbox: true, mail: true, discord: false }));
+        ).toEqual(ok({ inbox: true, discord: false }));
         expect(await alice.unread()).toEqual(ok({ count: 2 }));
         expect(await setSubscription(db, alice.token, { ...choice, following: false })).toEqual(
             ok(undefined),
         );
-        expect(await alice.emit(productId)).toEqual(
-            ok({ inbox: false, mail: false, discord: false }),
-        );
+        expect(await alice.emit(productId)).toEqual(ok({ inbox: false, discord: false }));
+        // A notice is never emailed.
         expect(
-            await queryAll(
+            await queryOne(
                 db,
-                z.object({ recipient: z.string() }),
-                sql`select recipient from mail_outbox`,
+                z.object({ count: z.coerce.number() }),
+                sql`select count(*) as count from mail_outbox`,
             ),
-        ).toEqual(ok([{ recipient: "alice@lucent.test" }, { recipient: "alice@lucent.test" }]));
+        ).toEqual(ok({ count: 0 }));
         expect(
             await execute(db, sql`update account set is_locked = true where id = ${alice.id}`),
         ).toEqual(ok(1));
@@ -261,7 +249,7 @@ test("losing a seed entitlement hides its follow and history, suppresses new del
         expect(
             await client.call(
                 "preferences.channels.set",
-                { kind: "product_status", inbox: true, mail: true, discord: false },
+                { kind: "product_status", inbox: true, discord: false },
                 caller,
             ),
         ).toEqual(ok({}));
@@ -272,7 +260,7 @@ test("losing a seed entitlement hides its follow and history, suppresses new del
             select ${alice.id}, 'security', '2020-01-01'::timestamptz from generate_series(1, 26)`,
             ),
         ).toEqual(ok(26));
-        expect(await alice.emit(seed)).toEqual(ok({ inbox: true, mail: true, discord: false }));
+        expect(await alice.emit(seed)).toEqual(ok({ inbox: true, discord: false }));
         const visible = await alice.list(null);
         invariant(
             visible.ok && visible.value.items[0]?.productId === seed,
@@ -290,17 +278,16 @@ test("losing a seed entitlement hides its follow and history, suppresses new del
                 if (!expired.ok) return expired;
                 return recordNotification(tx, {
                     recipient: id,
-                    mail: true,
                     notice: { kind: "product_status", productId: seed, catalog: products },
                 });
             }),
-        ).toEqual(ok({ inbox: false, mail: false, discord: false }));
+        ).toEqual(ok({ inbox: false, discord: false }));
         expect(
             await execute(db, sql`update entitlement set status='revoked' where id=${entitlement}`),
         ).toEqual(ok(1));
         expect(await change(seed, "follow")).toEqual(err({ code: "NOT_FOUND" }));
         expect(await follows()).toEqual([]);
-        expect(await alice.emit(seed)).toEqual(ok({ inbox: false, mail: false, discord: false }));
+        expect(await alice.emit(seed)).toEqual(ok({ inbox: false, discord: false }));
         expect(await alice.unread()).toEqual(ok({ count: 26 }));
         expect(await alice.list(entry)).toEqual(ok({ items: [], nextCursor: null }));
         expect(await alice.mark(entry)).toEqual(ok(undefined));

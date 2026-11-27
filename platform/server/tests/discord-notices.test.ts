@@ -69,7 +69,6 @@ function securityNotice(db: Db, recipient: AccountId) {
         recordNotification(tx, {
             recipient,
             notice: { kind: "security", productId: null },
-            mail: false,
         }),
     );
 }
@@ -234,7 +233,7 @@ test("a ticket opened from Discord is the site's ticket and counts against the s
             });
         const opened = await open("from discord");
         invariant(opened.ok, "the ticket opened");
-        expect(opened.value.url).toBe(`${SITE}/tickets/${opened.value.ticketId}`);
+        expect(opened.value.url).toBe(`${SITE}/support/${opened.value.ticketId}`);
         for (let i = 1; i < UNCLOSED_TICKETS_PER_ACCOUNT; i += 1) {
             const fromSite = await openMemberTicket(nativeDb, member.token, {
                 catalog: catalog(),

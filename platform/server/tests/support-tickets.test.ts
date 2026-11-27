@@ -34,8 +34,6 @@ async function supportStaff(db: Db, rng: SeededRng, email: string) {
     return { ...staff, caller: await steppedUp(db, staff.id) };
 }
 
-const SITE = { origin: "https://lucent.test", mail: true };
-
 async function stateOf(db: Db, ticketId: string) {
     return await scalar(
         db,
@@ -66,7 +64,6 @@ describe("tickets", () => {
                     caller: staff.caller,
                     ticketId,
                     body: "try again",
-                    site: SITE,
                 }),
             ).toEqual(ok(undefined));
             expect(await stateOf(browserDb, ticketId)).toBe("answered");
@@ -80,7 +77,6 @@ describe("tickets", () => {
                     caller: staff.caller,
                     ticketId,
                     body: "late",
-                    site: SITE,
                 }),
             ).toEqual(err({ code: "TICKET_CLOSED" }));
 
@@ -189,7 +185,6 @@ describe("tickets", () => {
                         caller: staff.caller,
                         ticketId,
                         body: "answer",
-                        site: SITE,
                     });
                     invariant(replied.ok, "answered");
                 }
@@ -282,7 +277,7 @@ describe("a staff reply tells the member", () => {
         return await scalar(db, z.coerce.number(), statement);
     }
 
-    test("one inbox entry and one mail go to the ticket's owner, linking the ticket and saying nothing of it", async () => {
+    test("one inbox entry goes to the ticket's owner, naming the ticket and saying nothing of it, and nothing is emailed", async () => {
         const cluster = await sharedTestCluster();
         await cluster.withTestDb(async ({ browserDb }) => {
             const rng = createSeededRng(821);
@@ -295,7 +290,6 @@ describe("a staff reply tells the member", () => {
                 caller: staff.caller,
                 ticketId,
                 body: REPLY,
-                site: SITE,
             });
             expect(replied).toEqual(ok(undefined));
 
@@ -307,20 +301,7 @@ describe("a staff reply tells the member", () => {
             expect(entries).toEqual(
                 ok([{ account_id: alice.id, kind: "ticket_reply", ticket_id: ticketId }]),
             );
-            const mails = await queryAll(
-                browserDb,
-                z.object({ recipient: z.string(), subject: z.string(), body: z.string() }),
-                sql`select recipient, subject, body from mail_outbox`,
-            );
-            invariant(mails.ok, "mail rows");
-            expect(mails.value.map((mail) => mail.recipient)).toEqual(["alice@lucent.test"]);
-            const [mail] = mails.value;
-            invariant(mail !== undefined, "one mail");
-            expect(mail.body).toContain(`https://lucent.test/tickets/${ticketId}`);
-            for (const text of [mail.subject, mail.body]) {
-                expect(text).not.toContain(REPLY);
-                expect(text).not.toContain(SUBJECT);
-            }
+            expect(await count(browserDb, sql`select count(*) as value from mail_outbox`)).toBe(0);
 
             const listed = await listInbox(browserDb, alice.token, {
                 cursor: null,
@@ -345,62 +326,46 @@ describe("a staff reply tells the member", () => {
                     caller: staff.caller,
                     ticketId,
                     body: REPLY,
-                    site: SITE,
                 }),
             ).toEqual(err({ code: "TICKET_CLOSED" }));
-            expect(await count(browserDb, sql`select count(*) as value from inbox_entry`)).toBe(1);
-            expect(await count(browserDb, sql`select count(*) as value from mail_outbox`)).toBe(1);
-        });
-    });
-
-    test.each([
-        ["inbox off", { inbox: false, mail: true }, { entries: 0, mails: 1 }],
-        ["mail off", { inbox: true, mail: false }, { entries: 1, mails: 0 }],
-        ["both off", { inbox: false, mail: false }, { entries: 0, mails: 0 }],
-    ] as const)("a member with %s gets only what they kept", async (_name, choice, expected) => {
-        const cluster = await sharedTestCluster();
-        await cluster.withTestDb(async ({ browserDb }) => {
-            const rng = createSeededRng(822);
-            const alice = await member(browserDb, rng, "alice@lucent.test");
-            const staff = await supportStaff(browserDb, rng, "staff@lucent.test");
-            expect(
-                await setPreference(browserDb, alice.token, { kind: "ticket_reply", ...choice }),
-            ).toEqual(ok(undefined));
-            const ticketId = await ticketOf(browserDb, alice.token);
-            const replied = await replyToTicket(browserDb, {
-                caller: staff.caller,
-                ticketId,
-                body: REPLY,
-                site: SITE,
-            });
-            expect(replied).toEqual(ok(undefined));
-            expect(await count(browserDb, sql`select count(*) as value from inbox_entry`)).toBe(
-                expected.entries,
-            );
-            expect(await count(browserDb, sql`select count(*) as value from mail_outbox`)).toBe(
-                expected.mails,
-            );
-        });
-    });
-
-    test("without a mail provider the reply queues no mail", async () => {
-        const cluster = await sharedTestCluster();
-        await cluster.withTestDb(async ({ browserDb }) => {
-            const rng = createSeededRng(823);
-            const alice = await member(browserDb, rng, "alice@lucent.test");
-            const staff = await supportStaff(browserDb, rng, "staff@lucent.test");
-            const ticketId = await ticketOf(browserDb, alice.token);
-            const replied = await replyToTicket(browserDb, {
-                caller: staff.caller,
-                ticketId,
-                body: REPLY,
-                site: { ...SITE, mail: false },
-            });
-            expect(replied).toEqual(ok(undefined));
             expect(await count(browserDb, sql`select count(*) as value from inbox_entry`)).toBe(1);
             expect(await count(browserDb, sql`select count(*) as value from mail_outbox`)).toBe(0);
         });
     });
+
+    test.each([
+        ["inbox off", { inbox: false }, { entries: 0 }],
+        ["inbox on", { inbox: true }, { entries: 1 }],
+    ] as const)(
+        "a member with %s gets only what they kept, and no mail",
+        async (_name, choice, expected) => {
+            const cluster = await sharedTestCluster();
+            await cluster.withTestDb(async ({ browserDb }) => {
+                const rng = createSeededRng(822);
+                const alice = await member(browserDb, rng, "alice@lucent.test");
+                const staff = await supportStaff(browserDb, rng, "staff@lucent.test");
+                expect(
+                    await setPreference(browserDb, alice.token, {
+                        kind: "ticket_reply",
+                        ...choice,
+                    }),
+                ).toEqual(ok(undefined));
+                const ticketId = await ticketOf(browserDb, alice.token);
+                const replied = await replyToTicket(browserDb, {
+                    caller: staff.caller,
+                    ticketId,
+                    body: REPLY,
+                });
+                expect(replied).toEqual(ok(undefined));
+                expect(await count(browserDb, sql`select count(*) as value from inbox_entry`)).toBe(
+                    expected.entries,
+                );
+                expect(await count(browserDb, sql`select count(*) as value from mail_outbox`)).toBe(
+                    0,
+                );
+            });
+        },
+    );
 
     test("a member suspended since opening the ticket is told nothing; the reply still lands", async () => {
         const cluster = await sharedTestCluster();
@@ -421,7 +386,6 @@ describe("a staff reply tells the member", () => {
                 caller: staff.caller,
                 ticketId,
                 body: REPLY,
-                site: SITE,
             });
             expect(replied).toEqual(ok(undefined));
             expect(await count(browserDb, sql`select count(*) as value from inbox_entry`)).toBe(0);
@@ -457,7 +421,6 @@ describe("a staff reply tells the member", () => {
                 caller: staff.caller,
                 ticketId,
                 body: REPLY,
-                site: SITE,
             });
             expect(replied.ok).toBe(false);
             expect(await stateOf(browserDb, ticketId)).toBe("open");

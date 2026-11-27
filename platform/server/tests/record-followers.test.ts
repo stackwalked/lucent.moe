@@ -13,20 +13,13 @@ import { liveCatalog, supportWorld, UPDATED } from "./record-fixtures.ts";
 async function follower(
     db: Db,
     rng: SeededRng,
-    params: { readonly email: string; readonly follows: boolean; readonly mail: boolean },
+    params: { readonly email: string; readonly follows: boolean },
 ): Promise<AccountId> {
     const id = await seedAccount(db, rng, params.email);
     if (params.follows) {
         await execute(
             db,
             sql`insert into product_subscription (account_id, product_id) values (${id}, 'cs2')`,
-        );
-    }
-    if (params.mail) {
-        await execute(
-            db,
-            sql`insert into notification_preference (account_id, kind, inbox, mail, discord)
-                values (${id}, 'product_status', true, true, false)`,
         );
     }
     return id;
@@ -40,14 +33,10 @@ const inboxOf = (db: Db, id: AccountId) =>
             where account_id = ${id} and kind = 'product_status' and product_id = 'cs2'`,
     );
 
-const mailTo = (db: Db, email: string) =>
-    scalar(
-        db,
-        z.coerce.number(),
-        sql`select count(*) as value from mail_outbox where recipient = ${email}`,
-    );
+const mailed = (db: Db) =>
+    scalar(db, z.coerce.number(), sql`select count(*) as value from mail_outbox`);
 
-test("each follower is told once per support drop, by inbox and by mail as they chose, and someone following nothing is told nothing", async () => {
+test("each follower is told once per support drop, in the inbox and never by mail, and someone following nothing is told nothing", async () => {
     const cluster = await sharedTestCluster();
     await cluster.withTestDb(async ({ nativeDb, browserDb }) => {
         const rng = createSeededRng(11_101);
@@ -56,19 +45,16 @@ test("each follower is told once per support drop, by inbox and by mail as they 
         const alice = await follower(browserDb, rng, {
             email: "alice@lucent.test",
             follows: true,
-            mail: true,
         });
         const bob = await follower(browserDb, rng, {
             email: "bob@lucent.test",
             follows: true,
-            mail: false,
         });
         const carol = await follower(browserDb, rng, {
             email: "carol@lucent.test",
             follows: false,
-            mail: true,
         });
-        const tell = () => tellFollowers(browserDb, { catalog: products, mail: true });
+        const tell = () => tellFollowers(browserDb, { catalog: products });
 
         await world.support(GAME);
         expect(await world.start(GAME)).toBe("NOT_A_REFUSAL");
@@ -82,11 +68,9 @@ test("each follower is told once per support drop, by inbox and by mail as they 
         expect(await tell()).toEqual({ ok: true, value: { told: 0, givenUp: [] } });
 
         expect(await inboxOf(browserDb, alice)).toBe(1);
-        expect(await mailTo(browserDb, "alice@lucent.test")).toBe(1);
         expect(await inboxOf(browserDb, bob)).toBe(1);
-        expect(await mailTo(browserDb, "bob@lucent.test")).toBe(0);
         expect(await inboxOf(browserDb, carol)).toBe(0);
-        expect(await mailTo(browserDb, "carol@lucent.test")).toBe(0);
+        expect(await mailed(browserDb)).toBe(0);
 
         // The recovery tells nobody.
         await world.support(UPDATED);
@@ -105,7 +89,6 @@ test("a drop already recovered from before anyone was told tells nobody", async 
         const alice = await follower(browserDb, rng, {
             email: "alice@lucent.test",
             follows: true,
-            mail: true,
         });
 
         await world.support(GAME);
@@ -113,7 +96,7 @@ test("a drop already recovered from before anyone was told tells nobody", async 
         expect(await world.start(UPDATED)).toBe("GAME_BUILD_UNSUPPORTED");
         await world.support(UPDATED);
 
-        expect(await tellFollowers(browserDb, { catalog: products, mail: true })).toEqual({
+        expect(await tellFollowers(browserDb, { catalog: products })).toEqual({
             ok: true,
             value: { told: 0, givenUp: [] },
         });
@@ -146,9 +129,8 @@ test("members on the old and the new build taking turns record one drop and tell
         const alice = await follower(browserDb, rng, {
             email: "alice@lucent.test",
             follows: true,
-            mail: false,
         });
-        const tell = () => tellFollowers(browserDb, { catalog: products, mail: true });
+        const tell = () => tellFollowers(browserDb, { catalog: products });
 
         await world.support(GAME);
         expect(await world.start(GAME, "first")).toBe("NOT_A_REFUSAL");
@@ -185,9 +167,8 @@ test("a second game update after a recovery is a second drop, and only the drops
         const alice = await follower(browserDb, rng, {
             email: "alice@lucent.test",
             follows: true,
-            mail: false,
         });
-        const tell = () => tellFollowers(browserDb, { catalog: products, mail: true });
+        const tell = () => tellFollowers(browserDb, { catalog: products });
         const later = { ...GAME, timeDateStamp: GAME.timeDateStamp + 2 };
 
         await world.support(GAME);
@@ -237,7 +218,6 @@ test("followers are told ten to a transaction, so a failure keeps the batches be
                 await follower(browserDb, rng, {
                     email: `f${n}@lucent.test`,
                     follows: true,
-                    mail: false,
                 }),
             );
         }
@@ -249,7 +229,7 @@ test("followers are told ten to a transaction, so a failure keeps the batches be
         expect(await world.start(GAME)).toBe("NOT_A_REFUSAL");
         expect(await world.start(UPDATED)).toBe("GAME_BUILD_UNSUPPORTED");
 
-        expect((await tellFollowers(browserDb, { catalog: products, mail: true })).ok).toBe(false);
+        expect((await tellFollowers(browserDb, { catalog: products })).ok).toBe(false);
         const told = await Promise.all(followers.map((id) => inboxOf(browserDb, id)));
         expect(told.filter((n) => n === 1)).toHaveLength(10);
     });
@@ -263,7 +243,6 @@ test("a drop that keeps failing is given up after five attempts, and the drops a
         const stuck = await follower(db, rng, {
             email: "stuck@lucent.test",
             follows: true,
-            mail: false,
         });
         const waiting = await seedAccount(db, rng, "waiting@lucent.test");
         await execute(
@@ -281,7 +260,7 @@ test("a drop that keeps failing is given up after five attempts, and the drops a
                     returning id)
                 select min(id)::text as value from added`,
         );
-        const tell = () => tellFollowers(db, { catalog: products, mail: true });
+        const tell = () => tellFollowers(db, { catalog: products });
 
         for (let attempt = 1; attempt < 5; attempt += 1) {
             expect((await tell()).ok).toBe(false);
@@ -308,12 +287,10 @@ test("a suspended follower is told nothing, by inbox or by mail", async () => {
         const kept = await follower(browserDb, rng, {
             email: "kept@lucent.test",
             follows: true,
-            mail: true,
         });
         const suspended = await follower(browserDb, rng, {
             email: "suspended@lucent.test",
             follows: true,
-            mail: true,
         });
         await execute(
             browserDb,
@@ -323,13 +300,13 @@ test("a suspended follower is told nothing, by inbox or by mail", async () => {
         expect(await world.start(GAME)).toBe("NOT_A_REFUSAL");
         expect(await world.start(UPDATED)).toBe("GAME_BUILD_UNSUPPORTED");
 
-        expect(await tellFollowers(browserDb, { catalog: products, mail: true })).toEqual({
+        expect(await tellFollowers(browserDb, { catalog: products })).toEqual({
             ok: true,
             value: { told: 1, givenUp: [] },
         });
         expect(await inboxOf(browserDb, kept)).toBe(1);
         expect(await inboxOf(browserDb, suspended)).toBe(0);
-        expect(await mailTo(browserDb, "suspended@lucent.test")).toBe(0);
+        expect(await mailed(browserDb)).toBe(0);
     });
 });
 
@@ -342,12 +319,10 @@ test("a deleted follower is told nothing, and the batch still tells the rest", a
         const kept = await follower(browserDb, rng, {
             email: "kept@lucent.test",
             follows: true,
-            mail: true,
         });
         const deleted = await follower(browserDb, rng, {
             email: "deleted@lucent.test",
             follows: true,
-            mail: true,
         });
         // A tombstone as deletion/strip.ts leaves one, its subscription left behind.
         const stripped = await execute(
@@ -361,7 +336,7 @@ test("a deleted follower is told nothing, and the batch still tells the rest", a
         expect(await world.start(GAME)).toBe("NOT_A_REFUSAL");
         expect(await world.start(UPDATED)).toBe("GAME_BUILD_UNSUPPORTED");
 
-        expect(await tellFollowers(browserDb, { catalog: products, mail: true })).toEqual({
+        expect(await tellFollowers(browserDb, { catalog: products })).toEqual({
             ok: true,
             value: { told: 1, givenUp: [] },
         });

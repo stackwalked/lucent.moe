@@ -77,7 +77,6 @@ test("a suspended account signs in fully, files an appeal staff answer, and reac
                 caller: root,
                 ticketId: filed.id,
                 body: "noted",
-                site: { origin: "https://lucent.test", mail: true },
             }),
         ).toEqual(ok(undefined));
         // An appeal's account reaches only /appeal: the reply tells it nothing by inbox or mail.

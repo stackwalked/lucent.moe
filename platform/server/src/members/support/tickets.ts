@@ -483,10 +483,6 @@ export function readStaffTicket(
 
 export type StaffTicketRefusal = AuthzRefusal | TicketRefusal;
 
-// What a reply needs to tell the member: the site's origin for the mail's link, and whether a
-// mail provider exists (without one nothing would drain the outbox).
-export type ReplySite = { readonly origin: string; readonly mail: boolean };
-
 function actAsStaff(
     db: Db,
     params: {
@@ -494,7 +490,6 @@ function actAsStaff(
         readonly ticketId: string;
         readonly event: "staff_replied" | "staff_closed";
         readonly body: string | null;
-        readonly site: ReplySite | null;
     },
 ): Promise<Result<void, StaffTicketRefusal | DbFailure>> {
     return withTx(db, async (tx, txNow) => {
@@ -566,16 +561,13 @@ function actAsStaff(
         // A deleted owner has no inbox and no address; their ticket waits out its 30 days.
         const reachable = standing.value?.status === "active" && !standing.value.is_deleted;
         if (params.event === "staff_replied" && ticket.value.kind === "help" && reachable) {
-            invariant(params.site !== null, "a reply knows the site it tells the member about");
             const notified = await recordNotification(tx, {
                 recipient: ticket.value.account_id,
                 notice: {
                     kind: "ticket_reply",
                     productId: null,
                     ticketId: params.ticketId,
-                    origin: params.site.origin,
                 },
-                mail: params.site.mail,
             });
             if (!notified.ok) return notified;
         }
@@ -599,7 +591,6 @@ export function replyToTicket(
         readonly caller: Caller;
         readonly ticketId: string;
         readonly body: string;
-        readonly site: ReplySite;
     },
 ) {
     return actAsStaff(db, { ...params, event: "staff_replied" });
@@ -609,7 +600,7 @@ export function closeStaffTicket(
     db: Db,
     params: { readonly caller: Caller; readonly ticketId: string },
 ) {
-    return actAsStaff(db, { ...params, event: "staff_closed", body: null, site: null });
+    return actAsStaff(db, { ...params, event: "staff_closed", body: null });
 }
 
 // --- the idle job ---

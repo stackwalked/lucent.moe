@@ -88,9 +88,7 @@ export const ExportData = z.object({
             }),
         )
         .readonly(),
-    notificationPreferences: z
-        .array(z.object({ kind: z.string(), inbox: z.boolean(), mail: z.boolean() }))
-        .readonly(),
+    notificationPreferences: z.array(z.object({ kind: z.string(), inbox: z.boolean() })).readonly(),
     subscriptions: z.array(ProductId).readonly(),
 });
 

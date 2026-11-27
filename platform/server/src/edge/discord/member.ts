@@ -198,6 +198,6 @@ export async function openTicketFromDiscord(
         });
         if (!opened.ok) return opened;
         const { ticketId } = opened.value;
-        return ok({ ticketId, url: `${params.siteOrigin}/tickets/${ticketId}` });
+        return ok({ ticketId, url: `${params.siteOrigin}/support/${ticketId}` });
     });
 }

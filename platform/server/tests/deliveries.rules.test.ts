@@ -6,12 +6,10 @@ import { decideDeliveries } from "../src/members/notify/deliveries.rules.ts";
 const productId = ProductId.parse("cs2");
 const security: Notice = { kind: "security", productId: null };
 const status: Notice = { kind: "product_status", productId };
-const all = { inbox: true, mail: true, discord: true };
-const both = { inbox: true, mail: true, discord: false };
-const neither = { inbox: false, mail: false, discord: false };
-const inbox = { inbox: true, mail: false, discord: false };
-const mail = { inbox: false, mail: true, discord: false };
-const discord = { inbox: false, mail: false, discord: true };
+const all = { inbox: true, discord: true };
+const inbox = { inbox: true, discord: false };
+const neither = { inbox: false, discord: false };
+const discord = { inbox: false, discord: true };
 
 const reply: Notice = {
     kind: "ticket_reply",
@@ -26,11 +24,11 @@ const chosen = (
 ) => ({ productStatus, ticketReply, securityDiscord });
 
 test.each([
-    ["security ignores opt-outs", security, chosen(neither), [], both],
-    ["security does not need any settings", security, chosen(null), [], both],
-    ["security goes to discord only when chosen for it", security, chosen(all), [], both],
+    ["security ignores opt-outs", security, chosen(neither), [], inbox],
+    ["security does not need any settings", security, chosen(null), [], inbox],
+    ["security goes to discord only when chosen for it", security, chosen(all), [], inbox],
     ["security's discord choice adds a DM", security, chosen(null, true), [], all],
-    ["opting in alone does not follow a product", status, chosen(both), [], neither],
+    ["opting in alone does not follow a product", status, chosen(inbox), [], neither],
     [
         "following another product is not enough",
         status,
@@ -39,7 +37,6 @@ test.each([
         neither,
     ],
     ["following defaults to inbox", status, chosen(null), [productId], inbox],
-    ["following respects a mail-only choice", status, chosen(mail), [productId], mail],
     ["following respects an inbox-only choice", status, chosen(inbox), [productId], inbox],
     ["following respects a discord-only choice", status, chosen(discord), [productId], discord],
     ["following respects every channel", status, chosen(all), [productId], all],
@@ -51,12 +48,16 @@ test.each([
         [productId],
         inbox,
     ],
-    ["a ticket reply defaults to inbox and mail", reply, chosen(null), [], both],
-    ["a ticket reply needs no follow", reply, chosen(neither), [], both],
-    ["a ticket reply respects an inbox-only choice", reply, chosen(null, false, inbox), [], inbox],
-    ["a ticket reply respects a mail-only choice", reply, chosen(null, false, mail), [], mail],
-    ["a ticket reply respects every opt-out", reply, chosen(all, true, neither), [], neither],
-    ["a ticket reply never goes to discord", reply, chosen(all, true, all), [], both],
+    ["a ticket reply defaults to inbox", reply, chosen(null), [], inbox],
+    ["a ticket reply needs no follow", reply, chosen(neither), [], inbox],
+    [
+        "a ticket reply respects an inbox-off choice",
+        reply,
+        chosen(null, false, neither),
+        [],
+        neither,
+    ],
+    ["a ticket reply never goes to discord", reply, chosen(all, true, all), [], inbox],
 ] as const)("%s", (_name, notice, preferences, subscriptions, expected) => {
     expect(decideDeliveries(notice, preferences, subscriptions)).toEqual({
         ok: true,

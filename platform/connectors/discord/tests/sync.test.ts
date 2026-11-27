@@ -515,7 +515,7 @@ test("/ticket opens a ticket the site shows under the linked account", async () 
     invariant(tickets.ok, "tickets listed");
     const [ticket] = tickets.value.items;
     expect(ticket?.subject).toBe("it won't start");
-    expect(answer.buttonUrl).toBe(`${site}/tickets/${ticket?.id}`);
+    expect(answer.buttonUrl).toBe(`${site}/support/${ticket?.id}`);
 
     expect(await fake.command("ticket", HEIDI)).toEqual({
         kind: "message",

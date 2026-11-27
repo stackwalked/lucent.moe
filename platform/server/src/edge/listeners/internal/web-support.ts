@@ -41,13 +41,7 @@ export const ticketsHandlers = {
         asStaff(ctx, call, (caller) => readStaffTicket(ctx.auth.db, { caller, ...input })),
     "admin.tickets.reply": (ctx, input, call) =>
         asStaff(ctx, call, async (caller) =>
-            done(
-                await replyToTicket(ctx.auth.db, {
-                    caller,
-                    ...input,
-                    site: { origin: ctx.auth.rp.origin, mail: ctx.auth.mailEnabled },
-                }),
-            ),
+            done(await replyToTicket(ctx.auth.db, { caller, ...input })),
         ),
     "admin.tickets.close": (ctx, input, call) =>
         asStaff(ctx, call, async (caller) =>
