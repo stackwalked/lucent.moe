@@ -565,8 +565,12 @@ describe("web against a real platform", () => {
             values (${root.id},'cs2',${item.id},1,'test loadout',convert_to(${body},'UTF8'))`;
         await db.close();
         expect((await browser().get("/cloud")).status).toBe(303);
-        expect(await (await member.get("/cloud")).text()).toContain("cs2");
-        expect(await (await member.get("/cloud?product=cs2")).text()).toContain("test loadout");
+        const toCloud = await member.get("/cloud");
+        expect([toCloud.status, toCloud.headers.get("location")]).toEqual([
+            303,
+            "/products/cs2/cloud",
+        ]);
+        expect(await (await member.get("/products/cs2/cloud")).text()).toContain("test loadout");
         const key = { productId: "cs2", itemId: item.id };
         const newItem = {
             productId: "cs2",
@@ -586,14 +590,14 @@ describe("web against a real platform", () => {
                 }),
             ),
         ).toBe("IDEMPOTENCY_CONFLICT");
-        const createdPage = await member.get(`/cloud?product=cs2&item=${empty.itemId}`);
+        const createdPage = await member.get(`/products/cs2/cloud?item=${empty.itemId}`);
         expect(createdPage.status).toBe(200);
         expect(await createdPage.text()).toContain("empty profile");
         const link = accepted(
             z.object({ token: z.string(), shareId: z.string() }),
             await member.call("features.cloud.server--createShare", key),
         );
-        const detail = await member.get(`/cloud?product=cs2&item=${item.id}`);
+        const detail = await member.get(`/products/cs2/cloud?item=${item.id}`);
         expect(detail.status).toBe(200);
         const html = await detail.text();
         expect(html).toContain("test loadout");

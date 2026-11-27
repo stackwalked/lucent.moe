@@ -4,7 +4,6 @@ import type { Outcome, Refused } from "../../server/outcome.ts";
 import { Button } from "../../ui/Button/Button.tsx";
 import { Copy } from "../../ui/Copy/Copy.tsx";
 import { Dialog } from "../../ui/Dialog/Dialog.tsx";
-import { Empty } from "../../ui/Empty/Empty.tsx";
 import { Page } from "../../ui/Page/Page.tsx";
 import { Section } from "../../ui/Section/Section.tsx";
 import { Stack } from "../../ui/Stack/Stack.tsx";
@@ -15,7 +14,7 @@ import { CLOUD_COPY as C } from "./copy.ts";
 import type { fetchHistory } from "./server.ts";
 import { createShare, deleteItem, renameItem, restoreItem, revokeShare } from "./server.ts";
 
-const route = getRouteApi("/_member/cloud");
+const route = getRouteApi("/_member/products/$productId/cloud");
 type Detail = {
     readonly productId: string;
     readonly itemId: string;
@@ -58,7 +57,7 @@ function History({ detail }: { readonly detail: Detail }) {
             title={current.name}
             width="narrow"
             trail={
-                <Link to="/cloud" search={{ product: productId }}>
+                <Link to="/products/$productId/cloud" params={{ productId }}>
                     {C.title}
                 </Link>
             }
@@ -196,8 +195,8 @@ function History({ detail }: { readonly detail: Detail }) {
                                     async () => {
                                         setDeleting(false);
                                         await router.navigate({
-                                            to: "/cloud",
-                                            search: { product: productId },
+                                            to: "/products/$productId/cloud",
+                                            params: { productId },
                                         });
                                     },
                                 )
@@ -224,11 +223,6 @@ export function CloudPage() {
         );
     if (loaded.view === "history")
         return <History key={`${loaded.productId}/${loaded.itemId}`} detail={loaded} />;
-    if (loaded.view === "none")
-        return (
-            <Page title={C.title}>
-                <Empty>{C.emptyProducts}</Empty>
-            </Page>
-        );
+
     return <CloudView />;
 }

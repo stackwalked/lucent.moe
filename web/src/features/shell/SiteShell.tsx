@@ -13,19 +13,43 @@ import { INBOX_TITLE, inboxLabel } from "../inbox/copy.ts";
 import { SHELL_COPY } from "./copy.ts";
 import styles from "./SiteShell.module.css";
 
-// What a signed-in member reaches from the bar, tab by tab.
-// `also` names a path prefix that belongs to the place without being under its own address:
-// profiles are part of community.
+const under = (pathname: string, base: string) =>
+    pathname === base || pathname.startsWith(`${base}/`);
+const PRODUCT_CLOUD = /^\/products\/[^/]+\/cloud(\/|$)/;
+
+// What a signed-in member reaches from the bar, tab by tab, and which paths each one is current
+// on: profiles are part of community, and a product's cloud tab belongs to cloud, not products.
+// A link marks every place whose address is a prefix of the path, so each is exact and the
+// place says for itself.
 const PLACES = [
-    { to: "/", label: SHELL_COPY.home, also: null },
-    { to: "/products", label: SHELL_COPY.products, also: null },
-    { to: "/cloud", label: SHELL_COPY.cloud, also: null },
-    { to: "/community", label: SHELL_COPY.community, also: "/members/" },
-    { to: "/support", label: SHELL_COPY.support, also: null },
+    { to: "/", label: SHELL_COPY.home, current: (path: string) => path === "/" },
+    {
+        to: "/products",
+        label: SHELL_COPY.products,
+        current: (path: string) => under(path, "/products") && !PRODUCT_CLOUD.test(path),
+    },
+    {
+        to: "/cloud",
+        label: SHELL_COPY.cloud,
+        current: (path: string) => PRODUCT_CLOUD.test(path) || under(path, "/cloud"),
+    },
+    {
+        to: "/community",
+        label: SHELL_COPY.community,
+        current: (path: string) => under(path, "/community") || under(path, "/members"),
+    },
+    {
+        to: "/support",
+        label: SHELL_COPY.support,
+        current: (path: string) => under(path, "/support"),
+    },
 ] as const;
 
-const DOCS_PLACE = { to: "/docs", label: DOCS_COPY.title, also: null } as const;
-
+const DOCS_PLACE = {
+    to: "/docs",
+    label: DOCS_COPY.title,
+    current: (path: string) => under(path, "/docs"),
+} as const;
 // Profile, account, staff's admin, the theme, and sign out: everything of the member's own that isn't a
 // place, behind their picture.
 export function AccountMenu({
@@ -129,16 +153,15 @@ export function SiteShell({ children }: { readonly children: ReactNode }) {
                   }
                 : {
                       places: (docs ? [...PLACES, DOCS_PLACE] : PLACES).map(
-                          ({ to, label, also }) => (
+                          ({ to, label, current }) => (
                               <Link
                                   key={to}
                                   to={to}
                                   className={styles.place}
-                                  {...(also !== null && pathname.startsWith(also)
+                                  {...(current(pathname)
                                       ? { "aria-current": "page" as const }
                                       : {})}
-                                  activeProps={{ "aria-current": "page" }}
-                                  activeOptions={{ exact: to === "/" }}
+                                  activeOptions={{ exact: true }}
                               >
                                   {label}
                               </Link>

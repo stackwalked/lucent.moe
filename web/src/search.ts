@@ -1,4 +1,3 @@
-import { isProductId, type ProductId } from "@lucent/core/brands";
 import { type ItemKind, isCloudId, isItemKind } from "@lucent/rpc/cloud-item-guards";
 import { isUuid } from "./formats.ts";
 
@@ -72,27 +71,22 @@ export const listSearch = searchSchema((search) => optional(search, "q", isListQ
 // The inbox's ?cursor=, a page's place in the inbox.
 export const inboxSearch = searchSchema((search) => optional(search, "cursor", isUuid));
 
-// The cloud page's ?product=, ?item=, ?kind= and ?find=: a product's listings and items
+// The cloud page's ?item=, ?kind= and ?find=: the product's listings and items
 // (narrowed by kind and a name or summary search), or one item's history.
 export const cloudSearch = searchSchema<
     {
-        readonly product?: ProductId;
         readonly item?: string;
         readonly kind?: ItemKind;
         readonly find?: string;
     },
     {
-        readonly product?: string;
         readonly item?: string;
         readonly kind?: string;
         readonly find?: string;
     }
 >((search) => {
-    const product = optional(search, "product", isProductId);
     const item = optional(search, "item", isCloudId);
     const kind = optional(search, "kind", isItemKind);
     const find = optional(search, "find", isFind);
-    return product === null || item === null || kind === null || find === null
-        ? null
-        : { ...product, ...item, ...kind, ...find };
+    return item === null || kind === null || find === null ? null : { ...item, ...kind, ...find };
 });

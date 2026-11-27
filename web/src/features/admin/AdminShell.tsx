@@ -66,6 +66,7 @@ export function AdminShell({ children }: { readonly children: ReactNode }) {
                     key={tab}
                     to={subs[0]?.to ?? "/admin"}
                     className={shellStyles.place}
+                    activeOptions={{ exact: true }}
                     {...(current?.tab === tab ? { "aria-current": "page" as const } : {})}
                 >
                     {C.tabs[tab]}

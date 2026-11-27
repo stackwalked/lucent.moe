@@ -4,47 +4,39 @@ import { Button } from "../../ui/Button/Button.tsx";
 import { Columns } from "../../ui/Columns/Columns.tsx";
 import { Page } from "../../ui/Page/Page.tsx";
 import { Pairs } from "../../ui/Pairs/Pairs.tsx";
-import { ProductPick, type ProductPickRow } from "../../ui/ProductPick/ProductPick.tsx";
 import { Section } from "../../ui/Section/Section.tsx";
 import { Stack } from "../../ui/Stack/Stack.tsx";
-import { Tabs } from "../../ui/Tabs/Tabs.tsx";
 import { Time } from "../../ui/Time/Time.tsx";
 import { Entries } from "../changes/Entries.tsx";
 import { CLOUD_COPY } from "../cloud/copy.ts";
 import { ListingRow } from "../cloud/ListingRow.tsx";
-import { DOCS_COPY } from "../docs/copy.ts";
-import { hasDocs } from "../docs/has.ts";
 import { PRODUCTS_COPY as C } from "./copy.ts";
 import { noteLastProduct } from "./lastProduct.ts";
+import { ProductLead } from "./ProductLead.tsx";
 import styles from "./ProductPage.module.css";
-import { productName, statusWord } from "./view.ts";
+import { statusWord } from "./view.ts";
 
-const route = getRouteApi("/_member/products/$productId");
+const parent = getRouteApi("/_member/products/$productId");
+const route = getRouteApi("/_member/products/$productId/");
 
 // One product as the member holds it: its changes on the left; on the right whether it runs
 // today and until when theirs lasts, what is known broken, and the loader. The head
-// row's title is the product picker, the tabs the page's own (only changes so far). No version
+// row is the product's own (ProductLead). No version
 // rows anywhere: releases carry no version string, only a seal number.
 export function ProductPage() {
-    const data = route.useLoaderData();
-    const { product, access, status, issues, changes, loader, cloud } = data;
+    const { product, status } = parent.useLoaderData();
+    const { changes, loader, cloud } = route.useLoaderData();
+    const access = product.access;
+    const issues = status.issues.filter(
+        (issue) => issue.productId === null || issue.productId === product.productId,
+    );
 
     useEffect(() => {
         void noteLastProduct(product.productId);
     }, [product.productId]);
 
-    const rows: readonly ProductPickRow[] = status.products.map((listed) => ({
-        id: listed.productId,
-        label: productName(listed.name),
-        status: data.held.includes(listed.productId)
-            ? statusWord(listed.state, listed.supported)
-            : "no-access",
-    }));
-
-    const current = statusWord(
-        status.current?.state ?? product.state,
-        status.current?.supported ?? null,
-    );
+    const now = status.products.find((listed) => listed.productId === product.productId) ?? null;
+    const current = statusWord(now?.state ?? product.state, now?.supported ?? null);
     const accessItems = [
         current === null ? null : { label: C.support, value: current.word, tone: current.tone },
         access === null
@@ -64,47 +56,7 @@ export function ProductPage() {
     return (
         <Page title={null} hideTitle width="wide">
             <Columns
-                head={{
-                    lead: (
-                        <>
-                            <h1 className={styles.title}>
-                                <ProductPick
-                                    label={productName(product.name)}
-                                    rows={rows}
-                                    current={product.productId}
-                                    linkFor={(id, children) => (
-                                        <Link to="/products/$productId" params={{ productId: id }}>
-                                            {children}
-                                        </Link>
-                                    )}
-                                />
-                            </h1>
-                            <Tabs
-                                tabs={[
-                                    {
-                                        to: "/products/$productId",
-                                        params: { productId: product.productId },
-                                        label: C.changesTab,
-                                    },
-                                    {
-                                        to: "/cloud",
-                                        search: { product: product.productId },
-                                        label: C.cloudTab,
-                                    },
-                                    ...(hasDocs(product.productId)
-                                        ? [
-                                              {
-                                                  to: "/docs/$scope" as const,
-                                                  params: { scope: product.productId },
-                                                  label: DOCS_COPY.title,
-                                              },
-                                          ]
-                                        : []),
-                                ]}
-                            />
-                        </>
-                    ),
-                }}
+                head={{ lead: <ProductLead at="changes" /> }}
                 main={
                     <Entries
                         first={changes}
@@ -149,7 +101,10 @@ export function ProductPage() {
                             <Section
                                 caption={CLOUD_COPY.newInCloud}
                                 actions={
-                                    <Link to="/cloud" search={{ product: product.productId }}>
+                                    <Link
+                                        to="/products/$productId/cloud"
+                                        params={{ productId: product.productId }}
+                                    >
                                         {CLOUD_COPY.all}
                                     </Link>
                                 }

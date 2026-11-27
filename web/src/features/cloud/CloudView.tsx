@@ -6,19 +6,16 @@ import { Columns } from "../../ui/Columns/Columns.tsx";
 import { Empty } from "../../ui/Empty/Empty.tsx";
 import { IconButton } from "../../ui/IconButton/IconButton.tsx";
 import { Page } from "../../ui/Page/Page.tsx";
-import { ProductPick } from "../../ui/ProductPick/ProductPick.tsx";
 import { Section } from "../../ui/Section/Section.tsx";
 import { Stack } from "../../ui/Stack/Stack.tsx";
-import { Tabs } from "../../ui/Tabs/Tabs.tsx";
 import { TextField } from "../../ui/TextField/TextField.tsx";
 import { RefusalNote } from "../auth/RefusalNote.tsx";
 import { noteLastProduct } from "../products/lastProduct.ts";
-import { productName } from "../products/view.ts";
+import { ProductLead } from "../products/ProductLead.tsx";
 import { downloadPath } from "../resources/download.ts";
 import styles from "./CloudView.module.css";
 import { CLOUD_COPY as C } from "./copy.ts";
 import { type Listing, ListingRow } from "./ListingRow.tsx";
-import { NewItem } from "./NewItem.tsx";
 import {
     deleteItem,
     type fetchItems,
@@ -29,7 +26,7 @@ import {
     unlistItem,
 } from "./server.ts";
 
-const route = getRouteApi("/_member/cloud");
+const route = getRouteApi("/_member/products/$productId/cloud");
 
 type Items = Extract<Awaited<ReturnType<typeof fetchItems>>, { readonly ok: true }>["value"];
 type Mine = Extract<Awaited<ReturnType<typeof fetchMine>>, { readonly ok: true }>["value"];
@@ -41,9 +38,9 @@ function Find({ find, product, kind }: { find: string | null; product: string; k
     const router = useRouter();
     const go = (text: string) =>
         router.navigate({
-            to: "/cloud",
+            to: "/products/$productId/cloud",
+            params: { productId: product },
             search: {
-                product,
                 ...(kind === undefined ? {} : { kind }),
                 ...(text === "" ? {} : { find: text }),
             },
@@ -70,6 +67,37 @@ function Find({ find, product, kind }: { find: string | null; product: string; k
                 )}
             </form>
         </search>
+    );
+}
+
+const KINDS: readonly (readonly [Kind | undefined, string])[] = [
+    [undefined, C.all],
+    ["config", C.configs],
+    ["script", C.scripts],
+    ["inventory", C.inventories],
+];
+
+// The kinds of item as plain text choices at the top of the list: the current one ink, the rest
+// ink-2. Matching is exact, search included, so "all" is not current beside another kind.
+function Kinds({ productId, find }: { readonly productId: string; readonly find: string | null }) {
+    return (
+        <nav className={styles.kinds}>
+            {KINDS.map(([value, label]) => (
+                <Link
+                    key={label}
+                    to="/products/$productId/cloud"
+                    params={{ productId }}
+                    search={{
+                        ...(value === undefined ? {} : { kind: value }),
+                        ...(find === null ? {} : { find }),
+                    }}
+                    className={styles.kind}
+                    activeOptions={{ exact: true }}
+                >
+                    {label}
+                </Link>
+            ))}
+        </nav>
     );
 }
 
@@ -144,8 +172,9 @@ function Item({ productId, item, mine }: { productId: string; item: Items[number
             <div className={styles.itemRow}>
                 <span className={styles.itemText}>
                     <Link
-                        to="/cloud"
-                        search={{ product: productId, item: item.itemId }}
+                        to="/products/$productId/cloud"
+                        params={{ productId }}
+                        search={{ item: item.itemId }}
                         className={styles.itemName}
                     >
                         {item.name}
@@ -243,63 +272,24 @@ function ImportLink() {
     );
 }
 
-// /cloud for one product. The main column's head holds the product picker, the kind filters and
-// "find"; the aside opens with the member's own cloud, then what staff published.
+// One product's cloud, a tab of the product. The main column's head is the product's own with
+// "find" at its end; the list opens with the kind choices. The aside is the member's own cloud,
+// then what staff published.
 export function CloudView() {
     const data = route.useLoaderData();
     useEffect(() => {
         if (data.ok && data.view === "items") void noteLastProduct(data.productId);
     }, [data]);
     if (!data.ok || data.view !== "items") return null;
-    const { productId, pick, access, kind, find, listings, items, mine, files } = data;
-    const current = pick.find((p) => p.productId === productId);
+    const { productId, access, kind, find, listings, items, mine, files } = data;
     const staffFiles = files?.ok
         ? files.value.filter((file) => file.productId === null || file.productId === productId)
         : [];
-    const kinds: readonly (readonly [Kind | undefined, string])[] = [
-        [undefined, C.all],
-        ["config", C.configs],
-        ["script", C.scripts],
-        ["inventory", C.inventories],
-    ];
     return (
         <Page title={null} hideTitle>
             <Columns
                 head={{
-                    lead: (
-                        <>
-                            <h1 className={styles.title}>
-                                <ProductPick
-                                    label={productName(current?.name ?? productId)}
-                                    current={productId}
-                                    rows={pick.map((p) => ({
-                                        id: p.productId,
-                                        label: productName(p.name),
-                                        status: p.held ? null : "no-access",
-                                    }))}
-                                    linkFor={(id, children) => (
-                                        <Link to="/cloud" search={{ product: id }}>
-                                            {children}
-                                        </Link>
-                                    )}
-                                />
-                            </h1>
-                            {access ? (
-                                <Tabs
-                                    tabs={kinds.map(([value, label]) => ({
-                                        to: "/cloud",
-                                        search: {
-                                            product: productId,
-                                            ...(value === undefined ? {} : { kind: value }),
-                                            ...(find === null ? {} : { find }),
-                                        },
-                                        label,
-                                        current: value === kind,
-                                    }))}
-                                />
-                            ) : null}
-                        </>
-                    ),
+                    lead: <ProductLead at="cloud" />,
                     ...(access
                         ? {
                               actions: (
@@ -316,13 +306,16 @@ export function CloudView() {
                     !access || listings === null ? (
                         <Empty>{C.noAccess}</Empty>
                     ) : (
-                        <Listings
-                            key={`${productId}|${kind ?? ""}|${find ?? ""}|${listings?.ok ? listings.value.items.map((row) => row.id).join() : ""}`}
-                            first={listings}
-                            productId={productId}
-                            kind={kind}
-                            find={find}
-                        />
+                        <>
+                            <Kinds productId={productId} find={find} />
+                            <Listings
+                                key={`${productId}|${kind ?? ""}|${find ?? ""}|${listings?.ok ? listings.value.items.map((row) => row.id).join() : ""}`}
+                                first={listings}
+                                productId={productId}
+                                kind={kind}
+                                find={find}
+                            />
+                        </>
                     )
                 }
                 aside={
@@ -347,9 +340,7 @@ export function CloudView() {
                                 )}
                                 <ImportLink />
                             </Section>
-                            {data.canAppend ? (
-                                <NewItem key={productId} productId={productId} />
-                            ) : null}
+
                             {staffFiles.length === 0 ? null : (
                                 <Section caption={C.fromStaff}>
                                     <ul className={styles.items}>

@@ -1,6 +1,8 @@
 @layer features {
     .title {
+        flex: none;
         font-size: var(--size-20);
+        white-space: nowrap;
     }
 
     .names {

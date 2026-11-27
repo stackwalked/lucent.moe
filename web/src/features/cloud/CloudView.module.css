@@ -7,7 +7,7 @@
 
     .find {
         display: block;
-        inline-size: var(--side-w);
+        inline-size: calc(var(--s-8) * 2);
         max-inline-size: 100%;
     }
 
@@ -31,6 +31,22 @@
 
     .findInput::placeholder {
         color: var(--ink-2);
+    }
+
+    .kinds {
+        display: flex;
+        gap: var(--s-4);
+    }
+
+    .kind {
+        color: var(--ink-2);
+        font-size: var(--size-14);
+        transition: color var(--t-hover) var(--ease);
+    }
+
+    .kind:hover,
+    .kind[aria-current="page"] {
+        color: var(--ink);
     }
 
     .list,

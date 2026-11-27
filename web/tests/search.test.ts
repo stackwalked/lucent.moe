@@ -1,5 +1,4 @@
 import { expect, test } from "bun:test";
-import { ProductId } from "@lucent/core/scalars";
 import { CloudId } from "@lucent/rpc/cloud-item";
 import { z } from "zod";
 import { cloudSearch, inboxSearch, listSearch } from "../src/search.ts";
@@ -13,7 +12,6 @@ const SCHEMAS = [
     [
         cloudSearch,
         z.object({
-            product: ProductId.optional(),
             item: CloudId.optional(),
             kind: z.enum(["config", "inventory", "script"]).optional(),
             find: z.string().max(64).optional(),
@@ -70,6 +68,6 @@ test("each search reader takes and returns what its zod schema did", () => {
 });
 
 test("a reader leaves out a key that was not given", () => {
-    const read = cloudSearch["~standard"].validate({ product: "cs2", item: undefined });
-    expect("value" in read && Object.keys(read.value)).toEqual(["product"]);
+    const read = cloudSearch["~standard"].validate({ find: "x", item: undefined });
+    expect("value" in read && Object.keys(read.value)).toEqual(["find"]);
 });

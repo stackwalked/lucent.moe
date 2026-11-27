@@ -1,48 +1,27 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Outlet } from "@tanstack/react-router";
 import { SITE_COPY } from "../../copy/site.ts";
-import { fetchChangelog, fetchRecordStatus } from "../../features/changes/server.ts";
-import { fetchListings } from "../../features/cloud/server.ts";
+import { fetchRecordStatus } from "../../features/changes/server.ts";
 import { PRODUCTS_COPY } from "../../features/products/copy.ts";
-import { ProductPage } from "../../features/products/ProductPage.tsx";
-import { fetchLoaderOffer, fetchProducts } from "../../features/products/server.ts";
+import { fetchProducts } from "../../features/products/server.ts";
 import { LOADER_PRODUCT_ID, productName } from "../../features/products/view.ts";
 import { toNotFound, toUnavailable } from "../../server/route-control.ts";
 
-// An unlisted product is indistinguishable from one that doesn't exist. Everything the page
-// shows comes scoped to the member: their products with access, the record's status and issues,
-// the first page of the product's entries, and the loader offer.
+// A product's pages (changes, cloud) share their head: the picker and the tabs. An unlisted
+// product is indistinguishable from one that doesn't exist. What the head needs comes scoped to
+// the member: their products with access and the record's status of each.
 export const Route = createFileRoute("/_member/products/$productId")({
     loader: async ({ params }) => {
-        const products = await fetchProducts();
+        const [products, status] = await Promise.all([fetchProducts(), fetchRecordStatus()]);
         if (!products.ok) return toUnavailable(products.refused.reference ?? "");
         const product = products.value.find(
             (p) => p.productId === params.productId && p.productId !== LOADER_PRODUCT_ID,
         );
         if (product === undefined) return toNotFound();
-        const [status, changes, loader, cloud] = await Promise.all([
-            fetchRecordStatus(),
-            fetchChangelog({ data: { productId: product.productId } }),
-            fetchLoaderOffer(),
-            product.access === null
-                ? null
-                : fetchListings({ data: { productId: product.productId } }),
-        ]);
         if (!status.ok) return toUnavailable(status.refused.reference ?? "");
         return {
             product,
-            access: product.access,
             held: products.value.filter((p) => p.access !== null).map((p) => p.productId),
-            status: {
-                products: status.value.products,
-                current:
-                    status.value.products.find((p) => p.productId === product.productId) ?? null,
-            },
-            issues: status.value.issues.filter(
-                (issue) => issue.productId === null || issue.productId === product.productId,
-            ),
-            changes,
-            loader,
-            cloud,
+            status: status.value,
         };
     },
     head: ({ loaderData }) => ({
@@ -56,5 +35,5 @@ export const Route = createFileRoute("/_member/products/$productId")({
             },
         ],
     }),
-    component: ProductPage,
+    component: Outlet,
 });

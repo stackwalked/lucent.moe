@@ -3,8 +3,6 @@ export const CLOUD_COPY = {
     products: "your products",
     emptyProducts: "no products with cloud storage",
     emptyItems: "no items",
-    create: "create empty item",
-    kind: "item type",
     history: "history",
     links: "share links",
     noLinks: "no active links",
