@@ -4,6 +4,7 @@ import { AccountId, type BearerToken, EpochMs, ProductId } from "@lucent/core/sc
 import { authorize, type Caller, can } from "@lucent/policy/policy";
 import { z } from "zod";
 import { appendAudit } from "../../base/db/audit.ts";
+import { beforeKeyset, microsOf, parseKeyset, toKeyset } from "../../base/db/keyset.ts";
 import {
     type Db,
     type DbFailure,
@@ -227,7 +228,8 @@ export function listMine(tx: Tx, scope: CloudScope) {
     );
 }
 
-// The viewer's items, each with where it was copied from, if it was.
+// The viewer's items, each with where it was copied from, if it was. The source's owner is named
+// only as the browse names owners (a name, active, no block either way); otherwise it is null.
 export function listItemsWithSource(tx: Tx, scope: CloudScope) {
     return queryAll(
         tx,
@@ -243,7 +245,10 @@ export function listItemsWithSource(tx: Tx, scope: CloudScope) {
                         else json_build_object('listingId', i.source_listing_id::text,
                                                'owner', (select a.username from cloud_listing l
                                                          join account a on a.id = l.owner_id
-                                                         where l.id = i.source_listing_id))
+                                                         where l.id = i.source_listing_id
+                                                           and a.username is not null
+                                                           and a.status = 'active'
+                                                           and ${notBlockedWith(scope.accountId, sql`l.owner_id`)}))
                    end as source
             from cloud_item i join cloud_version v using (account_id, product_id, item_id)
             where i.account_id = ${scope.accountId} and i.product_id = ${scope.productId}
@@ -260,6 +265,7 @@ const ListedRow = z.object({
     username: z.string().nullable(),
     avatar: z.string().nullable(),
     updatedAt: EpochMs,
+    updatedAtMicros: z.string(),
     added: z.boolean(),
 });
 
@@ -297,11 +303,14 @@ export function listListings(
         }
         if (params.productId !== undefined && entitled.length === 0) return missing();
         if (entitled.length === 0) return ok({ items: [], nextCursor: null });
+        const key = params.cursor === undefined ? null : parseKeyset(params.cursor);
+        if (key !== null && !key.ok) return key;
+        // The key is the cursor row's own values, so the page continues where it ended even if
+        // that row has since changed or gone.
         const after =
-            params.cursor === undefined
+            key === null
                 ? sql``
-                : sql`and (l.updated_at, l.id) < (select c.updated_at, c.id from cloud_listing c
-                                                  where c.id = ${params.cursor}::uuid and c.state = 'listed')`;
+                : sql`and ${beforeKeyset({ time: sql`l.updated_at`, id: sql`l.id` }, key.value)}`;
         const owner =
             params.owner === undefined
                 ? sql``
@@ -319,6 +328,7 @@ export function listListings(
             sql`select l.id, l.product_id as "productId", l.name, l.kind, l.summary, a.username,
                        ${authorAvatar(accountId, sql`l.owner_id`)} as avatar,
                        l.updated_at as "updatedAt",
+                       ${microsOf(sql`l.updated_at`)} as "updatedAtMicros",
                        exists (select 1 from cloud_item c
                                where c.account_id = ${accountId} and c.product_id = l.product_id
                                  and c.source_listing_id = l.id) as added
@@ -332,15 +342,18 @@ export function listListings(
                 order by l.updated_at desc, l.id desc limit ${LISTING_PAGE_SIZE + 1}`,
         );
         if (!rows.ok) return rows;
-        const items = rows.value
-            .slice(0, LISTING_PAGE_SIZE)
-            .map(({ username, avatar, ...row }) => ({
-                ...row,
-                owner: { username, avatar },
-            }));
+        const page = rows.value.slice(0, LISTING_PAGE_SIZE);
+        const last = page.at(-1);
+        const items = page.map(({ username, avatar, updatedAtMicros: _, ...row }) => ({
+            ...row,
+            owner: { username, avatar },
+        }));
         return ok({
             items,
-            nextCursor: rows.value.length > LISTING_PAGE_SIZE ? (items.at(-1)?.id ?? null) : null,
+            nextCursor:
+                rows.value.length > LISTING_PAGE_SIZE && last !== undefined
+                    ? toKeyset({ micros: last.updatedAtMicros, id: last.id })
+                    : null,
         });
     });
 }
@@ -445,16 +458,72 @@ export function listPending(
 const StaffRow = z.object({
     ownerId: z.string(),
     productId: z.string(),
+    itemId: z.string(),
     kind: ItemKind,
     state: z.enum(["pending", "listed", "removed"]),
     revision: z.int().positive().nullable(),
     pending: z.int().positive().nullable(),
-    pendingName: z.string().nullable(),
 });
+
+// What a reviewer reads before approving: the waiting snapshot's content, and for an update the
+// visible snapshot's beside it. The content is the member's own text and untrusted; it is only
+// ever shown as text. The revision names what was read, and approving sends it back.
+export function readListingForReview(
+    db: Db,
+    params: { readonly caller: Caller; readonly listingId: string },
+) {
+    return withTx(db, async (tx, txNow) => {
+        const standing = await readStanding(tx, params.caller.accountId, txNow);
+        if (!standing.ok) return standing;
+        if (
+            standing.value === null ||
+            !can({ ...standing.value, stepUpAt: params.caller.stepUpAt }, "moderation:remove")
+        ) {
+            return err({ code: "FORBIDDEN" as const });
+        }
+        const row = await queryOne(
+            tx,
+            z.object({
+                id: z.uuid(),
+                productId: ProductId,
+                kind: ItemKind,
+                name: z.string(),
+                revision: z.int().positive(),
+                bytes: z.instanceof(Uint8Array),
+                listedRevision: z.int().positive().nullable(),
+                listedBytes: z.instanceof(Uint8Array).nullable(),
+            }),
+            sql`select l.id, l.product_id as "productId", l.kind, pv.name,
+                       pv.revision, pv.bytes,
+                       lv.revision as "listedRevision", lv.bytes as "listedBytes"
+                from cloud_listing l
+                join cloud_version pv on (pv.account_id, pv.product_id, pv.item_id, pv.revision) =
+                                         (l.owner_id, l.product_id, l.item_id, l.pending_revision)
+                left join cloud_version lv on (lv.account_id, lv.product_id, lv.item_id, lv.revision) =
+                                              (l.owner_id, l.product_id, l.item_id, l.revision)
+                where l.id = ${params.listingId}::uuid and l.state <> 'removed'
+                  and l.pending_revision is not null`,
+        );
+        if (!row.ok) return row;
+        if (row.value === null) return missing();
+        const text = (bytes: Uint8Array) => new TextDecoder("utf-8").decode(bytes);
+        return ok({
+            id: row.value.id,
+            productId: row.value.productId,
+            kind: row.value.kind,
+            name: row.value.name,
+            pending: { revision: row.value.revision, content: text(row.value.bytes) },
+            listed:
+                row.value.listedRevision === null || row.value.listedBytes === null
+                    ? null
+                    : { revision: row.value.listedRevision, content: text(row.value.listedBytes) },
+        });
+    });
+}
 
 export async function approveListing(
     db: Db,
-    params: { readonly caller: Caller; readonly listingId: string },
+    params: { readonly caller: Caller; readonly listingId: string; readonly revision: number },
 ) {
     return await withTx(db, async (tx, txNow) => {
         const locked = await lockCallerWith(tx, { caller: params.caller, targets: [], txNow });
@@ -468,25 +537,37 @@ export async function approveListing(
         const row = await queryOne(
             tx,
             StaffRow,
-            sql`select l.owner_id as "ownerId", l.product_id as "productId", l.kind, l.state,
-                       l.revision, l.pending_revision as pending,
-                       (select v.name from cloud_version v
-                        where (v.account_id, v.product_id, v.item_id, v.revision) =
-                              (l.owner_id, l.product_id, l.item_id, l.pending_revision)) as "pendingName"
+            sql`select l.owner_id as "ownerId", l.product_id as "productId",
+                       l.item_id::text as "itemId", l.kind, l.state,
+                       l.revision, l.pending_revision as pending
                 from cloud_listing l where l.id = ${params.listingId}::uuid for update`,
         );
         if (!row.ok) return row;
         if (row.value === null || row.value.state === "removed") return missing();
-        const next = decideApproval({
-            state: row.value.state,
-            revision: row.value.revision,
-            pending: row.value.pending,
-        });
+        const next = decideApproval(
+            {
+                state: row.value.state,
+                revision: row.value.revision,
+                pending: row.value.pending,
+            },
+            params.revision,
+        );
         if (!next.ok) return next;
+        // Read after the lock, in a statement of its own: a subselect inside the locking one
+        // would see the snapshot from before the wait.
+        const pendingName = await queryOne(
+            tx,
+            z.object({ name: z.string() }),
+            sql`select name from cloud_version
+                where account_id = ${row.value.ownerId} and product_id = ${row.value.productId}
+                  and item_id = ${row.value.itemId}::bigint and revision = ${next.value.revision}`,
+        );
+        if (!pendingName.ok) return pendingName;
+        if (pendingName.value === null) return missing();
         const updated = await execute(
             tx,
             sql`update cloud_listing set state = 'listed', revision = ${next.value.revision},
-                    pending_revision = null, name = ${listingName(row.value.pendingName ?? "")},
+                    pending_revision = null, name = ${listingName(pendingName.value.name)},
                     listed_at = coalesce(listed_at, now()), updated_at = now()
                 where id = ${params.listingId}::uuid`,
         );

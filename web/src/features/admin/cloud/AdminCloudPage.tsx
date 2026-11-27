@@ -10,8 +10,9 @@ import { AccountAction } from "../accounts/AccountAction.tsx";
 import { ADMIN_COPY } from "../copy.ts";
 import { ListRefusal } from "../ListRefusal.tsx";
 import { useListNavigation } from "../list.ts";
+import { ApproveListing } from "./ApproveListing.tsx";
 import { ADMIN_CLOUD_COPY as C } from "./copy.ts";
-import { approveListing, removeListing } from "./server.ts";
+import { removeListing } from "./server.ts";
 import { ADMIN_CLOUD_TITLE } from "./title.ts";
 
 const route = getRouteApi("/_admin/admin/cloud/listings");
@@ -63,16 +64,7 @@ export function AdminCloudPage() {
                                 header: "",
                                 cell: (row) => (
                                     <Stack direction="row" gap={2}>
-                                        <AccountAction
-                                            action="moderation:remove"
-                                            label={C.approve}
-                                            title={C.approveTitle}
-                                            icon="check"
-                                            fields={<p>{C.approveBody}</p>}
-                                            run={() =>
-                                                approveListing({ data: { listingId: row.id } })
-                                            }
-                                        />
+                                        <ApproveListing listingId={row.id} />
                                         <AccountAction
                                             action="moderation:remove"
                                             label={C.remove}

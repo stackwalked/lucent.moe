@@ -4,7 +4,7 @@ import { CloudId, ItemKind } from "../cloud-item.ts";
 import { isCloudItemName } from "../cloud-item-guards.ts";
 import { defineContract } from "../contract.ts";
 import { Author, PostingRestricted } from "./community.ts";
-import { Done, refusal, StaffRefusals, Unavailable } from "./shared.ts";
+import { Cursor, Done, refusal, StaffRefusals, Unavailable } from "./shared.ts";
 
 const Revision = z.int32().positive();
 export const CloudProduct = z.strictObject({ productId: ProductId });
@@ -104,16 +104,20 @@ export const cloudContract = defineContract({
     // and inventories are listed at once; a script waits for staff (`pending`) and an update of
     // a listed script waits too, while its last approved snapshot stays visible.
     // Without `productId` the list spans every product the viewer holds an active entitlement
-    // to; with it and no entitlement the answer is NOT_FOUND. `owner` narrows to one account's
-    // listings, empty when that account is blocked, private or gone.
+    // to; with it and no entitlement the answer is NOT_FOUND. Listing is the owner's own act, so
+    // a listing names its owner whatever that owner's profile visibility; only blocked, suspended
+    // and gone owners are left out. `owner` narrows to one account's listings and does honour a
+    // private profile: it is empty when that account is blocked, private or gone. A cursor is
+    // opaque; one that is not what a page returned is INVALID_CURSOR.
     "cloud.listings.list": {
         ...read,
+        error: z.discriminatedUnion("code", [...read.error.options, refusal("INVALID_CURSOR")]),
         input: z.strictObject({
             productId: ProductId.optional(),
             owner: z.string().max(64).optional(),
             kind: ItemKind.optional(),
             text: z.string().min(1).max(64).optional(),
-            cursor: ListingId.optional(),
+            cursor: Cursor.optional(),
         }),
         output: z.object({
             items: z
@@ -131,7 +135,7 @@ export const cloudContract = defineContract({
                     }),
                 )
                 .readonly(),
-            nextCursor: ListingId.nullable(),
+            nextCursor: Cursor.nullable(),
         }),
     },
     // The viewer's own listings of the product, in any state but removed.
@@ -185,7 +189,9 @@ export const cloudContract = defineContract({
         input: z.strictObject({ listingId: ListingId }),
         output: z.object({ itemId: CloudId }),
     },
-    // Staff with `moderation:remove`: what waits for approval, oldest first; approve it; take a
+    // Staff with `moderation:remove`: what waits for approval, oldest first; read what waits
+    // (the content is the member's own text: show it as text, never run or render it); approve
+    // the revision that was read, or STALE_REVISION when the owner pinned another since; take a
     // listing down.
     "admin.cloud.listings.list": {
         session: "member",
@@ -211,12 +217,32 @@ export const cloudContract = defineContract({
         }),
         error: z.discriminatedUnion("code", [...StaffRefusals]),
     },
+    "admin.cloud.listings.get": {
+        session: "member",
+        effect: "read",
+        input: z.strictObject({ listingId: ListingId }),
+        output: z.object({
+            id: ListingId,
+            productId: ProductId,
+            kind: ItemKind,
+            name: z.string(),
+            // The snapshot waiting for approval.
+            pending: z.object({ revision: Revision, content: z.string() }),
+            // The one members see now, when what waits is an update of it.
+            listed: z.object({ revision: Revision, content: z.string() }).nullable(),
+        }),
+        error: z.discriminatedUnion("code", [...StaffRefusals, refusal("NOT_FOUND")]),
+    },
     "admin.cloud.listings.approve": {
         session: "member",
         effect: "write",
-        input: z.strictObject({ listingId: ListingId }),
+        input: z.strictObject({ listingId: ListingId, revision: Revision }),
         output: Done,
-        error: z.discriminatedUnion("code", [...StaffRefusals, refusal("NOT_FOUND")]),
+        error: z.discriminatedUnion("code", [
+            ...StaffRefusals,
+            refusal("NOT_FOUND"),
+            refusal("STALE_REVISION"),
+        ]),
     },
     "admin.cloud.listings.remove": {
         session: "member",

@@ -9,6 +9,7 @@ import {
     Restore,
     Revoke,
 } from "@lucent/rpc/web/cloud";
+import { Cursor } from "@lucent/rpc/web/shared";
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { done, refuse } from "../../server/outcome.ts";
@@ -92,7 +93,7 @@ export const fetchListings = createServerFn({ method: "GET" })
                 owner: z.string().max(64).optional(),
                 kind: ItemKind.optional(),
                 text: z.string().min(1).max(64).optional(),
-                cursor: ListingId.optional(),
+                cursor: Cursor.optional(),
             })
             .parse(data),
     )

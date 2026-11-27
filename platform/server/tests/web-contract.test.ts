@@ -144,7 +144,11 @@ const inputs: SinglePurpose = {
     "cloud.listings.remove": { listingId: "00000000-0000-4000-8000-000000000001" },
     "cloud.listings.add": { listingId: "00000000-0000-4000-8000-000000000001" },
     "admin.cloud.listings.list": { state: "pending", cursor: null },
-    "admin.cloud.listings.approve": { listingId: "00000000-0000-4000-8000-000000000001" },
+    "admin.cloud.listings.get": { listingId: "00000000-0000-4000-8000-000000000001" },
+    "admin.cloud.listings.approve": {
+        listingId: "00000000-0000-4000-8000-000000000001",
+        revision: 1,
+    },
     "admin.cloud.listings.remove": { listingId: "00000000-0000-4000-8000-000000000001" },
     "inbox.entries.list": { cursor: null },
     "inbox.entries.read": { id: "00000000-0000-4000-8000-000000000001" },

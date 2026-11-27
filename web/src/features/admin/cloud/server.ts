@@ -13,8 +13,18 @@ export const listPendingListings = createServerFn({ method: "GET" })
         return reply.ok ? done(reply.value) : refuse(reply.error);
     });
 
-export const approveListing = createServerFn({ method: "POST" })
+export const readListing = createServerFn({ method: "GET" })
     .validator((data: unknown) => z.strictObject({ listingId: z.uuid() }).parse(data))
+    .handler(async ({ data }) => {
+        const reply = await readPlatform("admin.cloud.listings.get", data);
+        return reply.ok ? done(reply.value) : refuse(reply.error);
+    });
+
+// The revision is the one the reviewer read; platform refuses it if another is waiting now.
+export const approveListing = createServerFn({ method: "POST" })
+    .validator((data: unknown) =>
+        z.strictObject({ listingId: z.uuid(), revision: z.int().positive() }).parse(data),
+    )
     .handler(async ({ data }) => {
         const reply = await callPlatform("admin.cloud.listings.approve", data);
         return reply.ok ? done(null) : refuse(reply.error);

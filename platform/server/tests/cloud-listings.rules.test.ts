@@ -49,13 +49,13 @@ test.each([
 });
 
 test("approval makes the waiting snapshot the visible one, and with none waiting there is nothing to approve", () => {
-    expect(decideApproval({ state: "pending", revision: null, pending: 3 })).toEqual(
+    expect(decideApproval({ state: "pending", revision: null, pending: 3 }, 3)).toEqual(
         ok({ state: "listed", revision: 3, pending: null }),
     );
-    expect(decideApproval({ state: "listed", revision: 2, pending: 5 })).toEqual(
+    expect(decideApproval({ state: "listed", revision: 2, pending: 5 }, 5)).toEqual(
         ok({ state: "listed", revision: 5, pending: null }),
     );
-    expect(decideApproval({ state: "listed", revision: 2, pending: null })).toEqual(
+    expect(decideApproval({ state: "listed", revision: 2, pending: null }, 5)).toEqual(
         err({ code: "NOT_FOUND" }),
     );
 });
@@ -64,4 +64,17 @@ test("a listing's name is cut at 60 code points, never inside one", () => {
     expect(listingName("a".repeat(64))).toBe("a".repeat(60));
     expect(listingName("🙂".repeat(64))).toBe("🙂".repeat(60));
     expect(listingName("short")).toBe("short");
+});
+
+test("approval is for the revision that was read: another waiting one is stale", () => {
+    expect(decideApproval({ state: "listed", revision: 2, pending: 5 }, 4)).toEqual(
+        err({ code: "STALE_REVISION" }),
+    );
+    expect(decideApproval({ state: "pending", revision: null, pending: 3 }, 2)).toEqual(
+        err({ code: "STALE_REVISION" }),
+    );
+    // Nothing waiting is nothing to approve, whatever was read.
+    expect(decideApproval({ state: "listed", revision: 2, pending: null }, 2)).toEqual(
+        err({ code: "NOT_FOUND" }),
+    );
 });

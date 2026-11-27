@@ -14,6 +14,7 @@ import {
     listListings,
     listMine,
     listPending,
+    readListingForReview,
     removeListingAsStaff,
     removeOwnListing,
     updateListing,
@@ -148,9 +149,19 @@ export const cloudHandlers = {
     },
     "admin.cloud.listings.list": (ctx, input, call) =>
         asStaff(ctx, call, (caller) => listPending(ctx.auth.db, { caller, cursor: input.cursor })),
+    "admin.cloud.listings.get": (ctx, input, call) =>
+        asStaff(ctx, call, (caller) =>
+            readListingForReview(ctx.auth.db, { caller, listingId: input.listingId }),
+        ),
     "admin.cloud.listings.approve": (ctx, input, call) =>
         asStaff(ctx, call, async (caller) =>
-            done(await approveListing(ctx.auth.db, { caller, listingId: input.listingId })),
+            done(
+                await approveListing(ctx.auth.db, {
+                    caller,
+                    listingId: input.listingId,
+                    revision: input.revision,
+                }),
+            ),
         ),
     "admin.cloud.listings.remove": (ctx, input, call) =>
         asStaff(ctx, call, async (caller) =>

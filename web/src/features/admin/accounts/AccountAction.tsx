@@ -38,6 +38,7 @@ export function AccountAction<T>({
     run,
     validate,
     shown,
+    onOpen,
 }: {
     readonly action: Action;
     readonly label: string;
@@ -51,6 +52,8 @@ export function AccountAction<T>({
     readonly validate?: (form: FormData) => string | undefined;
     // What to show once it worked; without it the dialog closes.
     readonly shown?: (value: T) => ReactNode;
+    // Called as the dialog opens, for a dialog that has something to read first.
+    readonly onOpen?: () => void;
 }) {
     const router = useRouter();
     const staff = useStaffAction();
@@ -67,6 +70,7 @@ export function AccountAction<T>({
             generation: generations.current,
             operationId: newOperationId(systemCryptoRng),
         });
+        onOpen?.();
     };
     const close = () => {
         live.current = null;

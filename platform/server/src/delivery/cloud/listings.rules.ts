@@ -41,9 +41,14 @@ export function decideRepin(params: {
 }
 
 // Approval makes the waiting snapshot the visible one; with nothing waiting there is nothing to
-// approve.
-export function decideApproval(current: Pins): Result<Pins, { readonly code: "NOT_FOUND" }> {
+// approve. Staff approve the revision they read: the owner can re-pin after staff looked, and a
+// different snapshot must not go live on the strength of a review of another.
+export function decideApproval(
+    current: Pins,
+    seen: number,
+): Result<Pins, { readonly code: "NOT_FOUND" } | { readonly code: "STALE_REVISION" }> {
     if (current.pending === null) return err({ code: "NOT_FOUND" });
+    if (current.pending !== seen) return err({ code: "STALE_REVISION" });
     return ok({ state: "listed", revision: current.pending, pending: null });
 }
 

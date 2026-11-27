@@ -22,6 +22,7 @@ import {
     seedAccount,
     seedRole,
     steppedUp,
+    waitForLockWaiters,
 } from "./authority-fixtures.ts";
 import { NO_LOG } from "./community-fixtures.ts";
 import { createTestAuthDeps } from "./harness/auth.ts";
@@ -420,16 +421,32 @@ test("a script is invisible until staff approve it, and an update keeps the appr
             ),
         ).toEqual(forbidden);
         expect(
-            await w.client.call("admin.cloud.listings.approve", { listingId: id }, buyer.call),
+            await w.client.call(
+                "admin.cloud.listings.approve",
+                { listingId: id, revision: 1 },
+                buyer.call,
+            ),
         ).toEqual(forbidden);
         expect(
-            await w.client.call("admin.cloud.listings.approve", { listingId: id }, owner.call),
+            await w.client.call(
+                "admin.cloud.listings.approve",
+                { listingId: id, revision: 1 },
+                owner.call,
+            ),
         ).toEqual(forbidden);
         expect(
-            await w.client.call("admin.cloud.listings.approve", { listingId: id }, mod.call),
+            await w.client.call(
+                "admin.cloud.listings.approve",
+                { listingId: id, revision: 1 },
+                mod.call,
+            ),
         ).toEqual(ok({}));
         expect(
-            await w.client.call("admin.cloud.listings.approve", { listingId: id }, mod.call),
+            await w.client.call(
+                "admin.cloud.listings.approve",
+                { listingId: id, revision: 1 },
+                mod.call,
+            ),
         ).toEqual(missing);
         expect((await listed(w, buyer)).map((row) => row.name)).toEqual(["overlay v1"]);
 
@@ -464,7 +481,11 @@ test("a script is invisible until staff approve it, and an update keeps the appr
             ["overlay v2", false],
         ]);
         expect(
-            await w.client.call("admin.cloud.listings.approve", { listingId: id }, mod.call),
+            await w.client.call(
+                "admin.cloud.listings.approve",
+                { listingId: id, revision: 2 },
+                mod.call,
+            ),
         ).toEqual(ok({}));
         expect((await listed(w, buyer)).map((row) => row.name)).toEqual(["overlay v2"]);
 
@@ -655,5 +676,240 @@ test("a listing can be reported, and removing it through the report takes it dow
             sql`select state from cloud_listing where id = ${created.value.listingId}::uuid`,
         );
         expect(state).toEqual(ok({ state: "removed" }));
+    });
+});
+
+async function addVersion(
+    w: World,
+    accountId: AccountId,
+    itemId: string,
+    revision: number,
+    text: string,
+) {
+    const added = await execute(
+        w.db,
+        sql`insert into cloud_version (account_id, product_id, item_id, revision, name, bytes)
+            values (${accountId}, ${p.productId}, ${itemId}::bigint, ${revision}, ${text},
+                    ${new TextEncoder().encode(text)})`,
+    );
+    invariant(added.ok, "expected a new version");
+}
+
+test("staff read the script waiting, and beside it the listed one for an update; only moderation:remove reads it", async () => {
+    await world(19110, async (w) => {
+        const owner = await w.member("owner");
+        const mod = await w.staff("mod");
+        const itemId = await w.item(owner.id, "script", "overlay");
+        const created = await w.client.call(
+            "cloud.listings.create",
+            { ...p, itemId, summary: "runs code" },
+            owner.call,
+        );
+        invariant(created.ok, "expected a listing");
+        const id = created.value.listingId;
+
+        expect(
+            await w.client.call("admin.cloud.listings.get", { listingId: id }, owner.call),
+        ).toEqual(forbidden);
+        const first = await w.client.call("admin.cloud.listings.get", { listingId: id }, mod.call);
+        invariant(first.ok, "expected the waiting script");
+        expect(first.value.pending).toEqual({ revision: 1, content: "overlay-v1" });
+        expect(first.value.listed).toBeNull();
+        expect(
+            await w.client.call(
+                "admin.cloud.listings.approve",
+                { listingId: id, revision: first.value.pending.revision },
+                mod.call,
+            ),
+        ).toEqual(ok({}));
+        // Approved, nothing waits.
+        expect(
+            await w.client.call("admin.cloud.listings.get", { listingId: id }, mod.call),
+        ).toEqual(missing);
+
+        await addVersion(w, owner.id, itemId, 2, "<b>second</b>");
+        expect(await w.client.call("cloud.listings.update", { listingId: id }, owner.call)).toEqual(
+            ok({}),
+        );
+        const update = await w.client.call("admin.cloud.listings.get", { listingId: id }, mod.call);
+        invariant(update.ok, "expected the update");
+        expect(update.value.pending).toEqual({ revision: 2, content: "<b>second</b>" });
+        expect(update.value.listed).toEqual({ revision: 1, content: "overlay-v1" });
+    });
+});
+
+test("staff approve the revision they read: one pinned since is stale, before or while the approval waits", async () => {
+    await world(19111, async (w) => {
+        const owner = await w.member("owner");
+        const buyer = await w.member("buyer");
+        const mod = await w.staff("mod");
+        const itemId = await w.item(owner.id, "script", "overlay");
+        const created = await w.client.call(
+            "cloud.listings.create",
+            { ...p, itemId, summary: "" },
+            owner.call,
+        );
+        invariant(created.ok, "expected a listing");
+        const id = created.value.listingId;
+        const stale = err({ code: "STALE_REVISION" });
+
+        await addVersion(w, owner.id, itemId, 2, "unseen");
+        expect(await w.client.call("cloud.listings.update", { listingId: id }, owner.call)).toEqual(
+            ok({}),
+        );
+        expect(
+            await w.client.call(
+                "admin.cloud.listings.approve",
+                { listingId: id, revision: 1 },
+                mod.call,
+            ),
+        ).toEqual(stale);
+        expect(await listed(w, buyer)).toEqual([]);
+
+        // Staff read revision 2; the owner pins 3 while the approval waits on the row.
+        await addVersion(w, owner.id, itemId, 3, "swapped");
+        const racing: ReturnType<typeof w.client.call>[] = [];
+        let parked = false;
+        const gate = await withTx(w.db, async (tx) => {
+            const held = await execute(
+                tx,
+                sql`select 1 from cloud_listing where id = ${id}::uuid for update`,
+            );
+            invariant(held.ok, "the gate holds the listing");
+            racing.push(
+                w.client.call(
+                    "admin.cloud.listings.approve",
+                    { listingId: id, revision: 2 },
+                    mod.call,
+                ),
+            );
+            parked = await waitForLockWaiters(w.db, 1);
+            const pinned = await execute(
+                tx,
+                sql`update cloud_listing set pending_revision = 3 where id = ${id}::uuid`,
+            );
+            invariant(pinned.ok, "the gate re-pins");
+            return ok(undefined);
+        });
+        expect(gate.ok).toBe(true);
+        expect(parked).toBe(true);
+        expect(await racing[0]).toEqual(stale);
+        expect(await listed(w, buyer)).toEqual([]);
+        expect(
+            await w.client.call(
+                "admin.cloud.listings.approve",
+                { listingId: id, revision: 3 },
+                mod.call,
+            ),
+        ).toEqual(ok({}));
+        expect((await listed(w, buyer)).map((row) => row.name)).toEqual(["swapped"]);
+    });
+});
+
+test("a copy's source owner reads as null when the owner is blocked, suspended or gone", async () => {
+    await world(19112, async (w) => {
+        const owner = await w.member("owner");
+        const buyer = await w.member("buyer");
+        const itemId = await w.item(owner.id, "config", "cfg");
+        const created = await w.client.call(
+            "cloud.listings.create",
+            { ...p, itemId, summary: "" },
+            owner.call,
+        );
+        invariant(created.ok, "expected a listing");
+        const added = await w.client.call(
+            "cloud.listings.add",
+            { listingId: created.value.listingId },
+            buyer.call,
+        );
+        invariant(added.ok, "expected a copy");
+        const sourceOwner = async () => {
+            const items = await w.client.call("cloud.items.list", p, buyer.call);
+            invariant(items.ok, "expected items");
+            return items.value[0]?.source?.owner;
+        };
+        expect(await sourceOwner()).toBe("owner");
+
+        expect(await setBlock(w.db, buyer.token, { username: "owner", blocked: true })).toEqual(
+            ok(undefined),
+        );
+        expect(await sourceOwner()).toBeNull();
+        expect(await setBlock(w.db, buyer.token, { username: "owner", blocked: false })).toEqual(
+            ok(undefined),
+        );
+        expect(await setBlock(w.db, owner.token, { username: "buyer", blocked: true })).toEqual(
+            ok(undefined),
+        );
+        expect(await sourceOwner()).toBeNull();
+        expect(await setBlock(w.db, owner.token, { username: "buyer", blocked: false })).toEqual(
+            ok(undefined),
+        );
+        expect(await sourceOwner()).toBe("owner");
+
+        await execute(w.db, sql`update account set status = 'suspended' where id = ${owner.id}`);
+        expect(await sourceOwner()).toBeNull();
+        await execute(w.db, sql`update account set status = 'active' where id = ${owner.id}`);
+        expect(await sourceOwner()).toBe("owner");
+    });
+});
+
+test("the browse pages by the cursor row's own key: equal timestamps never skip, a changed row does not end the list, and a bad cursor is refused", async () => {
+    await world(19113, async (w) => {
+        const buyer = await w.member("buyer");
+        const owners = [await w.member("one"), await w.member("two"), await w.member("three")];
+        for (const owner of owners) {
+            for (let n = 0; n < 9; n++) {
+                const itemId = await w.item(owner.id, "config", `cfg ${n}`);
+                const created = await w.client.call(
+                    "cloud.listings.create",
+                    { ...p, itemId, summary: "" },
+                    owner.call,
+                );
+                invariant(created.ok, "expected a listing");
+            }
+        }
+        // Every listing updated in one microsecond that a millisecond cursor would cut.
+        expect(
+            await execute(
+                w.db,
+                sql`update cloud_listing set updated_at = timestamptz '2026-01-01 00:00:00.123456+00'`,
+            ),
+        ).toEqual({ ok: true, value: 27 });
+        const order = await queryAll(
+            w.db,
+            z.object({ id: z.uuid() }),
+            sql`select id from cloud_listing order by updated_at desc, id desc`,
+        );
+        invariant(order.ok, "expected the order");
+
+        const first = await w.client.call("cloud.listings.list", p, buyer.call);
+        invariant(first.ok && first.value.nextCursor !== null, "expected a second page");
+        expect(first.value.items.length).toBe(25);
+        // The last row of the page is taken down before the next page is asked for.
+        const lastRow = first.value.items.at(-1);
+        invariant(lastRow !== undefined, "expected a last row");
+        expect(
+            await execute(
+                w.db,
+                sql`update cloud_listing set state = 'removed', revision = null, removed_at = now()
+                    where id = ${lastRow.id}::uuid`,
+            ),
+        ).toEqual({ ok: true, value: 1 });
+        const second = await w.client.call(
+            "cloud.listings.list",
+            { ...p, cursor: first.value.nextCursor },
+            buyer.call,
+        );
+        invariant(second.ok, "expected the second page");
+        expect(second.value.nextCursor).toBeNull();
+        const all = [...first.value.items, ...second.value.items].map((row) => row.id);
+        expect(all).toEqual(order.value.map((row) => row.id));
+
+        const refused = err({ code: "INVALID_CURSOR" });
+        for (const cursor of ["x", lastRow.id, "eyJhIjoxfQ"]) {
+            expect(
+                await w.client.call("cloud.listings.list", { ...p, cursor }, buyer.call),
+            ).toEqual(refused);
+        }
     });
 });
