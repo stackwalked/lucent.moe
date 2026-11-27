@@ -10,7 +10,15 @@ const ReleaseLine = z.object({
     channel: ChannelId,
     current: z.object({ number: SealNumber, promotedAt: EpochMs }).nullable(),
     seals: z
-        .array(z.object({ number: SealNumber, releaseId: WireId, stagedAt: EpochMs }))
+        .array(
+            z.object({
+                number: SealNumber,
+                releaseId: WireId,
+                stagedAt: EpochMs,
+                // The version of the entry that names the seal's release.
+                version: z.string().nullable(),
+            }),
+        )
         .readonly(),
 });
 

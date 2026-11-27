@@ -11,7 +11,12 @@ export const downloadContract = defineContract({
         effect: "read",
         input: z.strictObject({}),
         output: z.discriminatedUnion("state", [
-            z.object({ state: z.literal("ready"), number: SealNumber }),
+            z.object({
+                state: z.literal("ready"),
+                number: SealNumber,
+                // The version of the entry that names the current loader release.
+                version: z.string().nullable(),
+            }),
             z.object({ state: z.literal("no_product") }),
             z.object({ state: z.literal("no_release") }),
         ]),

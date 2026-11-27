@@ -32,7 +32,12 @@ export type MemberProduct = {
     readonly channels: readonly {
         readonly channel: ChannelId;
         // `supported`: a start with the game's builds would pass core coverage now.
-        readonly release: { readonly promotedAt: EpochMs; readonly supported: boolean } | null;
+        readonly release: {
+            readonly promotedAt: EpochMs;
+            readonly supported: boolean;
+            // The version of the changelog entry that names this release, if one does.
+            readonly version: string | null;
+        } | null;
     }[];
 };
 
@@ -90,8 +95,11 @@ export async function readMemberProducts(
             channel: ChannelId,
             promoted_at: EpochMs,
             release_id: z.instanceof(Uint8Array),
+            version: z.string().nullable(),
         }),
-        sql`select c.product_id, c.channel, c.promoted_at, s.release_id
+        sql`select c.product_id, c.channel, c.promoted_at, s.release_id,
+                   (select e.version from changelog_entry e where e.release_id = s.release_id)
+                       as version
                 from current_release c
                 join release_seal s on s.product_id = c.product_id and s.channel = c.channel
                                    and s.number = c.number`,
@@ -146,7 +154,14 @@ export async function readMemberProducts(
                 if (!covered.ok) return covered;
                 supported = covered.value;
             }
-            channels.push({ channel, release: { promotedAt: current.promoted_at, supported } });
+            channels.push({
+                channel,
+                release: {
+                    promotedAt: current.promoted_at,
+                    supported,
+                    version: current.version,
+                },
+            });
         }
         const held = entitlements.value.find((row) => row.product_id === product.id);
         products.push({

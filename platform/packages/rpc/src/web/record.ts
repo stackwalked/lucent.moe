@@ -1,8 +1,17 @@
 import { ProductState } from "@lucent/catalog/product";
-import { EpochMs, ProductId } from "@lucent/core/scalars";
+import { ChannelId, EpochMs, ProductId } from "@lucent/core/scalars";
 import { z } from "zod";
 import { defineContract } from "../contract.ts";
-import { Cursor, Done, refusal, SessionRefusals, StaffRefusals, Unavailable } from "./shared.ts";
+import {
+    Cursor,
+    Done,
+    refusal,
+    SealNumber,
+    SessionRefusals,
+    StaffRefusals,
+    Unavailable,
+    WireId,
+} from "./shared.ts";
 
 // The record as members see it: per product whether it works today, and the changelog of the
 // service, the loader and every product the member may see. Both reads take a member session
@@ -48,7 +57,9 @@ export const ChangelogSubject = z.enum(["product", "loader", "service"]);
 export type ChangelogSubject = z.output<typeof ChangelogSubject>;
 
 // The cross-field rules (a productId exactly when the subject is a product, a version or a
-// title, and some content) are the server's, in members/record/notes.rules.ts.
+// title, and some content; a releaseId needs a version, the release's own subject, and a release
+// no other entry names) are the server's, in members/record/notes.rules.ts. `releaseId` absent
+// is null: the entry names no release.
 export const ChangelogFields = z.strictObject({
     subject: ChangelogSubject,
     productId: ProductId.nullable(),
@@ -58,6 +69,7 @@ export const ChangelogFields = z.strictObject({
     changed: Lines,
     fixed: Lines,
     body: body(4_000),
+    releaseId: WireId.nullable().optional(),
 });
 
 const ChangelogEntry = z.object({
@@ -73,6 +85,9 @@ const ChangelogEntry = z.object({
     publishedAt: EpochMs,
     updatedAt: EpochMs,
 });
+
+// A staff row also says which release it names.
+const StaffChangelogEntry = ChangelogEntry.extend({ releaseId: WireId.nullable() });
 
 const Recovery = z.object({
     // When the build no set covered was first reported, and when a covering set was promoted
@@ -138,15 +153,29 @@ export const recordContract = defineContract({
         ]),
     },
     // Every entry, newest first, at most a fixed number; `truncated` says there were more.
-    // `products` is the catalog one may name.
+    // `products` is the catalog one may name. `releases`, newest staged first, are the releases
+    // an entry can name: those no entry names yet, and those the listed entries name (`entryId`),
+    // each by its highest seal.
     "admin.record.list": {
         session: "member",
         effect: "read",
         input: z.strictObject({}),
         output: z.object({
-            changelog: z.array(ChangelogEntry).readonly(),
+            changelog: z.array(StaffChangelogEntry).readonly(),
             truncated: z.boolean(),
             products: z.array(z.object({ id: ProductId, name: z.string() })).readonly(),
+            releases: z
+                .array(
+                    z.object({
+                        id: WireId,
+                        productId: ProductId,
+                        channel: ChannelId,
+                        number: SealNumber,
+                        stagedAt: EpochMs,
+                        entryId: ChangelogId.nullable(),
+                    }),
+                )
+                .readonly(),
         }),
         error: z.discriminatedUnion("code", [...StaffRefusals]),
     },

@@ -152,7 +152,7 @@ test("a seed holder sees their channels and a live product without any grant", a
                     { channel: "stable", release: null },
                     {
                         channel: "alpha",
-                        release: { promotedAt: expect.any(Number), supported: true },
+                        release: { promotedAt: expect.any(Number), supported: true, version: null },
                     },
                 ],
             },

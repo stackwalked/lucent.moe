@@ -30,14 +30,15 @@ export const recordHandlers = {
                 await addNote(ctx.auth.db, {
                     caller,
                     catalog: ctx.catalog,
-                    fields: input,
+                    fields: { ...input, releaseId: input.releaseId ?? null },
                 }),
                 ({ id }) => ({ entryId: id }),
             ),
         ),
     "admin.changelog.update": (ctx, input, call) =>
         asStaff(ctx, call, async (caller) => {
-            const { entryId, ...fields } = input;
+            const { entryId, ...entry } = input;
+            const fields = { ...entry, releaseId: entry.releaseId ?? null };
             return done(
                 await updateNote(ctx.auth.db, {
                     caller,

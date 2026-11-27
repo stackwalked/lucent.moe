@@ -29,7 +29,12 @@ export const productsContract = defineContract({
                                 z.object({
                                     channel: ChannelId,
                                     release: z
-                                        .object({ promotedAt: EpochMs, supported: z.boolean() })
+                                        .object({
+                                            promotedAt: EpochMs,
+                                            supported: z.boolean(),
+                                            // The version of the entry that names this release.
+                                            version: z.string().nullable(),
+                                        })
                                         .nullable(),
                                 }),
                             )

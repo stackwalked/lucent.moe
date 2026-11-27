@@ -1,17 +1,18 @@
 import type { ProductCatalog } from "@lucent/catalog/catalog";
 import { invariant } from "@lucent/core/contain";
 import { err, ok, type Result } from "@lucent/core/result";
-import { EpochMs, ProductId } from "@lucent/core/scalars";
+import { ChannelId, EpochMs, ProductId } from "@lucent/core/scalars";
 import type { AuthzRefusal, Caller } from "@lucent/policy/policy";
 import { z } from "zod";
 import { appendAudit } from "../../base/db/audit.ts";
-import { type Db, type DbFailure, queryAll, queryOne, sql } from "../../base/db/pool.ts";
+import { type Db, type DbFailure, queryAll, queryOne, sql, type Tx } from "../../base/db/pool.ts";
 import { withTx } from "../../base/db/tx.ts";
 import { type Forbidden, lockAuthorized, readAsStaff } from "../../identity/authority/staff.ts";
 import {
     type ChangelogEntryFields,
     decideChangelogEntry,
     type InvalidEntry,
+    type NamedRelease,
 } from "./notes.rules.ts";
 
 // Changelog entries: what staff tell the members about a product, the loader, or the service.
@@ -50,21 +51,80 @@ export const CHANGELOG_COLUMNS = sql`id::text as id, subject, product_id as "pro
     version, title, added, changed, fixed, body,
     published_at as "publishedAt", updated_at as "updatedAt"`;
 
+const StaffChangelogRow = ChangelogRow.extend({ releaseId: z.string().nullable() });
+
+const ChoosableRelease = z.object({
+    id: z.string(),
+    productId: ProductId,
+    channel: ChannelId,
+    number: z.string(),
+    stagedAt: EpochMs,
+    entryId: z.string().nullable(),
+});
+
+// The releases a form can offer: those no entry names yet, and those the listed entries name
+// (so editing one shows its own), newest first, each by its highest seal. The form narrows them
+// to the entry's subject; the writer's rule is what refuses a mismatch.
 export function listStaffNotes(db: Db, params: { readonly caller: Caller }) {
     return readAsStaff(db, { caller: params.caller, actions: [NOTE_ACTION] }, async (q) => {
         const changelog = await queryAll(
             q,
-            ChangelogRow,
-            sql`select ${CHANGELOG_COLUMNS} from changelog_entry
+            StaffChangelogRow,
+            sql`select ${CHANGELOG_COLUMNS}, encode(release_id, 'hex') as "releaseId"
+                from changelog_entry
                 order by published_at desc, id desc
                 limit ${STAFF_LIMIT + 1}`,
         );
         if (!changelog.ok) return changelog;
+        const shown = changelog.value.slice(0, STAFF_LIMIT);
+        const releases = await queryAll(
+            q,
+            ChoosableRelease,
+            sql`select encode(r.id, 'hex') as id, r.product_id as "productId", r.channel,
+                       s.number::text as number, s.created_at as "stagedAt",
+                       e.id::text as "entryId"
+                from release r
+                join lateral (select number, created_at from release_seal
+                              where release_id = r.id order by number desc limit 1) s on true
+                left join changelog_entry e on e.release_id = r.id
+                where e.id is null or e.id = any(${shown.map((row) => row.id)}::uuid[])
+                order by s.created_at desc, r.id desc
+                limit ${STAFF_LIMIT}`,
+        );
+        if (!releases.ok) return releases;
         return ok({
-            changelog: changelog.value.slice(0, STAFF_LIMIT),
+            changelog: shown,
             truncated: changelog.value.length > STAFF_LIMIT,
+            releases: releases.value,
         });
     });
+}
+
+// The release an entry names, under a lock that keeps another writer from naming it meanwhile,
+// and whether another entry already holds it.
+async function gatherRelease(
+    tx: Tx,
+    params: { readonly releaseId: string | null; readonly entryId: string | null },
+): Promise<Result<NamedRelease, DbFailure>> {
+    if (params.releaseId === null) return ok(null);
+    // NO KEY UPDATE: promotion and publishing take KEY SHARE on the release and must not wait.
+    const release = await queryOne(
+        tx,
+        z.object({ product_id: z.string() }),
+        sql`select product_id from release where id = decode(${params.releaseId}, 'hex')
+            for no key update`,
+    );
+    if (!release.ok) return release;
+    if (release.value === null) return ok(null);
+    const other = await queryOne(
+        tx,
+        IdRow,
+        sql`select id::text as id from changelog_entry
+            where release_id = decode(${params.releaseId}, 'hex')
+              and id is distinct from ${params.entryId}::uuid`,
+    );
+    if (!other.ok) return other;
+    return ok({ productId: release.value.product_id, heldByOther: other.value !== null });
 }
 
 // A product the catalog has, seed or not: staff may write ahead of a launch. Only what a member
@@ -91,8 +151,6 @@ export async function addNote(
 ): Promise<Result<{ readonly id: string }, NoteRefusal | DbFailure>> {
     const { fields } = params;
     if (!knownProduct(params.catalog, fields.productId)) return err({ code: "UNKNOWN_PRODUCT" });
-    const valid = decideChangelogEntry(fields);
-    if (!valid.ok) return valid;
     return await withTx(db, async (tx, txNow) => {
         const authorized = await lockAuthorized(tx, {
             caller: params.caller,
@@ -100,15 +158,19 @@ export async function addNote(
             txNow,
         });
         if (!authorized.ok) return authorized;
+        const release = await gatherRelease(tx, { releaseId: fields.releaseId, entryId: null });
+        if (!release.ok) return release;
+        const valid = decideChangelogEntry(fields, release.value);
+        if (!valid.ok) return valid;
         const inserted = await queryOne(
             tx,
             IdRow,
             sql`insert into changelog_entry
                     (subject, product_id, version, title, added, changed, fixed, body,
-                     published_at, updated_at)
+                     release_id, published_at, updated_at)
                 values (${fields.subject}, ${fields.productId}, ${fields.version}, ${fields.title},
                         ${fields.added}, ${fields.changed}, ${fields.fixed}, ${fields.body},
-                        now(), now())
+                        decode(${fields.releaseId}, 'hex'), now(), now())
                 returning id::text as id`,
         );
         if (!inserted.ok) return inserted;
@@ -140,8 +202,6 @@ export async function updateNote(
 ): Promise<Result<void, NoteRefusal | DbFailure>> {
     const { fields } = params;
     if (!knownProduct(params.catalog, fields.productId)) return err({ code: "UNKNOWN_PRODUCT" });
-    const valid = decideChangelogEntry(fields);
-    if (!valid.ok) return valid;
     return await withTx(db, async (tx, txNow) => {
         const authorized = await lockAuthorized(tx, {
             caller: params.caller,
@@ -149,6 +209,13 @@ export async function updateNote(
             txNow,
         });
         if (!authorized.ok) return authorized;
+        const release = await gatherRelease(tx, {
+            releaseId: fields.releaseId,
+            entryId: params.id,
+        });
+        if (!release.ok) return release;
+        const valid = decideChangelogEntry(fields, release.value);
+        if (!valid.ok) return valid;
         const updated = await queryOne(
             tx,
             IdRow,
@@ -156,7 +223,8 @@ export async function updateNote(
                 set subject = ${fields.subject}, product_id = ${fields.productId},
                     version = ${fields.version}, title = ${fields.title},
                     added = ${fields.added}, changed = ${fields.changed}, fixed = ${fields.fixed},
-                    body = ${fields.body}, updated_at = now()
+                    body = ${fields.body}, release_id = decode(${fields.releaseId}, 'hex'),
+                    updated_at = now()
                 where id = ${params.id}::uuid
                 returning id::text as id`,
         );

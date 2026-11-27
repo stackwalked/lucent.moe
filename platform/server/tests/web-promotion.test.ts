@@ -399,7 +399,7 @@ test("the loader download serves the current loader's bytes to a member entitled
             }),
         ).toEqual({
             ok: true,
-            value: { state: "ready", number: "3", digest: expect.any(String) },
+            value: { state: "ready", number: "3", digest: expect.any(String), version: null },
         });
 
         const refused = await download(stranger);

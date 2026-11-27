@@ -27,6 +27,8 @@ export type StagedSeal = {
     readonly number: string;
     readonly releaseId: string;
     readonly stagedAt: EpochMs;
+    // The version of the changelog entry that names the seal's release, if one does.
+    readonly version: string | null;
 };
 
 export type ReleaseLine = {
@@ -67,9 +69,12 @@ export async function listReleaseLines(
                 number: z.string(),
                 release_id: z.string(),
                 created_at: EpochMs,
+                version: z.string().nullable(),
             }),
             sql`select s.product_id, s.channel, s.number::text as number,
-                       encode(s.release_id, 'hex') as release_id, s.created_at
+                       encode(s.release_id, 'hex') as release_id, s.created_at,
+                       (select e.version from changelog_entry e where e.release_id = s.release_id)
+                           as version
                 from release_seal s
                 left join current_release c
                   on c.product_id = s.product_id and c.channel = s.channel
@@ -98,6 +103,7 @@ export async function listReleaseLines(
                             number: row.number,
                             releaseId: row.release_id,
                             stagedAt: row.created_at,
+                            version: row.version,
                         })),
                 });
             }

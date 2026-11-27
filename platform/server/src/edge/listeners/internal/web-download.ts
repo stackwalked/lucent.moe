@@ -9,7 +9,9 @@ export const downloadHandlers = {
             mapOk(
                 await readLoaderOffer(ctx.auth.db, { catalog: ctx.catalog, sessionToken: session }),
                 (offer) =>
-                    offer.state === "ready" ? { state: offer.state, number: offer.number } : offer,
+                    offer.state === "ready"
+                        ? { state: offer.state, number: offer.number, version: offer.version }
+                        : offer,
             ),
         ),
 } satisfies Partial<Handlers<WebRpcContext, WebContract>>;

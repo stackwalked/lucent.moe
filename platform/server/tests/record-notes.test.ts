@@ -50,6 +50,7 @@ function entryFields(over: Partial<ChangelogEntryFields>): ChangelogEntryFields 
         changed: [],
         fixed: [],
         body: "it now takes a second less",
+        releaseId: null,
         ...over,
     };
 }
