@@ -15,3 +15,6 @@ web/src/routeTree.gen.ts
 web/src/ui/icons/sprite.gen.svg
 web/src/**/*.module.d.css.ts
 web/dist
+
+# TanStack Start's dev cache.
+web/.tanstack/
