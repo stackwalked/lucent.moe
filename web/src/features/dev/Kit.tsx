@@ -256,7 +256,7 @@ function Data({ now }: { readonly now: EpochMs }) {
                     { label: "support", value: "supported", tone: "ok" },
                     { label: "while a patch lands", value: "updating", tone: "wait" },
                     { label: "before it is out", value: "early access", tone: "dim" },
-                    { label: "your access", value: "until 3 jan 2027" },
+                    { label: "subscription", value: "until 3 jan 2027" },
                 ]}
             />
             <Stack direction="row" gap={3} align="center">
