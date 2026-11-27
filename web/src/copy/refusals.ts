@@ -32,7 +32,7 @@ export const REFUSALS: Readonly<Record<RefusalCode, string>> = {
     INVALID_ENTRY: "an entry needs a version or a title, and some text.",
     INVALID_BASE: "this item changed. reload its history.",
     STALE_REVISION: "it changed since you read it. open it again.",
-    UNREADABLE_CONTENT: "staff cannot read this as text, so it cannot be approved.",
+    UNREADABLE_CONTENT: "not readable as text.",
     ITEM_LIMIT: "item limit reached",
     VERSION_LIMIT: "version limit reached",
     SIZE_LIMIT: "this version is too large.",
