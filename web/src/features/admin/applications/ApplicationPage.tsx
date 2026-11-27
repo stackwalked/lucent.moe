@@ -17,7 +17,7 @@ const route = getRouteApi("/_admin/admin/queue/applications/$applicationId");
 type Read = Extract<ReturnType<typeof route.useLoaderData>, { ok: true }>["value"];
 
 // One application. Everything the applicant typed is shown as text, never as markup; the member
-// they named and their Discord handle are what they claim, nothing checked.
+// they vouch by and their Discord handle are what they claim, nothing checked.
 export function ApplicationPage() {
     const read = route.useLoaderData();
     const { from } = route.useSearch();
@@ -40,9 +40,11 @@ export function ApplicationPage() {
             back={back}
             title={application.email}
             main={
-                <Section caption={APPLICATIONS_COPY.about}>
-                    <p className={styles.about}>{application.about}</p>
-                </Section>
+                <>
+                    <Answer caption={APPLICATIONS_COPY.experience} text={application.experience} />
+                    <Answer caption={APPLICATIONS_COPY.games} text={application.games} />
+                    <Answer caption={APPLICATIONS_COPY.additional} text={application.additional} />
+                </>
             }
             aside={
                 <>
@@ -57,17 +59,10 @@ export function ApplicationPage() {
                                 },
                                 { label: APPLICATIONS_COPY.email, value: application.email },
                                 {
-                                    label: APPLICATIONS_COPY.products,
-                                    value: application.products.join(", "),
-                                },
-                                {
                                     label: APPLICATIONS_COPY.applied,
                                     value: <Time at={application.createdAt} />,
                                 },
-                                {
-                                    label: APPLICATIONS_COPY.discord,
-                                    value: application.discord ?? APPLICATIONS_COPY.none,
-                                },
+                                { label: APPLICATIONS_COPY.discord, value: application.discord },
                                 {
                                     label: APPLICATIONS_COPY.knownBy,
                                     value: <KnownBy application={application} />,
@@ -82,6 +77,17 @@ export function ApplicationPage() {
         />
     );
 }
+// A long answer as the applicant wrote it. One they were never asked (an application from before
+// the form) has nothing to show, so it has no section.
+function Answer({ caption, text }: { readonly caption: string; readonly text: string | null }) {
+    if (text === null || text === "") return null;
+    return (
+        <Section caption={caption}>
+            <p className={styles.answer}>{text}</p>
+        </Section>
+    );
+}
+
 function KnownBy({ application }: { readonly application: Read }) {
     if (application.knownBy === null) return APPLICATIONS_COPY.none;
     return (

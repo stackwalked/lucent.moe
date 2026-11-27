@@ -100,7 +100,6 @@ export const REFUSALS: Readonly<Record<RefusalCode, string>> = {
     INVITE_INVALID: "invite expired, used or revoked",
     MAIL_DISABLED: "email isn't set up, so this can't be sent.",
     BELOW_SPENT: "can't go below the invites already used.",
-    PRODUCT_NOT_OFFERED: "product not open to applications",
 };
 // The text for one refusal, a form's own wording first where it has one.
 export function refusalText(

@@ -1,6 +1,6 @@
 @layer features {
-    /* What the applicant wrote, as they wrote it: line breaks kept, long words wrapped. */
-    .about {
+    /* An answer, as they wrote it: line breaks kept, long words wrapped. */
+    .answer {
         white-space: pre-wrap;
         overflow-wrap: anywhere;
     }

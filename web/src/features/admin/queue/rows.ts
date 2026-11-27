@@ -30,7 +30,7 @@ export function applicationRows(read: Value<"applications">): QueueRow[] {
         kind: "applications",
         id: item.applicationId,
         title: item.email,
-        context: item.products.join(", "),
+        context: item.games,
         who: null,
         at: item.createdAt,
     }));

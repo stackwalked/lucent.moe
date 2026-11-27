@@ -1,54 +1,38 @@
-import { getRouteApi } from "@tanstack/react-router";
 import { useState } from "react";
 import type { Refused } from "../../server/outcome.ts";
 import { BarePage } from "../../ui/BarePage/BarePage.tsx";
 import { Button } from "../../ui/Button/Button.tsx";
-import { Empty } from "../../ui/Empty/Empty.tsx";
-import { Refusal } from "../../ui/Refusal/Refusal.tsx";
 import { Stack } from "../../ui/Stack/Stack.tsx";
-import { Switch } from "../../ui/Switch/Switch.tsx";
 import { TextField } from "../../ui/TextField/TextField.tsx";
 import { RefusalNote } from "../auth/RefusalNote.tsx";
 import { TextArea } from "../comments/TextArea.tsx";
-import { productName } from "../products/view.ts";
-import styles from "./ApplyPage.module.css";
 import { WAITLIST_COPY } from "./copy.ts";
 import { submitApplication } from "./server.ts";
 
-const route = getRouteApi("/_public/apply");
-
-const PRODUCT = "product:";
+function answer(form: FormData, name: string): string {
+    return String(form.get(name) ?? "").trim();
+}
 
 function optional(form: FormData, name: string): string | null {
-    const value = String(form.get(name) ?? "").trim();
+    const value = answer(form, name);
     return value === "" ? null : value;
 }
 
-// The waitlist's form. Whatever the address, the answer reads the same: it never says whether
-// someone already has an account or an application.
+// The waitlist's form. Whatever the address or the member named, the answer reads the same: it
+// never says whether someone already has an account, an application or such a username.
 export function ApplyPage() {
-    const offered = route.useLoaderData();
     const [sent, setSent] = useState(false);
-    const [problem, setProblem] = useState<string | null>(null);
     const [refused, setRefused] = useState<Refused | null>(null);
-    const products = offered.ok ? offered.value : [];
 
     const submit = async (form: FormData) => {
-        const chosen = [...form.keys()]
-            .filter((key) => key.startsWith(PRODUCT))
-            .map((key) => key.slice(PRODUCT.length));
-        if (chosen.length === 0) {
-            setProblem(WAITLIST_COPY.pickOne);
-            return;
-        }
-        setProblem(null);
         const reply = await submitApplication({
             data: {
-                email: String(form.get("email") ?? "").trim(),
-                products: chosen,
-                about: String(form.get("about") ?? "").trim(),
-                discord: optional(form, "discord"),
+                email: answer(form, "email"),
+                discord: answer(form, "discord"),
+                experience: answer(form, "experience"),
+                games: answer(form, "games"),
                 knownBy: optional(form, "knownBy"),
+                additional: optional(form, "additional"),
             },
         });
         if (!reply.ok) {
@@ -64,8 +48,6 @@ export function ApplyPage() {
             <Stack gap={4}>
                 {sent ? (
                     <p role="status">{WAITLIST_COPY.sent}</p>
-                ) : products.length === 0 ? (
-                    <Empty>{WAITLIST_COPY.closed}</Empty>
                 ) : (
                     <form action={submit}>
                         <Stack gap={4}>
@@ -77,30 +59,27 @@ export function ApplyPage() {
                                 maxLength={254}
                                 autoComplete="email"
                             />
-                            <fieldset className={styles.products}>
-                                <legend className={styles.legend}>{WAITLIST_COPY.products}</legend>
-                                <Stack gap={2}>
-                                    {products.map((product) => (
-                                        <Switch
-                                            key={product.productId}
-                                            name={`${PRODUCT}${product.productId}`}
-                                            label={productName(product.name)}
-                                            defaultChecked={products.length === 1}
-                                        />
-                                    ))}
-                                </Stack>
-                            </fieldset>
-                            <TextArea
-                                name="about"
-                                label={WAITLIST_COPY.about}
-                                maxLength={2000}
-                                required
-                            />
                             <TextField
                                 name="discord"
                                 label={WAITLIST_COPY.discord}
-                                maxLength={64}
+                                required
+                                minLength={2}
+                                maxLength={32}
                                 autoComplete="off"
+                            />
+                            <TextArea
+                                name="experience"
+                                label={WAITLIST_COPY.experience}
+                                size="grow"
+                                maxLength={1000}
+                                required
+                            />
+                            <TextArea
+                                name="games"
+                                label={WAITLIST_COPY.games}
+                                size="grow"
+                                maxLength={300}
+                                required
                             />
                             <TextField
                                 name="knownBy"
@@ -108,7 +87,13 @@ export function ApplyPage() {
                                 maxLength={64}
                                 autoComplete="off"
                             />
-                            {problem === null ? null : <Refusal>{problem}</Refusal>}
+                            <TextArea
+                                name="additional"
+                                label={WAITLIST_COPY.additional}
+                                hint={WAITLIST_COPY.additionalHint}
+                                size="grow"
+                                maxLength={1000}
+                            />
                             <RefusalNote refused={refused} />
                             <div>
                                 <Button type="submit">{WAITLIST_COPY.submit}</Button>

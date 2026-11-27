@@ -1,12 +1,12 @@
 export const WAITLIST_COPY = {
     title: "apply",
-    closed: "applications closed",
     email: "email",
-    products: "what you'd use",
-    pickOne: "choose at least one.",
-    about: "about you",
-    discord: "discord handle (optional)",
-    knownBy: "username of a member who knows you (optional)",
+    discord: "discord handle",
+    experience: "experience with other providers",
+    games: "games played actively",
+    knownBy: "vouched by (optional)",
+    additional: "additional info (optional)",
+    additionalHint: "content creation, affiliations, anything else",
     submit: "apply",
     sent: "applied. if approved, a setup link comes to that address.",
 } as const;

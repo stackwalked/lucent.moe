@@ -15,6 +15,7 @@ export function TextArea({
     required = false,
     defaultValue,
     size,
+    hint,
     end,
 }: {
     readonly name: string;
@@ -23,13 +24,20 @@ export function TextArea({
     readonly required?: boolean;
     readonly defaultValue?: string;
     readonly size?: "line" | "grow";
+    // A line under the field, in the same voice as a TextField's.
+    readonly hint?: string;
     readonly end?: ReactNode;
 }) {
     const id = useId();
     const errorId = `${id}-error`;
+    const hintId = `${id}-hint`;
     // The same check a TextField gets: required means something other than spaces.
     const { ref, message } = useFieldValidity();
     const inline = size === "line";
+    const describedBy = [
+        ...(hint === undefined ? [] : [hintId]),
+        ...(message === undefined ? [] : [errorId]),
+    ].join(" ");
     return (
         <div className={styles.field}>
             {inline ? null : (
@@ -49,7 +57,7 @@ export function TextArea({
                     ref={(area) => (area === null ? undefined : ref(area))}
                     aria-invalid={message !== undefined}
                     {...(inline ? { "aria-label": label, placeholder: label } : {})}
-                    {...(message === undefined ? {} : { "aria-describedby": errorId })}
+                    {...(describedBy === "" ? {} : { "aria-describedby": describedBy })}
                     {...(defaultValue === undefined ? {} : { defaultValue })}
                     {...(inline
                         ? {
@@ -68,6 +76,11 @@ export function TextArea({
                 />
                 {end}
             </div>
+            {hint === undefined ? null : (
+                <p id={hintId} className={fieldStyles.hint}>
+                    {hint}
+                </p>
+            )}
             {message === undefined ? null : (
                 <p id={errorId} className={fieldStyles.error}>
                     {message}

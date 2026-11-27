@@ -89,14 +89,9 @@ function Applications({
                             ),
                         },
                         {
-                            key: "products",
-                            header: APPLICATIONS_COPY.products,
-                            cell: (item) => item.products.join(", "),
-                        },
-                        {
-                            key: "known",
-                            header: APPLICATIONS_COPY.knownBy,
-                            cell: (item) => item.knownBy ?? APPLICATIONS_COPY.none,
+                            key: "games",
+                            header: APPLICATIONS_COPY.games,
+                            cell: (item) => item.games,
                         },
                         {
                             key: "at",
