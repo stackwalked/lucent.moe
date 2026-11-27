@@ -11,7 +11,6 @@ export const ADMIN_CLOUD_COPY = {
     update: "update",
     approve: "approve",
     approveTitle: "approve this listing?",
-    approveBody: "it becomes visible to members who hold the product.",
     loading: "loading",
     waiting: "waiting",
     listedNow: "listed now",

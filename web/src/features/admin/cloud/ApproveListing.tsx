@@ -56,7 +56,6 @@ export function ApproveListing({ listingId }: { readonly listingId: string }) {
                                     <Code>{read.value.listed.content}</Code>
                                 </Stack>
                             )}
-                            <p>{C.approveBody}</p>
                         </>
                     )}
                 </Stack>
