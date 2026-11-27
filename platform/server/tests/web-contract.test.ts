@@ -139,6 +139,7 @@ const inputs: SinglePurpose = {
     "cloud.shares.revoke": { productId: "cs2", shareId: "1" },
     "cloud.shares.import": { productId: "cs2", token: "a".repeat(43) },
     "cloud.listings.list": {},
+    "cloud.listings.get": { listingId: "00000000-0000-4000-8000-000000000001" },
     "cloud.listings.mine": { productId: "cs2" },
     "cloud.listings.create": { productId: "cs2", itemId: "1", summary: "s" },
     "cloud.listings.update": { listingId: "00000000-0000-4000-8000-000000000001" },

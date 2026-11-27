@@ -34,6 +34,7 @@ import {
 import {
     decideApproval,
     decideFirstPin,
+    decideListingContent,
     decideRepin,
     LISTING_PAGE_SIZE,
     listingName,
@@ -95,7 +96,11 @@ function lockOwn(tx: Tx, scope: CloudScope, listingId: string) {
 export async function createListing(
     tx: Tx,
     scope: CloudScope,
-    params: { readonly itemId: string; readonly summary: string },
+    params: {
+        readonly itemId: string;
+        readonly summary: string;
+        readonly description: string | undefined;
+    },
 ) {
     const locked = await lockCloudScope(tx, scope);
     if (!locked.ok) return locked;
@@ -133,10 +138,10 @@ export async function createListing(
         tx,
         z.object({ listingId: z.uuid() }),
         sql`insert into cloud_listing (owner_id, product_id, kind, item_id, revision,
-                                       pending_revision, name, summary, state, listed_at)
+                                       pending_revision, name, summary, description, state, listed_at)
             values (${scope.accountId}, ${scope.productId}, ${kind.value.kind}, ${params.itemId},
                     ${pins.revision}, ${pins.pending}, ${listingName(head.value.name)},
-                    ${params.summary}, ${pins.state},
+                    ${params.summary}, ${params.description ?? ""}, ${pins.state},
                     ${pins.state === "listed" ? sql`now()` : sql`null`})
             returning id as "listingId"`,
     );
@@ -147,7 +152,11 @@ export async function createListing(
 export async function updateListing(
     tx: Tx,
     scope: CloudScope,
-    params: { readonly listingId: string; readonly summary: string | undefined },
+    params: {
+        readonly listingId: string;
+        readonly summary: string | undefined;
+        readonly description: string | undefined;
+    },
 ): Promise<Result<undefined, NotFound | PostingRefusal | DbFailure>> {
     const locked = await lockCloudScope(tx, scope);
     if (!locked.ok) return locked;
@@ -175,6 +184,7 @@ export async function updateListing(
                 revision = ${pins.revision}, pending_revision = ${pins.pending}, state = ${pins.state},
                 name = ${visibleChanges || pins.state === "pending" ? listingName(head.value.name) : sql`name`},
                 summary = ${params.summary ?? sql`summary`},
+                description = ${params.description ?? sql`description`},
                 listed_at = ${pins.state === "listed" ? sql`coalesce(listed_at, now())` : sql`listed_at`},
                 updated_at = ${visibleChanges ? sql`now()` : sql`updated_at`}
             where id = ${params.listingId}::uuid`,
@@ -358,6 +368,83 @@ export function listListings(
     });
 }
 
+const ListingPage = z.object({
+    id: z.uuid(),
+    productId: ProductId,
+    name: z.string(),
+    kind: ItemKind,
+    summary: z.string(),
+    description: z.string(),
+    username: z.string().nullable(),
+    avatar: z.string().nullable(),
+    mine: z.boolean(),
+    listedAt: EpochMs,
+    updatedAt: EpochMs,
+    copyItemId: z.string().nullable(),
+    bytes: z.instanceof(Uint8Array),
+});
+
+// One listing's page: the listed snapshot only (a script's update waiting for staff, and a script
+// not yet approved, are not here), for a member with an active entitlement to its product, and
+// with the browse's owner filters (a name, active, no block either way). Anything else is "not
+// found", as a listing that does not exist is.
+export function readListing(
+    db: Db,
+    token: BearerToken,
+    params: { readonly catalog: ProductCatalog; readonly listingId: string },
+) {
+    return withCloudMember(db, token, async (tx, accountId) => {
+        const product = await queryOne(
+            tx,
+            z.object({ productId: ProductId }),
+            sql`select product_id as "productId" from cloud_listing where id = ${params.listingId}::uuid`,
+        );
+        if (!product.ok) return product;
+        const definition =
+            product.value === null ? undefined : params.catalog.get(product.value.productId);
+        if (product.value === null || definition === undefined) return missing();
+        const access = await readEffectiveProductAccess(tx, {
+            accountId,
+            product: definition,
+            at: "transaction",
+        });
+        if (!access.ok) return access;
+        if (!access.value.isEntitled) return missing();
+        const row = await queryOne(
+            tx,
+            ListingPage,
+            sql`select l.id, l.product_id as "productId", l.name, l.kind, l.summary, l.description,
+                       a.username, ${authorAvatar(accountId, sql`l.owner_id`)} as avatar,
+                       l.owner_id = ${accountId} as mine,
+                       coalesce(l.listed_at, l.updated_at) as "listedAt", l.updated_at as "updatedAt",
+                       (select c.item_id::text from cloud_item c
+                        where c.account_id = ${accountId} and c.product_id = l.product_id
+                          and c.source_listing_id = l.id
+                        order by c.item_id limit 1) as "copyItemId",
+                       v.bytes
+                from cloud_listing l
+                join account a on a.id = l.owner_id
+                join cloud_version v on (v.account_id, v.product_id, v.item_id, v.revision) =
+                                        (l.owner_id, l.product_id, l.item_id, l.revision)
+                where l.id = ${params.listingId}::uuid and l.state = 'listed'
+                  and a.username is not null and a.status = 'active'
+                  and ${notBlockedWith(accountId, sql`l.owner_id`)}`,
+        );
+        if (!row.ok) return row;
+        if (row.value === null) return missing();
+        const { username, avatar, bytes, copyItemId, ...listing } = row.value;
+        const shown = decideListingContent({ kind: listing.kind, bytes });
+        return ok({
+            ...listing,
+            owner: { username, avatar },
+            added: copyItemId !== null,
+            copy: copyItemId === null ? null : { itemId: copyItemId },
+            size: shown.size,
+            content: shown.text,
+        });
+    });
+}
+
 // A copy goes into the viewer's cloud by the path a share import takes: same limits, same
 // refusals. Adding the same listing twice is refused; a copy never follows the listing.
 export async function addListing(
@@ -488,12 +575,13 @@ export function readListingForReview(
                 productId: ProductId,
                 kind: ItemKind,
                 name: z.string(),
+                description: z.string(),
                 revision: z.int().positive(),
                 bytes: z.instanceof(Uint8Array),
                 listedRevision: z.int().positive().nullable(),
                 listedBytes: z.instanceof(Uint8Array).nullable(),
             }),
-            sql`select l.id, l.product_id as "productId", l.kind, pv.name,
+            sql`select l.id, l.product_id as "productId", l.kind, pv.name, l.description,
                        pv.revision, pv.bytes,
                        lv.revision as "listedRevision", lv.bytes as "listedBytes"
                 from cloud_listing l
@@ -512,6 +600,7 @@ export function readListingForReview(
             productId: row.value.productId,
             kind: row.value.kind,
             name: row.value.name,
+            description: row.value.description,
             pending: { revision: row.value.revision, content: text(row.value.bytes) },
             listed:
                 row.value.listedRevision === null || row.value.listedBytes === null

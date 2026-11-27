@@ -1,8 +1,10 @@
 import { expect, test } from "bun:test";
 import { err, ok } from "@lucent/core/result";
 import {
+    CONTENT_SHOWN_MAX_BYTES,
     decideApproval,
     decideFirstPin,
+    decideListingContent,
     decideRepin,
     listingName,
 } from "../src/delivery/cloud/listings.rules.ts";
@@ -44,6 +46,24 @@ test.each([
         { state: "pending", revision: null, pending: 3 },
         { state: "pending", revision: null, pending: 5 },
     ],
+    [
+        "a head already pinned changes nothing, so words alone never send a script to staff",
+        "script",
+        { state: "listed", revision: 5, pending: null },
+        { state: "listed", revision: 5, pending: null },
+    ],
+    [
+        "a head already waiting changes nothing",
+        "script",
+        { state: "listed", revision: 2, pending: 5 },
+        { state: "listed", revision: 2, pending: 5 },
+    ],
+    [
+        "a config at its head stays listed",
+        "config",
+        { state: "listed", revision: 5, pending: null },
+        { state: "listed", revision: 5, pending: null },
+    ],
 ] as const)("re-pinning: %s", (_name, kind, current, expected) => {
     expect(decideRepin({ kind, current, head: 5 })).toEqual(expected);
 });
@@ -76,5 +96,57 @@ test("approval is for the revision that was read: another waiting one is stale",
     // Nothing waiting is nothing to approve, whatever was read.
     expect(decideApproval({ state: "listed", revision: 2, pending: null }, 2)).toEqual(
         err({ code: "NOT_FOUND" }),
+    );
+});
+
+const bytes = (value: string) => new TextEncoder().encode(value);
+
+test.each([
+    [
+        "a script is its source, as written",
+        "script",
+        bytes("a = 1\n\tb = {}\n"),
+        "a = 1\n\tb = {}\n",
+    ],
+    ["a script that is compact JSON is not laid out", "script", bytes('{"a":1}'), '{"a":1}'],
+    [
+        "compact JSON in a config is laid out",
+        "config",
+        bytes('{"a":[1,2]}'),
+        '{\n  "a": [\n    1,\n    2\n  ]\n}',
+    ],
+    ["JSON already laid out is left as it is", "inventory", bytes('{ "a": 1 }'), '{ "a": 1 }'],
+    [
+        "JSON that would not survive a round trip is left as it is",
+        "config",
+        bytes('{"n":12345678901234567890}'),
+        '{"n":12345678901234567890}',
+    ],
+    ["other text is shown as it is", "config", bytes("key = value\r\n"), "key = value\r\n"],
+    ["bytes that are not UTF-8 are not shown", "config", new Uint8Array([0xc3, 0x28]), null],
+    ["a NUL makes it binary", "inventory", new Uint8Array([0x61, 0x00, 0x62]), null],
+    [
+        "another control character makes it binary",
+        "script",
+        new Uint8Array([0x61, 0x07, 0x62]),
+        null,
+    ],
+    ["nothing at all is the empty text", "config", new Uint8Array(0), ""],
+] as const)("what a page shows: %s", (_name, kind, content, expected) => {
+    expect(decideListingContent({ kind, bytes: content })).toEqual({
+        text: expected,
+        size: content.byteLength,
+    });
+});
+
+test("above 256 KB nothing is shown, and the size still is", () => {
+    const big = new Uint8Array(CONTENT_SHOWN_MAX_BYTES + 1).fill(0x61);
+    expect(decideListingContent({ kind: "script", bytes: big })).toEqual({
+        text: null,
+        size: CONTENT_SHOWN_MAX_BYTES + 1,
+    });
+    const edge = new Uint8Array(CONTENT_SHOWN_MAX_BYTES).fill(0x61);
+    expect(decideListingContent({ kind: "script", bytes: edge }).text).toHaveLength(
+        CONTENT_SHOWN_MAX_BYTES,
     );
 });

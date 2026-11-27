@@ -83,6 +83,7 @@ async function build(db: Db, seed: number) {
         accountId: AccountId,
         kind: "config" | "inventory" | "script",
         name: string,
+        content?: Uint8Array,
     ) => {
         const made = await withTx(db, (tx) =>
             createItem(tx, {
@@ -91,7 +92,7 @@ async function build(db: Db, seed: number) {
                 limits,
                 kind,
                 name,
-                bytes: new TextEncoder().encode(`${name}-v1`),
+                bytes: content ?? new TextEncoder().encode(`${name}-v1`),
             }),
         );
         invariant(made.ok, "seeded item");
@@ -911,5 +912,278 @@ test("the browse pages by the cursor row's own key: equal timestamps never skip,
                 await w.client.call("cloud.listings.list", { ...p, cursor }, buyer.call),
             ).toEqual(refused);
         }
+    });
+});
+
+// --- a listing's own page ---
+
+const text = (value: string) => new TextEncoder().encode(value);
+
+test("a listing's page shows the listed snapshot, the description and whether you hold a copy", async () => {
+    await world(19201, async (w) => {
+        const owner = await w.member("owner");
+        const buyer = await w.member("buyer");
+        const itemId = await w.item(
+            owner.id,
+            "config",
+            "my config",
+            text('{"a":1,"b":[true,null]}'),
+        );
+        const created = await w.client.call(
+            "cloud.listings.create",
+            { ...p, itemId, summary: "a good one", description: "first line\nsecond line" },
+            owner.call,
+        );
+        invariant(created.ok, "expected a listing");
+        const id = created.value.listingId;
+
+        const seen = await w.client.call("cloud.listings.get", { listingId: id }, buyer.call);
+        invariant(seen.ok, "expected the page");
+        expect(seen.value).toMatchObject({
+            id,
+            productId: p.productId,
+            name: "my config",
+            kind: "config",
+            summary: "a good one",
+            description: "first line\nsecond line",
+            owner: { username: "owner" },
+            mine: false,
+            added: false,
+            copy: null,
+            size: 23,
+        });
+        // Compact JSON is laid out; what is shown parses to what is installed.
+        expect(seen.value.content).toBe(
+            ["{", '  "a": 1,', '  "b": [', "    true,", "    null", "  ]", "}"].join("\n"),
+        );
+        expect(seen.value.listedAt).toBeLessThanOrEqual(seen.value.updatedAt);
+
+        const added = await w.client.call("cloud.listings.add", { listingId: id }, buyer.call);
+        invariant(added.ok, "expected a copy");
+        const after = await w.client.call("cloud.listings.get", { listingId: id }, buyer.call);
+        invariant(after.ok, "expected the page");
+        expect(after.value).toMatchObject({ added: true, copy: { itemId: added.value.itemId } });
+        const own = await w.client.call("cloud.listings.get", { listingId: id }, owner.call);
+        invariant(own.ok, "expected the owner's page");
+        expect(own.value).toMatchObject({ mine: true, added: false });
+    });
+});
+
+test("what a page shows of the bytes: text as it is, a script's source whole, anything else not at all", async () => {
+    await world(19202, async (w) => {
+        const owner = await w.member("owner");
+        const mod = await w.staff("mod");
+        const buyer = await w.member("buyer");
+        const page = async (
+            kind: "config" | "inventory" | "script",
+            name: string,
+            bytes: Uint8Array,
+        ) => {
+            const itemId = await w.item(owner.id, kind, name, bytes);
+            const created = await w.client.call(
+                "cloud.listings.create",
+                { ...p, itemId, summary: "" },
+                owner.call,
+            );
+            invariant(created.ok, "expected a listing");
+            if (kind === "script") {
+                const approved = await w.client.call(
+                    "admin.cloud.listings.approve",
+                    { listingId: created.value.listingId, revision: 1 },
+                    mod.call,
+                );
+                invariant(approved.ok, "expected an approval");
+            }
+            const read = await w.client.call(
+                "cloud.listings.get",
+                { listingId: created.value.listingId },
+                buyer.call,
+            );
+            invariant(read.ok, "expected the page");
+            return read.value;
+        };
+        const source = "local x = 1\n\tprint(x)\n";
+        expect((await page("script", "src", text(source))).content).toBe(source);
+        // Laid-out JSON and other text are left as written.
+        const laidOut = '{\n  "a": 1\n}';
+        expect((await page("config", "pretty", text(laidOut))).content).toBe(laidOut);
+        expect((await page("inventory", "words", text("not json at all"))).content).toBe(
+            "not json at all",
+        );
+        // Big integers survive: compact JSON is laid out only when it round-trips exactly.
+        const big = '{"id":12345678901234567890}';
+        expect((await page("config", "big", text(big))).content).toBe(big);
+        // Opaque: bytes that are not text, or hold control characters, are not shown; their size is.
+        const binary = new Uint8Array([0xff, 0xfe, 0x00, 0x01, 0x80]);
+        expect(await page("config", "binary", binary)).toMatchObject({ content: null, size: 5 });
+        expect(await page("inventory", "nul", text("a\u0000b"))).toMatchObject({
+            content: null,
+            size: 3,
+        });
+    });
+});
+
+test("who may read a listing's page: entitled members, not blocked, not a gone or suspended owner, and only what is listed", async () => {
+    await world(19203, async (w) => {
+        const owner = await w.member("owner");
+        const buyer = await w.member("buyer");
+        const outsider = await w.member("outsider", false);
+        const blocker = await w.member("blocker");
+        const blocked = await w.member("blocked");
+        const mod = await w.staff("mod");
+        const itemId = await w.item(owner.id, "config", "cfg");
+        const created = await w.client.call(
+            "cloud.listings.create",
+            { ...p, itemId, summary: "" },
+            owner.call,
+        );
+        invariant(created.ok, "expected a listing");
+        const id = created.value.listingId;
+        const get = (who: { call: { session: BearerToken } }, listingId = id) =>
+            w.client.call("cloud.listings.get", { listingId }, who.call);
+
+        expect((await get(buyer)).ok).toBe(true);
+        expect(await get(outsider)).toEqual(missing);
+        expect(await get(buyer, "00000000-0000-4000-8000-000000000009")).toEqual(missing);
+
+        expect(await setBlock(w.db, blocker.token, { username: "owner", blocked: true })).toEqual(
+            ok(undefined),
+        );
+        expect(await setBlock(w.db, owner.token, { username: "blocked", blocked: true })).toEqual(
+            ok(undefined),
+        );
+        expect(await get(blocker)).toEqual(missing);
+        expect(await get(blocked)).toEqual(missing);
+
+        expect(
+            await execute(
+                w.db,
+                sql`update account set status = 'suspended' where id = ${owner.id}`,
+            ),
+        ).toEqual({ ok: true, value: 1 });
+        expect(await get(buyer)).toEqual(missing);
+        expect(
+            await execute(w.db, sql`update account set status = 'active' where id = ${owner.id}`),
+        ).toEqual({ ok: true, value: 1 });
+        const stripped = await withTx(w.db, async (tx) => {
+            const allowed = await execute(
+                tx,
+                sql`select set_config('lucent.username_rename', 'on', true)`,
+            );
+            if (!allowed.ok) return allowed;
+            return await execute(
+                tx,
+                sql`update account set username = null where id = ${owner.id}`,
+            );
+        });
+        expect(stripped).toEqual({ ok: true, value: 1 });
+        expect(await get(buyer)).toEqual(missing);
+
+        // A script not yet approved has no page for anyone, its owner included; once approved it
+        // does, and an update waiting for staff never shows: the last approved snapshot does.
+        const other = await w.member("author");
+        const script = await w.item(other.id, "script", "overlay", text("v1 source"));
+        const scripted = await w.client.call(
+            "cloud.listings.create",
+            { ...p, itemId: script, summary: "" },
+            other.call,
+        );
+        invariant(scripted.ok, "expected a listing");
+        const sid = scripted.value.listingId;
+        expect(await get(buyer, sid)).toEqual(missing);
+        expect(await get(other, sid)).toEqual(missing);
+        expect(
+            (
+                await w.client.call(
+                    "admin.cloud.listings.approve",
+                    { listingId: sid, revision: 1 },
+                    mod.call,
+                )
+            ).ok,
+        ).toBe(true);
+        const v1 = await get(buyer, sid);
+        invariant(v1.ok, "expected the approved page");
+        expect(v1.value.content).toBe("v1 source");
+        const appended = await w.client.call(
+            "cloud.items.restore",
+            { ...p, itemId: script, base: 1, revision: 1 },
+            other.call,
+        );
+        invariant(appended.ok, "expected a new revision");
+        expect(
+            await w.client.call("cloud.listings.update", { listingId: sid }, other.call),
+        ).toEqual(ok({}));
+        const still = await get(buyer, sid);
+        invariant(still.ok, "expected the page");
+        expect(still.value.content).toBe("v1 source");
+    });
+});
+
+test("a description is 0 to 2,000 characters, set on create and update, and changing it alone never sends a script back to staff", async () => {
+    await world(19204, async (w) => {
+        const owner = await w.member("owner");
+        const mod = await w.staff("mod");
+        const itemId = await w.item(owner.id, "script", "tool", text("source"));
+        const tooLong = await w.client.call(
+            "cloud.listings.create",
+            { ...p, itemId, summary: "", description: "x".repeat(2_001) },
+            owner.call,
+        );
+        expect(tooLong.ok).toBe(false);
+        const created = await w.client.call(
+            "cloud.listings.create",
+            { ...p, itemId, summary: "", description: "x".repeat(2_000) },
+            owner.call,
+        );
+        invariant(created.ok, "expected a listing at the limit");
+        const id = created.value.listingId;
+        expect(
+            (
+                await w.client.call(
+                    "admin.cloud.listings.approve",
+                    { listingId: id, revision: 1 },
+                    mod.call,
+                )
+            ).ok,
+        ).toBe(true);
+        // Staff read the description beside the waiting script.
+        expect(
+            (
+                await w.client.call(
+                    "cloud.listings.update",
+                    { listingId: id, description: "new words\nand a line" },
+                    owner.call,
+                )
+            ).ok,
+        ).toBe(true);
+        const mine = await w.client.call("cloud.listings.mine", p, owner.call);
+        invariant(mine.ok, "expected the owner's listings");
+        expect(mine.value.map((row) => [row.state, row.pending])).toEqual([["listed", false]]);
+        expect(
+            await w.client.call(
+                "cloud.listings.update",
+                { listingId: id, description: "x".repeat(2_001) },
+                owner.call,
+            ),
+        ).toMatchObject({ ok: false });
+        const page = await w.client.call("cloud.listings.get", { listingId: id }, owner.call);
+        invariant(page.ok, "expected the page");
+        expect(page.value.description).toBe("new words\nand a line");
+        // A new revision does need approval, as before; staff see the description with it.
+        const appended = await w.client.call(
+            "cloud.items.restore",
+            { ...p, itemId, base: 1, revision: 1 },
+            owner.call,
+        );
+        invariant(appended.ok, "expected a new revision");
+        expect(await w.client.call("cloud.listings.update", { listingId: id }, owner.call)).toEqual(
+            ok({}),
+        );
+        const waiting = await w.client.call("cloud.listings.mine", p, owner.call);
+        invariant(waiting.ok, "expected the owner's listings");
+        expect(waiting.value.map((row) => row.pending)).toEqual([true]);
+        const review = await w.client.call("admin.cloud.listings.get", { listingId: id }, mod.call);
+        invariant(review.ok, "expected the review read");
+        expect(review.value.description).toBe("new words\nand a line");
     });
 });

@@ -35,6 +35,12 @@ export const ListingSummary = z
     .trim()
     .max(140)
     .regex(/^[^\r\n]*$/);
+// Plain text, line breaks kept, up to 2,000 characters; the page shows it as written.
+export const ListingDescription = z
+    .string()
+    .trim()
+    .max(2_000)
+    .refine((value) => !value.includes("\0"));
 const ListingState = z.enum(["pending", "listed"]);
 const read = {
     session: "member",
@@ -139,6 +145,31 @@ export const cloudContract = defineContract({
         }),
     },
     // The viewer's own listings of the product, in any state but removed.
+    // One listing's own page: only what is listed (never a waiting snapshot), to a member with an
+    // active entitlement to its product (NOT_FOUND otherwise), with the browse's owner filters.
+    // `content` is the listed snapshot as text when the site can show it (never bytes that are
+    // not text, never above 256 KB), else null; `size` is its bytes either way. `copy` is the
+    // item the viewer made from it, when they did.
+    "cloud.listings.get": {
+        ...read,
+        input: z.strictObject({ listingId: ListingId }),
+        output: z.object({
+            id: ListingId,
+            productId: ProductId,
+            name: z.string(),
+            kind: ItemKind,
+            summary: z.string(),
+            description: z.string(),
+            owner: Author,
+            mine: z.boolean(),
+            listedAt: EpochMs,
+            updatedAt: EpochMs,
+            added: z.boolean(),
+            copy: z.object({ itemId: CloudId }).nullable(),
+            size: z.int().nonnegative(),
+            content: z.string().nullable(),
+        }),
+    },
     "cloud.listings.mine": {
         ...read,
         input: CloudProduct,
@@ -165,13 +196,20 @@ export const cloudContract = defineContract({
             PostingRestricted,
             refusal("ALREADY_LISTED"),
         ]),
-        input: CloudItem.extend({ summary: ListingSummary }),
+        input: CloudItem.extend({
+            summary: ListingSummary,
+            description: ListingDescription.optional(),
+        }),
         output: z.object({ listingId: ListingId }),
     },
     "cloud.listings.update": {
         ...write,
         error: z.discriminatedUnion("code", [...write.error.options, PostingRestricted]),
-        input: z.strictObject({ listingId: ListingId, summary: ListingSummary.optional() }),
+        input: z.strictObject({
+            listingId: ListingId,
+            summary: ListingSummary.optional(),
+            description: ListingDescription.optional(),
+        }),
         output: Done,
     },
     "cloud.listings.remove": {
@@ -226,6 +264,7 @@ export const cloudContract = defineContract({
             productId: ProductId,
             kind: ItemKind,
             name: z.string(),
+            description: z.string(),
             // The snapshot waiting for approval.
             pending: z.object({ revision: Revision, content: z.string() }),
             // The one members see now, when what waits is an update of it.

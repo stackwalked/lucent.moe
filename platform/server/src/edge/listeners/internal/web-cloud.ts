@@ -14,6 +14,7 @@ import {
     listListings,
     listMine,
     listPending,
+    readListing,
     readListingForReview,
     removeListingAsStaff,
     removeOwnListing,
@@ -115,18 +116,23 @@ export const cloudHandlers = {
         ),
     "cloud.listings.mine": (ctx, { productId }, { session }) =>
         scoped(ctx, { session, productId, operation: "list" }, listMine),
-    "cloud.listings.create": (ctx, { productId, itemId, summary }, { session }) =>
+    "cloud.listings.get": async (ctx, { listingId }, { session }) =>
+        served(await readListing(ctx.auth.db, session, { catalog: ctx.catalog, listingId })),
+    "cloud.listings.create": (ctx, { productId, itemId, summary, description }, { session }) =>
         scoped(ctx, { session, productId, operation: "share" }, (tx, scope) =>
-            createListing(tx, scope, { itemId, summary }),
+            createListing(tx, scope, { itemId, summary, description }),
         ),
-    "cloud.listings.update": async (ctx, { listingId, summary }, { session }) => {
+    "cloud.listings.update": async (ctx, { listingId, summary, description }, { session }) => {
         const productId = await listingProduct(ctx.auth.db, session, listingId);
         if (!productId.ok) return served(err(productId.error));
         return scoped(
             ctx,
             { session, productId: productId.value, operation: "share" },
             async (tx, scope) =>
-                mapOk(await updateListing(tx, scope, { listingId, summary }), () => ({})),
+                mapOk(
+                    await updateListing(tx, scope, { listingId, summary, description }),
+                    () => ({}),
+                ),
         );
     },
     "cloud.listings.remove": async (ctx, { listingId }, { session }) => {
