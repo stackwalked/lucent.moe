@@ -177,7 +177,7 @@ function ReplyForm({ ticketId }: { readonly ticketId: string }) {
     return (
         <form action={submit}>
             <Stack gap={3}>
-                <TextArea name="body" label={C.reply} maxLength={4000} required />
+                <TextArea name="body" label={C.reply} maxLength={4000} required size="grow" />
                 <RefusalNote refused={refused ?? closeRefusal} />
                 <div className={styles.replyActs}>
                     <Button type="submit" tone="pink" pending={pending}>

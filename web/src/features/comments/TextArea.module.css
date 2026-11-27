@@ -20,7 +20,15 @@
         font-size: var(--size-13);
     }
 
+    .row {
+        display: flex;
+        align-items: flex-end;
+        gap: var(--s-2);
+    }
+
     .area {
+        flex: 1;
+        min-inline-size: 0;
         min-block-size: calc(var(--control-h) * 3);
         padding: var(--s-2);
         border: 1px solid var(--line-2);
@@ -29,5 +37,23 @@
         color: var(--ink);
         font-size: var(--size-13);
         resize: vertical;
+    }
+
+    /* Growing boxes size to their text (field-sizing) between a floor and a ceiling counted in
+       lines (1lh), plus the padding and border. */
+    .area[data-size] {
+        field-sizing: content;
+        resize: none;
+    }
+
+    .area[data-size="line"] {
+        min-block-size: var(--control-h);
+        max-block-size: calc(4lh + var(--s-2) + 2px);
+        padding-block: var(--s-1);
+    }
+
+    .area[data-size="grow"] {
+        min-block-size: calc(3lh + var(--s-4) + 2px);
+        max-block-size: calc(8lh + var(--s-4) + 2px);
     }
 }

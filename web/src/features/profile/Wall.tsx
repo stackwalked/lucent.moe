@@ -141,10 +141,9 @@ export function Wall({
                             label={C.writeOn(username)}
                             maxLength={2000}
                             required
+                            size="line"
+                            end={<Button type="submit">{C.post}</Button>}
                         />
-                        <div>
-                            <Button type="submit">{C.post}</Button>
-                        </div>
                     </Stack>
                 </form>
             </Stack>

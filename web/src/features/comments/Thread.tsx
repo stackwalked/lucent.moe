@@ -68,7 +68,7 @@ export function Reply({
     return (
         <form action={submit}>
             <Stack gap={2}>
-                <TextArea name="body" label={label} maxLength={4000} required />
+                <TextArea name="body" label={label} maxLength={4000} required size="grow" />
                 {hint === undefined ? null : <p>{hint}</p>}
                 <RefusalNote refused={refused} />
                 <div>

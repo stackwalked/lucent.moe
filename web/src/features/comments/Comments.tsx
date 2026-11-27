@@ -76,10 +76,9 @@ export function Comments({
                                 label={COMMENTS_COPY.body}
                                 maxLength={2000}
                                 required
+                                size="line"
+                                end={<Button type="submit">{COMMENTS_COPY.post}</Button>}
                             />
-                            <div>
-                                <Button type="submit">{COMMENTS_COPY.post}</Button>
-                            </div>
                         </Stack>
                     </form>
                 ) : null}
