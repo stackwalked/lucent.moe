@@ -121,6 +121,39 @@ function Actions() {
                         },
                     ]}
                 />
+                <Dropdown
+                    label="menu with a choice"
+                    icon="user"
+                    items={[
+                        { label: "profile", icon: "user", onSelect: () => toast("profile") },
+                        { rule: "r1" },
+                        {
+                            label: "theme",
+                            choices: [
+                                {
+                                    label: "dark",
+                                    icon: "moon",
+                                    current: false,
+                                    onSelect: () => toast("dark"),
+                                },
+                                {
+                                    label: "light",
+                                    icon: "sun",
+                                    current: true,
+                                    onSelect: () => toast("light"),
+                                },
+                                {
+                                    label: "system",
+                                    icon: "monitor",
+                                    current: false,
+                                    onSelect: () => toast("system"),
+                                },
+                            ],
+                        },
+                        { rule: "r2" },
+                        { label: "sign out", icon: "log-out", onSelect: () => toast("signed out") },
+                    ]}
+                />
                 <Popover trigger={(target) => <Button popoverTarget={target}>popover</Button>}>
                     <p>a panel anchored to its trigger.</p>
                 </Popover>

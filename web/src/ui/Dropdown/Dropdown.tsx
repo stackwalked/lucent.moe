@@ -13,7 +13,24 @@ export type DropdownItem = {
     readonly tone?: "plain" | "danger";
 };
 
-const ITEM = '[role="menuitem"]';
+// A hairline between groups of actions.
+export type DropdownRule = { readonly rule: string };
+
+// One row of icon buttons that choose among a few settings (a theme): a menu item each, the
+// current one marked.
+export type DropdownChoice = {
+    readonly label: string;
+    readonly choices: readonly {
+        readonly label: string;
+        readonly icon: IconName;
+        readonly current: boolean;
+        readonly onSelect: () => void;
+    }[];
+};
+
+export type DropdownEntry = DropdownItem | DropdownRule | DropdownChoice;
+
+const ITEM = '[role="menuitem"], [role="menuitemradio"]';
 
 // A menu of actions behind an icon button. Opening puts focus on the first action; arrows, Home
 // and End move between them; Esc closes and returns focus to the button (native, from the
@@ -31,7 +48,7 @@ export function Dropdown({
     readonly align?: "start" | "end";
     // A member's 64 px picture (its digest) in place of the icon.
     readonly picture?: string | null;
-    readonly items: readonly DropdownItem[];
+    readonly items: readonly DropdownEntry[];
 }) {
     const menu = useRef<HTMLDivElement>(null);
 
@@ -88,23 +105,51 @@ export function Dropdown({
                 className={styles.menu}
                 onKeyDown={onKeyDown}
             >
-                {items.map((item) => (
-                    <button
-                        key={item.label}
-                        type="button"
-                        role="menuitem"
-                        tabIndex={-1}
-                        className={styles.item}
-                        data-tone={item.tone ?? "plain"}
-                        onClick={(event) => {
-                            event.currentTarget.closest<HTMLElement>("[popover]")?.hidePopover();
-                            item.onSelect();
-                        }}
-                    >
-                        {item.icon === undefined ? null : <Icon name={item.icon} />}
-                        {item.label}
-                    </button>
-                ))}
+                {items.map((item) =>
+                    "rule" in item ? (
+                        <hr key={`rule-${item.rule}`} className={styles.rule} />
+                    ) : "choices" in item ? (
+                        <fieldset
+                            key={item.label}
+                            aria-label={item.label}
+                            className={styles.choice}
+                        >
+                            {item.choices.map((choice) => (
+                                <button
+                                    key={choice.label}
+                                    type="button"
+                                    role="menuitemradio"
+                                    aria-checked={choice.current}
+                                    aria-label={choice.label}
+                                    title={choice.label}
+                                    tabIndex={-1}
+                                    className={styles.pick}
+                                    onClick={choice.onSelect}
+                                >
+                                    <Icon name={choice.icon} />
+                                </button>
+                            ))}
+                        </fieldset>
+                    ) : (
+                        <button
+                            key={item.label}
+                            type="button"
+                            role="menuitem"
+                            tabIndex={-1}
+                            className={styles.item}
+                            data-tone={item.tone ?? "plain"}
+                            onClick={(event) => {
+                                event.currentTarget
+                                    .closest<HTMLElement>("[popover]")
+                                    ?.hidePopover();
+                                item.onSelect();
+                            }}
+                        >
+                            {item.icon === undefined ? null : <Icon name={item.icon} />}
+                            {item.label}
+                        </button>
+                    ),
+                )}
             </div>
         </Popover>
     );

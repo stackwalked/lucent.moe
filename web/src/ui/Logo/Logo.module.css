@@ -5,8 +5,12 @@
         block-size: auto;
     }
 
+    /* The drawing's box reaches up to the glint, so centring the box leaves the ring's centre
+       low. Measured against the wordmark's x-height centre: the ring sits 8% of the mark's
+       height lower than it, so the mark lifts by that. */
     .bar {
         inline-size: calc(var(--s-5) + var(--s-1));
+        translate: 0 -8%;
     }
 
     .landing {

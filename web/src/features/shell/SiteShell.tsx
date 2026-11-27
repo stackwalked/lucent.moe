@@ -1,14 +1,15 @@
 import { Link, useLocation, useRouteContext, useRouter } from "@tanstack/react-router";
-import type { ReactNode } from "react";
-import { chooseTheme } from "../../theme.ts";
-import { Dropdown, type DropdownItem } from "../../ui/Dropdown/Dropdown.tsx";
+import { type ReactNode, useState } from "react";
+import { chooseTheme, currentTheme, type ThemeChoice } from "../../theme.ts";
+import { Dropdown, type DropdownEntry } from "../../ui/Dropdown/Dropdown.tsx";
+import { Icon } from "../../ui/Icon/Icon.tsx";
 import { Shell } from "../../ui/Shell/Shell.tsx";
 import { forgetSession, memberOf, type Viewer } from "../../viewer.ts";
 import { ADMIN_COPY } from "../admin/copy.ts";
 import { isStaff } from "../admin/sections.ts";
 import { signOut } from "../auth/session.ts";
 import { DOCS_COPY } from "../docs/copy.ts";
-import { inboxLabel } from "../inbox/copy.ts";
+import { INBOX_TITLE, inboxLabel } from "../inbox/copy.ts";
 import { SHELL_COPY } from "./copy.ts";
 import styles from "./SiteShell.module.css";
 
@@ -35,7 +36,12 @@ export function AccountMenu({
     readonly avatar: string | null;
 }) {
     const router = useRouter();
-    const items: DropdownItem[] = [
+    const [theme, setTheme] = useState<ThemeChoice>(currentTheme);
+    const pick = (choice: ThemeChoice) => {
+        setTheme(choice);
+        void chooseTheme(choice);
+    };
+    const items: DropdownEntry[] = [
         {
             label: SHELL_COPY.profile,
             icon: "user",
@@ -59,17 +65,31 @@ export function AccountMenu({
         });
     }
     items.push(
+        { rule: "theme" },
         {
-            label: SHELL_COPY.graphite,
-            icon: "moon",
-            onSelect: () => void chooseTheme("graphite"),
+            label: SHELL_COPY.theme,
+            choices: [
+                {
+                    label: SHELL_COPY.graphite,
+                    icon: "moon",
+                    current: theme === "graphite",
+                    onSelect: () => pick("graphite"),
+                },
+                {
+                    label: SHELL_COPY.washi,
+                    icon: "sun",
+                    current: theme === "washi",
+                    onSelect: () => pick("washi"),
+                },
+                {
+                    label: SHELL_COPY.systemTheme,
+                    icon: "monitor",
+                    current: theme === "system",
+                    onSelect: () => pick("system"),
+                },
+            ],
         },
-        { label: SHELL_COPY.washi, icon: "sun", onSelect: () => void chooseTheme("washi") },
-        {
-            label: SHELL_COPY.systemTheme,
-            icon: "monitor",
-            onSelect: () => void chooseTheme("system"),
-        },
+        { rule: "sign-out" },
         {
             label: SHELL_COPY.signOut,
             icon: "log-out",
@@ -128,10 +148,15 @@ export function SiteShell({ children }: { readonly children: ReactNode }) {
                           <>
                               <Link
                                   to="/account/inbox"
-                                  className={styles.corner}
+                                  className={styles.inbox}
+                                  aria-label={inboxLabel(unreadCount)}
+                                  title={INBOX_TITLE}
                                   activeProps={{ "aria-current": "page" }}
                               >
-                                  {inboxLabel(unreadCount)}
+                                  <Icon name="inbox" />
+                                  {unreadCount === null || unreadCount === 0 ? null : (
+                                      <span className={styles.dot} aria-hidden="true" />
+                                  )}
                               </Link>
                               <AccountMenu viewer={viewer} avatar={avatar} />
                           </>

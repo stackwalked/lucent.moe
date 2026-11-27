@@ -38,4 +38,31 @@
     .corner[aria-current="page"] {
         color: var(--ink);
     }
+
+    /* The inbox: an icon, with a pink dot on it when something is unread. */
+    .inbox {
+        position: relative;
+        display: inline-grid;
+        place-items: center;
+        inline-size: var(--control-h);
+        block-size: var(--control-h);
+        border-radius: var(--r);
+        color: var(--ink-2);
+        transition: color var(--t-hover) var(--ease);
+    }
+
+    .inbox:hover,
+    .inbox[aria-current="page"] {
+        color: var(--ink);
+    }
+
+    .dot {
+        position: absolute;
+        inset-block-start: var(--s-1);
+        inset-inline-end: var(--s-1);
+        inline-size: var(--s-2);
+        block-size: var(--s-2);
+        border-radius: 50%;
+        background: var(--pink);
+    }
 }

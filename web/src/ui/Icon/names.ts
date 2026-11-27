@@ -12,6 +12,7 @@ export const ICON_NAMES = [
     "external-link",
     "eye",
     "eye-off",
+    "inbox",
     "info",
     "key-round",
     "life-buoy",

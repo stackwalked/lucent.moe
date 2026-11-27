@@ -43,4 +43,51 @@
     .item[data-tone="danger"] {
         color: var(--shu-ink);
     }
+
+    .rule {
+        block-size: 0;
+        margin-block: var(--s-1);
+        margin-inline: 0;
+        border: 0;
+        border-block-start: 1px solid var(--line);
+    }
+
+    /* Not an action, so it doesn't read as a row of links: icons side by side. */
+    .choice {
+        display: flex;
+        gap: var(--s-1);
+        min-inline-size: 0;
+        margin: 0;
+        padding: 0 var(--s-1);
+        border: 0;
+    }
+
+    .pick {
+        display: inline-grid;
+        flex: 1;
+        place-items: center;
+        min-block-size: var(--control-h);
+        border: 0;
+        border-radius: var(--r-inner);
+        background: transparent;
+        color: var(--ink-2);
+        transition:
+            background-color var(--t-hover) var(--ease),
+            color var(--t-hover) var(--ease);
+    }
+
+    .pick:hover,
+    .pick:focus-visible {
+        background: var(--hover);
+        color: var(--ink);
+    }
+
+    .pick:focus-visible {
+        outline-offset: -2px;
+    }
+
+    .pick[aria-checked="true"] {
+        background: var(--chosen);
+        color: var(--ink);
+    }
 }

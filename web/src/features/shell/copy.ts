@@ -10,6 +10,7 @@ export const SHELL_COPY = {
     apply: "apply",
     signOut: "sign out",
     menu: (username: string) => `signed in as ${username}`,
+    theme: "theme",
     graphite: "graphite",
     washi: "washi",
     systemTheme: "match system",
