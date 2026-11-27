@@ -9,6 +9,7 @@ import { Time } from "../../ui/Time/Time.tsx";
 import { memberOf, subjectOf } from "../../viewer.ts";
 import { ListingRow } from "../cloud/ListingRow.tsx";
 import { usePresence } from "../community/presence.ts";
+import { PRODUCTS_COPY } from "../products/copy.ts";
 import { LOADER_PRODUCT_ID, productName, statusWord, versionOf } from "../products/view.ts";
 import { SiteShell } from "../shell/SiteShell.tsx";
 import { ShoutFeed } from "../shouts/ShoutFeed.tsx";
@@ -74,8 +75,9 @@ export function HomePage() {
     if (data === null) return null;
     const viewer = memberOf(session);
     const canPurge = viewer !== null && can(subjectOf(viewer), "moderation:remove");
-    const held = data.products.ok
-        ? data.products.value.filter((p) => p.access !== null && p.productId !== LOADER_PRODUCT_ID)
+    // Every listed product: a held one with its status, the rest with "no access".
+    const listed = data.products.ok
+        ? data.products.value.filter((p) => p.productId !== LOADER_PRODUCT_ID)
         : [];
     const names = new Map(
         data.changes.ok ? data.changes.value.names.map((n) => [n.id, n.name]) : [],
@@ -111,11 +113,17 @@ export function HomePage() {
                     }
                     aside={
                         <>
-                            {held.length === 0 && !loaderReady ? null : (
+                            {listed.length === 0 && !loaderReady ? null : (
                                 <Section caption={C.products}>
                                     <ul className={styles.rows}>
-                                        {held.map((product) => {
-                                            const word = statusWord(product.state, null);
+                                        {listed.map((product) => {
+                                            const word =
+                                                product.access === null
+                                                    ? {
+                                                          word: PRODUCTS_COPY.noAccess,
+                                                          tone: "dim" as const,
+                                                      }
+                                                    : statusWord(product.state, null);
                                             return (
                                                 <li key={product.productId}>
                                                     <Link
