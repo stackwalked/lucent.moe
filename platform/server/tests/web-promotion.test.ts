@@ -6,7 +6,7 @@ import type { ModuleKey } from "@lucent/bundle/fact-set";
 import { toReleaseManifestV3Bytes } from "@lucent/bundle/release-manifest";
 import { invariant } from "@lucent/core/contain";
 import { createSeededRng, type SeededRng } from "@lucent/core/rng";
-import { ChannelId, ProductId, toHex } from "@lucent/core/scalars";
+import { ChannelId, EpochMs, ProductId, toHex } from "@lucent/core/scalars";
 import { RECENT_WINDOW_SECONDS } from "@lucent/policy/policy";
 import { LOADER_DOWNLOAD_PATH } from "@lucent/rpc/web";
 import { z } from "zod";
@@ -21,6 +21,7 @@ import { createInternalWebApp } from "../src/edge/listeners/internal/app.ts";
 import { memberSession, seedRootOnce } from "./auth-fixtures.ts";
 import {
     catalog,
+    dbNow,
     product,
     scalar,
     seedAccount,
@@ -186,7 +187,14 @@ test("promoting releases and fact sets needs the permission and a recent passkey
                 number: "1",
             });
 
-        const stale = { accountId: staffId, stepUpAt: null, client: null };
+        // Signed in eight days ago and never stepped up: the sign-in is older than the week
+        // "recent" asks for. (A caller with no sign-in at all is a different refusal.)
+        const stale = {
+            accountId: staffId,
+            stepUpAt: null,
+            authenticatedAt: EpochMs.parse((await dbNow(nativeDb)) - 8 * 86_400_000),
+            client: null,
+        };
         expect(await promoteLoaderAs(stale)).toEqual({
             ok: false,
             error: { code: "STEP_UP_REQUIRED", withinSeconds: RECENT_WINDOW_SECONDS },

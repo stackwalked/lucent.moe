@@ -2,7 +2,8 @@ import { expect, test } from "bun:test";
 import { invariant } from "@lucent/core/contain";
 import { err, ok } from "@lucent/core/result";
 import { createSeededRng } from "@lucent/core/rng";
-import { newOperationId } from "@lucent/core/scalars";
+import { newOperationId, RoleId } from "@lucent/core/scalars";
+import { STEP_UP_WINDOW_SECONDS } from "@lucent/policy/policy";
 import { createRpcClient } from "@lucent/rpc/client";
 import { mountInternalRpc } from "@lucent/rpc/mount";
 import { type WebContract, webContract } from "@lucent/rpc/web";
@@ -435,9 +436,9 @@ test("every single-purpose procedure refuses a session of another purpose, an ap
     });
 });
 
-test("adding an account through the contract needs a step-up and shows the setup link once", async () => {
+test("adding an account through the contract shows the setup link once, and a replay shows none", async () => {
     const cluster = await sharedTestCluster();
-    await cluster.withTestDb(async ({ browserDb, nativeDb }) => {
+    await cluster.withTestDb(async ({ browserDb }) => {
         const rng = createSeededRng(42);
         const auth = await createTestAuthDeps(browserDb, rng);
         const rootId = await seedRootOnce(browserDb, rng);
@@ -456,24 +457,61 @@ test("adding an account through the contract needs a step-up and shows the setup
         });
         const input = { operationId: newOperationId(rng), email: "new@lucent.test" };
 
-        const tokenHash = await hashToken(session);
-        await execute(
-            nativeDb,
-            sql`update browser_session set authenticated_at = now() - interval '8 days'
-                where token_hash = ${tokenHash}`,
-        );
-        expect(await client.call("admin.accounts.create", input, { session })).toEqual(
-            err({ code: "STEP_UP_REQUIRED", withinSeconds: 604_800 }),
-        );
-        await execute(
-            nativeDb,
-            sql`update browser_session set step_up_at = now() where token_hash = ${tokenHash}`,
-        );
         const created = await client.call("admin.accounts.create", input, { session });
         invariant(created.ok, `create failed: ${JSON.stringify(created)}`);
         expect(created.value.setupToken).not.toBeNull();
         expect(await client.call("admin.accounts.create", input, { session })).toEqual(
             ok({ accountId: created.value.accountId, setupToken: null }),
+        );
+    });
+});
+
+test("saving a role through the contract needs a step-up in the last half hour", async () => {
+    const cluster = await sharedTestCluster();
+    await cluster.withTestDb(async ({ browserDb, nativeDb }) => {
+        const rng = createSeededRng(43);
+        const auth = await createTestAuthDeps(browserDb, rng);
+        const session = await memberSession(auth, await seedRootOnce(browserDb, rng));
+        const app = mountInternalRpc({
+            path: "/rpc",
+            peerKey: PEER_KEY,
+            procedures: webProcedures,
+            createContext: () => Promise.resolve(ok({ catalog: new Map(), auth, logger: NO_LOG })),
+            onUnhandledError: () => {},
+        });
+        const client = createRpcClient(webContract, {
+            endpointUrl: "http://localhost/rpc",
+            peerKey: PEER_KEY,
+            fetcher: async (req) => await app.fetch(req),
+        });
+        const input = {
+            operationId: newOperationId(rng),
+            roleId: RoleId.parse("role_helper"),
+            name: "helper",
+            rank: 1,
+            permissions: [],
+            labelColor: null,
+        };
+
+        // Signed in, but no step-up yet: a fresh action asks for one.
+        expect(await client.call("admin.roles.save", input, { session })).toEqual(
+            err({ code: "STEP_UP_REQUIRED", withinSeconds: STEP_UP_WINDOW_SECONDS }),
+        );
+        const tokenHash = await hashToken(session);
+        await execute(
+            nativeDb,
+            sql`update browser_session set step_up_at = now() - interval '31 minutes'
+                where token_hash = ${tokenHash}`,
+        );
+        expect(await client.call("admin.roles.save", input, { session })).toEqual(
+            err({ code: "STEP_UP_REQUIRED", withinSeconds: STEP_UP_WINDOW_SECONDS }),
+        );
+        await execute(
+            nativeDb,
+            sql`update browser_session set step_up_at = now() where token_hash = ${tokenHash}`,
+        );
+        expect(await client.call("admin.roles.save", input, { session })).toEqual(
+            ok({ roleId: input.roleId }),
         );
     });
 });

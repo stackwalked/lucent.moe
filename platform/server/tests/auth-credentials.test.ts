@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { invariant } from "@lucent/core/contain";
 import { err, ok } from "@lucent/core/result";
 import { createSeededRng } from "@lucent/core/rng";
-import { newOperationId, toHex } from "@lucent/core/scalars";
-import { RECENT_WINDOW_SECONDS } from "@lucent/policy/policy";
+import { newOperationId, RoleId, toHex } from "@lucent/core/scalars";
+import { STEP_UP_WINDOW_SECONDS } from "@lucent/policy/policy";
 import { AuthenticationResponse, RegistrationResponse } from "@lucent/rpc/webauthn";
 import { createTestAuthenticator } from "@lucent/testing/authenticator";
 import { z } from "zod";
@@ -21,8 +21,8 @@ import { signOutOthers } from "../src/identity/auth/sessions.ts";
 import { redeemSetupLink } from "../src/identity/auth/setup.ts";
 import { signInWithPassword } from "../src/identity/auth/sign-in.ts";
 import { hashToken } from "../src/identity/auth/tokens.ts";
-import { resolveViewer } from "../src/identity/auth/viewer.ts";
-import { createAccount, recoverAccount } from "../src/identity/authority/writers.ts";
+import { resolveCaller, resolveViewer } from "../src/identity/auth/viewer.ts";
+import { recoverAccount, upsertRole } from "../src/identity/authority/writers.ts";
 import {
     MEMBER_PASSWORD,
     memberSession,
@@ -31,7 +31,7 @@ import {
     registerPasskey,
     seedRootOnce,
 } from "./auth-fixtures.ts";
-import { steppedUp, waitForLockWaiters } from "./authority-fixtures.ts";
+import { catalog, steppedUp, waitForLockWaiters } from "./authority-fixtures.ts";
 import { createTestAuthDeps } from "./harness/auth.ts";
 import { sharedTestCluster } from "./harness/pg-test.ts";
 
@@ -184,22 +184,28 @@ describe("credential changes", () => {
             const deps = await createTestAuthDeps(browserDb, rng);
             const rootId = await seedRootOnce(browserDb, rng);
             const session = await memberSession(deps, rootId);
-            const create = async () => {
-                const resolved = await resolveViewer(browserDb, {
+            // Saving a role is a fresh action: a step-up in the last half hour, which a sign-in
+            // does not make. The caller is the one the session resolves to, as a request's is.
+            const save = async () => {
+                const resolved = await resolveCaller(browserDb, {
                     sessionToken: session,
                     client: null,
                 });
                 invariant(resolved.ok, "the root's session resolves");
-                return await createAccount({
+                return await upsertRole({
                     db: browserDb,
-                    rng,
-                    caller: { accountId: rootId, stepUpAt: resolved.value.stepUpAt, client: null },
+                    catalog: catalog(),
+                    caller: resolved.value,
                     operationId: newOperationId(rng),
-                    email: `staff${rng.nextUint32()}@lucent.test`,
+                    roleId: RoleId.parse("role_helper"),
+                    name: "helper",
+                    rank: 1,
+                    permissions: [],
+                    channelGrants: "unchanged",
                 });
             };
-            expect(await create()).toEqual(
-                err({ code: "STEP_UP_REQUIRED", withinSeconds: RECENT_WINDOW_SECONDS }),
+            expect(await save()).toEqual(
+                err({ code: "STEP_UP_REQUIRED", withinSeconds: STEP_UP_WINDOW_SECONDS }),
             );
 
             const passkey = await createTestAuthenticator({ rng });
@@ -212,7 +218,7 @@ describe("credential changes", () => {
                 response: AuthenticationResponse.parse(await passkey.assert(begun.value.options)),
             });
             expect(stepped.ok).toBe(true);
-            expect((await create()).ok).toBe(true);
+            expect((await save()).ok).toBe(true);
         });
     });
 

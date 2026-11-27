@@ -10,9 +10,7 @@ import { createRpcClient } from "@lucent/rpc/client";
 import { RPC_HEADERS } from "@lucent/rpc/contract";
 import { RESOURCE_DOWNLOAD_PATH, RESOURCE_UPLOAD_PATH, webContract } from "@lucent/rpc/web";
 import { claimServiceEpoch, openEpochGuard } from "../src/base/db/epoch-guard.ts";
-import { execute, sql } from "../src/base/db/pool.ts";
 import { createInternalWebApp } from "../src/edge/listeners/internal/app.ts";
-import { hashToken } from "../src/identity/auth/tokens.ts";
 import { RESOURCE_MAX_BYTES } from "../src/members/support/resource-files.ts";
 import { catalog, grantRole, seedRole } from "./authority-fixtures.ts";
 import { holdProduct, member, NO_LOG } from "./community-fixtures.ts";
@@ -109,22 +107,10 @@ test("a resource uploads, lists for members entitled to its product and no one e
         const stranger = await member(nativeDb, rng, "stranger@lucent.test");
 
         const bytes = fileOf(300_000);
-        // Publishing is a release: with no sign-in inside a week and no step-up, no upload.
-        await execute(
-            nativeDb,
-            sql`update browser_session set authenticated_at = now() - interval '8 days'
-                where token_hash = ${await hashToken(staff.token)}`,
-        );
-        expect(await (await upload(staff.token, bytes, bytes.byteLength)).json()).toEqual(
-            err({ code: "STEP_UP_REQUIRED", withinSeconds: 604_800 }),
-        );
+        // Publishing is a release: only a role holding releases:promote uploads. (Its week-long
+        // confirmation is met by any live session, so there is no step-up to ask of one.)
         expect(await (await upload(holder.token, bytes, bytes.byteLength)).json()).toEqual(
             err({ code: "FORBIDDEN" }),
-        );
-        await execute(
-            nativeDb,
-            sql`update browser_session set step_up_at = now()
-                where token_hash = ${await hashToken(staff.token)}`,
         );
         const tooLarge = await upload(staff.token, oversized(), RESOURCE_MAX_BYTES);
         expect(tooLarge.status).toBe(413);

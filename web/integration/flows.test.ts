@@ -45,6 +45,8 @@ const fn = {
     beginPasskey: "features.auth.sign-in-server--beginPasskey",
     finishPasskey: "features.auth.sign-in-server--finishPasskey",
     createAccount: "features.admin.accounts.server--createAccount",
+    saveRole: "features.admin.roles.server--saveRole",
+    listRoles: "features.admin.roles.server--listRoles",
     fetchAccounts: "features.admin.accounts.server--fetchAccounts",
     fetchAccount: "features.admin.accounts.server--fetchAccount",
     issueEntitlement: "features.admin.accounts.server--issueEntitlement",
@@ -250,40 +252,32 @@ describe("web against a real platform", () => {
     test("a staff action refused for want of a step-up acts once after it, however often it's sent", async () => {
         // Signed in again just now, with no step-up since.
         const page = member;
-        const add = {
+        const save = {
             operationId: newOperationId(createSeededRng(7002)),
-            email: "bob@lucent.test",
+            roleId: "role_helper",
+            name: "helper",
+            rank: 1,
+            permissions: [],
         };
-        // Adding an account asks for a confirmation within the week, and the sign-in was one:
-        // it is refused only once that is older.
-        const db = new SQL(platform.databaseUrl);
-        await db`update browser_session set authenticated_at = now() - interval '8 days'`;
-        expect(refusedCode(await page.call(fn.createAccount, add))).toBe("STEP_UP_REQUIRED");
-        await db`update browser_session set authenticated_at = now()`;
-        await db.close();
+        // Saving a role is a fresh action: a step-up in the last half hour, which signing in is not.
+        expect(refusedCode(await page.call(fn.saveRole, save))).toBe("STEP_UP_REQUIRED");
 
         const proof = accepted(RequestOptions, await page.call(fn.beginStepUp));
         accepted(
             z.null(),
             await page.call(fn.finishStepUp, { response: await authenticator.assert(proof) }),
         );
-        const Added = z.object({ setupToken: z.string().nullable() });
-        expect(accepted(Added, await page.call(fn.createAccount, add)).setupToken).not.toBeNull();
+        expect(accepted(z.string(), await page.call(fn.saveRole, save))).toBe("role_helper");
         // The same operation again, as a double submit sends it: platform answers from its receipt.
-        expect(accepted(Added, await page.call(fn.createAccount, add)).setupToken).toBeNull();
+        expect(accepted(z.string(), await page.call(fn.saveRole, save))).toBe("role_helper");
 
         const listed = accepted(
-            z.object({ items: z.array(z.object({ email: z.string() })) }),
-            await page.read(fn.fetchAccounts, {
-                status: null,
-                roleId: null,
-                text: "bob",
-                sort: "newest",
-                cursor: null,
-            }),
+            z.array(z.object({ roleId: z.string(), name: z.string() })),
+            await page.read(fn.listRoles),
         );
-        invariant(listed.items.length > 0, "bob was added");
-        expect(listed.items.map((item) => item.email)).toEqual(["bob@lucent.test"]);
+        expect(listed.filter((role) => role.roleId === "role_helper")).toEqual([
+            { roleId: "role_helper", name: "helper" },
+        ]);
     });
 
     test("a loader's sign-in link opened signed out comes back after sign-in, then hands the answer to the loader", async () => {
@@ -380,6 +374,17 @@ describe("web against a real platform", () => {
 
     test("issuing a seed product to another account does not reveal it on your own products page", async () => {
         const page = member;
+        // Adding an account asks for a confirmation within the week, which the sign-in was.
+        const Added = z.object({ setupToken: z.string().nullable() });
+        expect(
+            accepted(
+                Added,
+                await page.call(fn.createAccount, {
+                    operationId: newOperationId(createSeededRng(7006)),
+                    email: "bob@lucent.test",
+                }),
+            ).setupToken,
+        ).not.toBeNull();
         const listed = accepted(
             z.object({ items: z.array(z.object({ accountId: z.string() })) }),
             await page.read(fn.fetchAccounts, {
@@ -431,7 +436,7 @@ describe("web against a real platform", () => {
         expect((await page.get("/products/cs2")).status).toBe(404);
     });
 
-    test("staff promote a staged seal and then a fact set once a step-up proves them, and a seal below the current one is refused", async () => {
+    test("staff promote a staged seal and then a fact set, and a seal below the current one is refused", async () => {
         const page = member;
         const releaseId = "5".repeat(32);
         const db = new SQL(platform.databaseUrl);
@@ -448,9 +453,6 @@ describe("web against a real platform", () => {
         await db`insert into fact_set_build
                      (set_id, release_id, name_hash, time_date_stamp, size_of_image, revision)
                  values (${set.id}::bigint, decode(${releaseId}, 'hex'), 4660, 1, 2, 1)`;
-        // Promotion asks for a confirmation within the week: neither a step-up nor the sign-in.
-        await db`update browser_session
-                 set step_up_at = null, authenticated_at = now() - interval '8 days'`;
 
         const Lines = z.array(
             z.object({
@@ -473,12 +475,6 @@ describe("web against a real platform", () => {
 
         const promote = (number: string) =>
             page.call(fn.promoteRelease, { productId: "cs2", channel: "debug", number });
-        expect(refusedCode(await promote("2"))).toBe("STEP_UP_REQUIRED");
-        const proof = accepted(RequestOptions, await page.call(fn.beginStepUp));
-        accepted(
-            z.null(),
-            await page.call(fn.finishStepUp, { response: await authenticator.assert(proof) }),
-        );
         expect(accepted(z.boolean(), await promote("2"))).toBe(true);
         expect(refusedCode(await promote("1"))).toBe("SEAL_BELOW_CURRENT");
         expect((await debugLine())?.current).toEqual({ number: "2" });
