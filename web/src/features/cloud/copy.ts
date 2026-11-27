@@ -32,6 +32,18 @@ export const CLOUD_COPY = {
     more: "more",
     noListings: "no listings",
     noAccess: "no access",
+    contents: "contents",
+    notShown: "not shown",
+    empty: "empty",
+    showAll: "show all",
+    listing: "listing",
+    owner: "owner",
+    updated: "updated",
+    size: "size",
+    edit: "edit",
+    save: "save",
+    description: "description",
+    unknownOwner: "—",
     inYourCloud: "in your cloud",
     fromStaff: "from staff",
     download: "download",
@@ -53,3 +65,8 @@ export const CLOUD_COPY = {
     copyOf: (owner: string | null) => owner ?? "—",
     downloadTitle: (title: string) => `download ${title}`,
 };
+
+// A size the way the site writes one: bytes, then kilobytes with a decimal.
+export function sizeWords(bytes: number): string {
+    return bytes < 1_024 ? `${bytes} b` : `${(bytes / 1_024).toFixed(1)} kb`;
+}

@@ -10,6 +10,7 @@ import { Section } from "../../ui/Section/Section.tsx";
 import { Stack } from "../../ui/Stack/Stack.tsx";
 import { TextField } from "../../ui/TextField/TextField.tsx";
 import { RefusalNote } from "../auth/RefusalNote.tsx";
+import { TextArea } from "../comments/TextArea.tsx";
 import { noteLastProduct } from "../products/lastProduct.ts";
 import { ProductLead } from "../products/ProductLead.tsx";
 import { downloadPath } from "../resources/download.ts";
@@ -191,9 +192,16 @@ function Item({ productId, item, mine }: { productId: string; item: Items[number
                     </Button>
                 ) : (
                     <span className={styles.state}>
-                        <span data-waiting={listing.state === "pending" || listing.pending}>
-                            {listing.state === "pending" || listing.pending ? C.waiting : C.listed}
-                        </span>
+                        {listing.state === "pending" || listing.pending ? (
+                            <span data-waiting="true">{C.waiting}</span>
+                        ) : (
+                            <Link
+                                to="/products/$productId/cloud/$listingId"
+                                params={{ productId, listingId: listing.id }}
+                            >
+                                {C.listed}
+                            </Link>
+                        )}
                         <Button
                             size="sm"
                             tone="ghost"
@@ -216,12 +224,14 @@ function Item({ productId, item, mine }: { productId: string; item: Items[number
                                     productId,
                                     itemId: item.itemId,
                                     summary: String(form.get("summary") ?? ""),
+                                    description: String(form.get("description") ?? ""),
                                 },
                             }),
                         )
                     }
                 >
                     <TextField name="summary" label={C.summary} maxLength={140} />
+                    <TextArea name="description" label={C.description} maxLength={2000} />
                     <div>
                         <Button type="submit" size="sm">
                             {C.list}

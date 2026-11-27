@@ -1,0 +1,8 @@
+@layer features {
+    /* The owner's words, line breaks kept as written. */
+    .description {
+        color: var(--ink-2);
+        overflow-wrap: anywhere;
+        white-space: pre-wrap;
+    }
+}

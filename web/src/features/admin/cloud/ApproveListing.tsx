@@ -5,6 +5,7 @@ import { Stack } from "../../../ui/Stack/Stack.tsx";
 import { RefusalNote } from "../../auth/RefusalNote.tsx";
 import { AccountAction } from "../accounts/AccountAction.tsx";
 import { useStaffAction } from "../staff.ts";
+import styles from "./ApproveListing.module.css";
 import { ADMIN_CLOUD_COPY as C } from "./copy.ts";
 import { approveListing, readListing } from "./server.ts";
 
@@ -46,6 +47,12 @@ export function ApproveListing({ listingId }: { readonly listingId: string }) {
                         <RefusalNote refused={read.refused} />
                     ) : (
                         <>
+                            {read.value.description === "" ? null : (
+                                <Stack gap={2}>
+                                    <p>{C.description}</p>
+                                    <p className={styles.description}>{read.value.description}</p>
+                                </Stack>
+                            )}
                             <Stack gap={2}>
                                 <p>{C.waiting}</p>
                                 <Code>{read.value.pending.content}</Code>

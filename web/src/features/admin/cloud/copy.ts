@@ -6,6 +6,7 @@ export const ADMIN_CLOUD_COPY = {
     kind: "kind",
     name: "name",
     summary: "summary",
+    description: "description",
     what: "waiting",
     first: "first",
     update: "update",

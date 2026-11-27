@@ -70,44 +70,12 @@
         white-space: nowrap;
     }
 
-    .add {
-        display: flex;
-        flex-direction: column;
-        align-items: flex-end;
-    }
-
-    .add button {
-        color: var(--pink-ink);
-    }
-
+    /* Kept as wide as the word, held or not, so the rows of a list line up. */
     .added {
+        min-inline-size: var(--s-7);
         color: var(--ok-ink);
         font-size: var(--size-13);
-    }
-
-    .end {
-        display: flex;
-        align-items: center;
-        gap: var(--s-2);
-    }
-
-    /* Report shows on hover or focus; with no hover (touch) or little room it is always there. */
-    .acts button {
-        opacity: 0;
-        transition: opacity var(--t-hover) var(--ease);
-    }
-
-    .full:hover .acts button,
-    .full:focus-within .acts button,
-    .brief:hover .acts button,
-    .brief:focus-within .acts button {
-        opacity: 1;
-    }
-
-    @media (hover: none), (width <= 640px) {
-        .acts button {
-            opacity: 1;
-        }
+        text-align: end;
     }
 
     @media (width <= 640px) {

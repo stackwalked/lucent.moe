@@ -5,6 +5,7 @@ import {
     CloudProduct,
     CreateItem,
     Import,
+    ListingDescription,
     Rename,
     Restore,
     Revoke,
@@ -79,6 +80,7 @@ export const importShare = createServerFn({ method: "POST" })
     });
 
 const ListingId = z.uuid();
+const Description = ListingDescription;
 const Summary = z
     .string()
     .trim()
@@ -110,10 +112,30 @@ export const fetchMine = createServerFn({ method: "GET" })
     });
 
 export const listItem = createServerFn({ method: "POST" })
-    .validator((data: unknown) => CloudItem.extend({ summary: Summary }).parse(data))
+    .validator((data: unknown) =>
+        CloudItem.extend({ summary: Summary, description: Description }).parse(data),
+    )
     .handler(async ({ data }) => {
         const reply = await callPlatform("cloud.listings.create", data);
         return reply.ok ? done(reply.value) : refuse(reply.error);
+    });
+
+export const fetchListing = createServerFn({ method: "GET" })
+    .validator((data: unknown) => z.strictObject({ listingId: ListingId }).parse(data))
+    .handler(async ({ data }) => {
+        const reply = await readPlatform("cloud.listings.get", data);
+        return reply.ok ? done(reply.value) : refuse(reply.error);
+    });
+
+export const saveListing = createServerFn({ method: "POST" })
+    .validator((data: unknown) =>
+        z
+            .strictObject({ listingId: ListingId, summary: Summary, description: Description })
+            .parse(data),
+    )
+    .handler(async ({ data }) => {
+        const reply = await callPlatform("cloud.listings.update", data);
+        return reply.ok ? done(null) : refuse(reply.error);
     });
 
 export const unlistItem = createServerFn({ method: "POST" })
