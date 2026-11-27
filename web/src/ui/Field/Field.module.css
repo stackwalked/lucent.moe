@@ -40,11 +40,19 @@
             border-color var(--t-hover) var(--ease);
     }
 
+    /* A file input brings its own button; the box around it would make two controls of one. */
+    .input[type="file"] {
+        block-size: auto;
+        padding-inline: 0;
+        border: 0;
+        background: none;
+    }
+
     .input::placeholder {
         color: var(--ink-2);
     }
 
-    .input:hover:not(:disabled) {
+    .input:hover:not(:disabled):not([type="file"]) {
         background: var(--floating);
     }
 
