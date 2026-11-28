@@ -18,8 +18,6 @@ function day(at: number): string {
 }
 
 export const COMMANDS_COPY = {
-    link: "link your lucent.moe account",
-    linkCode: "the code from your account's discord page on lucent.moe",
     unlink: "unlink your lucent.moe account",
     me: "your lucent.moe account: products, devices and standing",
     status: "how lucent.moe's products are doing",
@@ -27,11 +25,6 @@ export const COMMANDS_COPY = {
 } as const;
 
 export const REPLIES = {
-    linked: "linked. your roles here now follow your lucent.moe account.",
-    codeInvalid: (page: string) =>
-        `that code doesn't work. codes last ten minutes and work once. get a new one at ${page}`,
-    alreadyLinked:
-        "this discord account or that lucent.moe account is already linked. unlink first.",
     unlinked: "unlinked. the roles your account gave you leave in a moment.",
     notLinked: "this discord account isn't linked.",
     // The same words whether or not any account exists: nothing is said about one.

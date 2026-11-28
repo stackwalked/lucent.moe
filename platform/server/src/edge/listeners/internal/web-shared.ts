@@ -2,6 +2,7 @@ import type { ProductCatalog } from "@lucent/catalog/catalog";
 import { err, ok, type Result } from "@lucent/core/result";
 import type { AccountId, BearerToken, ClientInfo } from "@lucent/core/scalars";
 import type { Caller } from "@lucent/policy/policy";
+import type { DiscordOauth } from "../../../base/adapters/discord/oauth.ts";
 import type { Logger } from "../../../base/core/log.ts";
 import type { DbFailure } from "../../../base/db/pool.ts";
 import type { CloudLimits } from "../../../delivery/cloud/items.rules.ts";
@@ -22,6 +23,8 @@ export type WebRpcContext = {
     // Signs the override document a kill switch changes; null or left out without the loaders'
     // listener, which nothing then serves.
     readonly overrideSigner?: OverrideSigner | null;
+    // Exchanges Discord OAuth codes; null or left out when no Discord application is configured.
+    readonly discordOauth?: DiscordOauth | null;
     // Live presence from the event hub; absent in tests, where nobody is present.
     readonly presentOnline?: (accountId: AccountId) => boolean;
     // Tells the hub the roster's inputs changed (a block, last seen, visibility); absent in tests.

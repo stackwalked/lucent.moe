@@ -80,11 +80,15 @@ tasks:
     deps: ["~:routes", "~:generate", "server:dev"]
     preset: "server"
     options:
-      envFile: "/.config/dev.env"
+      envFile:
+        - "/.config/dev.env"
+        - "/.config/dev.local.env"
   # The production build behind the real entry, for checking it locally.
   start:
     command: "bun src/main.ts"
     deps: ["~:build"]
     preset: "server"
     options:
-      envFile: "/.config/dev.env"
+      envFile:
+        - "/.config/dev.env"
+        - "/.config/dev.local.env"

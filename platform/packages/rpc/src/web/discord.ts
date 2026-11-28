@@ -4,6 +4,7 @@ import { defineContract } from "../contract.ts";
 import { RuleFields, RuleId } from "../discord/rules.ts";
 import {
     Done,
+    OauthCode,
     refusal,
     SessionRefusal,
     SessionRefusals,
@@ -11,8 +12,8 @@ import {
     Unavailable,
 } from "./shared.ts";
 
-// Linking starts here: a signed-in member gets a one-time code and gives it to /link in Discord.
-// Editing the rules takes roles:manage: they map site standing onto Discord roles.
+// A signed-in member links Discord through OAuth. Editing the rules takes roles:manage: they map
+// site standing onto Discord roles.
 
 const Rule = z.object({ id: RuleId, createdAt: EpochMs, fields: RuleFields });
 
@@ -24,16 +25,19 @@ export const discordContract = defineContract({
         output: z.object({ linkedAt: EpochMs.nullable() }),
         error: SessionRefusal,
     },
-    // A new code replaces any earlier one; it works once, until `expiresAt`.
-    "discord.link.start": {
+    // The OAuth code Discord returned to the site: the Discord user who authorized it is linked
+    // to the signed-in account, and joined to the guild. DISCORD_LINK_FAILED also covers a server
+    // with no Discord application configured.
+    "discord.link.finish": {
         session: "member",
         effect: "write",
-        input: z.strictObject({}),
-        output: z.object({ code: z.string(), expiresAt: EpochMs }),
+        input: z.strictObject({ code: OauthCode }),
+        output: Done,
         error: z.discriminatedUnion("code", [
             Unavailable,
             ...SessionRefusals,
             refusal("ALREADY_LINKED"),
+            refusal("DISCORD_LINK_FAILED"),
         ]),
     },
     // The synced roles leave at the connector's next tick.

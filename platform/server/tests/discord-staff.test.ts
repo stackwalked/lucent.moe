@@ -1,12 +1,12 @@
 import { expect, test } from "bun:test";
 import { invariant } from "@lucent/core/contain";
 import { err, ok } from "@lucent/core/result";
-import { createSeededRng, type SeededRng } from "@lucent/core/rng";
+import { createSeededRng } from "@lucent/core/rng";
 import type { AccountId } from "@lucent/core/scalars";
 import { z } from "zod";
 import { execute, queryOne, sql } from "../src/base/db/pool.ts";
 import { readPendingPosts, recordPost } from "../src/edge/discord/feeds.ts";
-import { redeemLinkCode, startDiscordLink } from "../src/edge/discord/links.ts";
+import { linkDiscordAccount } from "../src/edge/discord/links.ts";
 import { addRule } from "../src/edge/discord/rules.ts";
 import { readBrief, readStaffReleases, readWho } from "../src/edge/discord/staff.ts";
 import type { AuthDeps } from "../src/identity/auth/deps.ts";
@@ -23,13 +23,14 @@ const PLAIN = "700000000000000011";
 const NOBODY = "700000000000000012";
 const SUBJECT = "700000000000000013";
 
-async function link(deps: AuthDeps, rng: SeededRng, accountId: AccountId, userId: string) {
-    const code = await startDiscordLink(deps.db, {
-        token: await memberSession(deps, accountId),
-        rng,
-    });
-    invariant(code.ok, "a code was issued");
-    expect(await redeemLinkCode(deps.db, { userId, code: code.value.code })).toEqual(ok(undefined));
+async function link(deps: AuthDeps, accountId: AccountId, userId: string) {
+    expect(
+        await linkDiscordAccount(deps.db, {
+            token: await memberSession(deps, accountId),
+            identity: { userId, username: "someone" },
+            client: null,
+        }),
+    ).toEqual(ok(undefined));
 }
 
 test("a staff read is answered only to a linked account holding the Action, in a staff channel, as of this call", async () => {
@@ -56,9 +57,9 @@ test("a staff read is answered only to a linked account holding the Action, in a
         const plain = await seedAccount(nativeDb, rng, "plain@lucent.test");
         const subject = await seedAccount(nativeDb, rng, "subject@lucent.test");
         await execute(nativeDb, sql`update account set username = 'subject' where id = ${subject}`);
-        await link(deps, rng, reader, READER);
-        await link(deps, rng, plain, PLAIN);
-        await link(deps, rng, subject, SUBJECT);
+        await link(deps, reader, READER);
+        await link(deps, plain, PLAIN);
+        await link(deps, subject, SUBJECT);
 
         const who = (userId: string, channelId: string, text = "subject") =>
             readWho(nativeDb, {

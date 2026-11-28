@@ -40,6 +40,10 @@ export type FakeDiscord = {
     readonly addMember: (userId: string, roles?: readonly string[]) => void;
     // Adds the member and dispatches the join.
     readonly join: (userId: string) => void;
+    // What a user's browser brings back from the OAuth screen: a code that works once, at the
+    // token endpoint, for this user.
+    readonly authorize: (userId: string, username: string) => string;
+    readonly isMember: (userId: string) => boolean;
     readonly roles: (userId: string) => readonly string[];
     // What staff do by hand in Discord.
     readonly setRoles: (userId: string, roles: readonly string[]) => void;
@@ -177,6 +181,11 @@ export function startFakeDiscord(params: {
     const edits: (FakeMessage & { readonly messageId: string })[] = [];
     const deletions: { readonly channelId: string; readonly messageId: string }[] = [];
     const ownInvites = new Set<string>();
+    const authorizations = new Map<
+        string,
+        { readonly userId: string; readonly username: string }
+    >();
+    const accessTokens = new Map<string, { readonly userId: string; readonly username: string }>();
     let commands: readonly string[] = [];
     let nextId = 300_000_000_000_000_000n;
     const newId = () => {
@@ -223,6 +232,15 @@ export function startFakeDiscord(params: {
         pinned: false,
         type: 0,
     });
+    const join = (userId: string): void => {
+        members.set(userId, new Set());
+        dispatch("GUILD_MEMBER_ADD", { guild_id: guildId, ...memberJson(userId) });
+    };
+    // Discord adds the member whether or not a bot is connected to hear of it.
+    const joinByApi = (userId: string): void => {
+        if (socket === null) members.set(userId, new Set());
+        else join(userId);
+    };
     const interact = (data: unknown): Promise<FakeAnswer> =>
         new Promise((resolve) => {
             const token = `token-${newId()}`;
@@ -302,6 +320,48 @@ export function startFakeDiscord(params: {
                         max_concurrency: 1,
                     },
                 });
+            }
+            if (pathname === "/api/v10/oauth2/token" && req.method === "POST") {
+                const form = new URLSearchParams(await req.text());
+                const code = form.get("code") ?? "";
+                const who = authorizations.get(code);
+                const authorized =
+                    req.headers.get("authorization")?.startsWith("Basic ") === true &&
+                    form.get("grant_type") === "authorization_code" &&
+                    form.get("redirect_uri")?.endsWith("/discord/callback") === true;
+                if (!authorized || who === undefined) {
+                    return Response.json({ error: "invalid_grant" }, { status: 400 });
+                }
+                authorizations.delete(code);
+                const accessToken = `access-${newId()}`;
+                accessTokens.set(accessToken, who);
+                return Response.json({
+                    access_token: accessToken,
+                    token_type: "Bearer",
+                    expires_in: 604_800,
+                    scope: "identify guilds.join",
+                });
+            }
+            if (pathname === "/api/v10/users/@me" && req.method === "GET") {
+                const bearer = /^Bearer (.+)$/.exec(req.headers.get("authorization") ?? "");
+                const who = accessTokens.get(bearer?.[1] ?? "");
+                if (who === undefined) return Response.json({ code: 0 }, { status: 401 });
+                return Response.json({ id: who.userId, username: who.username });
+            }
+            const joining = Member.exec(pathname);
+            if (joining !== null && req.method === "PUT") {
+                if (!req.headers.get("authorization")?.startsWith("Bot ")) {
+                    return Response.json({ code: 0 }, { status: 401 });
+                }
+                const userId = joining[2] ?? "";
+                const body = z.object({ access_token: z.string() }).safeParse(await req.json());
+                const who = body.success ? accessTokens.get(body.data.access_token) : undefined;
+                if (joining[1] !== guildId || who?.userId !== userId) {
+                    return Response.json({ code: 50001 }, { status: 403 });
+                }
+                if (members.has(userId)) return new Response(null, { status: 204 });
+                joinByApi(userId);
+                return Response.json(memberJson(userId), { status: 201 });
             }
             const roleChange = RoleChange.exec(pathname);
             if (roleChange !== null) {
@@ -495,10 +555,13 @@ export function startFakeDiscord(params: {
         addMember: (userId, roles = []) => {
             members.set(userId, new Set(roles));
         },
-        join: (userId) => {
-            members.set(userId, new Set());
-            dispatch("GUILD_MEMBER_ADD", { guild_id: guildId, ...memberJson(userId) });
+        join,
+        authorize: (userId, username) => {
+            const code = `code-${newId()}`;
+            authorizations.set(code, { userId, username });
+            return code;
         },
+        isMember: (userId) => members.has(userId),
         roles: (userId) => [...(members.get(userId) ?? [])].sort(),
         setRoles: (userId, roles) => {
             members.set(userId, new Set(roles));

@@ -3,6 +3,7 @@ import { err, ok } from "@lucent/core/result";
 import { DISCORD_RPC_PATH } from "@lucent/rpc/discord/contract";
 import { mountInternalRpc } from "@lucent/rpc/mount";
 import type { Hono } from "hono";
+import type { DiscordOauth } from "../../../base/adapters/discord/oauth.ts";
 import type { Logger } from "../../../base/core/log.ts";
 import type { EpochGuard } from "../../../base/db/epoch-guard.ts";
 import type { CloudLimits } from "../../../delivery/cloud/items.rules.ts";
@@ -31,6 +32,8 @@ export function createInternalWebApp(deps: {
     readonly artifactDir: string | null;
     // Null without the loaders' listener.
     readonly overrideSigner?: OverrideSigner | null;
+    // Null or left out when no Discord application is configured.
+    readonly discordOauth?: DiscordOauth | null;
     readonly logger: Logger;
 }): Hono {
     const events = deps.events ?? createEventHub();
@@ -49,6 +52,7 @@ export function createInternalWebApp(deps: {
                     logger: deps.logger,
                     artifactDir: deps.artifactDir,
                     overrideSigner: deps.overrideSigner ?? null,
+                    discordOauth: deps.discordOauth ?? null,
                     ...(deps.cloudLimits === undefined ? {} : { cloudLimits: deps.cloudLimits }),
                     presentOnline: (accountId: Parameters<typeof events.present>[0]) =>
                         events.present(accountId),

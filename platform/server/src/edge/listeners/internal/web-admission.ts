@@ -4,6 +4,7 @@ import type { Handlers } from "@lucent/rpc/mount";
 import type { WebContract } from "@lucent/rpc/web";
 import {
     approveApplication,
+    claimDiscordForApplication,
     declineApplication,
     listApplications,
     readApplication,
@@ -51,8 +52,22 @@ export const admissionHandlers = {
             done(withinBounds(await setInviteAllowance(ctx.auth.db, { caller, ...input }))),
         ),
 
+    "waitlist.discord.claim": async (ctx, input) =>
+        served(
+            await claimDiscordForApplication(ctx.auth, {
+                code: input.code,
+                discordOauth: ctx.discordOauth ?? null,
+            }),
+        ),
     "waitlist.application.submit": async (ctx, input) =>
-        served(done(await submitApplication(ctx.auth, { input }))),
+        served(
+            done(
+                await submitApplication(ctx.auth, {
+                    input,
+                    discordRequired: ctx.discordOauth != null,
+                }),
+            ),
+        ),
     "admin.applications.list": (ctx, input, call) =>
         asStaff(ctx, call, (caller) =>
             listApplications(ctx.auth.db, { caller, state: input.state }),

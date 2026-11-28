@@ -31,7 +31,10 @@ export function AccountPage() {
                             username={viewer?.username ?? ""}
                         />
                         <NotificationsSection preferences={loaded.preferences} />
-                        <DiscordSection link={loaded.discord} />
+                        <DiscordSection
+                            link={loaded.discord}
+                            configured={loaded.discordConfigured}
+                        />
                         <PrivacySection privacy={loaded.privacy} />
                         <AccountSection dueAt={viewer?.deletionDueAt ?? null} />
                     </>

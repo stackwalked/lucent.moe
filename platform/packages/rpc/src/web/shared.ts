@@ -20,6 +20,13 @@ export const SessionRefusal = z.discriminatedUnion("code", [Unavailable, ...Sess
 
 export const Done = z.object({});
 
+// What Discord sends back to the redirect URI: visible ASCII, bounded, and never logged.
+export const OauthCode = z
+    .string()
+    .min(1)
+    .max(512)
+    .regex(/^[\x21-\x7e]+$/);
+
 // Admin procedures run as a member session's account; `can()` decides, under the step-up rule.
 export const StaffRefusals = [
     Unavailable,

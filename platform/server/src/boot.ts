@@ -4,6 +4,7 @@ import { systemClock } from "@lucent/core/clock";
 import { describeUnknownError, ignoreErrorsSync, invariant, trySync } from "@lucent/core/contain";
 import { err, ok, type Result } from "@lucent/core/result";
 import { systemCryptoRng } from "@lucent/core/rng";
+import { createDiscordOauth } from "./base/adapters/discord/oauth.ts";
 import { openGeo } from "./base/adapters/geo/geo.ts";
 import { createMailTransport, type MailConfig } from "./base/adapters/mail/mail.ts";
 import type { Logger } from "./base/core/log.ts";
@@ -219,6 +220,19 @@ export async function startServer(params: {
         epochGuard,
         webInternalKey: config.webInternalKey,
         artifactDir: config.native?.artifactDir ?? null,
+        discordOauth:
+            config.discordOauth === undefined
+                ? null
+                : createDiscordOauth({
+                      config: config.discordOauth,
+                      redirectUri: `${config.relyingParty.origin}/discord/callback`,
+                      onFailure: (detail) => {
+                          logger.write("warn", "discord oauth failed", {
+                              origin: "discord-oauth",
+                              detail,
+                          });
+                      },
+                  }),
         overrideSigner:
             config.native === null
                 ? null

@@ -13,6 +13,9 @@ const PEER_KEY = "integration-test-peer-key-not-a-secret-0123456789";
 const TOTP_KEYS = `it:${"B".repeat(43)}`;
 const LEASE_SIGNING_KEY = "C".repeat(43);
 const OVERRIDE_SIGNING_KEY = "D".repeat(43);
+const DISCORD_CLIENT_ID = "900000000000000003";
+const DISCORD_CLIENT_SECRET = "integration-test-client-secret-not-a-secret";
+const DISCORD_BOT_TOKEN = "integration-test-bot-token-not-a-secret.0123456789.abcdefghij";
 
 export type RunningPlatform = {
     readonly internalUrl: string;
@@ -69,6 +72,9 @@ export async function startPlatform(params: {
     readonly artifactDir?: string;
     // The Discord connector's peer key; given, the server answers the discord procedures.
     readonly discordInternalKey?: string;
+    // A stand-in for Discord's API (`.../api/v10`) and the guild it holds; given, accounts link
+    // through OAuth against it, with the published values above.
+    readonly discordOauth?: { readonly apiUrl: string; readonly guildId: string };
 }): Promise<RunningPlatform> {
     const databaseUrl = await params.cluster.createDatabase(params.database, "template0");
     const ops = (args: readonly string[]) =>
@@ -125,6 +131,15 @@ export async function startPlatform(params: {
             ...(params.discordInternalKey === undefined
                 ? {}
                 : { LUCENT_DISCORD_INTERNAL_KEY: params.discordInternalKey }),
+            ...(params.discordOauth === undefined
+                ? {}
+                : {
+                      LUCENT_DISCORD_CLIENT_ID: DISCORD_CLIENT_ID,
+                      LUCENT_DISCORD_CLIENT_SECRET: DISCORD_CLIENT_SECRET,
+                      LUCENT_DISCORD_BOT_TOKEN: DISCORD_BOT_TOKEN,
+                      LUCENT_DISCORD_GUILD_ID: params.discordOauth.guildId,
+                      LUCENT_DISCORD_API_URL: params.discordOauth.apiUrl,
+                  }),
         },
     });
     await server.waitFor(/"msg":"listening"/);

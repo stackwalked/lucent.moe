@@ -16,7 +16,7 @@ import {
 } from "@discordjs/core";
 import type { Result } from "@lucent/core/result";
 import type { RpcClient } from "@lucent/rpc/client";
-import { type DiscordContract, LinkCode } from "@lucent/rpc/discord/contract";
+import type { DiscordContract } from "@lucent/rpc/discord/contract";
 import { MessageBody, TicketSubject } from "@lucent/rpc/web/tickets";
 import {
     COMMANDS_COPY,
@@ -30,21 +30,6 @@ import {
 import { createStaffReads, STAFF_COMMANDS, WHO_IS_THIS } from "./staff.ts";
 
 export const COMMANDS: RESTPutAPIApplicationGuildCommandsJSONBody = [
-    {
-        name: "link",
-        description: COMMANDS_COPY.link,
-        type: ApplicationCommandType.ChatInput,
-        options: [
-            {
-                name: "code",
-                description: COMMANDS_COPY.linkCode,
-                type: ApplicationCommandOptionType.String,
-                required: true,
-                min_length: 10,
-                max_length: 11,
-            },
-        ],
-    },
     { name: "unlink", description: COMMANDS_COPY.unlink, type: ApplicationCommandType.ChatInput },
     { name: "me", description: COMMANDS_COPY.me, type: ApplicationCommandType.ChatInput },
     { name: "status", description: COMMANDS_COPY.status, type: ApplicationCommandType.ChatInput },
@@ -155,32 +140,6 @@ export function createInteractions(deps: InteractionDeps) {
                 allowed_mentions: { parse: [] },
             }),
         );
-    }
-
-    async function link(
-        userId: string,
-        code: string | null,
-        username: string | null,
-    ): Promise<Reply> {
-        const typed = LinkCode.safeParse(code ?? "");
-        if (!typed.success) return { content: REPLIES.codeInvalid(linkPage()) };
-        const linked = await platform.call("links.redeem", {
-            userId,
-            code: typed.data,
-            ...(username === null ? {} : { username }),
-        });
-        if (linked.ok) {
-            deps.syncLater(userId);
-            return { content: REPLIES.linked };
-        }
-        switch (linked.error.code) {
-            case "CODE_INVALID":
-                return { content: REPLIES.codeInvalid(linkPage()) };
-            case "ALREADY_LINKED":
-                return { content: REPLIES.alreadyLinked };
-            default:
-                return { content: REPLIES.unavailable };
-        }
     }
 
     async function unlink(userId: string): Promise<Reply> {
@@ -381,15 +340,6 @@ export function createInteractions(deps: InteractionDeps) {
             data: interaction.data,
         };
         switch (command.data.name) {
-            case "link": {
-                const option = command.data.options?.find((o) => o.name === "code");
-                const code =
-                    option?.type === ApplicationCommandOptionType.String ? option.value : null;
-                // The handle Discord shows for the user, stored on the link for the profile.
-                const handle = command.member?.user.username ?? command.user?.username ?? null;
-                await deferThen(command, "ephemeral", () => link(userId, code, handle));
-                return;
-            }
             case "unlink":
                 await deferThen(command, "ephemeral", () => unlink(userId));
                 return;

@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { processEnvironment, readWebConfig } from "../../server/config.ts";
 import { listCredentials } from "../credentials/server.ts";
 import { fetchDevices } from "../devices/server.ts";
 import { fetchDiscordLink } from "../discord/server.ts";
@@ -25,5 +26,16 @@ export const fetchAccount = createServerFn({ method: "GET" })
                 fetchPreferences(),
                 fetchPrivacy({ data }),
             ]);
-        return { credentials, sessions, devices, invites, discord, preferences, privacy };
+        const config = readWebConfig(processEnvironment());
+        const discordConfigured = config.ok && config.value.discordClientId !== null;
+        return {
+            credentials,
+            sessions,
+            devices,
+            invites,
+            discord,
+            discordConfigured,
+            preferences,
+            privacy,
+        };
     });

@@ -1,5 +1,6 @@
 import { err, ok, type Result } from "@lucent/core/result";
 import { isStrongPeerKey, MIN_PEER_KEY_LENGTH } from "@lucent/rpc/contract";
+import { Snowflake } from "@lucent/rpc/discord/rules";
 
 export type WebListen =
     | { readonly kind: "unix"; readonly path: string }
@@ -18,6 +19,8 @@ export type WebConfig = {
     readonly publicOrigin: string;
     // The community server's invite link, when there is one to show.
     readonly discordInvite: string | null;
+    // The Discord application members link through; null means the site has no Discord step.
+    readonly discordClientId: string | null;
 };
 
 // Names the variables and what's wrong with them, never their values: the peer key is a secret.
@@ -29,6 +32,7 @@ export type WebEnvironment = {
     readonly LUCENT_WEB_INTERNAL_KEY: string | undefined;
     readonly LUCENT_PUBLIC_ORIGIN: string | undefined;
     readonly LUCENT_DISCORD_INVITE_URL?: string | undefined;
+    readonly LUCENT_DISCORD_CLIENT_ID?: string | undefined;
 };
 
 function parseListen(raw: string): WebListen | null {
@@ -102,16 +106,29 @@ export function readWebConfig(env: WebEnvironment): Result<WebConfig, ConfigErro
             "LUCENT_DISCORD_INVITE_URL must be an https:// link on discord.gg or discord.com",
         );
     }
+    const rawClientId = env.LUCENT_DISCORD_CLIENT_ID ?? "";
+    const discordClientId = rawClientId === "" ? null : Snowflake.safeParse(rawClientId);
+    if (discordClientId !== null && !discordClientId.success) {
+        problems.push("LUCENT_DISCORD_CLIENT_ID must be the application's id");
+    }
     if (
         problems.length > 0 ||
         listen === null ||
         platform === null ||
         publicOrigin === null ||
-        discordInvite === undefined
+        discordInvite === undefined ||
+        (discordClientId !== null && !discordClientId.success)
     ) {
         return err({ code: "CONFIG_INVALID", problems });
     }
-    return ok({ listen, platform, peerKey, publicOrigin, discordInvite });
+    return ok({
+        listen,
+        platform,
+        peerKey,
+        publicOrigin,
+        discordInvite,
+        discordClientId: discordClientId === null ? null : discordClientId.data,
+    });
 }
 
 // The one read of the process environment (ast-grep: ts-no-ambient-env).
@@ -122,6 +139,7 @@ export function processEnvironment(): WebEnvironment {
         LUCENT_WEB_INTERNAL_KEY,
         LUCENT_PUBLIC_ORIGIN,
         LUCENT_DISCORD_INVITE_URL,
+        LUCENT_DISCORD_CLIENT_ID,
     } = process.env;
     return {
         LUCENT_WEB_LISTEN,
@@ -129,5 +147,6 @@ export function processEnvironment(): WebEnvironment {
         LUCENT_WEB_INTERNAL_KEY,
         LUCENT_PUBLIC_ORIGIN,
         LUCENT_DISCORD_INVITE_URL,
+        LUCENT_DISCORD_CLIENT_ID,
     };
 }

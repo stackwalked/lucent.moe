@@ -6,6 +6,10 @@ import { fetchAccount } from "../../features/account/server.ts";
 import { memberOf } from "../../viewer.ts";
 
 export const Route = createFileRoute("/_member/account/")({
+    validateSearch: (search: Record<string, unknown>): { discord?: "failed" | "taken" } =>
+        search["discord"] === "failed" || search["discord"] === "taken"
+            ? { discord: search["discord"] }
+            : {},
     loader: ({ context }) =>
         fetchAccount({ data: { username: memberOf(context.session)?.username ?? null } }),
     head: () => ({ meta: [{ title: SITE_COPY.pageTitle(ACCOUNT_COPY.title) }] }),

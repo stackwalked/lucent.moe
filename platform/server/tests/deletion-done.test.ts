@@ -320,12 +320,14 @@ test(
             experience: "back again",
             games: "cs2",
             additional: null,
-            discord: "back again",
+            discordClaim: null,
             knownBy: null,
         });
         // The applicant hears the same either way.
         for (const email of ["Sam@lucent.test", "ida@lucent.test", "new@lucent.test"]) {
-            expect(await submitApplication(deps, { input: form(email) })).toEqual(ok(undefined));
+            expect(
+                await submitApplication(deps, { input: form(email), discordRequired: false }),
+            ).toEqual(ok(undefined));
         }
         const queue = await listApplications(db, { caller: staff, state: "pending" });
         invariant(queue.ok, "the queue reads");

@@ -8,7 +8,8 @@ export type LogOrigin =
     | "internal-discord"
     | "native"
     | "jobs"
-    | "breach-check";
+    | "breach-check"
+    | "discord-oauth";
 
 // A closed set of fields: a value only reaches the log through a field named here, so a request
 // body, a token or an email can't be logged by passing an object along.

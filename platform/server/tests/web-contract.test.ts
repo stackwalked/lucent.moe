@@ -262,7 +262,7 @@ const inputs: SinglePurpose = {
     "admin.system.status.read": {},
     "admin.system.usage.read": { endingWith: null },
     "discord.link.read": {},
-    "discord.link.start": {},
+    "discord.link.finish": { code: "abc" },
     "discord.link.remove": {},
     "admin.discord.rules.list": {},
     "admin.discord.rules.add": {

@@ -5,6 +5,7 @@ import { createSeededRng, type SeededRng } from "@lucent/core/rng";
 import { type AccountId, BearerToken } from "@lucent/core/scalars";
 import { webContract } from "@lucent/rpc/web";
 import { z } from "zod";
+import type { DiscordOauth } from "../src/base/adapters/discord/oauth.ts";
 import { createMailTransport } from "../src/base/adapters/mail/mail.ts";
 import { type Db, execute, queryAll, sql } from "../src/base/db/pool.ts";
 import { withTx } from "../src/base/db/tx.ts";
@@ -12,6 +13,7 @@ import { sweepRetention } from "../src/base/jobs/retention.ts";
 import {
     type ApplicationInput,
     approveApplication,
+    claimDiscordForApplication,
     declineApplication,
     listApplications,
     readApplication,
@@ -52,7 +54,7 @@ function inWorld(seed: number, run: (world: World) => Promise<void>) {
 
 const form = (email: string): ApplicationInput => ({
     email,
-    discord: "someone",
+    discordClaim: null,
     experience: "i play a lot.\n<b>not markup</b>",
     games: "cs2",
     knownBy: "@Founder",
@@ -61,7 +63,24 @@ const form = (email: string): ApplicationInput => ({
 
 const ApplicationForm = webContract["waitlist.application.submit"].input;
 
-const submit = (world: World, input: ApplicationInput) => submitApplication(world.deps, { input });
+const submit = (world: World, input: ApplicationInput) =>
+    submitApplication(world.deps, { input, discordRequired: false });
+
+const DISCORD_USER = "800000000000000001";
+
+// Discord as the adapter would have answered: this user authorized.
+const identifying = (userId: string, username: string): DiscordOauth => ({
+    identify: () => Promise.resolve(ok({ userId, username })),
+});
+
+async function claim(world: World, userId: string, username: string): Promise<BearerToken> {
+    const claimed = await claimDiscordForApplication(world.deps, {
+        code: "code",
+        discordOauth: identifying(userId, username),
+    });
+    invariant(claimed.ok, "the Discord user was claimed");
+    return claimed.value.claim;
+}
 
 const count = (db: Db, statement: ReturnType<typeof sql>) =>
     scalar(db, z.coerce.number(), statement);
@@ -105,7 +124,9 @@ test(
             games: "cs2",
             experience: "i play a lot.\n<b>not markup</b>",
             additional: "streams",
-            discord: "someone",
+            discord: "",
+            discordUserId: null,
+            discordAccount: null,
             knownBy: "@Founder",
             knownByMember: { username: "founder" },
             state: "pending",
@@ -205,9 +226,9 @@ test(
 );
 
 test.each([
-    ["a handle of one character", { discord: "x" }],
-    ["a handle of 33 characters", { discord: "x".repeat(33) }],
-    ["a handle over two lines", { discord: "some\none" }],
+    ["a handle typed in", { discord: "someone" }],
+    ["a claim that is not a token", { discordClaim: "not a token" }],
+    ["no claim field", { discordClaim: undefined }],
     ["no experience", { experience: "  " }],
     ["experience over 1,000 characters", { experience: "x".repeat(1001) }],
     ["no games", { games: "" }],
@@ -222,16 +243,16 @@ test.each([
 test("the form takes the limits themselves, and the optional answers left out", () => {
     const limits = {
         email: "a@lucent.test",
-        discord: "x".repeat(32),
+        discordClaim: "x".repeat(43),
         experience: "x".repeat(1000),
         games: "x".repeat(300),
         knownBy: null,
         additional: "x".repeat(1000),
     };
     expect(ApplicationForm.safeParse(limits).success).toBe(true);
-    expect(ApplicationForm.safeParse({ ...limits, discord: "xy", additional: null }).success).toBe(
-        true,
-    );
+    expect(
+        ApplicationForm.safeParse({ ...limits, discordClaim: null, additional: null }).success,
+    ).toBe(true);
 });
 
 test(
@@ -560,5 +581,179 @@ test(
         ).toEqual(ok(1));
         const worker = { db: world.db, mail: await createMailTransport({ provider: "log" }) };
         expect(await claimMail(worker)).toEqual(ok(null));
+    }),
+);
+
+const rows = (world: World) =>
+    queryAll(
+        world.db,
+        z.object({
+            email: z.string(),
+            discord: z.string(),
+            discord_user_id: z.string().nullable(),
+        }),
+        sql`select email, discord, discord_user_id from application order by id`,
+    );
+
+test(
+    "a Discord claim is spent by the application that takes it, and is not honoured once it has expired",
+    inWorld(9212, async (world) => {
+        const withClaim = (email: string, discordClaim: BearerToken | null) =>
+            submitApplication(world.deps, {
+                input: { ...form(email), discordClaim },
+                discordRequired: true,
+            });
+        const first = await claim(world, DISCORD_USER, "casey");
+        expect(await withClaim("casey@lucent.test", first)).toEqual(ok(undefined));
+        expect(await rows(world)).toEqual(
+            ok([{ email: "casey@lucent.test", discord: "casey", discord_user_id: DISCORD_USER }]),
+        );
+        expect(await withClaim("again@lucent.test", first)).toEqual(
+            err({ code: "DISCORD_LINK_REQUIRED" }),
+        );
+
+        const lapsed = await claim(world, "800000000000000002", "dee");
+        expect(
+            await execute(
+                world.db,
+                sql`update application_discord_claim set expires_at = now() - interval '1 second'`,
+            ),
+        ).toEqual(ok(1));
+        expect(await withClaim("dee@lucent.test", lapsed)).toEqual(
+            err({ code: "DISCORD_LINK_REQUIRED" }),
+        );
+        const left = await rows(world);
+        expect(left.ok && left.value).toHaveLength(1);
+    }),
+);
+
+test(
+    "a required Discord link opens no application without a claim, and none is needed when Discord is not configured",
+    inWorld(9213, async (world) => {
+        expect(
+            await submitApplication(world.deps, {
+                input: form("nolink@lucent.test"),
+                discordRequired: true,
+            }),
+        ).toEqual(err({ code: "DISCORD_LINK_REQUIRED" }));
+        expect(await rows(world)).toEqual(ok([]));
+        expect(await submit(world, form("plain@lucent.test"))).toEqual(ok(undefined));
+        expect(await rows(world)).toEqual(
+            ok([{ email: "plain@lucent.test", discord: "", discord_user_id: null }]),
+        );
+    }),
+);
+
+test(
+    "a second pending application by one Discord user under another address changes nothing and answers the same",
+    inWorld(9214, async (world) => {
+        const apply = async (email: string) =>
+            submitApplication(world.deps, {
+                input: { ...form(email), discordClaim: await claim(world, DISCORD_USER, "casey") },
+                discordRequired: true,
+            });
+        expect(await apply("one@lucent.test")).toEqual(ok(undefined));
+        expect(await apply("two@lucent.test")).toEqual(ok(undefined));
+        expect((await onlyPending(world)).map((a) => a.email)).toEqual(["one@lucent.test"]);
+    }),
+);
+
+test(
+    "approving links the Discord user the applicant verified to the new account, and says so in the audit",
+    inWorld(9215, async (world) => {
+        const staff = await reviewer(world);
+        await submitApplication(world.deps, {
+            input: {
+                ...form("link@lucent.test"),
+                discordClaim: await claim(world, DISCORD_USER, "casey"),
+            },
+            discordRequired: true,
+        });
+        const [item] = await onlyPending(world);
+        invariant(item !== undefined, "the application waits");
+        const before = await readApplication(world.db, {
+            caller: staff,
+            applicationId: item.applicationId,
+        });
+        expect(before.ok && before.value).toMatchObject({
+            discord: "casey",
+            discordUserId: DISCORD_USER,
+            discordAccount: null,
+        });
+        const approved = await approveApplication(world.deps, {
+            caller: staff,
+            applicationId: item.applicationId,
+        });
+        invariant(approved.ok, "approved");
+        const { accountId } = approved.value;
+        expect(
+            await queryAll(
+                world.db,
+                z.object({
+                    account_id: z.string(),
+                    discord_user_id: z.string(),
+                    username: z.string(),
+                }),
+                sql`select account_id, discord_user_id, username from connector_discord_link`,
+            ),
+        ).toEqual(
+            ok([{ account_id: accountId, discord_user_id: DISCORD_USER, username: "casey" }]),
+        );
+        expect(
+            await queryAll(
+                world.db,
+                z.object({ actor: z.string(), account: z.string(), user: z.string() }),
+                sql`select actor_id as actor, target ->> 'accountId' as account,
+                           target ->> 'discordUserId' as "user"
+                    from audit where operation = 'discord.link'
+                      and target ->> 'applicationId' = ${item.applicationId}`,
+            ),
+        ).toEqual(ok([{ actor: staff.accountId, account: accountId, user: DISCORD_USER }]));
+        const after = await readApplication(world.db, {
+            caller: staff,
+            applicationId: item.applicationId,
+        });
+        expect(after.ok && after.value.discordAccount).toEqual({ accountId, username: null });
+    }),
+);
+
+test(
+    "approving when the Discord user is linked to another account approves without a link or an audit row",
+    inWorld(9216, async (world) => {
+        const staff = await reviewer(world);
+        const holder = await seedAccount(world.db, world.rng, "holder@lucent.test");
+        await execute(
+            world.db,
+            sql`insert into connector_discord_link (account_id, discord_user_id, linked_at)
+                values (${holder}, ${DISCORD_USER}, now())`,
+        );
+        await submitApplication(world.deps, {
+            input: {
+                ...form("late@lucent.test"),
+                discordClaim: await claim(world, DISCORD_USER, "casey"),
+            },
+            discordRequired: true,
+        });
+        const [item] = await onlyPending(world);
+        invariant(item !== undefined, "the application opens for staff to see");
+        const read = await readApplication(world.db, {
+            caller: staff,
+            applicationId: item.applicationId,
+        });
+        expect(read.ok && read.value.discordAccount).toMatchObject({ accountId: holder });
+        const approved = await approveApplication(world.deps, {
+            caller: staff,
+            applicationId: item.applicationId,
+        });
+        expect(approved.ok).toBe(true);
+        expect(
+            await count(world.db, sql`select count(*) as value from connector_discord_link`),
+        ).toBe(1);
+        expect(
+            await count(
+                world.db,
+                sql`select count(*) as value from audit where operation = 'discord.link'`,
+            ),
+        ).toBe(0);
     }),
 );

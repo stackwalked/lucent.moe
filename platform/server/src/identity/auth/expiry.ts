@@ -8,8 +8,8 @@ export type Deleted = {
     readonly setupLinks: number;
 };
 
-// Every read already ignores an expired session, flow or setup link; this only stops them piling
-// up. Each delete stands alone: a row that expires in between is the next run's.
+// Every read already ignores an expired session, flow, setup link or Discord claim; this only
+// stops them piling up. Each delete stands alone: a row that expires in between is the next run's.
 export async function deleteExpiredAuth(db: Db): Promise<Result<Deleted, DbFailure>> {
     const sessions = await execute(db, sql`delete from browser_session where expires_at <= now()`);
     if (!sessions.ok) return sessions;
@@ -19,6 +19,11 @@ export async function deleteExpiredAuth(db: Db): Promise<Result<Deleted, DbFailu
     if (!setupLinks.ok) return setupLinks;
     const resets = await execute(db, sql`delete from password_reset where expires_at <= now()`);
     if (!resets.ok) return resets;
+    const claims = await execute(
+        db,
+        sql`delete from application_discord_claim where expires_at <= now()`,
+    );
+    if (!claims.ok) return claims;
     return ok({ sessions: sessions.value, flows: flows.value, setupLinks: setupLinks.value });
 }
 

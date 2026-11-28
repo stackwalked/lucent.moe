@@ -1,6 +1,7 @@
 import { AccountId, EpochMs } from "@lucent/core/scalars";
 import { z } from "zod";
 import { defineContract } from "../contract.ts";
+import { Snowflake } from "../discord/rules.ts";
 import { Done, ReadRefusal, refusal, StaffRefusals } from "./shared.ts";
 
 const ApplicationId = z.string().regex(/^[1-9][0-9]{0,18}$/);
@@ -38,7 +39,13 @@ export const applicationsContract = defineContract({
         effect: "read",
         input: z.strictObject({ applicationId: ApplicationId }),
         output: ApplicationSummary.extend({
+            // The handle: as typed when `discordUserId` is null, else the one Discord verified.
             discord: z.string(),
+            discordUserId: Snowflake.nullable(),
+            // The account that Discord user is linked to now, if any.
+            discordAccount: z
+                .object({ accountId: AccountId, username: z.string().nullable() })
+                .nullable(),
             experience: z.string(),
             additional: z.string().nullable(),
             // The account whose username matches `knownBy`, if one does.

@@ -18,6 +18,10 @@ export const APPLICATION_EVENTS = ["submit", "approve", "decline"] as const;
 
 export const REAPPLY_AFTER_MS = 30 * 24 * 60 * 60_000;
 
+// How long the Discord user an applicant verified is held for the form: long enough to fill it in
+// without the link being redone, short enough that a forgotten tab holds nothing for long.
+export const DISCORD_CLAIM_TTL_MS = 60 * 60_000;
+
 // What the decision reads besides the state: whether the address has an account, and when the
 // application in `state` was decided.
 export type ApplicationFacts = {

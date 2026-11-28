@@ -1,8 +1,9 @@
 import { invariant } from "@lucent/core/contain";
 import { err, ok, type Result } from "@lucent/core/result";
-import { AccountId, EpochMs } from "@lucent/core/scalars";
+import { AccountId, type BearerToken, EpochMs } from "@lucent/core/scalars";
 import type { AuthzRefusal, Caller } from "@lucent/policy/policy";
 import { z } from "zod";
+import type { DiscordOauth } from "../../base/adapters/discord/oauth.ts";
 import { appendAudit } from "../../base/db/audit.ts";
 import {
     type Db,
@@ -17,11 +18,13 @@ import {
 } from "../../base/db/pool.ts";
 import { withTx } from "../../base/db/tx.ts";
 import type { AuthDeps } from "../auth/deps.ts";
+import { hashToken, issueToken } from "../auth/tokens.ts";
 import { type Forbidden, lockAuthorized, readAsStaff } from "../authority/staff.ts";
 import { insertAccount } from "../authority/writers.ts";
 import {
     type ApplicationFacts,
     type ApplicationState,
+    DISCORD_CLAIM_TTL_MS,
     decideApplication,
 } from "./applications.rules.ts";
 import { queueSetupMail } from "./setup-mail.ts";
@@ -44,21 +47,74 @@ const SUBMIT_FLOOR_MS = 350;
 // not reach the applicant, so only staff's read of the application resolves it.
 export type ApplicationInput = {
     readonly email: string;
-    readonly discord: string;
+    readonly discordClaim: BearerToken | null;
     readonly experience: string;
     readonly games: string;
     readonly knownBy: string | null;
     readonly additional: string | null;
 };
 
+type VerifiedDiscord = { readonly userId: string; readonly username: string };
+
+// Verifies a Discord user for the form. The OAuth exchange comes first, with no transaction open;
+// only the verified identity is stored, under a token the browser keeps.
+export async function claimDiscordForApplication(
+    deps: AuthDeps,
+    params: { readonly code: string; readonly discordOauth: DiscordOauth | null },
+): Promise<
+    Result<
+        { readonly claim: BearerToken; readonly username: string },
+        DbFailure | { readonly code: "DISCORD_LINK_FAILED" }
+    >
+> {
+    if (params.discordOauth === null) return err({ code: "DISCORD_LINK_FAILED" });
+    const identity = await params.discordOauth.identify(params.code);
+    if (!identity.ok) return identity;
+    const issued = await issueToken(deps.rng);
+    const stored = await withTx(deps.db, async (tx, txNow) => {
+        const expiresAt = EpochMs.parse(txNow + DISCORD_CLAIM_TTL_MS);
+        return await execute(
+            tx,
+            sql`insert into application_discord_claim (token_hash, discord_user_id, username, expires_at)
+                values (${issued.hash}, ${identity.value.userId}, ${identity.value.username},
+                        ${toTimestamptz(expiresAt)}::timestamptz)`,
+        );
+    });
+    if (!stored.ok) return stored;
+    return ok({ claim: issued.token, username: identity.value.username });
+}
+
+// The claim is spent by the application that takes it, whether or not that application opens.
+async function takeClaim(
+    tx: Tx,
+    token: BearerToken | null,
+    txNow: EpochMs,
+): Promise<Result<VerifiedDiscord | null, DbFailure>> {
+    if (token === null) return ok(null);
+    const row = await queryOne(
+        tx,
+        z.object({ discord_user_id: z.string(), username: z.string(), expires_at: EpochMs }),
+        sql`delete from application_discord_claim where token_hash = ${await hashToken(token)}
+            returning discord_user_id, username, expires_at`,
+    );
+    if (!row.ok) return row;
+    if (row.value === null || row.value.expires_at <= txNow) return ok(null);
+    return ok({ userId: row.value.discord_user_id, username: row.value.username });
+}
+
 export async function submitApplication(
     deps: AuthDeps,
-    params: { readonly input: ApplicationInput },
-): Promise<Result<void, DbFailure>> {
+    params: { readonly input: ApplicationInput; readonly discordRequired: boolean },
+): Promise<Result<void, DbFailure | { readonly code: "DISCORD_LINK_REQUIRED" }>> {
     const padding = Bun.sleep(SUBMIT_FLOOR_MS);
     const email = params.input.email.trim().toLowerCase();
     const digests = await deps.emailHasher.candidates(email);
     const result = await withTx(deps.db, async (tx, txNow) => {
+        const discord = await takeClaim(tx, params.input.discordClaim, txNow);
+        if (!discord.ok) return discord;
+        if (params.discordRequired && discord.value === null) {
+            return err({ code: "DISCORD_LINK_REQUIRED" as const });
+        }
         const facts = await readAddress(tx, email);
         if (!facts.ok) return facts;
         const returning = await findSuspendedTombstone(tx, digests);
@@ -69,15 +125,17 @@ export async function submitApplication(
             facts: { ...facts.value, now: txNow },
         });
         if (!plan.ok || plan.value !== "open") return ok(undefined);
-        // A concurrent submission for the address may have opened one since: it stands.
+        // A concurrent submission for the address, or one by the same Discord user under another
+        // address, may have opened one since: it stands.
         const opened = await execute(
             tx,
-            sql`insert into application (email, discord, experience, games, known_by, additional,
-                                         created_at, returning_account_id)
-                values (${email}, ${params.input.discord}, ${params.input.experience},
-                        ${params.input.games}, ${params.input.knownBy}, ${params.input.additional},
-                        ${toTimestamptz(txNow)}::timestamptz, ${returning.value})
-                on conflict (email) where state = 'pending' do nothing`,
+            sql`insert into application (email, discord, discord_user_id, experience, games,
+                                         known_by, additional, created_at, returning_account_id)
+                values (${email}, ${discord.value?.username ?? ""}, ${discord.value?.userId ?? null},
+                        ${params.input.experience}, ${params.input.games}, ${params.input.knownBy},
+                        ${params.input.additional}, ${toTimestamptz(txNow)}::timestamptz,
+                        ${returning.value})
+                on conflict do nothing`,
         );
         return opened.ok ? ok(undefined) : opened;
     });
@@ -204,7 +262,14 @@ export async function listApplications(
 export type Application = ApplicationSummary & {
     readonly experience: string;
     readonly additional: string | null;
+    // The handle: as typed when `discordUserId` is null, else the one Discord verified.
     readonly discord: string;
+    readonly discordUserId: string | null;
+    // The account that Discord user is linked to now.
+    readonly discordAccount: {
+        readonly accountId: AccountId;
+        readonly username: string | null;
+    } | null;
     // The member the applicant named, if a username matches; it says nothing more than that.
     readonly knownByMember: { readonly accountId: AccountId; readonly username: string } | null;
     readonly decidedBy: z.output<typeof Person> | null;
@@ -225,19 +290,26 @@ export async function readApplication(
                     experience: z.string(),
                     additional: z.string().nullable(),
                     discord: z.string(),
+                    discord_user_id: z.string().nullable(),
+                    linked_account_id: AccountId.nullable(),
+                    linked_username: z.string().nullable(),
                     known_id: AccountId.nullable(),
                     known_username: z.string().nullable(),
                     decided_by: z.string().nullable(),
                     decider_username: z.string().nullable(),
                     account_id: AccountId.nullable(),
                 }),
-                sql`select ${SUMMARY_COLUMNS}, a.experience, a.additional, a.discord, k.id as known_id,
+                sql`select ${SUMMARY_COLUMNS}, a.experience, a.additional, a.discord, a.discord_user_id,
+                       l.account_id as linked_account_id, la.username as linked_username,
+                       k.id as known_id,
                        k.username as known_username, a.decided_by,
                        d.username as decider_username, a.account_id
                 from application a
                 left join account k
                     on k.username = lower(ltrim(a.known_by, '@'))
                 left join account d on d.id = a.decided_by
+                left join connector_discord_link l on l.discord_user_id = a.discord_user_id
+                left join account la on la.id = l.account_id
                 where a.id = ${params.applicationId}::bigint`,
             );
             if (!row.ok) return row;
@@ -248,6 +320,11 @@ export async function readApplication(
                 experience: found.experience,
                 additional: found.additional,
                 discord: found.discord,
+                discordUserId: found.discord_user_id,
+                discordAccount:
+                    found.linked_account_id === null
+                        ? null
+                        : { accountId: found.linked_account_id, username: found.linked_username },
                 knownByMember:
                     found.known_id === null || found.known_username === null
                         ? null
@@ -281,8 +358,10 @@ async function lockApplication(tx: Tx, applicationId: string) {
             state: z.enum(["pending", "approved", "declined"]),
             decided_at: EpochMs.nullable(),
             has_account: z.boolean(),
+            discord: z.string(),
+            discord_user_id: z.string().nullable(),
         }),
-        sql`select email, state, decided_at,
+        sql`select email, state, decided_at, discord, discord_user_id,
                    exists (select from account x where x.email = application.email) as has_account
             from application where id = ${applicationId}::bigint for update`,
     );
@@ -335,6 +414,20 @@ export async function approveApplication(
                 where id = ${params.applicationId}::bigint`,
         );
         if (!decided.ok) return decided;
+        // The Discord user the applicant verified is the new account's, unless another account
+        // holds them already: the approval then goes through without a link.
+        const linked =
+            row.value.discord_user_id === null
+                ? null
+                : await execute(
+                      tx,
+                      sql`insert into connector_discord_link
+                              (account_id, discord_user_id, linked_at, username)
+                          values (${accountId}, ${row.value.discord_user_id}, now(),
+                                  ${row.value.discord})
+                          on conflict do nothing`,
+                  );
+        if (linked !== null && !linked.ok) return linked;
         const audited = await appendAudit(tx, {
             actorId: params.caller.accountId,
             client: params.caller.client,
@@ -343,6 +436,22 @@ export async function approveApplication(
             at: txNow,
         });
         if (!audited.ok) return audited;
+        if (linked !== null && linked.value === 1 && row.value.discord_user_id !== null) {
+            // The connector reads the Discord user from here, as for a link made on the site.
+            const linkAudited = await appendAudit(tx, {
+                actorId: params.caller.accountId,
+                client: params.caller.client,
+                operation: "discord.link",
+                target: {
+                    accountId,
+                    discordUserId: row.value.discord_user_id,
+                    via: "application",
+                    applicationId: params.applicationId,
+                },
+                at: txNow,
+            });
+            if (!linkAudited.ok) return linkAudited;
+        }
         const queued = await queueSetupMail(tx, { origin: deps.rp.origin, email, setupToken });
         if (!queued.ok) return queued;
         return ok({ accountId });

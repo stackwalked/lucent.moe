@@ -1,5 +1,6 @@
 import { err, ok, type Result } from "@lucent/core/result";
 import { isStrongPeerKey, MIN_PEER_KEY_LENGTH } from "@lucent/rpc/contract";
+import { Snowflake } from "@lucent/rpc/discord/rules";
 import { z } from "zod";
 import type { MailConfig } from "./base/adapters/mail/mail.ts";
 import { PWNED_PASSWORDS_URL } from "./identity/auth/breach.ts";
@@ -32,6 +33,18 @@ export type ServerConfig = {
     // The DB-IP Lite country file (.mmdb) sign-ins are placed with, read from disk and read again
     // when it changes; absent, no sign-in is judged by country.
     readonly geoCountryFile?: string;
+    // The Discord application that links accounts through OAuth and joins applicants to the
+    // guild; absent, there is no Discord step and nothing is verified.
+    readonly discordOauth?: DiscordOauthConfig;
+};
+
+export type DiscordOauthConfig = {
+    readonly clientId: string;
+    readonly clientSecret: string;
+    // The bot of the same application: it adds the user to the guild, so this process holds it too.
+    readonly botToken: string;
+    readonly guildId: string;
+    readonly apiUrl: string;
 };
 
 // Where loaders reach the server, and the key that signs their leases. The origin is what DPoP
@@ -93,7 +106,19 @@ export type Environment = {
     readonly LUCENT_CODE_PUBLIC_KEY?: string | undefined;
     readonly LUCENT_FACTS_PUBLIC_KEYS?: string | undefined;
     readonly LUCENT_GEO_MMDB?: string | undefined;
+    readonly LUCENT_DISCORD_CLIENT_ID?: string | undefined;
+    readonly LUCENT_DISCORD_CLIENT_SECRET?: string | undefined;
+    readonly LUCENT_DISCORD_BOT_TOKEN?: string | undefined;
+    readonly LUCENT_DISCORD_GUILD_ID?: string | undefined;
+    readonly LUCENT_DISCORD_API_URL?: string | undefined;
 };
+
+const DISCORD_API_URL = "https://discord.com/api/v10";
+
+function discordApiUrl(env: Environment): string {
+    const raw = env.LUCENT_DISCORD_API_URL ?? "";
+    return raw === "" ? DISCORD_API_URL : raw;
+}
 
 const POSTGRES_URL = /^postgres(?:ql)?:\/\/./;
 
@@ -241,6 +266,40 @@ function readNativeConfig(env: Environment, problems: string[]): NativeConfig | 
     return { listen, origin, leaseSigningSeed, overrideSigningSeed, artifactDir: raw.artifactDir };
 }
 
+// On only with both the application's id and its secret. Compose passes the bot token and guild
+// to every service on a host, so without them the rest is ignored rather than half-validated: a
+// host that runs only the connector still starts this server.
+function readDiscordOauthConfig(env: Environment, problems: string[]): DiscordOauthConfig | null {
+    const clientId = env.LUCENT_DISCORD_CLIENT_ID ?? "";
+    const clientSecret = env.LUCENT_DISCORD_CLIENT_SECRET ?? "";
+    if (clientId === "" && clientSecret === "") return null;
+    if (clientId === "" || clientSecret === "") {
+        problems.push("LUCENT_DISCORD_CLIENT_ID and LUCENT_DISCORD_CLIENT_SECRET go together");
+        return null;
+    }
+    const botToken = env.LUCENT_DISCORD_BOT_TOKEN ?? "";
+    const guildId = env.LUCENT_DISCORD_GUILD_ID ?? "";
+    const apiUrl = discordApiUrl(env);
+    const before = problems.length;
+    if (!Snowflake.safeParse(clientId).success) {
+        problems.push("LUCENT_DISCORD_CLIENT_ID must be the application's id");
+    }
+    if (!/^[\x21-\x7e]{16,128}$/.test(clientSecret)) {
+        problems.push("LUCENT_DISCORD_CLIENT_SECRET must be 16 to 128 visible ASCII characters");
+    }
+    if (!/^[A-Za-z0-9_.-]{50,200}$/.test(botToken)) {
+        problems.push("LUCENT_DISCORD_BOT_TOKEN must be the bot's token from the developer portal");
+    }
+    if (!Snowflake.safeParse(guildId).success) {
+        problems.push("LUCENT_DISCORD_GUILD_ID must be the guild's id");
+    }
+    if (!/^https?:\/\/[^/?#]+(?:\/[^?#]*)?$/.test(apiUrl) || apiUrl.endsWith("/")) {
+        problems.push("LUCENT_DISCORD_API_URL must be an http(s) URL without a trailing /");
+    }
+    if (problems.length > before) return null;
+    return { clientId, clientSecret, botToken, guildId, apiUrl };
+}
+
 function readDatabaseUrl(env: Environment, problems: string[]): string {
     const url = env.LUCENT_DATABASE_URL ?? "";
     if (!POSTGRES_URL.test(url)) {
@@ -295,6 +354,7 @@ export function readServerConfig(env: Environment): Result<ServerConfig, ConfigE
         problems.push("LUCENT_PWNED_PASSWORDS_URL must be an http(s) URL ending in /");
     }
     const native = readNativeConfig(env, problems);
+    const discordOauth = readDiscordOauthConfig(env, problems);
     const geoCountryFile = env.LUCENT_GEO_MMDB ?? "";
     const relyingParty = parseRelyingParty(
         env.LUCENT_WEBAUTHN_RP_ID ?? "",
@@ -314,6 +374,9 @@ export function readServerConfig(env: Environment): Result<ServerConfig, ConfigE
         }
         if (passwordOnly) {
             problems.push("LUCENT_DEV_PASSWORD_ONLY is for a localhost WebAuthn origin only");
+        }
+        if (discordApiUrl(env) !== DISCORD_API_URL) {
+            problems.push("LUCENT_DISCORD_API_URL is for a localhost WebAuthn origin only");
         }
         if (native?.leaseSigningSeed.every((byte) => byte === 0) === true) {
             problems.push("LUCENT_LEASE_SIGNING_KEY is the published dev key (all zero bytes)");
@@ -345,6 +408,7 @@ export function readServerConfig(env: Environment): Result<ServerConfig, ConfigE
         pwnedPasswordsUrl,
         native,
         ...(geoCountryFile === "" ? {} : { geoCountryFile }),
+        ...(discordOauth === null ? {} : { discordOauth }),
     });
 }
 
@@ -406,6 +470,11 @@ export function processEnvironment(): Environment {
         LUCENT_CODE_PUBLIC_KEY,
         LUCENT_FACTS_PUBLIC_KEYS,
         LUCENT_GEO_MMDB,
+        LUCENT_DISCORD_CLIENT_ID,
+        LUCENT_DISCORD_CLIENT_SECRET,
+        LUCENT_DISCORD_BOT_TOKEN,
+        LUCENT_DISCORD_GUILD_ID,
+        LUCENT_DISCORD_API_URL,
     } = process.env;
     return {
         LUCENT_MAIL_PROVIDER,
@@ -429,6 +498,11 @@ export function processEnvironment(): Environment {
         LUCENT_CODE_PUBLIC_KEY,
         LUCENT_FACTS_PUBLIC_KEYS,
         LUCENT_GEO_MMDB,
+        LUCENT_DISCORD_CLIENT_ID,
+        LUCENT_DISCORD_CLIENT_SECRET,
+        LUCENT_DISCORD_BOT_TOKEN,
+        LUCENT_DISCORD_GUILD_ID,
+        LUCENT_DISCORD_API_URL,
     };
 }
 

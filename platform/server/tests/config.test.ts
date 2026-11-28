@@ -166,6 +166,72 @@ test("the published dev keys and password-only sign-in are refused unless browse
     expect(local.ok && local.value.passwordOnly).toBe(true);
 });
 
+const DISCORD = {
+    LUCENT_DISCORD_CLIENT_ID: "900000000000000003",
+    LUCENT_DISCORD_CLIENT_SECRET: "s".repeat(32),
+    LUCENT_DISCORD_BOT_TOKEN: `bot.${"t".repeat(66)}`,
+    LUCENT_DISCORD_GUILD_ID: "500000000000000001",
+};
+
+test("discord OAuth is on only with an application id and secret, which then need the bot and guild", () => {
+    const on = readServerConfig(env(DISCORD));
+    expect(on.ok && on.value.discordOauth).toEqual({
+        clientId: DISCORD.LUCENT_DISCORD_CLIENT_ID,
+        clientSecret: DISCORD.LUCENT_DISCORD_CLIENT_SECRET,
+        botToken: DISCORD.LUCENT_DISCORD_BOT_TOKEN,
+        guildId: DISCORD.LUCENT_DISCORD_GUILD_ID,
+        apiUrl: "https://discord.com/api/v10",
+    });
+    for (const [missing, problem] of [
+        ["LUCENT_DISCORD_BOT_TOKEN", "LUCENT_DISCORD_BOT_TOKEN"],
+        ["LUCENT_DISCORD_GUILD_ID", "LUCENT_DISCORD_GUILD_ID"],
+    ] as const) {
+        const refused = readServerConfig(env({ ...DISCORD, [missing]: undefined }));
+        expect(!refused.ok && refused.error.problems.join(" ")).toContain(problem);
+        expect(JSON.stringify(refused)).not.toContain(DISCORD.LUCENT_DISCORD_CLIENT_SECRET);
+    }
+    for (const half of ["LUCENT_DISCORD_CLIENT_ID", "LUCENT_DISCORD_CLIENT_SECRET"] as const) {
+        const refused = readServerConfig(env({ ...DISCORD, [half]: "" }));
+        expect(refused.ok).toBe(false);
+    }
+    const shortSecret = readServerConfig(
+        env({ ...DISCORD, LUCENT_DISCORD_CLIENT_SECRET: "short" }),
+    );
+    expect(!shortSecret.ok && shortSecret.error.problems).toEqual([
+        "LUCENT_DISCORD_CLIENT_SECRET must be 16 to 128 visible ASCII characters",
+    ]);
+});
+
+test("the bot token and guild alone, as compose passes them to a host running only the connector, leave OAuth off", () => {
+    const off = readServerConfig(
+        env({
+            LUCENT_DISCORD_BOT_TOKEN: "not even a token",
+            LUCENT_DISCORD_GUILD_ID: "nope",
+            LUCENT_DISCORD_CLIENT_ID: "",
+            LUCENT_DISCORD_CLIENT_SECRET: "",
+        }),
+    );
+    expect(off.ok && off.value.discordOauth).toBeUndefined();
+});
+
+test("the Discord API URL is overridden only where browsers reach the server from this machine", () => {
+    const standIn = { ...DISCORD, LUCENT_DISCORD_API_URL: "http://127.0.0.1:9000/api/v10" };
+    const released = readServerConfig(env(standIn));
+    expect(!released.ok && released.error.problems).toEqual([
+        "LUCENT_DISCORD_API_URL is for a localhost WebAuthn origin only",
+    ]);
+    const local = readServerConfig(
+        env({
+            ...standIn,
+            LUCENT_WEBAUTHN_RP_ID: "localhost",
+            LUCENT_WEBAUTHN_ORIGIN: "http://localhost:4710",
+        }),
+    );
+    expect(local.ok && local.value.discordOauth?.apiUrl).toBe("http://127.0.0.1:9000/api/v10");
+    const blank = readServerConfig(env({ ...DISCORD, LUCENT_DISCORD_API_URL: "" }));
+    expect(blank.ok && blank.value.discordOauth?.apiUrl).toBe("https://discord.com/api/v10");
+});
+
 test("the loaders' listener is configured by all five of its variables or none", () => {
     const native = {
         LUCENT_NATIVE_LISTEN: "0.0.0.0:4001",

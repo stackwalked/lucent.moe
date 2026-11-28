@@ -17,7 +17,8 @@ const route = getRouteApi("/_admin/admin/queue/applications/$applicationId");
 type Read = Extract<ReturnType<typeof route.useLoaderData>, { ok: true }>["value"];
 
 // One application. Everything the applicant typed is shown as text, never as markup; the member
-// they vouch by and their Discord handle are what they claim, nothing checked.
+// they vouch by is what they claim, nothing checked; their Discord handle is checked when Discord
+// vouched for it.
 export function ApplicationPage() {
     const read = route.useLoaderData();
     const { from } = route.useSearch();
@@ -62,7 +63,10 @@ export function ApplicationPage() {
                                     label: APPLICATIONS_COPY.applied,
                                     value: <Time at={application.createdAt} />,
                                 },
-                                { label: APPLICATIONS_COPY.discord, value: application.discord },
+                                {
+                                    label: APPLICATIONS_COPY.discord,
+                                    value: <DiscordIdentity application={application} />,
+                                },
                                 {
                                     label: APPLICATIONS_COPY.knownBy,
                                     value: <KnownBy application={application} />,
@@ -85,6 +89,35 @@ function Answer({ caption, text }: { readonly caption: string; readonly text: st
         <Section caption={caption}>
             <p className={styles.answer}>{text}</p>
         </Section>
+    );
+}
+
+// The handle, and under it whether Discord vouched for it and whose account it already is.
+function DiscordIdentity({ application }: { readonly application: Read }) {
+    if (application.discordUserId === null && application.discord === "") {
+        return APPLICATIONS_COPY.none;
+    }
+    return (
+        <Stack gap={1}>
+            <span>{application.discord}</span>
+            {application.discordUserId === null ? (
+                <span>{APPLICATIONS_COPY.discordUnverified}</span>
+            ) : (
+                <>
+                    <span>{application.discordUserId}</span>
+                    {application.discordAccount === null ? null : (
+                        <span>
+                            {APPLICATIONS_COPY.discordLinkedTo}{" "}
+                            <Who
+                                accountId={application.discordAccount.accountId}
+                                username={application.discordAccount.username}
+                                pending={ADMIN_COPY.pending}
+                            />
+                        </span>
+                    )}
+                </>
+            )}
+        </Stack>
     );
 }
 

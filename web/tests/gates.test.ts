@@ -62,3 +62,16 @@ test("the discord invite is optional, and when set is an https link on discord's
         expect(invite(bad).ok).toBe(false);
     }
 });
+
+test("the discord application is optional, and when set is a snowflake", () => {
+    const client = (value: string) => readWebConfig(env({ LUCENT_DISCORD_CLIENT_ID: value }));
+    const unset = readWebConfig(env({}));
+    expect(unset.ok && unset.value.discordClientId).toBe(null);
+    const blank = client("");
+    expect(blank.ok && blank.value.discordClientId).toBe(null);
+    const set = client("900000000000000003");
+    expect(set.ok && set.value.discordClientId).toBe("900000000000000003");
+    for (const bad of ["lucent", "0900000000000000003", "123", "9000000000000000030000"]) {
+        expect(client(bad).ok).toBe(false);
+    }
+});

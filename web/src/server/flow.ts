@@ -14,6 +14,9 @@ export const FlowState = z.object({
     setup: BearerToken.optional(),
     returnTo: z.string().max(512).optional(),
     username: z.string().max(64).optional(),
+    // The OAuth round trip to Discord: the state sent out, and what the answer is for.
+    discordState: BearerToken.optional(),
+    discordFor: z.enum(["apply", "account"]).optional(),
 });
 export type FlowState = z.output<typeof FlowState>;
 

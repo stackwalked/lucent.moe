@@ -8,11 +8,7 @@ import { type Db, execute, queryAll, sql } from "../src/base/db/pool.ts";
 import { withTx } from "../src/base/db/tx.ts";
 import { decideDmSettlement, decideDmStaleCutoff } from "../src/edge/discord/dms.rules.ts";
 import { readDueDms, settleDm } from "../src/edge/discord/dms.ts";
-import {
-    redeemLinkCode,
-    removeDiscordLinkByUser,
-    startDiscordLink,
-} from "../src/edge/discord/links.ts";
+import { linkDiscordAccount, removeDiscordLinkByUser } from "../src/edge/discord/links.ts";
 import { openTicketFromDiscord } from "../src/edge/discord/member.ts";
 import type { AuthDeps } from "../src/identity/auth/deps.ts";
 import { recordNotification } from "../src/members/notify/inbox.ts";
@@ -58,9 +54,13 @@ describe("decideDmSettlement", () => {
 async function linked(deps: AuthDeps, rng: SeededRng, email: string, userId: string) {
     const accountId = await seedAccount(deps.db, rng, email);
     const token = await memberSession(deps, accountId);
-    const code = await startDiscordLink(deps.db, { token, rng });
-    invariant(code.ok, "a code was issued");
-    expect(await redeemLinkCode(deps.db, { userId, code: code.value.code })).toEqual(ok(undefined));
+    expect(
+        await linkDiscordAccount(deps.db, {
+            token,
+            identity: { userId, username: "someone" },
+            client: null,
+        }),
+    ).toEqual(ok(undefined));
     return { accountId, token };
 }
 

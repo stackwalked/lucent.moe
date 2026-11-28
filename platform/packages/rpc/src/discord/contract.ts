@@ -20,12 +20,6 @@ const Failure = z.discriminatedUnion("code", [Unavailable]);
 // The audit position the connector has read up to, as a decimal id.
 const Cursor = z.string().regex(/^(0|[1-9][0-9]{0,18})$/);
 
-// A link code as a member types it: ten Crockford base32 characters, a dash allowed in the middle.
-export const LinkCode = z
-    .string()
-    .trim()
-    .regex(/^[0-9A-Za-z]{5}-?[0-9A-Za-z]{5}$/);
-
 // The roles the rules give one Discord user: none when the user is unlinked or the account is
 // not in good standing.
 const MemberRoles = z.object({ userId: Snowflake, roleIds: z.array(Snowflake).readonly() });
@@ -149,24 +143,6 @@ export const discordContract = defineContract({
             retiredRoleIds: z.array(Snowflake).readonly(),
         }),
         error: Failure,
-    },
-    // `/link`: the account that issued the code becomes this Discord user's. CODE_INVALID for a
-    // code that is unknown, expired or used; ALREADY_LINKED when either side has a link.
-    "links.redeem": {
-        session: "none",
-        effect: "write",
-        // `username` is the handle Discord shows, optional so an older connector still links.
-        input: z.strictObject({
-            userId: Snowflake,
-            code: LinkCode,
-            username: z.string().min(1).max(64).optional(),
-        }),
-        output: Done,
-        error: z.discriminatedUnion("code", [
-            Unavailable,
-            refusal("CODE_INVALID"),
-            refusal("ALREADY_LINKED"),
-        ]),
     },
     // `/unlink`: whether there was a link to remove.
     "links.remove": {

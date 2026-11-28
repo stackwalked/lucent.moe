@@ -90,6 +90,8 @@ export const REFUSALS: Readonly<Record<RefusalCode, string>> = {
     TICKET_FULL: "ticket full. open a new one.",
     TICKET_LIMIT: "too many open tickets",
     ALREADY_LINKED: "discord already linked",
+    DISCORD_LINK_FAILED: "discord wasn't linked. try again.",
+    DISCORD_LINK_REQUIRED: "discord link expired. link it again.",
     STAFF_CHANNEL_REQUIRED: "queues need a staff channel. mark it staff first.",
     PROFILE_REMOVED: "profile removed by staff. write a new bio first.",
     IMAGE_TOO_LARGE: "picture too large: 512 kb and 4096 pixels a side at most",

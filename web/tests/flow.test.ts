@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { BearerToken } from "@lucent/core/scalars";
+import { BearerToken, toBase64Url } from "@lucent/core/scalars";
 import { decodeFlow, encodeFlow } from "../src/server/flow.ts";
 
 test("a flow cookie reads back as written", () => {
@@ -17,4 +17,13 @@ test("a tampered or garbage flow cookie is no flow at all", () => {
     ]) {
         expect({ raw, state: decodeFlow(raw) }).toEqual({ raw, state: {} });
     }
+});
+
+test("the discord round trip's state and purpose read back, and an unknown purpose is no flow", () => {
+    const state = { discordState: BearerToken.parse("d".repeat(43)), discordFor: "apply" } as const;
+    expect(decodeFlow(encodeFlow(state))).toEqual(state);
+    const forged = toBase64Url(
+        new TextEncoder().encode(JSON.stringify({ ...state, discordFor: "admin" })),
+    );
+    expect(decodeFlow(forged)).toEqual({});
 });

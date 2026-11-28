@@ -1,13 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { err, ok, type Result } from "@lucent/core/result";
-import { EpochMs, ProductId, RoleId } from "@lucent/core/scalars";
-import {
-    decideIssueCode,
-    decideRedeem,
-    type GatheredRedeem,
-    LINK_CODE_TTL_MS,
-    type LinkRefusal,
-} from "../src/edge/discord/links.rules.ts";
+import { ok } from "@lucent/core/result";
+import { ProductId, RoleId } from "@lucent/core/scalars";
 import {
     decideRoles,
     type LinkedStanding,
@@ -85,73 +78,5 @@ describe("decideRoles", () => {
 
     test("with no rules nobody gets a role", () => {
         expect(decideRoles([], standing({ products: ["cs2"] }))).toEqual(ok([]));
-    });
-});
-
-const NOW = EpochMs.parse(1_800_000_000_000);
-const LIVE = { expiresAt: EpochMs.parse(NOW + 1), usedAt: null };
-const USED_AT = NOW;
-
-describe("decideRedeem", () => {
-    const good: GatheredRedeem = {
-        txNow: NOW,
-        code: LIVE,
-        accountActive: true,
-        accountLinked: false,
-        userLinked: false,
-    };
-    const cases: readonly [string, Partial<GatheredRedeem>, Result<"link", LinkRefusal>][] = [
-        ["a live code links", {}, ok("link")],
-        ["an unknown code is refused", { code: null }, err({ code: "CODE_INVALID" })],
-        [
-            "a code at its expiry is refused",
-            { code: { expiresAt: NOW, usedAt: null } },
-            err({ code: "CODE_INVALID" }),
-        ],
-        [
-            "a used code is refused",
-            { code: { expiresAt: LIVE.expiresAt, usedAt: USED_AT } },
-            err({ code: "CODE_INVALID" }),
-        ],
-        [
-            "a suspended account's code is refused like an unknown one",
-            { accountActive: false, accountLinked: true },
-            err({ code: "CODE_INVALID" }),
-        ],
-        [
-            "a Discord user already linked is refused",
-            { userLinked: true },
-            err({ code: "ALREADY_LINKED" }),
-        ],
-        [
-            "an account already linked is refused",
-            { accountLinked: true },
-            err({ code: "ALREADY_LINKED" }),
-        ],
-        [
-            "an expired code says nothing about links",
-            { code: { expiresAt: NOW, usedAt: null }, userLinked: true },
-            err({ code: "CODE_INVALID" }),
-        ],
-    ];
-    for (const [name, change, expected] of cases) {
-        test(name, () => {
-            expect(decideRedeem({ ...good, ...change })).toEqual(expected);
-        });
-    }
-});
-
-describe("decideIssueCode", () => {
-    test("a code lasts ten minutes from the transaction", () => {
-        expect(decideIssueCode({ txNow: NOW, linked: false })).toEqual(
-            ok({ expiresAt: EpochMs.parse(NOW + LINK_CODE_TTL_MS) }),
-        );
-        expect(LINK_CODE_TTL_MS).toBe(600_000);
-    });
-
-    test("a linked account gets no code", () => {
-        expect(decideIssueCode({ txNow: NOW, linked: true })).toEqual(
-            err({ code: "ALREADY_LINKED" }),
-        );
     });
 });

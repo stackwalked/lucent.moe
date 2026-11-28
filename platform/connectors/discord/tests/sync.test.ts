@@ -32,7 +32,7 @@ import {
     TICKET_COPY,
 } from "../src/copy.ts";
 import type { LogFields, Logger } from "../src/log.ts";
-import { startFakeDiscord } from "../testing/fake-discord.ts";
+import { type FakeDiscord, startFakeDiscord } from "../testing/fake-discord.ts";
 
 // The connector against platform as an operator starts it, in its own process, and a stand-in
 // Discord in this one. Staff act through web's own admin procedures; their sessions are rows
@@ -43,6 +43,7 @@ const GUILD = "500000000000000001";
 const ALICE = "500000000000000010";
 const BOB = "500000000000000011";
 const CAROL = "500000000000000012";
+const DAVE = "500000000000000013";
 const LINKED = "500000000000000100";
 const CS2_ROLE = "500000000000000101";
 const HAND_GIVEN = "500000000000000199";
@@ -51,15 +52,19 @@ const RESOURCES_CHANNEL = "500000000000000201";
 
 let platform: RunningPlatform;
 let db: SQL;
+// The Discord the platform joins and identifies applicants against; started first, for its URL.
+let oauthFake: FakeDiscord;
 let site: string;
 
 beforeAll(async () => {
     site = `http://localhost:${allocateEphemeralPort()}`;
+    oauthFake = startFakeDiscord({ guildId: GUILD, clock: systemClock });
     platform = await startPlatform({
         cluster: await sharedEphemeralCluster(),
         database: "discord_sync",
         webOrigin: site,
         discordInternalKey: KEY,
+        discordOauth: { apiUrl: `${oauthFake.api}/v10`, guildId: GUILD },
     });
     db = new SQL(platform.databaseUrl);
 }, 60_000);
@@ -67,6 +72,7 @@ beforeAll(async () => {
 afterAll(async () => {
     await db.close();
     await platform.stop();
+    await oauthFake.stop();
     await shutdownSharedEphemeralCluster();
 });
 
@@ -151,7 +157,7 @@ test("the connector mirrors standing into the guild within a tick, and a reconci
             lines.push(fields === undefined ? { msg } : { msg, fields });
         },
     };
-    const fake = startFakeDiscord({ guildId: GUILD, clock: systemClock });
+    const fake = oauthFake;
     fake.addMember(ALICE, [HAND_GIVEN]);
     // Given a synced role by hand without a link: the first reconcile takes it back.
     fake.addMember(BOB, [LINKED]);
@@ -168,7 +174,6 @@ test("the connector mirrors standing into the guild within a tick, and a reconci
     await until("ready", () => lines.some((line) => line.msg === "ready"));
     await connector.idle();
     expect(fake.commands()).toEqual([
-        "link",
         "unlink",
         "me",
         "status",
@@ -180,23 +185,30 @@ test("the connector mirrors standing into the guild within a tick, and a reconci
     ]);
     expect(fake.roles(BOB)).toEqual([]);
 
-    // Linking: a wrong code is refused; the member's own links and syncs at once.
-    expect(await fake.command("link", ALICE, { code: "AAAAA-AAAAA" })).toEqual({
-        kind: "message",
-        content: REPLIES.codeInvalid(`${site}/account`),
-        ephemeral: true,
-        buttonUrl: null,
-    });
+    // Linking through Discord's OAuth: a code works once, and the link reaches roles at the next
+    // tick.
     const memberSession = await sessionFor(member);
-    const started = await web.call("discord.link.start", {}, { session: memberSession });
-    invariant(started.ok, "a code was issued");
-    expect(await fake.command("link", ALICE, { code: started.value.code })).toEqual({
-        kind: "message",
-        content: REPLIES.linked,
-        ephemeral: true,
-        buttonUrl: null,
-    });
-    await connector.idle();
+    const aliceCode = fake.authorize(ALICE, "alice");
+    expect(
+        await web.call("discord.link.finish", { code: aliceCode }, { session: memberSession }),
+    ).toEqual({ ok: true, value: {} });
+    expect(
+        await web.call(
+            "discord.link.finish",
+            { code: aliceCode },
+            { session: await sessionFor(other) },
+        ),
+    ).toEqual({ ok: false, error: { code: "DISCORD_LINK_FAILED" } });
+    // A linked account is refused before the code is exchanged, so nobody is joined for it.
+    expect(
+        await web.call(
+            "discord.link.finish",
+            { code: fake.authorize(DAVE, "dave") },
+            { session: memberSession },
+        ),
+    ).toEqual({ ok: false, error: { code: "ALREADY_LINKED" } });
+    expect(fake.isMember(DAVE)).toBe(false);
+    await connector.tick();
     expect(fake.roles(ALICE)).toEqual(sorted(LINKED, HAND_GIVEN));
 
     // An entitlement granted in admin reaches Discord at the next tick.
@@ -259,18 +271,16 @@ test("the connector mirrors standing into the guild within a tick, and a reconci
         buttonUrl: null,
     });
 
-    // Linked before joining: the join syncs them.
-    const otherCode = await web.call(
-        "discord.link.start",
-        {},
-        { session: await sessionFor(other) },
-    );
-    invariant(otherCode.ok, "a second code was issued");
+    // A Discord user who was not in the guild is joined by linking, and has the roles at the
+    // next tick.
     expect(
-        await discord.call("links.redeem", { userId: CAROL, code: otherCode.value.code }),
+        await web.call(
+            "discord.link.finish",
+            { code: fake.authorize(CAROL, "carol") },
+            { session: await sessionFor(other) },
+        ),
     ).toEqual({ ok: true, value: {} });
-    fake.join(CAROL);
-    await until("join synced", () => fake.roles(CAROL).length > 0);
+    await connector.tick();
     expect(fake.roles(CAROL)).toEqual([LINKED]);
 
     // A removed rule takes its role off whoever it had given it to; a role in no rule would
@@ -323,7 +333,6 @@ test("the connector mirrors standing into the guild within a tick, and a reconci
 
     expect(lines.filter((line) => line.msg.endsWith("failed"))).toEqual([]);
     await connector.stop();
-    await fake.stop();
 }, 30_000);
 
 const webClient = () =>
@@ -364,15 +373,17 @@ async function rootSession(): Promise<BearerToken> {
     return await sessionFor(root.id);
 }
 
-// An account with a member session, linked to `userId` the way /link links it.
+// An account with a member session, linked to `userId` through the OAuth flow.
 async function linkedMember(email: string, userId: string) {
     const accountId: AccountId = newAccountId(rng);
     await db`insert into account (id, email) values (${accountId}, ${email})`;
     const session = await sessionFor(accountId);
-    const code = await webClient().call("discord.link.start", {}, { session });
-    invariant(code.ok, "a code was issued");
-    const redeemed = await discordClient().call("links.redeem", { userId, code: code.value.code });
-    invariant(redeemed.ok, "the code linked");
+    const linked = await webClient().call(
+        "discord.link.finish",
+        { code: oauthFake.authorize(userId, `user${userId.slice(-3)}`) },
+        { session },
+    );
+    invariant(linked.ok, "the code linked");
     return { accountId, session };
 }
 
@@ -630,14 +641,13 @@ test("staff reads answer in a staff channel only, and a ticket's queue post foll
     const staff = await rootSession();
     const [root] = await db`select id from account where is_root`;
     invariant(typeof root?.id === "string", "root was bootstrapped");
-    const rootCode = await web.call("discord.link.start", {}, { session: staff });
-    invariant(rootCode.ok, "root has a code");
     expect(
         (
-            await discordClient().call("links.redeem", {
-                userId: ROOT_USER,
-                code: rootCode.value.code,
-            })
+            await web.call(
+                "discord.link.finish",
+                { code: oauthFake.authorize(ROOT_USER, "root") },
+                { session: staff },
+            )
         ).ok,
     ).toBe(true);
     for (const fields of [

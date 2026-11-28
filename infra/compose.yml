@@ -79,6 +79,12 @@ services:
       LUCENT_WEB_INTERNAL_KEY: ${LUCENT_WEB_INTERNAL_KEY:?set the web peer key}
       # Blank until the connector runs: the server then answers no discord procedure.
       LUCENT_DISCORD_INTERNAL_KEY: ${LUCENT_DISCORD_INTERNAL_KEY:-}
+      # The server exchanges OAuth codes and joins applicants to the guild, so it holds the bot
+      # token as well. Blank client id and secret: no Discord step, and the other two are ignored.
+      LUCENT_DISCORD_CLIENT_ID: ${LUCENT_DISCORD_CLIENT_ID:-}
+      LUCENT_DISCORD_CLIENT_SECRET: ${LUCENT_DISCORD_CLIENT_SECRET:-}
+      LUCENT_DISCORD_BOT_TOKEN: ${LUCENT_DISCORD_BOT_TOKEN:-}
+      LUCENT_DISCORD_GUILD_ID: ${LUCENT_DISCORD_GUILD_ID:-}
       LUCENT_TOTP_KEYS: ${LUCENT_TOTP_KEYS:?set the TOTP keyring}
       LUCENT_MAIL_PROVIDER: ${LUCENT_MAIL_PROVIDER:-}
       LUCENT_MAIL_API_KEY: ${LUCENT_MAIL_API_KEY:-}
@@ -142,6 +148,7 @@ services:
       LUCENT_WEB_LISTEN: unix:/run/lucent/web/http.sock
       LUCENT_PUBLIC_ORIGIN: https://lucent.moe
       LUCENT_DISCORD_INVITE_URL: ${LUCENT_DISCORD_INVITE_URL:-}
+      LUCENT_DISCORD_CLIENT_ID: ${LUCENT_DISCORD_CLIENT_ID:-}
       LUCENT_WEB_INTERNAL_KEY: ${LUCENT_WEB_INTERNAL_KEY:?set the web peer key}
     volumes:
       - /var/lib/lucent/internal-socket:/run/lucent/internal:ro

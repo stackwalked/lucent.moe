@@ -12,7 +12,7 @@ import type { EpochGuard } from "../../../base/db/epoch-guard.ts";
 import type { Db } from "../../../base/db/pool.ts";
 import { readDueDms, settleDm } from "../../discord/dms.ts";
 import { readPendingPosts, recordPost } from "../../discord/feeds.ts";
-import { redeemLinkCode, removeDiscordLinkByUser } from "../../discord/links.ts";
+import { removeDiscordLinkByUser } from "../../discord/links.ts";
 import {
     openTicketFromDiscord,
     readMe,
@@ -51,7 +51,6 @@ export const discordProcedures = implement<DiscordRpcContext, DiscordContract>(d
     "members.resolve": async (ctx, input) =>
         served(await resolveMembers(ctx.db, input.userIds, input.usernames)),
     "changes.read": async (ctx, input) => served(await readChanges(ctx.db, input.after)),
-    "links.redeem": async (ctx, input) => served(done(await redeemLinkCode(ctx.db, input))),
     "links.remove": async (ctx, input) => served(await removeDiscordLinkByUser(ctx.db, input)),
     "feeds.read": async (ctx) =>
         served(

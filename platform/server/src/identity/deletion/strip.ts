@@ -247,7 +247,6 @@ async function strip(
         sql`delete from mail_outbox where recipient = ${params.email}
                 and state in ('pending', 'sending')`,
         sql`delete from connector_discord_dm where account_id = ${id}`,
-        sql`delete from connector_discord_link_code where account_id = ${id}`,
     ]);
     if (!notify.ok) return notify;
     const discord = await queryAll(
